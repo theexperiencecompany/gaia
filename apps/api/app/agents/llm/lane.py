@@ -2,7 +2,7 @@
 
 One immutable :class:ModelLane is resolved once per user turn by
 :func:resolve_lane and then carried verbatim — to the executor, to every
-handoff subagent, across a queue hop, through a HIL resume. Everything
+spawned subagent, across a queue hop, through a HIL resume. Everything
 downstream reads the lane instead of re-deriving a model from loose keys, so
 there is exactly one place a lane can be wrong.
 
@@ -19,24 +19,21 @@ from enum import StrEnum
 
 from pydantic import TypeAdapter
 
-from app.agents.llm.client import PROVIDER_MODELS, next_fallback_provider, openai_lane_available
+from app.agents.llm.client import chat_model, chat_route, provider_configured
 from app.agents.llm.dev_lane import dev_default_model_id, dev_default_option
-from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
-from app.constants.cache import COST_BUDGET_NOTIFIED_KEY
+from app.config.settings import settings
 from app.constants.llm import (
-    COMMS_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
     DEV_MODEL_OPTIONS,
     MODEL_FIELD_ID,
     MODEL_KWARGS_FIELD_ID,
-    MONTHLY_BUDGET_TTL_SECONDS,
+    OPENROUTER_PROVIDER_ROUTING,
     OPENROUTER_REASONING,
     PAID_COMMS_REASONING,
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
-    PRO_MONTHLY_COST_BUDGET_USD,
     PROVIDER_FIELD_ID,
     REASONING_FIELD_ID,
     DevModelOption,
@@ -46,18 +43,9 @@ from app.constants.llm import (
     OpenRouterReasoning,
 )
 from app.constants.log_tags import LogTag
-from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
-from app.models.notification.notification_models import (
-    NotificationContent,
-    NotificationRequest,
-    NotificationSourceEnum,
-)
 from app.models.payment_models import PlanType
-from app.services.cost_budget import get_cost
-from app.services.notification_service import notification_service
 from app.services.payments.payment_service import payment_service
-from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
 #: Every configurable key a lane owns. These must be REPLACED wholesale on a lane
@@ -99,8 +87,8 @@ class ModelLane:
     #: env-defined custom dev endpoint serves ``DEV_LLM_MODEL`` this way.
     model: str | None
     reasoning: OpenRouterReasoning | None
-    #: OpenRouter provider-routing pin. Provider-specific by definition, so it
-    #: never survives :meth:`fallback`.
+    #: The model's own OpenRouter routing, from OPENROUTER_PROVIDER_ROUTING via
+    #: _provider_pin wherever a lane picks its model.
     provider_pin: OpenRouterModelKwargs | None
     max_input_tokens: int
 
@@ -167,15 +155,28 @@ class ModelLane:
     def fallback(self) -> "ModelLane | None":
         """Return the same run on the next configured provider, or None when there is no other one.
 
-        The pin AND the reasoning config are dropped: both are OpenRouter-wire
-        concepts, so carrying either onto a different provider is how a
-        fallback turns one failure into two.
+        The reasoning config is dropped and the pin re-derived for the new model:
+        carrying either onto a different provider is how a fallback turns one
+        failure into two.
         """
-        nxt = next_fallback_provider(self.provider)
+        nxt = chat_route(self.provider)
         if nxt is None:
             return None
         provider, model = nxt
-        return replace(self, provider=provider, model=model, provider_pin=None, reasoning=None)
+        return replace(
+            self,
+            provider=provider,
+            model=model,
+            provider_pin=_provider_pin(provider, model),
+            reasoning=None,
+        )
+
+
+def _provider_pin(provider: LLMProviderName, model: str | None) -> OpenRouterModelKwargs | None:
+    """Return model's routing pin on OpenRouter; any other provider takes none."""
+    if provider is not LLMProviderName.OPENROUTER or model is None:
+        return None
+    return OPENROUTER_PROVIDER_ROUTING.get(model)
 
 
 def _reasoning_for(role: AgentRole) -> OpenRouterReasoning:
@@ -191,22 +192,41 @@ def _reasoning_for(role: AgentRole) -> OpenRouterReasoning:
 
 
 def _default_lane() -> ModelLane:
+    """Return the lane for a default (free or unresolved-plan) turn.
+
+    Hosted instances run OpenRouter's default model exactly as always. Without
+    OpenRouter the highest-priority usable chat provider serves, so LangChain is
+    never asked for a lane that has no config; with none at all, the OpenRouter
+    lane fails loud at load time naming the fix.
+    """
+    route = chat_route()
+    if route is not None:
+        provider, model = route
+        is_openrouter = provider is LLMProviderName.OPENROUTER
+        return ModelLane(
+            provider=provider,
+            model=model,
+            # A reasoning pin is OpenRouter-wire only.
+            reasoning=OPENROUTER_REASONING if is_openrouter else None,
+            provider_pin=_provider_pin(provider, model),
+            max_input_tokens=DEFAULT_MAX_TOKENS,
+        )
     return ModelLane(
         provider=LLMProviderName(DEFAULT_LLM_PROVIDER),
         model=DEFAULT_MODEL_NAME,
         reasoning=OPENROUTER_REASONING,
-        provider_pin=None,
+        provider_pin=_provider_pin(LLMProviderName(DEFAULT_LLM_PROVIDER), DEFAULT_MODEL_NAME),
         max_input_tokens=DEFAULT_MAX_TOKENS,
     )
 
 
 def _comms_lane() -> ModelLane | None:
     """Return comms' own direct-OpenAI lane, or None when OpenAI is not configured."""
-    if not openai_lane_available():
+    if not provider_configured(LLMProviderName.OPENAI):
         return None
     return ModelLane(
         provider=LLMProviderName.OPENAI,
-        model=COMMS_MODEL_NAME,
+        model=chat_model(LLMProviderName.OPENAI),
         # The effort is fixed on the client; a reasoning key would only be ignored.
         reasoning=None,
         provider_pin=None,
@@ -223,15 +243,16 @@ def _dev_lane(option: DevModelOption, role: AgentRole) -> ModelLane:
     """Build a lane pinned from the DEV-ONLY model menu.
 
     An entry may carry no model (the env-defined "custom" endpoint); the lane
-    resolves PROVIDER_MODELS[provider] instead of leaving it None, so
+    resolves the provider's chat model instead of leaving it None, so
     accounting sees the real name instead of metering as "unknown". None
-    survives only when the env var itself is unset.
+    survives only when no model is configured at all.
     """
+    model = option.model or chat_model(option.provider)
     return ModelLane(
         provider=option.provider,
-        model=option.model or PROVIDER_MODELS.get(option.provider) or None,
+        model=model,
         reasoning=_reasoning_for(role) if option.reasoning else None,
-        provider_pin=option.provider_pin,
+        provider_pin=_provider_pin(option.provider, model),
         max_input_tokens=DEFAULT_MAX_TOKENS,
     )
 
@@ -270,7 +291,7 @@ async def resolve_lane(
     """Choose the single model. Returns the lane and the plan tier it was resolved from.
 
     Comms runs its own lane on every plan, otherwise free runs the default model
-    and paid the paid model; a paid user past the monthly guard degrades to free.
+    and paid the paid model.
     In development an explicit dev_option, else DEV_DEFAULT_MODEL, wins over all
     of it: every top-level run, not only chat, starts on it.
     """
@@ -292,17 +313,9 @@ async def resolve_lane(
     if comms_lane is not None:
         return comms_lane, plan
 
-    if plan == PlanType.FREE:
-        return _default_lane(), plan
-
-    if await _pro_monthly_budget_exhausted(user_id):
-        log.warning(
-            "pro_model_degraded",
-            event_name="pro_model_degraded",
-            user_id=user_id,
-            plan=plan.value,
-        )
-        spawn_background_task(_notify_degrade_once(user_id))
+    # Without plans every user is Pro, yet the paid model is a hosted tier: the
+    # instance's own configured lane serves everyone.
+    if plan == PlanType.FREE or not settings.deployment.enforces_plans:
         return _default_lane(), plan
 
     return (
@@ -310,67 +323,11 @@ async def resolve_lane(
             provider=LLMProviderName(PAID_MODEL_PROVIDER),
             model=PAID_MODEL_NAME,
             reasoning=_reasoning_for(role),
-            # No per-lane `only` pin: it conflicts with session_id sticky
-            # routing and measured WORSE (64% cache hits vs 83-91% without it).
-            # The soft `order` preference is set on the client instead.
-            provider_pin=None,
+            provider_pin=_provider_pin(LLMProviderName(PAID_MODEL_PROVIDER), PAID_MODEL_NAME),
             max_input_tokens=DEFAULT_MAX_TOKENS,
         ),
         plan,
     )
-
-
-async def _pro_monthly_budget_exhausted(user_id: str) -> bool:
-    """Return whether the month's spend has crossed the pro economic guard.
-
-    Fails open (False) on infra errors — never punish a paying user for a
-    Redis hiccup.
-    """
-    try:
-        spent = await get_cost(user_id, RateLimitPeriod.MONTH)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.AGENT} Monthly budget read failed; keeping the paid lane",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return False
-    return spent >= PRO_MONTHLY_COST_BUDGET_USD
-
-
-async def _notify_degrade_once(user_id: str) -> None:
-    """In-app notice on the FIRST degraded turn of the month (Redis SET NX gate)."""
-    try:
-        client = redis_cache.redis
-        if client is None:
-            return
-        key = COST_BUDGET_NOTIFIED_KEY.format(
-            user_id=user_id, window=get_time_window_key(RateLimitPeriod.MONTH)
-        )
-        if not await client.set(key, "1", nx=True, ex=MONTHLY_BUDGET_TTL_SECONDS):
-            return
-        reset_time = get_reset_time(RateLimitPeriod.MONTH)
-        await notification_service.create_notification(
-            NotificationRequest(
-                user_id=user_id,
-                source=NotificationSourceEnum.USAGE_LIMIT,
-                # type is left to NotificationRequest's own default (INFO) rather
-                # than restated here — one source of truth for it.
-                content=NotificationContent(
-                    title="Priority compute used for this month",
-                    body=(
-                        "You've used this month's priority AI compute. GAIA keeps "
-                        f"working on the standard model until {reset_time:%b %d}."
-                    ),
-                ),
-            )
-        )
-    except Exception as e:
-        log.warning(
-            f"{LogTag.AGENT} Degrade notice failed",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
 
 
 __all__ = [

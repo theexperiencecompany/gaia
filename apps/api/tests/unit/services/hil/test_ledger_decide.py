@@ -1,6 +1,6 @@
 """Ledger decide: CAS commit, stale-v refresh, queued approvals, no execution yet."""
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -12,7 +12,6 @@ import pytest
 
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import hold_run_alive
-from app.agents.tools.execute.dispatch import DispatchErrorKind
 from app.constants.agents import AgentTag
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
@@ -20,10 +19,11 @@ from app.constants.cache import (
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
 from app.constants.log_tags import LogTag
+from app.models.execute_models import DispatchError, DispatchErrorKind
 from app.models.hil_models import ApprovalLedgerDocument, LedgerState
 from app.models.user_models import AuthenticatedUser
-from app.schemas.hil_schemas import BatchDecisionItem, BatchDecisionOutcome
-from app.services.hil import ledger_decide
+from app.schemas.hil_schemas import ApprovalDecisionRequest, BatchDecisionItem, BatchDecisionOutcome
+from app.services.hil import ledger_decide, resolution
 from app.services.hil.ledger_decide import (
     STALLED_EXECUTING_MINUTES,
     LedgerDecision,
@@ -43,6 +43,8 @@ from app.services.hil.resolution import (
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilDecisionSubmitted, HilRevoked
+
+from .conftest import tools_that_always_ask
 
 MODULE = "app.services.hil.ledger_decide"
 RUNNER = "app.agents.core.background.executor_runner"
@@ -65,6 +67,7 @@ def _row(**overrides: Any) -> MagicMock:
     row.conversation_id = "conv-1"
     row.user_id = USER_ID
     row.tool_name = "GMAIL_SEND_EMAIL"
+    row.tool_key = "GMAIL_SEND_EMAIL"
     row.args = {"to": "b@x"}
     row.summary = "Send it"
     row.state = LedgerState.PENDING
@@ -279,7 +282,8 @@ class TestDecisionSubmittedEvent:
             patch.object(ledger_decide, "capture") as capture,
         ):
             await decide_ledger_batch(
-                USER_ID, [BatchDecisionItem(approval_id="ap_abc", decision="approve", v=3)]
+                USER_ID,
+                [BatchDecisionItem(approval_id="ap_abc", decision="approve", feedback=None, v=3)],
             )
 
         assert capture.call_args.args[1].via == "batch"
@@ -528,7 +532,6 @@ class TestRedeemExecution:
         }
 
     async def test_provider_timeout_lands_unknown_never_failed(self) -> None:
-        from app.agents.tools.execute.dispatch import DispatchError, DispatchErrorKind
         from app.models.hil_models import LedgerState as LS
         from app.services.hil import ledger_decide
         from app.services.hil.ledger_decide import redeem_approved
@@ -695,7 +698,6 @@ class TestRedeemTerminalStates:
         assert "deleted xyz" in result.detail
 
     async def test_failed_returns_error_detail(self) -> None:
-        from app.agents.tools.execute.dispatch import DispatchError, DispatchErrorKind
         from app.models.hil_models import LedgerState as LS
         from app.services.hil import ledger_decide
         from app.services.hil.ledger_decide import redeem_approved
@@ -1319,7 +1321,6 @@ class TestRedeemSettlesTerminalFrame:
         assert broadcast.await_args.args[1] == "executed"
 
     async def test_failed_settles_card_as_failed(self) -> None:
-        from app.agents.tools.execute.dispatch import DispatchError, DispatchErrorKind
         from app.services.hil import ledger_decide
         from app.services.hil.ledger_decide import redeem_approved
 
@@ -1457,7 +1458,7 @@ def _inbox_lines(seams: LedgerSeams) -> list[tuple[str, str, str]]:
     return lines
 
 
-def _warned(log_level: MagicMock) -> dict[str, dict[str, object]]:
+def _warned(log_level: MagicMock) -> dict[str, Mapping[str, object]]:
     return {c.args[0]: c.kwargs for c in log_level.call_args_list}
 
 
@@ -2166,3 +2167,90 @@ class TestTheTicketReachesARunWhateverHeldTheConversation:
         [entry] = await ExecutorInbox("conv-1").read()
         assert entry.text.startswith("APPROVAL_READY ap_1:")
         assert await fake_redis.get(self._LOCK_KEY) == self._HOLDER
+
+
+@pytest.mark.unit
+class TestDecideLedgerAlwaysToolScope:
+    """An approved "always" tap turns the tool's ask off, unless the call asks every time."""
+
+    async def _decide(self, repo: MagicMock, **tap: Any) -> AsyncMock:
+        with (
+            patch(f"{MODULE}.approval_ledger_repository", new=repo),
+            patch(f"{MODULE}.publish_ledger_decision", new=AsyncMock()),
+            patch(f"{MODULE}._deliver_ticket", new=AsyncMock()),
+            patch(f"{MODULE}._deliver_verdict", new=AsyncMock()),
+            patch(f"{MODULE}.set_tool_override", new=AsyncMock()) as override,
+        ):
+            await ledger_decide.decide_ledger_card(
+                "ap_abc", user_id=USER_ID, tap=ApprovalDecisionRequest(v=3, **tap)
+            )
+        return override
+
+    async def test_an_approved_always_tap_turns_the_tools_ask_off(self) -> None:
+        override = await self._decide(_repo(_row()), decision="approve", scope="always_tool")
+        override.assert_awaited_once_with(USER_ID, "GMAIL_SEND_EMAIL", False)
+
+    async def test_an_always_tap_on_an_mcp_tool_writes_its_server_scoped_key(self) -> None:
+        row = _row(tool_name="posthog_delete_item", tool_key="mcp:srv_a:delete_item")
+        override = await self._decide(_repo(row), decision="approve", scope="always_tool")
+        override.assert_awaited_once_with(USER_ID, "mcp:srv_a:delete_item", False)
+
+    async def test_a_row_registered_before_tool_keys_resolves_the_key_from_the_live_tool(
+        self,
+    ) -> None:
+        row = _row(tool_name="delete_item", tool_key=None)
+        with patch(
+            f"{MODULE}.resolved_tool_key", new=AsyncMock(return_value="mcp:srv_a:delete_item")
+        ) as resolve:
+            override = await self._decide(_repo(row), decision="approve", scope="always_tool")
+        resolve.assert_awaited_once_with(USER_ID, "delete_item")
+        override.assert_awaited_once_with(USER_ID, "mcp:srv_a:delete_item", False)
+
+    async def test_a_denied_always_tap_leaves_the_ask_on(self) -> None:
+        override = await self._decide(_repo(_row()), decision="deny", scope="always_tool")
+        override.assert_not_awaited()
+
+    async def test_a_once_tap_leaves_the_ask_on(self) -> None:
+        override = await self._decide(_repo(_row()), decision="approve")
+        override.assert_not_awaited()
+
+    async def test_a_stale_always_tap_leaves_the_ask_on(self) -> None:
+        override = await self._decide(_repo(_row(v=4)), decision="approve", scope="always_tool")
+        override.assert_not_awaited()
+
+    async def test_the_tap_decides_the_approval_it_names(self) -> None:
+        repo = _repo(_row())
+        await self._decide(repo, decision="approve")
+        assert repo.get_by_approval_id.await_args_list[0].args == ("ap_abc",)
+
+    async def test_an_approve_with_feedback_is_recorded_as_a_conditional_deny(self) -> None:
+        repo = _repo(_row())
+        override = await self._decide(
+            repo, decision="approve", scope="always_tool", feedback="only to bob"
+        )
+        repo.transition.assert_awaited_once_with(
+            "ap_abc",
+            LedgerState.PENDING,
+            LedgerState.DENIED,
+            decided_by=USER_ID,
+            feedback="only to bob",
+        )
+        override.assert_not_awaited()
+
+    async def test_a_disconnect_refuses_the_always_scope_by_its_arguments_alone(self) -> None:
+        repo = _repo(_row(tool_name="manage_linked_account", args={"action": "disconnect"}))
+        with tools_that_always_ask(), pytest.raises(resolution.ToolAlwaysAsksError):
+            await self._decide(repo, decision="approve", scope="always_tool")
+        repo.transition.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_a_call_that_always_asks_refuses_the_always_scope_before_committing(
+        self,
+    ) -> None:
+        repo = _repo(_row(tool_name="update_preferences"))
+        with (
+            tools_that_always_ask("update_preferences"),
+            pytest.raises(resolution.ToolAlwaysAsksError),
+        ):
+            await self._decide(repo, decision="approve", scope="always_tool")
+        repo.transition.assert_not_awaited()

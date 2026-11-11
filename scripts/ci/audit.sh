@@ -5,24 +5,39 @@
 #   pnpm               Fail-loud `pnpm audit` gate for the JS workspace, with
 #                      an allowlist that requires an owner, a reason and an
 #                      expiry (an expired entry fails).
-#   playwright-pin     apps/api/Dockerfile's PLAYWRIGHT_VERSION and
-#                      PATCHRIGHT_VERSION must equal the versions in uv.lock.
+#   pip                Fail-loud `pip-audit` gate over the uv.lock export.
+#   playwright-pin     apps/api/Dockerfile's PLAYWRIGHT_VERSION must equal the
+#                      playwright version in uv.lock.
+#   model-pin          apps/api/Dockerfile's baked EMBEDDING_MODEL/RERANKER_MODEL
+#                      must equal the model names in app/constants/memory.py.
 #   alert-rule-tools   Install pinned pint + promtool for the alert-rules lane
 #                      into $RUNNER_TEMP/bin and prepend it to $GITHUB_PATH.
 #   evlog              Per-file observability ratchet over the changed Python
 #                      files: a file whose score dropped fails the lane.
+#   uv-lock            Every tracked uv.lock must still resolve from its
+#                      pyproject.toml (`uv lock --check`), standalone projects
+#                      outside the root workspace included.
+#
+# Both audits fail on every advisory at or above their level, on a PR as on
+# master, as trivy does: a CVE in what master already ships blocks the next
+# change until the package is bumped or the advisory is allowlisted with a
+# reason. Dependabot security updates open the bump.
 #
 # Env contract:
-#   pnpm              PNPM_AUDIT_LEVEL (high), PNPM_AUDIT_ALLOWLIST
-#                     (config/pnpm-audit-allowlist.json), PNPM_AUDIT_TODAY
-#                     (tests), PNPM_AUDIT_ROOT (tests).
+#   pnpm              PNPM_AUDIT_LEVEL (high),
+#                     PNPM_AUDIT_ALLOWLIST (config/pnpm-audit-allowlist.json),
+#                     PNPM_AUDIT_TODAY (tests), PNPM_AUDIT_ROOT (tests).
 #                     Exit: 0 clean / all allowlisted; 1 findings or expired
 #                     entries; 2 the audit itself could not run.
+#   pip               PIP_AUDIT_ROOT (tests), RUNNER_TEMP. Exit codes as pnpm's.
 #   playwright-pin    none.
+#   model-pin         none.
 #   alert-rule-tools  RUNNER_TEMP (required), GITHUB_PATH.
 #   evlog             GAIA_PR_BASE or GITHUB_BASE_REF (optional; falls back to
 #                     NX_BASE/master locally), RUNNER_TEMP; needs a fetch-depth: 0
 #                     checkout.
+#   uv-lock           UV_LOCK_ROOT (tests; defaults to the repo root). Needs uv
+#                     and index access. Exit: 0 all current; 1 any stale lock.
 set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
@@ -115,7 +130,8 @@ const unused = [...active.keys()].filter((id) => !used.has(id));
 console.log(JSON.stringify({
   level: LEVEL, today: TODAY,
   advisories: Object.keys(report.advisories).length, by_severity: bySeverity,
-  failing: failing.length, suppressed: suppressed.length, expired: expired.length, unused_allowlist: unused,
+  failing: failing.length, suppressed: suppressed.length,
+  expired: expired.length, unused_allowlist: unused,
   details: { failing, suppressed, expired },
 }, null, 2));
 
@@ -126,6 +142,75 @@ for (const id of unused) console.warn(`::warning::pnpm-audit: allowlist entry ${
 if (failing.length || expired.length) process.exit(1);
 console.log(`pnpm-audit: OK (${suppressed.length} allowlisted, threshold ${LEVEL})`);
 NODE
+}
+
+# Advisories pip-audit may ignore, each with no fixed release and a reason it
+# cannot reach us. Re-check on every release of the package; drop the line once
+# a fixed version exists.
+PIP_AUDIT_IGNORED=(
+  # chromadb (1.5.9 is the latest release): all four are in chromadb's Python
+  # server (FastAPI routes, SimpleRBACAuthorizationProvider, server-side
+  # trust_remote_code). GAIA imports chromadb only as an HTTP client; the server
+  # is the chromadb/chroma image, a single Rust binary with no Python in it.
+  GHSA-f4j7-r4q5-qw2c
+  GHSA-2wm9-hf6c-p5cr
+  GHSA-xph7-9rjv-w5fr
+  GHSA-36p7-vc44-83pf
+)
+
+cmd_pip() {
+
+  local ROOT ignore=() pip_exit
+  ROOT="${PIP_AUDIT_ROOT:-$REPO_ROOT}"
+  # $RUNNER_TEMP, not /tmp: twenty runner instances share the box's /tmp, and
+  # two jobs from different PRs would audit each other's export.
+  tmp="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/pip-audit.XXXXXX")"
+  trap 'rm -rf "$tmp"' EXIT
+
+  (cd "$ROOT" && uv export --frozen --no-emit-workspace -o "$tmp/requirements.txt" > /dev/null)
+  for id in "${PIP_AUDIT_IGNORED[@]}"; do ignore+=(--ignore-vuln "$id"); done
+  # pip-audit exits 1 whenever it found anything; the verdict is decided below.
+  set +e
+  uv run --frozen --no-build --isolated --only-group lint pip-audit --strict --skip-editable --disable-pip "${ignore[@]}" \
+    -r "$tmp/requirements.txt" -f json -o "$tmp/audit.json" 2> "$tmp/audit.err"
+  pip_exit=$?
+  set -e
+
+  AUDIT_JSON="$tmp/audit.json" AUDIT_ERR="$tmp/audit.err" PIP_EXIT="$pip_exit" \
+  python3 - <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+
+def fail(message: str, code: int) -> None:
+    print(f"::error::pip-audit: {message}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+report_path = Path(os.environ["AUDIT_JSON"])
+err = Path(os.environ["AUDIT_ERR"]).read_text().strip()
+try:
+    dependencies = json.loads(report_path.read_text())["dependencies"]
+except (OSError, ValueError, KeyError) as exc:
+    fail(f"pip-audit produced no usable report (exit {os.environ['PIP_EXIT']}): {exc}\n{err}", 2)
+
+failing = [
+    f"{dep['name']} {dep['version']} {vuln['id']} (fix: {', '.join(vuln.get('fix_versions') or []) or 'none'})"
+    for dep in dependencies
+    for vuln in dep.get("vulns", [])
+]
+for row in failing:
+    print(f"::error::pip-audit: {row}")
+if failing:
+    print(f"pip-audit: {len(failing)} advisory(ies) to fix")
+    raise SystemExit(1)
+if os.environ["PIP_EXIT"] != "0":
+    # --strict failures (a dependency it could not audit) leave no vulns at all.
+    fail(f"pip-audit exited {os.environ['PIP_EXIT']} with no advisory to show for it:\n{err}", 2)
+print("pip-audit: OK (no advisory outside PIP_AUDIT_IGNORED)")
+PY
 }
 
 cmd_playwright_pin() {
@@ -148,14 +233,38 @@ cmd_playwright_pin() {
   }
 
   check playwright PLAYWRIGHT_VERSION
-  check patchright PATCHRIGHT_VERSION
+  exit "$fail"
+}
+
+cmd_model_pin() {
+  DOCKERFILE="$REPO_ROOT/apps/api/Dockerfile"
+  CONSTANTS="$REPO_ROOT/apps/api/app/constants/memory.py"
+
+  fail=0
+  check() {
+    local constant="$1" arg="$2" code docker
+    code="$(grep -E "^$constant = " "$CONSTANTS" | grep -oE '"[^"]+/[^"]+"' | tail -1 | tr -d '"')"
+    docker="$(sed -nE "s/^ARG $arg=(.*)\$/\1/p" "$DOCKERFILE" | head -1)"
+    if [ -z "$code" ] || [ -z "$docker" ]; then
+      echo "::error::could not read $constant (memory.py='$code', Dockerfile ARG $arg='$docker')"; fail=1; return
+    fi
+    if [ "$code" != "$docker" ]; then
+      echo "::error::baked model drift: $constant is $code, apps/api/Dockerfile ARG $arg=$docker"
+      echo "Update the ARG and its revision so the image bakes the model the runtime loads."
+      fail=1; return
+    fi
+    echo "$constant baked OK ($code)"
+  }
+
+  check EMBEDDING_MODEL_NAME EMBEDDING_MODEL
+  check RERANKER_MODEL_NAME RERANKER_MODEL
   exit "$fail"
 }
 
 cmd_alert_rule_tools() {
 
-  PINT_VERSION="0.87.0"
-  PROMETHEUS_VERSION="3.1.0"
+  # shellcheck source=tools/alert-rules/tool-versions.env
+  source "$(dirname "$0")/../../tools/alert-rules/tool-versions.env"
 
   BIN="${RUNNER_TEMP:?RUNNER_TEMP is required}/bin"
   WORK="$(mktemp -d "${RUNNER_TEMP}/alert-rule-tools.XXXXXX")"
@@ -233,13 +342,39 @@ cmd_evlog() {
     fi
   done < <(git diff --name-status -M --diff-filter=ACMR "$BASE_SHA"...HEAD)
 
+  if [ ! -s "$WORK"/head-files.txt ]; then
+    ci_ok "observability: OK (no changed Python files to ratchet)"
+    return 0
+  fi
   python3 tools/evlog_map --files-from "$WORK"/base-files.txt --json --no-write > "$WORK"/base-map.json
   python3 tools/evlog_map --files-from "$WORK"/head-files.txt --no-write \
     --baseline "$WORK"/base-map.json --rename-map "$WORK"/renames.txt
 }
 
+cmd_uv_lock() {
+  local root="${UV_LOCK_ROOT:-$REPO_ROOT}" locks dir checked=0
+  local stale=()
+  locks=$(git -C "$root" ls-files -- ':(glob)**/uv.lock')
+  [ -n "$locks" ] || ci_die "uv-lock: no tracked uv.lock under $root"
+
+  while read -r lock; do
+    dir=$(dirname "$lock")
+    ci_group "uv lock --check ($dir)"
+    if ! uv lock --check --project "$root/$dir"; then
+      stale+=("$dir")
+    fi
+    ci_endgroup
+    checked=$((checked + 1))
+  done <<< "$locks"
+
+  if [ "${#stale[@]}" -gt 0 ]; then
+    ci_die "uv-lock: ${stale[*]}: uv.lock no longer resolves from pyproject.toml; run 'uv lock' there"
+  fi
+  ci_ok "uv-lock: OK ($checked lockfiles current)"
+}
+
 usage() {
-  sed -n '2,14p' "$0" >&2
+  sed -n '2,19p' "$0" >&2
 }
 
 main() {
@@ -247,9 +382,12 @@ main() {
   shift || true
   case "$sub" in
     pnpm)             cmd_pnpm "$@" ;;
+    pip)              cmd_pip "$@" ;;
     playwright-pin)   cmd_playwright_pin "$@" ;;
+    model-pin)        cmd_model_pin "$@" ;;
     alert-rule-tools) cmd_alert_rule_tools "$@" ;;
     evlog)            cmd_evlog "$@" ;;
+    uv-lock)          cmd_uv_lock "$@" ;;
     *)
       echo "audit.sh: unknown subcommand '${sub}'" >&2
       usage

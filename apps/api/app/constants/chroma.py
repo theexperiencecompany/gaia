@@ -27,10 +27,10 @@ CHROMA_CANVAS_COLLECTION = "gaia_canvas" + CHROMA_COLLECTION_SUFFIX
 CHROMA_TOOLS_STORE_COLLECTION = "langgraph_tools_store" + CHROMA_COLLECTION_SUFFIX
 CHROMA_TRIGGERS_STORE_COLLECTION = "langgraph_triggers_store" + CHROMA_COLLECTION_SUFFIX
 
-# Caps concurrent ChromaDB HTTP connections process-wide (see
+# Caps the embedding calls an index write has in flight process-wide (see
 # loop_bound_semaphore in chroma_store.py) to avoid EMFILE 24. RLIMIT_NOFILE
 # soft limit is 1024 with ~72 fds baseline, so 20 clears it with wide margin.
-MAX_CONCURRENT_CHROMA_WRITES = 20
+MAX_CONCURRENT_INDEX_EMBEDDINGS = 20
 
 # How long a namespace's indexed-signature marker survives in Redis. It is a
 # fast-path hint only (the ChromaDB hash diff is the source of truth), so a day
@@ -53,3 +53,8 @@ TOOLS_SEED_LOCK_MAX_HOLD_SECONDS = 300
 # writes drop the snapshot directly; a re-populate from the offline script is a
 # separate process and is picked up within this TTL, the cross-process bound.
 GAIA_KNOWLEDGE_SNAPSHOT_TTL_SECONDS = ONE_HOUR_TTL
+
+# Tool/trigger search embeddings when a Google key is configured, and the vector
+# size their collections declare for it (FastEmbedEmbeddings declares its own).
+GEMINI_EMBEDDING_MODEL = "models/gemini-embedding-001"
+GEMINI_EMBEDDING_DIMS = 768

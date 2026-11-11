@@ -12,6 +12,7 @@ from app.services.analytics_service import capture
 from app.services.integrations.user_integration_status import reconnect_or_unknown
 from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from app.services.mcp.mcp_client import MCPClient
+from app.services.mcp.mcp_oauth import build_scope_retry_url, handle_oauth_callback
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected
 from shared.py.wide_events import log
@@ -64,8 +65,8 @@ async def resolve_provider_error(
     # Best-effort: a Redis/discovery failure here must not turn this into a 500.
     if error == "invalid_scope":
         try:
-            retry_url = await client.build_scope_retry_url(
-                integration_id, error_description, redirect_uri, redirect_path
+            retry_url = await build_scope_retry_url(
+                client.token_store, integration_id, error_description, redirect_uri, redirect_path
             )
             if retry_url:
                 return ScopeRetry(url=retry_url)
@@ -118,11 +119,13 @@ async def complete_oauth(
     # handle_oauth_callback stores tokens, flips status, and dispatches the full
     # connect (handshake + tools/list + schema conversion + indexing) in the
     # background — the redirect fires in ~1-2s instead of 8-29s.
-    await client.handle_oauth_callback(
+    await handle_oauth_callback(
+        client.token_store,
         integration_id=integration_id,
         code=code,
         state=state_token,
         redirect_uri=redirect_uri,
+        connect_after_oauth=client.connect_after_oauth,
     )
     # OAuth succeeded — clear any scope exclusions accumulated during retries.
     # Best-effort: a Redis hiccup must not turn a successful connect into an

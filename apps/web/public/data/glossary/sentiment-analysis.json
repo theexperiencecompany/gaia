@@ -1,1 +1,45 @@
-{"slug":"sentiment-analysis","term":"Sentiment Analysis","metaTitle":"What Is Sentiment Analysis? Understanding Tone in Text","metaDescription":"Sentiment analysis determines the emotional tone of text, identifying whether content is positive, negative, or neutral. Learn how GAIA uses sentiment analysis to prioritize emails.","definition":"Sentiment analysis is the NLP technique of automatically identifying and classifying the emotional tone or opinion expressed in text, typically as positive, negative, or neutral, with varying degrees of granularity.","extendedDescription":"Sentiment analysis originated in product review analysis and social media monitoring but has broad applications in any domain where understanding emotional tone matters. In professional communication, sentiment provides urgency signals: an email with frustrated or urgent tone from a client warrants different handling than a routine update. Advanced sentiment models go beyond positive/negative/neutral to identify specific emotions such as frustration, excitement, urgency, and confusion, and can distinguish between sentiment about different entities within the same text.","keywords":["sentiment analysis","what is sentiment analysis","text sentiment","NLP sentiment","email tone analysis"],"category":"ai-concepts","howGaiaUsesIt":"GAIA uses sentiment analysis as one signal in its email triage system. A frustrated or urgent tone from a key contact elevates the priority of that email even if the subject line is neutral. This helps GAIA surface messages that need prompt attention based on emotional context, not just keywords or sender identity.","relatedTerms":["natural-language-processing","email-triage","intent-recognition","llm"],"faqs":[{"question":"How accurate is sentiment analysis in professional email?","answer":"Professional email often uses understated language where sentiment is expressed indirectly. LLM-based sentiment analysis handles this nuance better than older keyword-based approaches, but no system is perfect. GAIA combines sentiment with other signals for more reliable urgency assessment."},{"question":"Can sentiment analysis detect urgency?","answer":"Yes. Urgency is a form of sentiment that modern LLM-based sentiment models detect well. GAIA identifies urgency cues in emails — phrases expressing time pressure or blocking situations — and elevates those messages in your triage queue."}]}
+{
+  "slug": "sentiment-analysis",
+  "term": "Sentiment Analysis",
+  "metaTitle": "What Is Sentiment Analysis? Can It Spot Urgent Emails?",
+  "metaDescription": "Sentiment analysis classifies text as positive, negative, or neutral. See how accurate it is on work email, whether it detects urgency, and how GAIA uses it.",
+  "definition": "Sentiment analysis is the use of natural language processing (NLP) and AI to identify the emotional tone of a piece of text and label it, usually as positive, negative, or neutral, sometimes with a score for how strong the feeling is or a finer label such as frustrated, excited, or urgent.",
+  "extendedDescription": "Sentiment analysis originated in product review analysis and social media monitoring but has broad applications in any domain where understanding emotional tone matters. In professional communication, sentiment provides urgency signals: an email with frustrated or urgent tone from a client warrants different handling than a routine update. Advanced sentiment models go beyond positive/negative/neutral to identify specific emotions such as frustration, excitement, urgency, and confusion, and can distinguish between sentiment about different entities within the same text.\n\nSentiment means the attitude or feeling behind words. Positive text expresses approval or satisfaction (\"Thanks, that fixed it\"). Negative text expresses complaint, disappointment, or anger (\"This is the third time I have asked\"). Neutral text states facts without judging them (\"The invoice is attached\"). Most work email is neutral, so a neutral label is normal, not a failure. Some systems add a mixed label for text that praises one thing and criticises another.\n\nThere are three common ways to analyse the sentiment of text. Lexicon-based tools such as VADER score each word against a dictionary of positive and negative terms and add the scores up: fast and easy to inspect, but easily fooled by sarcasm and context. Machine-learning classifiers, such as fine-tuned BERT-style transformer models, learn from labelled examples and are accurate inside the domain they were trained on. Large language models can classify sentiment from a plain instruction with no training data, explain the label, and cope better with indirect phrasing, at a higher cost per message. Aspect-based sentiment analysis assigns a feeling to each thing mentioned: \"the food was great but the service was slow\" is positive about the food and negative about the service.\n\nSentiment analysis is used to monitor brand mentions on social media, summarise product reviews and survey answers, flag support tickets from upset customers, track customer mood over time, and prioritise email. It struggles with sarcasm (\"great, another outage\"), slang and domain-specific words, very short messages, and text that mixes feelings. Tone analysis is a close relative: it describes how something is said (formal, curt, apologetic, confident) rather than only whether the feeling is positive or negative.",
+  "keywords": [
+    "sentiment analysis",
+    "what is sentiment analysis",
+    "text sentiment",
+    "NLP sentiment",
+    "email tone analysis"
+  ],
+  "category": "ai-concepts",
+  "howGaiaUsesIt": "GAIA does not run a separate sentiment classifier. Its language model reads the whole email, so tone is part of how it judges what needs you. When you ask GAIA to sort your unread mail by urgency, or set up a workflow such as \"ping me if a client email sounds upset\", a frustrated message from a key contact can rank high even when the subject line is neutral. GAIA weighs tone together with the sender, the request, and any deadline in the message.",
+  "relatedTerms": [
+    "natural-language-processing",
+    "email-triage",
+    "intent-recognition",
+    "llm"
+  ],
+  "faqs": [
+    {
+      "question": "How accurate is sentiment analysis in professional email?",
+      "answer": "Professional email often uses understated language where sentiment is expressed indirectly. LLM-based sentiment analysis handles this nuance better than older keyword-based approaches, but no system is perfect. That is why GAIA reads tone together with the sender, the content, and any deadline, instead of relying on tone alone."
+    },
+    {
+      "question": "Can sentiment analysis detect urgency?",
+      "answer": "Mostly. Urgency is not sentiment in the strict sense (a calm message can be urgent), but language models pick up urgency cues well: phrases that express time pressure, a blocked task, or an escalation. When you ask GAIA to prioritise your inbox, it treats those cues as reasons to put a message near the top."
+    },
+    {
+      "question": "What is sentiment analysis in AI?",
+      "answer": "In AI, sentiment analysis means a model reads text and predicts the feeling it expresses. Older systems used word lists and statistical classifiers. Current systems use transformer models trained on labelled text, or large language models that are simply asked to label the tone. The output is a label (positive, negative, neutral) and often a confidence score."
+    },
+    {
+      "question": "What do positive, negative, and neutral sentiment mean?",
+      "answer": "Positive: approval, thanks, satisfaction. Negative: complaint, frustration, disappointment. Neutral: factual or routine text with no clear feeling, such as a meeting confirmation. A neutral email can still be important: neutral describes tone, not priority."
+    },
+    {
+      "question": "What is the purpose of sentiment analysis?",
+      "answer": "To read emotional tone at a scale no person could. Companies use it to see how customers feel about a product across thousands of reviews, spot an angry support ticket before it escalates, and measure the reaction to a launch. In a personal inbox its purpose is narrower: noticing which messages come from someone who is upset or under pressure."
+    }
+  ]
+}

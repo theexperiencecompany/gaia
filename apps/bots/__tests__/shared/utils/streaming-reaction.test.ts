@@ -56,6 +56,7 @@ async function runTurn(
   sseBody: string,
   react?: (emoji: string) => Promise<ReactionOutcome>,
   analytics?: AnalyticsContext,
+  noReply?: () => Promise<void>,
 ): Promise<Screen> {
   const screen: Screen = { messages: [PLACEHOLDER], errors: [], reactions: [] };
   let live = 0;
@@ -96,6 +97,11 @@ async function runTurn(
           screen.messages.splice(screen.messages.indexOf(PLACEHOLDER), 1);
         }
         return outcome;
+      }),
+    noReply &&
+      (async () => {
+        await noReply();
+        screen.messages.splice(screen.messages.indexOf(PLACEHOLDER), 1);
       }),
   );
   return screen;
@@ -211,3 +217,55 @@ function analyticsCapturingTo(
     distinctId: USER_ID,
   } as unknown as AnalyticsContext;
 }
+
+describe("a live turn that hands work off and says nothing", () => {
+  const SILENT_TURN = frames({ done: true, conversation_id: "c1" });
+
+  it.each<PlatformName>(["telegram", "slack"])(
+    "%s takes its placeholder down instead of leaving it on screen",
+    async (platform) => {
+      const noReply = vi.fn().mockResolvedValue(undefined);
+
+      const screen = await runTurn(
+        platform,
+        SILENT_TURN,
+        undefined,
+        undefined,
+        noReply,
+      );
+
+      expect(noReply).toHaveBeenCalledOnce();
+      expect(screen.messages).toEqual([]);
+      expect(screen.errors).toEqual([]);
+    },
+  );
+
+  it("leaves a reply that was shown alone", async () => {
+    const noReply = vi.fn().mockResolvedValue(undefined);
+
+    const screen = await runTurn(
+      "telegram",
+      frames({ text: "Here it is." }, { done: true, conversation_id: "c1" }),
+      undefined,
+      undefined,
+      noReply,
+    );
+
+    expect(noReply).not.toHaveBeenCalled();
+    expect(screen.messages).toEqual(["Here it is."]);
+  });
+
+  it("counts an attached reaction as the reply", async () => {
+    const noReply = vi.fn().mockResolvedValue(undefined);
+
+    await runTurn(
+      "telegram",
+      REACTION_TURN,
+      async () => REACTION_OUTCOME.ATTACHED,
+      undefined,
+      noReply,
+    );
+
+    expect(noReply).not.toHaveBeenCalled();
+  });
+});

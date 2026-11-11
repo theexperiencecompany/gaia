@@ -1,5 +1,9 @@
 import Image from "next/image";
 
+import { getImageDimensions } from "@/lib/imageDimensions";
+
+const BACKDROP = getImageDimensions("/images/wallpapers/bands_gradient_1.webp");
+
 /**
  * Full-bleed dark wallpaper for the payment result pages: the shared bands
  * gradient image over the page background, with a soft dark overlay so the
@@ -14,10 +18,11 @@ export function PaymentBackdrop() {
       <Image
         src="/images/wallpapers/bands_gradient_1.webp"
         alt=""
-        fill
+        width={BACKDROP.width}
+        height={BACKDROP.height}
         priority
         sizes="100vw"
-        className="object-cover"
+        className="absolute inset-0 h-full w-full object-cover"
       />
       {/* Soften for card contrast */}
       <div className="absolute inset-0 bg-primary-bg/15" />

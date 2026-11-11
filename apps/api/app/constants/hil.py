@@ -143,9 +143,9 @@ HIL_DECIDED_UNRESUMED_GRACE_SECONDS = 120
 # in v1 (deprecated, slated for removal in v2).
 LANGGRAPH_INTERRUPT_KEY = "__interrupt__"
 
-# configurable flag set only on a resume re-dispatch. The handoff tool probes
-# the subagent thread's checkpoint for a parked interrupt ONLY when this is
-# set, so fresh runs (the ~100% case) skip that per-handoff Postgres read.
+# configurable flag set only on a resume re-dispatch. spawn_subagent probes
+# the spawn's thread checkpoint for a parked interrupt ONLY when this is
+# set, so fresh runs (the ~100% case) skip that per-spawn Postgres read.
 HIL_RESUME_CONFIG_KEY: Final = "hil_resume_replay"
 
 # configurable key a background subagent run carries its own rebuild recipe
@@ -180,7 +180,6 @@ HIL_EXEMPT_TOOLS: frozenset[str] = frozenset(
         "browser_step_done",
         "stop_browser_task",
         "tell_browser_task",
-        "handoff",
         "spawn_subagent",
         "approve",
         "revoke",
@@ -194,7 +193,7 @@ HIL_EXEMPT_TOOLS: frozenset[str] = frozenset(
 
 # Exempt tools that still PAUSE the run when called with background=False (they bubble
 # the child's gate up): a gated sibling must never auto-run, the replay would run it twice.
-HIL_PAUSING_TOOLS: frozenset[str] = frozenset({"handoff", "spawn_subagent"})
+HIL_PAUSING_TOOLS: frozenset[str] = frozenset({"spawn_subagent"})
 
 # tool_data entry name for the approval card (mirrored in @gaia/shared/chat).
 APPROVAL_REQUEST_TOOL_NAME = "approval_request"

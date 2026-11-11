@@ -1,68 +1,103 @@
 ---
 title: "Overview"
 sidebarTitle: "Self-Hosting GAIA"
-description: "Learn how to self-host GAIA on your own infrastructure"
+description: "Run GAIA on your own infrastructure with one command"
 icon: "circle-info"
 ---
 
-Run GAIA on your own machine with the GAIA CLI. It scaffolds your environment, starts every service with Docker, and gets you to a working instance in a few commands.
-
-## What runs
-
-- **Web**: Next.js
-- **Backend**: FastAPI
-- **Databases/Infra**: PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ (via Docker)
-- **Workspace storage**: JuiceFS (per-user file uploads, agent artifacts, skills)
-
-## Prerequisites
-
-- Node.js 20+ and one package manager (npm, pnpm, or bun)
-- Docker Engine 20.10+ and Compose v2+
-- 2+ CPU cores, 4GB+ RAM, 10GB+ disk (8GB+ RAM recommended)
-- An API key for at least one supported LLM provider (OpenAI or Google Gemini), see [Environment variables](/configuration/environment-variables)
-
-## Quick start
-
-<Steps>
-  <Step title="Install the GAIA CLI">
-    <Snippet file="cli-install.mdx" />
-  </Step>
-
-  <Step title="Initialize self-host mode">
-    ```bash
-    gaia init
-    ```
-
-    In the setup wizard, choose **Self-Host (Docker)**.
-  </Step>
-
-  <Step title="Start services">
-    ```bash
-    gaia start
-    ```
-  </Step>
-
-  <Step title="Monitor and open GAIA">
-    ```bash
-    gaia status
-    gaia logs
-    ```
-
-    - Web: http://localhost:3000
-    - Backend API: http://localhost:8000
-  </Step>
-</Steps>
-
-## Advanced: workspace storage on macOS and Windows
-
-You only need this if you plan to run the backend outside the default Docker setup.
-
 <Note>
-Run the backend in a container on every platform. Its workspace storage (file uploads, artifacts, skills) uses JuiceFS, which mounts through Linux FUSE, a native backend on macOS or Windows can't provide it. Docker Desktop covers this on all platforms. See [Docker setup](/self-hosting/docker-setup#persistent-workspace-storage-juicefs-and-fuse) for the FUSE requirements and configuration.
+  **Which guide is for me?** This tab is for running your own GAIA with the `gaia` CLI. Using GAIA Cloud or an instance someone else runs? See the [Docs](/introduction). Changing GAIA's code? See [Developers](/developers/introduction).
 </Note>
+
+Run GAIA on your own machine with two commands, then finish setup in your browser.
+
+```bash
+curl -fsSL https://heygaia.io/install.sh | sh
+gaia up
+```
+
+Open http://localhost:3000/setup, create the admin account and paste an API key for any supported AI provider (or point GAIA at a local Ollama). No cloud accounts and no hand-edited files.
+
+New here? The [walkthrough](/self-hosting/walkthrough) shows every step with screenshots. Prefer a hosting platform? See [Deploy options](/self-hosting/one-click-deploy).
+
+## What you need
+
+- **Docker.** If it's missing, `gaia up` offers to install it.
+- **8 GB RAM**, 2+ CPU cores and 20 GB of free disk (the images alone take about 13 GB). It boots in less, but the local memory model needs the RAM later ([details](/self-hosting/maintenance#memory-sizing)).
+- **One AI provider**: a key from OpenAI, OpenRouter or Google Gemini, any OpenAI-compatible gateway, or [Ollama](https://ollama.com) running locally with no key. See [AI models and tools](/self-hosting/ai-models-and-tools).
+
+## Everyday commands
+
+| To | Run |
+| --- | --- |
+| Update | `gaia update` |
+| Find problems | `gaia doctor` |
+| Back up | `gaia backup` |
+| Restore | `gaia restore --from backups` |
+
+Updating never touches your chats or settings. All data lives in Docker volumes. More in [Updates & backups](/self-hosting/maintenance).
+
+## Self-host vs Cloud
+
+Self-hosted GAIA runs the same code as GAIA Cloud, with a lighter setup.
+
+| Area | GAIA Cloud | Self-host |
+| --- | --- | --- |
+| **Sign-in** | Google sign-in through WorkOS | Email and password. The first account is the admin. Others join by invite link (**Settings → Members**) |
+| **Billing** | Plans and limits | None. Everyone gets every feature |
+| **Support** | GAIA's support team | Nothing is sent to GAIA. The form links to [GitHub issues](https://github.com/theexperiencecompany/gaia/issues) and [discussions](https://github.com/theexperiencecompany/gaia/discussions) |
+| **AI and tools** | Managed keys | Your own, in **Settings → Providers & Tools** |
+| **Files** | Cloudinary and R2 | Docker volumes on your server. See [File storage](/self-hosting/ai-models-and-tools#file-storage) |
+| **Running code** | E2B | Off until you add an E2B key or turn on the local sandbox. See [Running code](/self-hosting/ai-models-and-tools#running-code) |
+| **Voice, browser automation** | Available | Not available. See [what's missing](/self-hosting/ai-models-and-tools#not-available-on-self-host) |
+| **Logs** | Loki and Grafana | Container logs, 10 MB x 3 rotated files per service |
+| **Updates and backups** | Managed | You run `gaia update` and `gaia backup` |
+
+<Accordion title="How it is configured">
+  Self-host runs with `ENV=selfhost` and `AUTH_MODE=local`. Cloud and development use `AUTH_MODE=workos`.
+
+  Only the database addresses (Compose provides them) and three machine secrets are needed: `AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET` and `EMAIL_UNSUBSCRIBE_SECRET`. `gaia up` generates them. Infisical is never contacted, even if old credentials are in the environment.
+
+  `INSTANCE_SECRET` signs sessions and encrypts the keys you save. `gaia up` writes it to `.env` on a fresh install, so the key lives apart from the database. Without it, GAIA generates one on first boot and stores it in the database next to the keys, so a database dump alone can read them. See [the instance secret](/self-hosting/maintenance#the-instance-secret).
+</Accordion>
+
+<Accordion title="What runs on your machine">
+  Everything runs as Docker containers. Only the proxy opens a port (http://localhost:3000), so GAIA works on any hostname or IP with no URL setup.
+
+  | Component | What it is |
+  | --- | --- |
+  | Proxy | Caddy, the single entrypoint |
+  | Web | Next.js app, served at `/` |
+  | Backend | FastAPI plus a background worker, served at `/api/v1` |
+  | Databases | PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ |
+  | Files | Docker volumes for uploads and each user's workspace |
+</Accordion>
 
 ## Next steps
 
-- [CLI setup](/self-hosting/cli-setup), full CLI installation and service management
-- [Docker setup](/self-hosting/docker-setup), advanced Docker operations and storage configuration
-- [Environment variables](/configuration/environment-variables), configure LLM providers, integrations, and optional features
+<CardGroup cols={2}>
+  <Card title="CLI Setup" icon="terminal" href="/self-hosting/cli-setup">
+    What gaia up does and how to run the install from the terminal
+  </Card>
+  <Card title="Updates & backups" icon="screwdriver-wrench" href="/self-hosting/maintenance">
+    Update, back up and restore your instance, and fix common problems
+  </Card>
+  <Card title="AI models and tools" icon="microchip" href="/self-hosting/ai-models-and-tools">
+    Pick or change the AI provider, and add optional tools
+  </Card>
+  <Card title="Manual install with Docker" icon="docker" href="/self-hosting/manual-docker-install">
+    Install with plain docker compose, without the CLI
+  </Card>
+  <Card title="Deploy options" icon="cloud" href="/self-hosting/one-click-deploy">
+    DigitalOcean, Coolify, Render and Railway, with costs and test status
+  </Card>
+  <Card title="Connect Integrations" icon="plug" href="/self-hosting/composio-integrations">
+    Gmail, Calendar, GitHub and more through your own Composio project
+  </Card>
+  <Card title="MCP servers" icon="server" href="/self-hosting/mcp-servers">
+    Connect MCP servers on your machine or your network
+  </Card>
+  <Card title="Environment Variables" icon="key" href="/configuration/environment-variables">
+    Optional integrations and what they enable
+  </Card>
+</CardGroup>

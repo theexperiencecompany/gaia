@@ -15,7 +15,6 @@ from app.decorators import enforce_rate_limit
 from app.services.account_fs import schedule_account_sync
 from app.services.account_settings import (
     select_voice,
-    set_custom_instructions,
     set_notification_channels,
     set_preferences,
 )
@@ -48,13 +47,6 @@ class UpdatePreferencesArgs(BaseModel):
     timezone: str | None = Field(
         default=None,
         description="Home timezone as an IANA identifier, e.g. 'America/New_York', 'Asia/Kolkata'",
-    )
-
-
-class UpdateCustomInstructionsArgs(BaseModel):
-    instructions: str = Field(
-        description="Standing instructions applied to every conversation (max 500 chars). "
-        "Pass an empty string to clear them."
     )
 
 
@@ -109,19 +101,6 @@ update_preferences = define_mutation_tool(
     args_model=UpdatePreferencesArgs,
     apply=set_preferences,
     event=AccountSettingChanged(area="preferences"),
-    resync=schedule_account_sync,
-)
-
-update_custom_instructions = define_mutation_tool(
-    name="update_custom_instructions",
-    area="custom_instructions",
-    description=(
-        "Replace the user's standing custom instructions for every conversation. "
-        "Pass an empty string to clear them. " + HIL_CONFIRM_NOTE
-    ),
-    args_model=UpdateCustomInstructionsArgs,
-    apply=set_custom_instructions,
-    event=AccountSettingChanged(area="custom_instructions"),
     resync=schedule_account_sync,
 )
 
@@ -180,7 +159,6 @@ manage_linked_account = define_mutation_tool(
 tools = [
     update_notification_settings,
     update_preferences,
-    update_custom_instructions,
     set_selected_voice,
     manage_linked_account,
 ]

@@ -11,6 +11,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { DesktopSettings } from "@gaia/shared/desktop-tools";
 import { app } from "electron";
+import { normalizeServerAddress } from "./server-address";
 
 export const DEFAULT_POPUP_SHORTCUT = "CommandOrControl+Shift+G";
 export const DEFAULT_APP_ICON = "default";
@@ -23,9 +24,17 @@ const DEFAULT_SETTINGS: DesktopSettings = {
   // Pairing this Mac is the opt-in; once paired, reconnect on launch by default.
   bridgeAutoStart: true,
   launchAtLogin: false,
+  selfHostOrigin: null,
 };
 
 let cached: DesktopSettings | null = null;
+
+/** The stored server as an http(s) origin; anything else falls back to GAIA Cloud. */
+function parseSelfHostOrigin(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const parsed = normalizeServerAddress(raw);
+  return parsed.ok ? parsed.origin : null;
+}
 
 function settingsPath(): string {
   return join(app.getPath("userData"), SETTINGS_FILE);
@@ -52,6 +61,7 @@ export function getDesktopSettings(): DesktopSettings {
         typeof raw.launchAtLogin === "boolean"
           ? raw.launchAtLogin
           : DEFAULT_SETTINGS.launchAtLogin,
+      selfHostOrigin: parseSelfHostOrigin(raw.selfHostOrigin),
     };
   } catch {
     cached = { ...DEFAULT_SETTINGS };

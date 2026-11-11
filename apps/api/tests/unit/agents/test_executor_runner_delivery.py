@@ -12,6 +12,7 @@ Two invariants, both owned by result_delivery.py:
 
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
@@ -20,16 +21,22 @@ from fastapi import HTTPException
 from prometheus_client import REGISTRY
 import pytest
 
-from app.agents.core.background import executor_runner as er, result_delivery as rd
+from app.agents.core.background import (
+    executor_runner as er,
+    result_delivery as rd,
+    workflow_platform_delivery as wpd,
+)
 from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
+    TodoRun,
 )
 from app.agents.prompts.comms_prompts import (
     INTERACTIVE_DELIVERY_NOTE,
     PLATFORM_DELIVERY_NOTE,
     SILENCE_NOTE,
 )
+from app.constants.chat import CONVERSATION_MAX_MESSAGES
 from app.constants.executor import (
     EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE,
     EXECUTOR_NARRATION_FAILED_MESSAGE,
@@ -37,13 +44,18 @@ from app.constants.executor import (
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
-from app.models.chat_models import ConversationSource, MessageModel, ToolDataEntry
+from app.constants.todos import TODO_CONVERSATION_MAX_MESSAGES
+from app.db.repositories.conversations import conversation_repository
+from app.models.chat_models import ConversationSource, MessageKind, MessageModel, ToolDataEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.models.user_models import AuthenticatedUser
+from app.models.workflow_models import TriggerType
+from app.services.delivery.chat_channel import InApp
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
 from shared.py.analytics.catalog.chat import ChatBackgroundUpdateResolved
+from shared.py.analytics.catalog.workflows import WorkflowResultDelivered
 from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
 
@@ -51,6 +63,7 @@ from tests.helpers import captured_wide_event
 pytestmark = pytest.mark.usefixtures("fake_redis")
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+NO_CHAT_APP = InApp(reason="no_chat_app")
 
 
 def _run(
@@ -175,7 +188,8 @@ class TestAWorkflowAnswerCarriesItsFollowUpsInline:
             ),
             patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock),
+            patch.object(wpd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)),
+            patch.object(wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)),
             patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock),
         ):
             await rd.deliver_result(
@@ -346,20 +360,77 @@ class TestWorkflowResultReachesThePlatformDelivery:
             ),
             patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
-            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock) as deliver,
+            patch.object(
+                rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None
+            ) as conversation_source,
+            patch.object(
+                wpd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)
+            ) as resolve_target,
+            patch.object(
+                wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)
+            ) as deliver,
+            patch.object(wpd, "capture") as capture,
             patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
         ):
             await rd.deliver_result(
                 _run(workflow=True), result_text="done", result_type="final", tool_data=None
             )
 
+        capture.assert_called_once_with(
+            UserId(USER_ID),
+            WorkflowResultDelivered(
+                workflow_id="wf-1",
+                outcome="delivered",
+                destination="in_app",
+                destination_basis="no_chat_app",
+            ),
+        )
+        conversation_source.assert_awaited_once_with("conv-1", USER_ID)
+        resolve_target.assert_awaited_once_with(USER_ID)
         deliver.assert_awaited_once()
         kwargs = deliver.await_args.kwargs
         assert kwargs["user"] == AuthenticatedUser(user_id=USER_ID)
         assert kwargs["user_id"] == USER_ID
         assert kwargs["origin"] == ('workflow "Morning digest" (id wf-1), tracked todo (id todo-9)')
+        assert kwargs["target"] is NO_CHAT_APP
         notify.assert_awaited_once()  # the in-app badge still fires alongside
+
+    async def test_a_failed_target_lookup_loses_only_the_chat_app_copy(self) -> None:
+        """Regression: the lookup ran before the save, so its failure dropped the saved result and the badge."""
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="done"
+            ),
+            patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(
+                wpd,
+                "resolve_proactive_target",
+                AsyncMock(side_effect=ConnectionError("mongo down")),
+            ),
+            patch.object(
+                wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)
+            ) as deliver,
+            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
+        ):
+            async with captured_wide_event() as event:
+                narrated, message_id = await rd.deliver_result(
+                    _run(workflow=True), result_text="done", result_type="final", tool_data=None
+                )
+
+        save.assert_awaited_once()
+        notify.assert_awaited_once()
+        deliver.assert_not_awaited()
+        assert (narrated, message_id is not None) == ("done", True)
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.AGENT} workflow result: chat app lookup failed, not sent to the chat app",
+                "workflow_id": "wf-1",
+                "error": "mongo down",
+                "error_type": "ConnectionError",
+            }
+        ]
 
 
 class TestGetConversationSource:
@@ -371,13 +442,13 @@ class TestGetConversationSource:
     """
 
     async def test_returns_source_from_repository(self) -> None:
-        with patch.object(rd.conversation_repository, "get_source", new_callable=AsyncMock) as get:
+        with patch.object(conversation_repository, "get_source", new_callable=AsyncMock) as get:
             get.return_value = ConversationSource.WHATSAPP
             src = await rd._get_conversation_source("conv-1", USER_ID)
         assert src is ConversationSource.WHATSAPP
 
     async def test_query_is_scoped_to_conversation_and_owner(self) -> None:
-        with patch.object(rd.conversation_repository, "get_source", new_callable=AsyncMock) as get:
+        with patch.object(conversation_repository, "get_source", new_callable=AsyncMock) as get:
             get.return_value = ConversationSource.WEB
             await rd._get_conversation_source("conv-1", USER_ID)
         # must be scoped by BOTH conversation_id and user_id (no cross-user read)
@@ -385,12 +456,12 @@ class TestGetConversationSource:
         assert get.await_args.kwargs["user_id"] == USER_ID
 
     async def test_missing_conversation_returns_none(self) -> None:
-        with patch.object(rd.conversation_repository, "get_source", new_callable=AsyncMock) as get:
+        with patch.object(conversation_repository, "get_source", new_callable=AsyncMock) as get:
             get.return_value = None
             assert await rd._get_conversation_source("conv-1", USER_ID) is None
 
     async def test_db_error_returns_none(self) -> None:
-        with patch.object(rd.conversation_repository, "get_source", new_callable=AsyncMock) as get:
+        with patch.object(conversation_repository, "get_source", new_callable=AsyncMock) as get:
             get.side_effect = RuntimeError("mongo down")
             assert await rd._get_conversation_source("conv-1", USER_ID) is None
 
@@ -421,6 +492,37 @@ class TestPersistCancelledRun:
         assert saved.tool_data and saved.tool_data[0]["tool_name"] == "tool_calls_data"
         narrate.assert_not_awaited()  # the run was stopped — no re-voicing
         ws.assert_not_awaited()  # no re-broadcast of already-streamed data
+
+    @pytest.mark.parametrize(
+        ("todo_run", "cap"),
+        [
+            (None, CONVERSATION_MAX_MESSAGES),
+            (
+                TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True),
+                TODO_CONVERSATION_MAX_MESSAGES,
+            ),
+        ],
+        ids=["chat", "todo-chat"],
+    )
+    async def test_a_stopped_runs_cards_keep_the_conversations_cap(
+        self, todo_run: TodoRun | None, cap: int
+    ) -> None:
+        """Regression: an explicit None for a plain chat switched off the cap every conversation has."""
+        run = replace(
+            _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9"), todo_run=todo_run
+        )
+
+        with patch.object(rd, "update_messages", new_callable=AsyncMock) as save:
+            await rd.persist_cancelled_run(run, CARDS)
+
+        assert save.await_args.kwargs["max_messages"] == cap
+
+    async def test_a_bot_reply_keeps_the_conversations_cap(self) -> None:
+        bot_message = MessageModel(type="bot", response="hi")
+        with patch.object(rd, "update_messages", new_callable=AsyncMock) as save:
+            await rd._save_message("conv-1", AuthenticatedUser(user_id=USER_ID), bot_message)
+
+        assert save.await_args.kwargs["max_messages"] == CONVERSATION_MAX_MESSAGES
 
     async def test_no_cards_writes_nothing(self) -> None:
         run = _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9")
@@ -474,11 +576,14 @@ class TestDeliveryLatency:
             await rd._narrate_result(_run(), "raw", "final", "")
         assert _narration_count("success") == before + 1
 
-    async def test_save_bot_message_records_span(self) -> None:
+    async def test_save_message_records_span(self) -> None:
         before = _persist_count("save_bot_message")
         bot_message = MessageModel(type="bot", response="hi", date="2026-01-01")
         with patch.object(rd, "update_messages", new_callable=AsyncMock):
-            assert await rd._save_bot_message("conv-1", {"user_id": USER_ID}, bot_message) is True
+            assert (
+                await rd._save_message("conv-1", AuthenticatedUser(user_id=USER_ID), bot_message)
+                is True
+            )
         assert _persist_count("save_bot_message") == before + 1
 
     async def test_cancelled_persist_records_exact_seconds(self) -> None:
@@ -489,20 +594,23 @@ class TestDeliveryLatency:
         before = REGISTRY.get_sample_value("delivery_persist_seconds_sum", labels) or 0.0
         with (
             patch.object(rd, "update_messages", new_callable=AsyncMock),
-            patch.object(rd.time, "perf_counter", side_effect=[20.0, 20.75]),
+            patch.object(time, "perf_counter", side_effect=[20.0, 20.75]),
         ):
             await rd.persist_cancelled_run(run, CARDS)
         assert REGISTRY.get_sample_value("delivery_persist_seconds_sum", labels) == before + 0.75
 
-    async def test_save_bot_message_records_exact_seconds(self) -> None:
+    async def test_save_message_records_exact_seconds(self) -> None:
         labels = {"op": "save_bot_message"}
         before = REGISTRY.get_sample_value("delivery_persist_seconds_sum", labels) or 0.0
         bot_message = MessageModel(type="bot", response="hi", date="2026-01-01")
         with (
             patch.object(rd, "update_messages", new_callable=AsyncMock),
-            patch.object(rd.time, "perf_counter", side_effect=[7.0, 7.25]),
+            patch.object(time, "perf_counter", side_effect=[7.0, 7.25]),
         ):
-            assert await rd._save_bot_message("conv-1", {"user_id": USER_ID}, bot_message) is True
+            assert (
+                await rd._save_message("conv-1", AuthenticatedUser(user_id=USER_ID), bot_message)
+                is True
+            )
         assert REGISTRY.get_sample_value("delivery_persist_seconds_sum", labels) == before + 0.25
 
     async def test_narration_records_exact_seconds(self) -> None:
@@ -511,7 +619,7 @@ class TestDeliveryLatency:
         with (
             patch.object(rd, "narrate_executor_result", new_callable=AsyncMock, return_value="v"),
             patch.object(rd, "_approval_outcomes_note", new_callable=AsyncMock, return_value=""),
-            patch.object(rd.time, "perf_counter", side_effect=[3.0, 3.5]),
+            patch.object(time, "perf_counter", side_effect=[3.0, 3.5]),
         ):
             await rd._narrate_result(_run(), "raw", "final", "")
         assert REGISTRY.get_sample_value("delivery_narration_seconds_sum", labels) == before + 0.5
@@ -530,7 +638,7 @@ class TestDeliveryLatency:
         with (
             patch.object(rd, "narrate_executor_result", new_callable=AsyncMock, return_value=""),
             patch.object(rd, "_approval_outcomes_note", new_callable=AsyncMock, return_value=""),
-            patch.object(rd.time, "perf_counter", side_effect=[3.0, 3.5]),
+            patch.object(time, "perf_counter", side_effect=[3.0, 3.5]),
         ):
             assert await rd._narrate_result(run, "raw fallback text", "final", "") == (
                 EXECUTOR_NARRATION_FAILED_MESSAGE
@@ -775,19 +883,19 @@ class TestDeliverResultHilResume:
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
             patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
             patch.object(
-                rd.conversation_repository,
+                conversation_repository,
                 "get_message",
                 new_callable=AsyncMock,
                 return_value=existing,
             ) as get_msg,
             patch.object(
-                rd.conversation_repository,
+                conversation_repository,
                 "set_message_response",
                 new_callable=AsyncMock,
                 return_value=True,
             ) as set_resp,
             patch.object(
-                rd.conversation_repository,
+                conversation_repository,
                 "set_message_tool_data",
                 new_callable=AsyncMock,
                 return_value=True,
@@ -863,7 +971,7 @@ class TestDeliverResultHilResume:
             patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
             patch.object(
-                rd.conversation_repository, "get_message", new_callable=AsyncMock, return_value=None
+                conversation_repository, "get_message", new_callable=AsyncMock, return_value=None
             ),
             patch.object(rd, "log") as mock_log,
         ):
@@ -891,11 +999,11 @@ class TestDeliverResultHilResume:
         assert warning.kwargs["conversation_id"] == run.conversation_id
 
 
-def _approval_card(approval_id: str, status: str, **extra) -> dict:
-    return {
-        "tool_name": APPROVAL_REQUEST_TOOL_NAME,
-        "data": {"approval_id": approval_id, "status": status, **extra},
-    }
+def _approval_card(approval_id: str, status: str, **extra: object) -> ToolDataEntry:
+    return ToolDataEntry(
+        tool_name=APPROVAL_REQUEST_TOOL_NAME,
+        data={"approval_id": approval_id, "status": status, **extra},
+    )
 
 
 def _record(approval_id: str, status: HILApprovalStatus, tool_name: str = "SEND_GMAIL"):
@@ -922,18 +1030,21 @@ class TestApprovalId:
         assert rd._approval_id(_approval_card("a1", "pending")) == "a1"
 
     def test_an_ordinary_tool_card_is_not_an_approval(self) -> None:
-        entry = {"tool_name": "web_search_tool", "data": {"approval_id": "a1"}}
+        entry: ToolDataEntry = {"tool_name": "web_search_tool", "data": {"approval_id": "a1"}}
         assert rd._approval_id(entry) is None
 
     def test_a_non_dict_payload_is_not_an_approval(self) -> None:
         assert rd._approval_id({"tool_name": APPROVAL_REQUEST_TOOL_NAME, "data": "a1"}) is None
 
     def test_a_non_string_id_is_rejected(self) -> None:
-        entry = {"tool_name": APPROVAL_REQUEST_TOOL_NAME, "data": {"approval_id": 17}}
+        entry: ToolDataEntry = {
+            "tool_name": APPROVAL_REQUEST_TOOL_NAME,
+            "data": {"approval_id": 17},
+        }
         assert rd._approval_id(entry) is None
 
     def test_a_card_with_no_id_at_all_is_rejected(self) -> None:
-        entry = {"tool_name": APPROVAL_REQUEST_TOOL_NAME, "data": {}}
+        entry: ToolDataEntry = {"tool_name": APPROVAL_REQUEST_TOOL_NAME, "data": {}}
         assert rd._approval_id(entry) is None
 
 
@@ -944,8 +1055,8 @@ class TestMergeToolData:
     """
 
     def test_ordinary_cards_append_after_the_existing_ones(self) -> None:
-        existing = [{"tool_name": "old_tool", "data": {}}]
-        new = [{"tool_name": "new_tool", "data": {}}]
+        existing: list[ToolDataEntry] = [{"tool_name": "old_tool", "data": {}}]
+        new: list[ToolDataEntry] = [{"tool_name": "new_tool", "data": {}}]
 
         merged = rd._merge_tool_data(existing, new)
 
@@ -1011,7 +1122,7 @@ class TestMergeToolData:
         assert merged[0]["data"]["status"] == "approved"
 
     def test_the_existing_list_is_not_mutated(self) -> None:
-        existing = [{"tool_name": "old_tool", "data": {}}]
+        existing: list[ToolDataEntry] = [{"tool_name": "old_tool", "data": {}}]
 
         rd._merge_tool_data(existing, [{"tool_name": "new_tool", "data": {}}])
 
@@ -1043,12 +1154,12 @@ class TestReconcileApprovalStatuses:
         assert entry["data"]["status"] == "pending", "reconciling mutated the caller's entry"
 
     async def test_an_ordinary_card_is_passed_through_untouched(self) -> None:
-        entry = {"tool_name": "web_search_tool", "data": {"status": "pending"}}
+        entry: ToolDataEntry = {"tool_name": "web_search_tool", "data": {"status": "pending"}}
         with patch.object(rd, "get_approval", new=AsyncMock()) as get:
             out = await rd._reconcile_approval_statuses([entry])
 
         assert out == [entry]
-        get.assert_not_awaited(), "an ordinary card triggered an approvals lookup"
+        get.assert_not_awaited()
 
     async def test_a_missing_record_leaves_the_card_alone(self) -> None:
         with patch.object(rd, "get_approval", new=AsyncMock(return_value=None)):
@@ -1076,7 +1187,7 @@ class TestApprovalOutcomesNote:
     async def test_a_message_without_cards_means_no_note(self) -> None:
         message = MessageModel(type="bot", response="x", date="2026-01-01")
         with patch.object(
-            rd.conversation_repository, "get_message", new=AsyncMock(return_value=message)
+            conversation_repository, "get_message", new=AsyncMock(return_value=message)
         ):
             assert (
                 await rd._approval_outcomes_note(_run(RunKind.QUEUED, bot_message_id="orig-msg-1"))
@@ -1088,7 +1199,7 @@ class TestApprovalOutcomesNote:
         message.tool_data = [_approval_card("a1", "pending")]
         with (
             patch.object(
-                rd.conversation_repository, "get_message", new=AsyncMock(return_value=message)
+                conversation_repository, "get_message", new=AsyncMock(return_value=message)
             ),
             patch.object(
                 rd,
@@ -1109,7 +1220,7 @@ class TestApprovalOutcomesNote:
         message.tool_data = [_approval_card("a1", "pending")]
         with (
             patch.object(
-                rd.conversation_repository, "get_message", new=AsyncMock(return_value=message)
+                conversation_repository, "get_message", new=AsyncMock(return_value=message)
             ),
             patch.object(
                 rd,
@@ -1125,7 +1236,7 @@ class TestApprovalOutcomesNote:
     async def test_a_lookup_failure_degrades_to_no_note(self) -> None:
         """The note is an enhancement; losing it must not take the delivery down."""
         with patch.object(
-            rd.conversation_repository,
+            conversation_repository,
             "get_message",
             new=AsyncMock(side_effect=RuntimeError("mongo down")),
         ):
@@ -1145,15 +1256,15 @@ class TestMergeResumedResultFailurePaths:
         bot_message.message_id = "orig-msg-1"
         with (
             patch.object(
-                rd.conversation_repository, "get_message", new=AsyncMock(return_value=existing)
+                conversation_repository, "get_message", new=AsyncMock(return_value=existing)
             ) as get_msg,
             patch.object(
-                rd.conversation_repository,
+                conversation_repository,
                 "set_message_response",
                 new=AsyncMock(return_value=set_response),
             ) as set_resp,
             patch.object(
-                rd.conversation_repository,
+                conversation_repository,
                 "set_message_tool_data",
                 new=AsyncMock(return_value=set_tool_data),
             ) as set_td,
@@ -1204,20 +1315,20 @@ class TestMergeResumedResultFailurePaths:
         bot_message.follow_up_actions = actions
         with (
             patch.object(
-                rd.conversation_repository, "get_message", new=AsyncMock(return_value=existing)
+                conversation_repository, "get_message", new=AsyncMock(return_value=existing)
             ),
             patch.object(
-                rd.conversation_repository,
+                conversation_repository,
                 "set_message_response",
                 new=AsyncMock(return_value=True),
             ),
             patch.object(
-                rd.conversation_repository,
+                conversation_repository,
                 "set_message_tool_data",
                 new=AsyncMock(return_value=True),
             ),
             patch.object(
-                rd.conversation_repository, "set_message_follow_up_actions", new=AsyncMock()
+                conversation_repository, "set_message_follow_up_actions", new=AsyncMock()
             ) as set_fu,
             patch.object(rd, "get_approval", new=AsyncMock(return_value=None)),
         ):
@@ -1282,7 +1393,7 @@ class TestApprovalOutcomesNoteContent:
         message.tool_data = cards
         with (
             patch.object(
-                rd.conversation_repository, "get_message", new=AsyncMock(return_value=message)
+                conversation_repository, "get_message", new=AsyncMock(return_value=message)
             ) as get_msg,
             patch.object(rd, "get_approval", new=AsyncMock(side_effect=records.get)),
         ):
@@ -1363,7 +1474,7 @@ class TestMergeToolDataBookkeeping:
     """The upsert index has to keep pointing at the right slot as the list grows, or it overwrites an unrelated card."""
 
     def test_an_approval_first_seen_in_the_new_batch_indexes_its_own_slot(self) -> None:
-        existing = [{"tool_name": "old_tool", "data": {"keep": "me"}}]
+        existing: list[ToolDataEntry] = [{"tool_name": "old_tool", "data": {"keep": "me"}}]
 
         merged = rd._merge_tool_data(
             existing, [_approval_card("a1", "pending"), _approval_card("a1", "approved")]
@@ -1414,10 +1525,10 @@ class TestMergeResumedResultFailsClosed:
         )
         with (
             patch.object(
-                rd.conversation_repository, "get_message", new=AsyncMock(return_value=existing)
+                conversation_repository, "get_message", new=AsyncMock(return_value=existing)
             ) as get_msg,
             patch.object(
-                rd.conversation_repository,
+                conversation_repository,
                 "set_message_response",
                 new=AsyncMock(return_value=True),
             ),
@@ -1501,14 +1612,14 @@ class TestDeliveredMessageIdentity:
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
             patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
             patch.object(
-                rd.conversation_repository,
+                conversation_repository,
                 "get_message",
                 new=AsyncMock(
                     return_value=MessageModel(type="bot", response="old", date="2026-01-01")
                 ),
             ),
             patch.object(
-                rd.conversation_repository,
+                conversation_repository,
                 "set_message_response",
                 new=AsyncMock(return_value=True),
             ),
@@ -1557,15 +1668,15 @@ class TestMergedCardsAreActuallyWritten:
         bot_message.message_id = "orig-msg-1"
         with (
             patch.object(
-                rd.conversation_repository, "get_message", new=AsyncMock(return_value=existing)
+                conversation_repository, "get_message", new=AsyncMock(return_value=existing)
             ),
             patch.object(
-                rd.conversation_repository,
+                conversation_repository,
                 "set_message_response",
                 new=AsyncMock(return_value=True),
             ),
             patch.object(
-                rd.conversation_repository,
+                conversation_repository,
                 "set_message_tool_data",
                 new=AsyncMock(return_value=True),
             ) as set_td,
@@ -1595,7 +1706,7 @@ class TestMergedCardsAreActuallyWritten:
             bot_message_id="orig-msg-1",
         )
         with patch.object(
-            rd.conversation_repository, "get_message", new=AsyncMock(return_value=message)
+            conversation_repository, "get_message", new=AsyncMock(return_value=message)
         ) as get_msg:
             await rd._approval_outcomes_note(run)
 
@@ -1679,15 +1790,15 @@ class TestFailurePathsAreDiagnosable:
         bot_message.message_id = "orig-msg-1"
         with (
             patch.object(
-                rd.conversation_repository, "get_message", new=AsyncMock(return_value=existing)
+                conversation_repository, "get_message", new=AsyncMock(return_value=existing)
             ),
             patch.object(
-                rd.conversation_repository,
+                conversation_repository,
                 "set_message_response",
                 new=AsyncMock(return_value=set_response),
             ),
             patch.object(
-                rd.conversation_repository,
+                conversation_repository,
                 "set_message_tool_data",
                 new=AsyncMock(return_value=set_tool_data),
             ),
@@ -1728,7 +1839,7 @@ class TestFailurePathsAreDiagnosable:
     async def test_a_failed_outcomes_lookup_reports_the_cause(self) -> None:
         with (
             patch.object(
-                rd.conversation_repository,
+                conversation_repository,
                 "get_message",
                 new=AsyncMock(side_effect=RuntimeError("mongo down")),
             ),
@@ -1854,7 +1965,7 @@ class TestBuildFollowUpActions:
         gen.assert_not_awaited()
 
 
-def _quoting_run(user: dict | None = None) -> ExecutorRun:
+def _quoting_run(user: AuthenticatedUser | None = None) -> ExecutorRun:
     """Build a queued run that answers a specific user message, so it quotes it."""
     return ExecutorRun(
         stream_id="",
@@ -1947,7 +2058,7 @@ class TestAttachReplyQuoteLookup:
     async def _attach(self, run: ExecutorRun, *, is_hil_resume: bool = False):
         bot_message = MessageModel(type="bot", response="voiced", date="2026-01-01")
         with patch.object(
-            rd.conversation_repository,
+            conversation_repository,
             "get_message",
             new_callable=AsyncMock,
             return_value=MessageModel(type="user", response="what I asked", date="2026-01-01"),
@@ -2174,7 +2285,8 @@ class TestWorkflowNotificationRef:
             patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock),
+            patch.object(wpd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)),
+            patch.object(wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)),
             patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
         ):
             await rd.deliver_result(run, result_text="done", result_type="final", tool_data=None)
@@ -2230,7 +2342,7 @@ class TestRunBoundaryCarriesTheOriginatingSurface:
             patch.object(er, "wide_task") as boundary,
         ):
             await er.run_executor_background(run, "do things", configurable)
-        return boundary.call_args.kwargs
+        return dict(boundary.call_args.kwargs)
 
     async def test_the_turns_surface_is_carried_onto_the_run(self) -> None:
         fields = await self._boundary_fields({"user_id": "u1", "conversation_source": "web"})
@@ -2351,7 +2463,7 @@ class TestCommsDirectiveDelivery:
         )
         assert platform.await_args.args[2] == message
         saved = save.await_args.args[0].messages[0]
-        assert (saved.response, saved.kind) == (message, rd.MessageKind.TEXT)
+        assert (saved.response, saved.kind) == (message, MessageKind.TEXT)
 
     async def test_silence_on_web_broadcasts_nothing(self) -> None:
         save, platform, ws = await _deliver(
@@ -2375,13 +2487,13 @@ class TestCommsDirectiveDelivery:
         )
         # The ack intent is recorded on the persisted message, not left to be
         # reverse-engineered from the body being emoji-only.
-        assert save.await_args.args[0].messages[0].kind is rd.MessageKind.EMOJI_ACK
+        assert save.await_args.args[0].messages[0].kind is MessageKind.EMOJI_ACK
 
     async def test_react_delivers_the_emoji_over_websocket_on_web(self) -> None:
         save, _platform, ws = await _deliver(ConversationSource.WEB, comms_text="<EMOJI>✅</EMOJI>")
         ws.assert_awaited_once()
         assert ws.await_args.args[1]["message"]["response"] == "✅"
-        assert save.await_args.args[0].messages[0].kind is rd.MessageKind.EMOJI_ACK
+        assert save.await_args.args[0].messages[0].kind is MessageKind.EMOJI_ACK
 
     async def test_react_attaches_a_native_reaction_when_the_platform_id_is_known(
         self,
@@ -2429,7 +2541,7 @@ class TestCommsDirectiveDelivery:
         # The ack is still persisted (history/audit), targeted at the GAIA
         # message it answers so every surface can render it as a reaction.
         saved = save.await_args.args[0].messages[0]
-        assert saved.kind is rd.MessageKind.EMOJI_ACK
+        assert saved.kind is MessageKind.EMOJI_ACK
         assert saved.response == "👍"
         assert saved.reacts_to_message_id == "user-msg-1"
         assert capture.call_args.args[1] == ChatBackgroundUpdateResolved(
@@ -2560,7 +2672,7 @@ class TestCommsDirectiveDelivery:
         assert capture.call_args.args[1] == ChatBackgroundUpdateResolved(
             outcome="reply", delivery="message"
         )
-        assert save.await_args.args[0].messages[0].kind is rd.MessageKind.TEXT
+        assert save.await_args.args[0].messages[0].kind is MessageKind.TEXT
 
 
 @dataclass
@@ -2632,7 +2744,10 @@ async def _deliver_run(
             patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
             patch.object(rd, "_spawn_deferred_follow_ups") as spawn,
             patch.object(rd, "capture") as capture,
-            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock) as to_platforms,
+            patch.object(wpd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)),
+            patch.object(
+                wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)
+            ) as to_platforms,
             patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
         ):
             returned = await rd.deliver_result(
@@ -2853,7 +2968,7 @@ class TestLookupPlatformMessageId:
 
 class TestBroadcastRetry:
     async def test_a_failed_push_is_retried_once_and_logged(self) -> None:
-        event_out = {"type": "conversation.new_message"}
+        event_out: dict[str, object] = {"type": "conversation.new_message"}
         ws = MagicMock()
         ws.broadcast_to_user = AsyncMock(side_effect=[RuntimeError("socket gone"), None])
 
@@ -2886,7 +3001,8 @@ class TestWorkflowNotificationIsTraceable:
             patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock),
+            patch.object(wpd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)),
+            patch.object(wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)),
             patch(
                 "app.services.workflow.notifications.send_workflow_completion_notification",
                 new_callable=AsyncMock,

@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 from app.agents.context.tiers import AgentTier
 from app.models.agent_models import AgentConfigurable
+from app.models.user_models import OnboardingSubdocument
 
 ExecutionMode = Literal["interactive", "background"]
 
@@ -25,7 +26,6 @@ class SectionScope:
     request_query: str | None = None
     user_id: str | None = None
     subagent_id: str | None = None
-    integration_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -49,13 +49,15 @@ class SectionContext:
     #: Onboarding answers; open by construction, so no fixed shape.
     user_preferences: dict[str, Any] | None = None
     writing_style: dict[str, Any] | None = None
+    #: The user's whole onboarding record, set only where the comms turn is built:
+    #: the new-user guidance reads what their mail said and which thread was seeded.
+    onboarding: OnboardingSubdocument | None = None
     #: What this turn is about — the retrieval query for every volatile section.
     query: str | None = None
     #: The user's own words for this turn, when comms already recalled memories
     #: on them. Memory recall reuses that result before querying with query.
     request_query: str | None = None
     subagent_id: str | None = None
-    integration_id: str | None = None
     vfs_session_id: str | None = None
     active_todo_id: str | None = None
     execution_mode: ExecutionMode = "interactive"
@@ -90,7 +92,6 @@ class SectionContext:
             query=scope.query,
             request_query=scope.request_query,
             subagent_id=scope.subagent_id,
-            integration_id=scope.integration_id,
             vfs_session_id=configurable.get("vfs_session_id"),
             active_todo_id=configurable.get("active_todo_id"),
             execution_mode="background" if mode == "background" else "interactive",

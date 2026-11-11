@@ -83,6 +83,9 @@ class ConversationDocument(UserScopedDocument):
     # Set while a background run has a live approval parked here; the sidebar
     # hides background conversations unless this is set (see _active_filter).
     has_live_approval: bool = False
+    # The tracked todo whose chat this is: its runs execute here. Such a chat is
+    # reached only from its todo, never listed (see _listed). Set once at creation.
+    todo_id: str | None = None
     messages: list[MessageModel] = Field(default_factory=list)
     # Conversation-level artifact registry: one entry per agent-written file,
     # deduped by path; services/chat/artifacts_registry.py owns every write.
@@ -163,6 +166,14 @@ class _SourceRow(BaseModel):
     source: str | None = None
 
 
+class _TodoBindingRow(BaseModel):
+    """Projection of just the tracked todo a conversation belongs to."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    todo_id: str | None = None
+
+
 class _SystemGeneratedRow(BaseModel):
     """Projection of a conversation's system-generated flag and why it exists."""
 
@@ -178,6 +189,14 @@ class _ConversationIdRow(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     conversation_id: str
+
+
+class _ConversationOwnerRow(_ConversationIdRow):
+    """Projection of a conversation id and the user who owns it; anything else is a projection bug."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: str
 
 
 class _MessageProjectionRow(BaseModel):
@@ -234,8 +253,6 @@ class ConversationSyncRow(ResponseModel):
     """One batch-sync row — the conversation's client-visible fields plus its full
     message history and artifact registry.
 
-    ``active_stream_id`` is the stream of an in-flight turn (``None`` when idle),
-    carried here so a reloading client re-attaches without a discovery request.
     """
 
     conversation_id: str
@@ -249,16 +266,25 @@ class ConversationSyncRow(ResponseModel):
     messages: list[MessageModel] = Field(default_factory=list)
     # Mirrored verbatim from the document (see ConversationDocument.artifacts).
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
-    active_stream_id: str | None = None
     # Whether a background run holds a live approval here — drives the
     # sidebar dot. Missing on older rows reads as unset (no dot).
     has_live_approval: bool | None = None
+    # The tracked todo this chat belongs to; clients keep such a chat out of their lists.
+    todo_id: str | None = None
+    # Where the chat originated; a bot chat is never listed, so clients need it to keep one cached.
+    source: ConversationSource | None = None
 
 
 class BatchSyncResponse(ResponseModel):
     """The conversations a client's sync request found stale."""
 
     conversations: list[ConversationSyncRow] = Field(default_factory=list)
+    # Requested ids the user has no conversation for: a client drops them, as it
+    # cannot learn of a deleted chat that is never listed (a tracked todo's).
+    missing: list[str] = Field(default_factory=list)
+    # Stream id of each requested conversation's in-flight turn, stale or not, so a
+    # reloading client re-attaches without refetching a history it already holds.
+    active_streams: dict[str, str] = Field(default_factory=dict)
 
 
 class ConversationActionResponse(BaseModel):

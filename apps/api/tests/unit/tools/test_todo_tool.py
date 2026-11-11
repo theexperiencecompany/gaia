@@ -2,9 +2,10 @@
 
 from datetime import UTC, datetime
 import inspect
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.tools import StructuredTool
 from pydantic import ValidationError
 import pytest
 
@@ -14,14 +15,18 @@ from app.agents.tools.todo_tool import (
     delete_checklist_item,
     update_checklist_item,
 )
+from app.constants.log_tags import LogTag
 from app.models.agent_models import RunUserMissingError
 from app.models.todo_models import (
+    BulkOperationResponse,
     Priority,
     SubTask,
     TodoLabelCount,
+    TodoResponse,
     TodoStats,
     TodoUpdateRequest,
 )
+from app.services.todos.errors import TodoNotFoundError
 from app.services.todos.todo_bulk_service import BulkCompletion
 from tests.helpers import captured_wide_event
 
@@ -123,7 +128,7 @@ class TestCreateTodo:
     """Tests for the create_todo tool."""
 
     @patch(f"{MODULE}.current_stream_writer")
-    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo", new_callable=AsyncMock)
     async def test_happy_path(
         self,
         mock_service: AsyncMock,
@@ -135,7 +140,7 @@ class TestCreateTodo:
 
         from app.agents.tools.todo_tool import create_todo
 
-        result = await create_todo.coroutine(
+        result = await create_todo.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             title="Buy groceries",
         )
@@ -147,8 +152,33 @@ class TestCreateTodo:
         assert created.title == "Buy groceries"
         assert owner == FAKE_USER_ID
 
+    @pytest.mark.parametrize("execution_mode", ["interactive", "background"])
+    async def test_creating_a_todo_never_generates_a_workflow(self, execution_mode: str) -> None:
+        """Workflows are generated only on the todo's Generate Workflow button, never on create."""
+        config = _make_config()
+        config["configurable"]["execution_mode"] = execution_mode
+        queue = AsyncMock(return_value=True)
+        with (
+            patch(f"{MODULE}.current_stream_writer", return_value=_writer_mock()),
+            patch(
+                "app.services.todos.todo_service.TodoService.create_todo",
+                new_callable=AsyncMock,
+                return_value=_make_todo_response(title="Call the bank"),
+            ),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.queue_todo_workflow_generation",
+                queue,
+            ),
+        ):
+            from app.agents.tools.todo_tool import create_todo
+
+            result = await create_todo.coroutine(config=config, title="Call the bank")  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
+
+        assert result["todo"]["title"] == "Call the bank"
+        queue.assert_not_called()
+
     @patch(f"{MODULE}.current_stream_writer")
-    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo", new_callable=AsyncMock)
     async def test_service_failure_returns_error(
         self,
         mock_service: AsyncMock,
@@ -158,7 +188,7 @@ class TestCreateTodo:
 
         from app.agents.tools.todo_tool import create_todo
 
-        result = await create_todo.coroutine(
+        result = await create_todo.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             title="Buy groceries",
         )
@@ -167,7 +197,7 @@ class TestCreateTodo:
         assert result["todo"] is None
 
     @patch(f"{MODULE}.current_stream_writer")
-    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo", new_callable=AsyncMock)
     async def test_with_all_optional_params(
         self,
         mock_service: AsyncMock,
@@ -184,7 +214,7 @@ class TestCreateTodo:
 
         from app.agents.tools.todo_tool import create_todo
 
-        result = await create_todo.coroutine(
+        result = await create_todo.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             title="Detailed task",
             description="A detailed description",
@@ -197,7 +227,7 @@ class TestCreateTodo:
         assert result["todo"]["priority"] == Priority.HIGH
 
     @patch(f"{MODULE}.current_stream_writer")
-    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo", new_callable=AsyncMock)
     async def test_workflow_included_in_response(
         self,
         mock_service: AsyncMock,
@@ -213,7 +243,7 @@ class TestCreateTodo:
 
         from app.agents.tools.todo_tool import create_todo
 
-        result = await create_todo.coroutine(
+        result = await create_todo.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             title="Task with workflow",
         )
@@ -244,7 +274,7 @@ class TestListTodos:
 
         from app.agents.tools.todo_tool import list_todos
 
-        result = await list_todos.coroutine(config=_make_config())
+        result = await list_todos.coroutine(config=_make_config())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert result["error"] is None
         assert result["count"] == 3
@@ -262,7 +292,7 @@ class TestListTodos:
 
         from app.agents.tools.todo_tool import list_todos
 
-        await list_todos.coroutine(config=_make_config(), limit=200)
+        await list_todos.coroutine(config=_make_config(), limit=200)  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         # Service should be called with limit=100 (capped)
         call_kwargs = mock_service.call_args
@@ -279,7 +309,7 @@ class TestListTodos:
 
         from app.agents.tools.todo_tool import list_todos
 
-        result = await list_todos.coroutine(config=_make_config())
+        result = await list_todos.coroutine(config=_make_config())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert "Error listing todos" in result["error"]
         assert result["todos"] == []
@@ -296,7 +326,7 @@ class TestListTodos:
 
         from app.agents.tools.todo_tool import list_todos
 
-        result = await list_todos.coroutine(config=_make_config())
+        result = await list_todos.coroutine(config=_make_config())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert result["error"] is None
         assert result["count"] == 0
@@ -324,7 +354,7 @@ class TestUpdateTodo:
 
         from app.agents.tools.todo_tool import update_todo
 
-        result = await update_todo.coroutine(
+        result = await update_todo.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             todo_id="todo-1",
             title="Updated Title",
@@ -346,7 +376,7 @@ class TestUpdateTodo:
 
         from app.agents.tools.todo_tool import update_todo
 
-        result = await update_todo.coroutine(
+        result = await update_todo.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             todo_id="todo-1",
             completed=True,
@@ -366,7 +396,7 @@ class TestUpdateTodo:
 
         from app.agents.tools.todo_tool import update_todo
 
-        result = await update_todo.coroutine(
+        result = await update_todo.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             todo_id="todo-1",
             title="New Title",
@@ -398,7 +428,7 @@ class TestDeleteTodo:
 
         from app.agents.tools.todo_tool import delete_todo
 
-        result = await delete_todo.coroutine(
+        result = await delete_todo.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             todo_id="todo-1",
         )
@@ -418,7 +448,7 @@ class TestDeleteTodo:
 
         from app.agents.tools.todo_tool import delete_todo
 
-        result = await delete_todo.coroutine(
+        result = await delete_todo.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             todo_id="nonexistent",
         )
@@ -447,7 +477,7 @@ class TestSearchTodos:
 
         from app.agents.tools.todo_tool import search_todos
 
-        result = await search_todos.coroutine(
+        result = await search_todos.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             query="test",
         )
@@ -467,7 +497,7 @@ class TestSearchTodos:
 
         from app.agents.tools.todo_tool import search_todos
 
-        result = await search_todos.coroutine(
+        result = await search_todos.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             query="nonexistent",
         )
@@ -497,7 +527,7 @@ class TestSemanticSearchTodos:
 
         from app.agents.tools.todo_tool import semantic_search_todos
 
-        result = await semantic_search_todos.coroutine(
+        result = await semantic_search_todos.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             query="tasks related to shopping",
         )
@@ -518,7 +548,7 @@ class TestSemanticSearchTodos:
 
         from app.agents.tools.todo_tool import semantic_search_todos
 
-        await semantic_search_todos.coroutine(
+        await semantic_search_todos.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             query="anything",
             limit=100,
@@ -548,7 +578,7 @@ class TestGetTodoStatistics:
 
         from app.agents.tools.todo_tool import get_todo_statistics
 
-        result = await get_todo_statistics.coroutine(config=_make_config())
+        result = await get_todo_statistics.coroutine(config=_make_config())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert result["error"] is None
         assert result["stats"]["total"] == 10
@@ -575,7 +605,7 @@ class TestGetTodayTodos:
 
         from app.agents.tools.todo_tool import get_today_todos
 
-        result = await get_today_todos.coroutine(config=_make_config())
+        result = await get_today_todos.coroutine(config=_make_config())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert result["error"] is None
         assert result["count"] == 1
@@ -598,7 +628,7 @@ class TestGetTodayTodos:
 
         from app.agents.tools.todo_tool import get_today_todos
 
-        result = await get_today_todos.coroutine(config=_make_config())
+        result = await get_today_todos.coroutine(config=_make_config())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert "Error getting today's todos" in result["error"]
         assert result["todos"] == []
@@ -624,7 +654,7 @@ class TestGetUpcomingTodos:
 
         from app.agents.tools.todo_tool import get_upcoming_todos
 
-        result = await get_upcoming_todos.coroutine(config=_make_config())
+        result = await get_upcoming_todos.coroutine(config=_make_config())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert result["error"] is None
         assert result["count"] == 2
@@ -641,7 +671,7 @@ class TestGetUpcomingTodos:
 
         from app.agents.tools.todo_tool import get_upcoming_todos
 
-        result = await get_upcoming_todos.coroutine(
+        result = await get_upcoming_todos.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             days=14,
         )
@@ -671,7 +701,7 @@ class TestCreateProject:
 
         from app.agents.tools.todo_tool import create_project
 
-        result = await create_project.coroutine(
+        result = await create_project.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             name="New Project",
         )
@@ -700,7 +730,7 @@ class TestListProjects:
 
         from app.agents.tools.todo_tool import list_projects
 
-        result = await list_projects.coroutine(config=_make_config())
+        result = await list_projects.coroutine(config=_make_config())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert result["error"] is None
         assert result["count"] == 1
@@ -724,7 +754,7 @@ class TestUpdateProject:
 
         from app.agents.tools.todo_tool import update_project
 
-        result = await update_project.coroutine(
+        result = await update_project.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(), project_id="proj-1", name="Renamed"
         )
 
@@ -757,7 +787,7 @@ class TestDeleteProject:
 
         from app.agents.tools.todo_tool import delete_project
 
-        result = await delete_project.coroutine(
+        result = await delete_project.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             project_id="proj-1",
         )
@@ -781,7 +811,7 @@ class TestDeleteProject:
 
         from app.agents.tools.todo_tool import delete_project
 
-        result = await delete_project.coroutine(
+        result = await delete_project.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             project_id="nonexistent",
         )
@@ -812,7 +842,7 @@ class TestGetTodosByLabel:
 
         from app.agents.tools.todo_tool import get_todos_by_label
 
-        result = await get_todos_by_label.coroutine(
+        result = await get_todos_by_label.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             label="work",
         )
@@ -842,7 +872,7 @@ class TestGetAllLabels:
 
         from app.agents.tools.todo_tool import get_all_labels
 
-        result = await get_all_labels.coroutine(config=_make_config())
+        result = await get_all_labels.coroutine(config=_make_config())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert result["error"] is None
         assert len(result["labels"]) == 3
@@ -864,12 +894,22 @@ class TestBulkCompleteTodos:
         mock_writer_factory: MagicMock,
     ) -> None:
         mock_writer_factory.return_value = _writer_mock()
-        todos = [_make_todo_response(completed=True) for _ in range(3)]
+        todos = [
+            TodoResponse(
+                id=f"t{i}",
+                user_id=FAKE_USER_ID,
+                title="Done",
+                completed=True,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+            for i in range(1, 4)
+        ]
         mock_service.return_value = BulkCompletion(todos=todos, failed=[])
 
         from app.agents.tools.todo_tool import bulk_complete_todos
 
-        result = await bulk_complete_todos.coroutine(
+        result = await bulk_complete_todos.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             todo_ids=["t1", "t2", "t3"],
         )
@@ -891,7 +931,7 @@ class TestBulkCompleteTodos:
 
         from app.agents.tools.todo_tool import bulk_complete_todos
 
-        result = await bulk_complete_todos.coroutine(
+        result = await bulk_complete_todos.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(), todo_ids=["t1", "t2", "t3"]
         )
 
@@ -920,7 +960,7 @@ class TestBulkMoveTodos:
 
         from app.agents.tools.todo_tool import bulk_move_todos
 
-        result = await bulk_move_todos.coroutine(
+        result = await bulk_move_todos.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             todo_ids=["t1"],
             project_id="proj-2",
@@ -945,17 +985,23 @@ class TestBulkDeleteTodos:
         mock_service: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        mock_writer_factory.return_value = _writer_mock()
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
+        mock_service.return_value = BulkOperationResponse(
+            success=["t1", "t2"], failed=[], total=2, message="Deleted 2 todos"
+        )
 
         from app.agents.tools.todo_tool import bulk_delete_todos
 
-        result = await bulk_delete_todos.coroutine(
+        result = await bulk_delete_todos.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             todo_ids=["t1", "t2"],
         )
 
-        assert result["success"] is True
-        assert result["error"] is None
+        assert result == {"success": True, "error": None}
+        writer.assert_called_once_with(
+            {"todo_data": {"action": "delete", "message": "Deleted 2 tasks"}}
+        )
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.bulk_delete_service", new_callable=AsyncMock)
@@ -968,7 +1014,7 @@ class TestBulkDeleteTodos:
 
         from app.agents.tools.todo_tool import bulk_delete_todos
 
-        result = await bulk_delete_todos.coroutine(
+        result = await bulk_delete_todos.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(),
             todo_ids=["t1"],
         )
@@ -1007,7 +1053,7 @@ class TestAddChecklistItem:
         mock_update.return_value = updated
 
         async with captured_wide_event() as event:
-            result = await add_checklist_item.coroutine(
+            result = await add_checklist_item.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(), todo_id="todo-1", title="Buy milk"
             )
 
@@ -1039,7 +1085,7 @@ class TestAddChecklistItem:
     ) -> None:
         mock_get_todo.side_effect = RuntimeError("db down")
 
-        result = await add_checklist_item.coroutine(
+        result = await add_checklist_item.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(), todo_id="todo-1", title="Buy milk"
         )
 
@@ -1066,7 +1112,7 @@ class TestUpdateChecklistItem:
         mock_update.return_value = updated
 
         async with captured_wide_event() as event:
-            result = await update_checklist_item.coroutine(
+            result = await update_checklist_item.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 todo_id="todo-1",
                 item_id="sub-1",
@@ -1106,7 +1152,7 @@ class TestUpdateChecklistItem:
     ) -> None:
         mock_get_todo.return_value = _make_todo_response(subtasks=[])
 
-        result = await update_checklist_item.coroutine(
+        result = await update_checklist_item.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(), todo_id="todo-1", item_id="nonexistent"
         )
 
@@ -1121,7 +1167,7 @@ class TestUpdateChecklistItem:
     ) -> None:
         mock_get_todo.side_effect = RuntimeError("db down")
 
-        result = await update_checklist_item.coroutine(
+        result = await update_checklist_item.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(), todo_id="todo-1", item_id="sub-1", completed=True
         )
 
@@ -1148,7 +1194,7 @@ class TestDeleteChecklistItem:
         mock_update.return_value = updated
 
         async with captured_wide_event() as event:
-            result = await delete_checklist_item.coroutine(
+            result = await delete_checklist_item.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(), todo_id="todo-1", item_id="sub-1"
             )
 
@@ -1179,7 +1225,7 @@ class TestDeleteChecklistItem:
     ) -> None:
         mock_get_todo.return_value = _make_todo_response(subtasks=[])
 
-        result = await delete_checklist_item.coroutine(
+        result = await delete_checklist_item.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(), todo_id="todo-1", item_id="nonexistent"
         )
 
@@ -1194,7 +1240,7 @@ class TestDeleteChecklistItem:
     ) -> None:
         mock_get_todo.side_effect = RuntimeError("db down")
 
-        result = await delete_checklist_item.coroutine(
+        result = await delete_checklist_item.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_make_config(), todo_id="todo-1", item_id="sub-1"
         )
 
@@ -1235,7 +1281,7 @@ class TestGetTodosSummary:
 
         from app.agents.tools.todo_tool import get_todos_summary
 
-        result = await get_todos_summary.coroutine(config=_make_config())
+        result = await get_todos_summary.coroutine(config=_make_config())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert result["error"] is None
         assert "summary" in result
@@ -1265,7 +1311,7 @@ class TestGetTodosSummary:
 
         from app.agents.tools.todo_tool import get_todos_summary
 
-        result = await get_todos_summary.coroutine(config=_make_config())
+        result = await get_todos_summary.coroutine(config=_make_config())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert "Error getting todos summary" in result["error"]
         assert result["summary"] is None
@@ -1294,7 +1340,7 @@ class TestPriorityIsAnEnumInTheToolSchema:
 
         with (
             patch(f"{MODULE}.current_stream_writer"),
-            patch(f"{MODULE}.TodoService.create_todo_with_workflow", new=AsyncMock()) as svc,
+            patch(f"{MODULE}.TodoService.create_todo", new=AsyncMock()) as svc,
         ):
             with pytest.raises(ValidationError):
                 await create_todo.ainvoke(
@@ -1315,3 +1361,138 @@ def _required_args(tool: Any) -> dict[str, None]:
 async def test_a_run_with_no_user_raises_instead_of_returning_a_tool_error(tool: Any) -> None:
     with pytest.raises(RunUserMissingError):
         await tool.coroutine(config={"configurable": {}}, **_required_args(tool))
+
+
+_REAL = "6ae10080d5575101b9f90861"
+_SIBLING = "6ae10081d5575101b9f90862"
+# What gpt-5.6-luna sent for _REAL: the sibling's timestamp with _REAL's counter.
+_MISCOPIED = "6ae10081d5575101b9f90861"
+# MAX_MISCOPIED_ID_CHARS (4) characters from _MISCOPIED: still close enough to name.
+_EDGE = "6ae10081d5575101b9f9aaaa"
+# One character past the limit: never named.
+_FAR = "6ae10081d5575101b9faaaaa"
+_NOTE_TAIL = "Copy todo ids exactly as list_todos returns them."
+
+
+def _users_todos() -> list[MagicMock]:
+    """Return the run user's todos, the shorter id and the far one listed before every near one."""
+    return [
+        _make_todo_response(id="todo-1", title="short id"),
+        _make_todo_response(id=_FAR, title="too far"),
+        _make_todo_response(id=_EDGE, title="water the plants"),
+        _make_todo_response(id=_SIBLING, title="call the bank"),
+        _make_todo_response(id=_REAL, title="renew car insurance"),
+    ]
+
+
+_MISCOPIED_NOTE = (
+    f"{_MISCOPIED} matches none of the user's todos. Closest real ids: "
+    f'{_SIBLING} ("call the bank"), {_REAL} ("renew car insurance"), '
+    f'{_EDGE} ("water the plants"); pick by title. {_NOTE_TAIL}'
+)
+
+
+class TestAnIdThatMatchesNoTodoNamesTheOneMeant:
+    """Seen live: delete_todo said only "not found", so the run retried the same miscopied id and told the user the system lost the todo."""
+
+    @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
+    async def test_update_todo_names_every_near_todo_nearest_first(
+        self,
+        mock_update: AsyncMock,
+        mock_writer_factory: MagicMock,
+        mock_list: AsyncMock,
+    ) -> None:
+        mock_update.side_effect = TodoNotFoundError(_MISCOPIED)
+        mock_list.return_value = _users_todos()
+
+        async with captured_wide_event() as event:
+            result = await cast(StructuredTool, todo_tool_module.update_todo).coroutine(
+                config=_make_config(), todo_id=_MISCOPIED, title="x"
+            )
+
+        assert result == {"error": _MISCOPIED_NOTE, "todo": None}
+        mock_list.assert_awaited_once_with(FAKE_USER_ID, limit=100)
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.TOOL} update_todo got an unknown todo id",
+                "todo_id": _MISCOPIED,
+                "error_type": "TodoNotFoundError",
+                "error": f"Todo {_MISCOPIED} not found",
+            }
+        ]
+        mock_writer_factory.return_value.assert_not_called()
+
+    @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
+    async def test_delete_todo_points_to_the_closest_real_todo(
+        self,
+        mock_get_todo: AsyncMock,
+        mock_writer_factory: MagicMock,
+        mock_list: AsyncMock,
+    ) -> None:
+        mock_get_todo.side_effect = TodoNotFoundError(_MISCOPIED)
+        mock_list.return_value = _users_todos()
+
+        async with captured_wide_event() as event:
+            result = await cast(StructuredTool, todo_tool_module.delete_todo).coroutine(
+                config=_make_config(), todo_id=_MISCOPIED
+            )
+
+        assert result == {"error": _MISCOPIED_NOTE, "success": False}
+        mock_list.assert_awaited_once_with(FAKE_USER_ID, limit=100)
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.TOOL} delete_todo got an unknown todo id",
+                "todo_id": _MISCOPIED,
+                "error_type": "TodoNotFoundError",
+                "error": f"Todo {_MISCOPIED} not found",
+            }
+        ]
+        mock_writer_factory.return_value.assert_not_called()
+
+    @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.bulk_delete_service", new_callable=AsyncMock)
+    async def test_bulk_delete_never_reports_an_unmatched_id_as_deleted(
+        self,
+        mock_bulk: AsyncMock,
+        mock_writer_factory: MagicMock,
+        mock_list: AsyncMock,
+    ) -> None:
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
+        unrelated = "000000000000000000000000"
+        mock_bulk.return_value = BulkOperationResponse(
+            success=[_SIBLING], failed=[_MISCOPIED, unrelated], total=3, message="Deleted 1 todos"
+        )
+        mock_list.return_value = [_make_todo_response(id=_REAL, title="renew car insurance")]
+
+        async with captured_wide_event() as event:
+            result = await cast(StructuredTool, todo_tool_module.bulk_delete_todos).coroutine(
+                config=_make_config(), todo_ids=[_SIBLING, _MISCOPIED, unrelated]
+            )
+
+        assert result == {
+            "success": False,
+            "error": (
+                f"Deleted 1 of 3. {_MISCOPIED} matches none of the user's todos. "
+                f'Closest real ids: {_REAL} ("renew car insurance"); pick by title. '
+                f"{unrelated} matches none of the user's todos. {_NOTE_TAIL}"
+            ),
+        }
+        mock_bulk.assert_awaited_once_with([_SIBLING, _MISCOPIED, unrelated], FAKE_USER_ID)
+        mock_list.assert_awaited_once_with(FAKE_USER_ID, limit=100)
+        writer.assert_called_once_with(
+            {"todo_data": {"action": "delete", "message": "Deleted 1 task"}}
+        )
+        assert event["tool"] == {"name": "bulk_delete_todos", "action": "bulk_delete"}
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.TOOL} bulk_delete_todos got unknown todo ids",
+                "todo_count": 3,
+                "unknown_count": 2,
+            }
+        ]

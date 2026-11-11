@@ -4,9 +4,11 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.exceptions import OutputParserException
+from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.constants.trigger_gates import GateAuthor
 from app.constants.vfs import SYSTEM_USER_ID
 from app.models.scheduler_models import (
     UNSET,
@@ -14,6 +16,7 @@ from app.models.scheduler_models import (
     ScheduledTaskStatus,
     TaskRearm,
 )
+from app.models.trigger_gate_models import AuthoredGate
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     GeneratedPromptOutput,
@@ -49,7 +52,10 @@ from app.services.workflow.service import (
 from app.services.workflow.trigger_service import TriggerService
 from app.services.workflow.validators import WorkflowValidator
 from app.utils import auth_utils
+from app.utils.errors import AppError
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.triggers import TriggerGateEdited
 from tests.helpers import UNKNOWN_USER_ID, users_get
 
 # ---------------------------------------------------------------------------
@@ -942,6 +948,253 @@ class TestUpdateWorkflow:
         assert result is not None
 
 
+_GAIA_GATE = AuthoredGate(condition="the email is from a customer", author=GateAuthor.GAIA)
+
+
+def _gated_gmail_workflow() -> Workflow:
+    workflow = _make_workflow(
+        trigger_config=_make_trigger_config(
+            trigger_type=TriggerType.INTEGRATION, trigger_name="gmail_new_message"
+        ),
+        activated=False,
+    )
+    workflow.gate = _GAIA_GATE
+    return workflow
+
+
+class TestUpdateWorkflowGate:
+    """The gate is a sibling of trigger_config: absent keeps it, null removes it, a value replaces it."""
+
+    @pytest.fixture
+    def repo(self):
+        current = _gated_gmail_workflow()
+        with (
+            patch(
+                "app.services.workflow.service.WorkflowService.get_workflow",
+                AsyncMock(return_value=current),
+            ),
+            patch(
+                f"{_REPO}.update_for_user", AsyncMock(return_value=_make_workflow_doc(current))
+            ) as update,
+            patch("app.services.workflow.service.workflow_scheduler"),
+        ):
+            yield update
+
+    @pytest.fixture(autouse=True)
+    def gate_capture(self):
+        with patch("app.services.triggers.gate_edits.capture") as capture:
+            yield capture
+
+    @staticmethod
+    def _written(update: AsyncMock) -> dict[str, object]:
+        """Return the $set the repository was handed, as it serialises it."""
+        return update.await_args.args[2].model_dump(exclude_unset=True)
+
+    async def test_turning_the_gate_off_keeps_its_condition_and_author(
+        self, repo: AsyncMock, gate_capture: MagicMock
+    ) -> None:
+        request = UpdateWorkflowRequest.model_validate({"gate": {"enabled": False}})
+
+        await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
+
+        assert (
+            self._written(repo)["gate"]
+            == _GAIA_GATE.model_copy(update={"enabled": False}).model_dump()
+        )
+        gate_capture.assert_called_once_with(
+            UserId(USER_ID),
+            TriggerGateEdited(owner_type="workflow", action="disabled", gate_kind="authored"),
+        )
+
+    async def test_an_edit_that_leaves_the_gate_alone_reports_nothing(
+        self, repo: AsyncMock, gate_capture: MagicMock
+    ) -> None:
+        await WorkflowService.update_workflow(
+            WORKFLOW_ID, _make_update_request(title="Renamed"), USER_ID
+        )
+
+        gate_capture.assert_not_called()
+
+    async def test_an_edit_that_names_no_gate_keeps_it(self, repo: AsyncMock) -> None:
+        await WorkflowService.update_workflow(
+            WORKFLOW_ID, _make_update_request(title="Renamed"), USER_ID
+        )
+
+        assert self._written(repo) == {"title": "Renamed"}
+
+    async def test_a_trigger_rebuilt_from_the_editor_keeps_the_gate(self, repo: AsyncMock) -> None:
+        request = _make_update_request(
+            trigger_config=_make_trigger_config(
+                trigger_type=TriggerType.INTEGRATION, trigger_name="gmail_new_message"
+            )
+        )
+
+        await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
+
+        assert "gate" not in self._written(repo)
+
+    async def test_a_null_gate_removes_it(self, repo: AsyncMock) -> None:
+        await WorkflowService.update_workflow(WORKFLOW_ID, _make_update_request(gate=None), USER_ID)
+
+        assert self._written(repo)["gate"] is None
+
+    async def test_a_sent_condition_is_stored_as_the_users(self, repo: AsyncMock) -> None:
+        request = UpdateWorkflowRequest.model_validate(
+            {"gate": {"condition": "the email is about an invoice", "author": "gaia"}}
+        )
+
+        await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
+
+        stored = self._written(repo)["gate"]
+        assert Workflow.model_validate(
+            {**_gated_gmail_workflow().model_dump(), "gate": stored}
+        ).gate == AuthoredGate(condition="the email is about an invoice", author=GateAuthor.USER)
+
+    async def test_an_unchanged_condition_keeps_its_author(self, repo: AsyncMock) -> None:
+        request = UpdateWorkflowRequest.model_validate(
+            {"gate": {"condition": _GAIA_GATE.condition, "enabled": False}}
+        )
+
+        await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
+
+        stored = self._written(repo)["gate"]
+        assert Workflow.model_validate(
+            {**_gated_gmail_workflow().model_dump(), "gate": stored}
+        ).gate == AuthoredGate(
+            condition=_GAIA_GATE.condition, author=GateAuthor.GAIA, enabled=False
+        )
+
+    async def test_moving_off_an_integration_trigger_drops_the_gate_in_the_same_write(
+        self, repo: AsyncMock
+    ) -> None:
+        request = _make_update_request(
+            trigger_config=_make_trigger_config(trigger_type=TriggerType.MANUAL)
+        )
+
+        await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
+
+        assert self._written(repo)["gate"] is None
+        written_trigger = repo.await_args.args[2].trigger_config
+        assert written_trigger is not None
+        assert written_trigger.type is TriggerType.MANUAL
+
+    @pytest.mark.parametrize(
+        "request_fields",
+        [
+            {"trigger_config": {"type": "manual"}, "gate": {"condition": "always"}},
+            {"gate": {"condition": "always"}},
+        ],
+        ids=["with-the-trigger-change", "on-a-manual-workflow"],
+    )
+    async def test_a_gate_on_a_trigger_with_no_event_is_refused(
+        self, repo: AsyncMock, request_fields: dict[str, object]
+    ) -> None:
+        manual = _make_workflow(
+            trigger_config=_make_trigger_config(trigger_type=TriggerType.MANUAL)
+        )
+        request = UpdateWorkflowRequest.model_validate(request_fields)
+
+        with (
+            patch(
+                "app.services.workflow.service.WorkflowService.get_workflow",
+                AsyncMock(
+                    return_value=manual
+                    if "trigger_config" not in request_fields
+                    else _gated_gmail_workflow()
+                ),
+            ),
+            pytest.raises(AppError) as refused,
+        ):
+            await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
+
+        assert (
+            refused.value.status_code,
+            refused.value.message,
+            refused.value.why,
+            refused.value.fix,
+            refused.value.meta,
+        ) == (
+            422,
+            "Only a workflow started by an integration event can have a gate",
+            "a gate reads the event that fired the workflow; this trigger has none",
+            "send gate null, or switch the trigger to an integration event",
+            {"workflow_id": WORKFLOW_ID},
+        )
+        repo.assert_not_awaited()
+
+
+class TestCreateWorkflowGate:
+    """A create's runs_only_when is GAIA's drafted condition, whatever author the client claims."""
+
+    @pytest.fixture
+    def stored(self):
+        with (
+            patch("app.utils.auth_utils.user_repository.get", new=users_get),
+            patch(
+                "app.services.oauth.oauth_service.check_integration_status",
+                AsyncMock(return_value=True),
+            ),
+            patch(
+                "app.services.workflow.service.TriggerService.register_triggers",
+                AsyncMock(return_value=["trigger_1"]),
+            ),
+            patch("app.services.workflow.service.workflow_scheduler"),
+            patch("app.services.workflow.service.ChromaClient") as chroma,
+            patch(f"{_REPO}.mark_activated_with_triggers", new_callable=AsyncMock),
+            patch(f"{_REPO}.create", new_callable=AsyncMock) as create,
+        ):
+            chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
+            yield create
+
+    @staticmethod
+    def _request(**fields: object) -> CreateWorkflowRequest:
+        return CreateWorkflowRequest.model_validate(
+            {
+                "title": "Billing replies",
+                "prompt": "Draft a reply to the billing email",
+                "trigger_config": {"type": "integration", "trigger_name": "gmail_new_message"},
+                "steps": [{"id": "s1", "title": "Draft", "description": "Draft the reply"}],
+                **fields,
+            }
+        )
+
+    async def test_a_drafted_condition_is_stored_as_gaias_gate(self, stored: AsyncMock) -> None:
+        await WorkflowService.create_workflow(
+            self._request(runs_only_when="the email is about billing"), USER_ID
+        )
+
+        assert stored.await_args.args[0].gate == AuthoredGate(
+            condition="the email is about billing", author=GateAuthor.GAIA
+        )
+
+    async def test_a_client_sent_author_is_ignored(self, stored: AsyncMock) -> None:
+        request = self._request(
+            runs_only_when="the email is about billing",
+            author="user",
+            gate={"kind": "authored", "condition": "anything", "author": "user"},
+        )
+
+        await WorkflowService.create_workflow(request, USER_ID)
+
+        assert stored.await_args.args[0].gate == AuthoredGate(
+            condition="the email is about billing", author=GateAuthor.GAIA
+        )
+
+    async def test_a_create_with_no_condition_has_no_gate(self, stored: AsyncMock) -> None:
+        await WorkflowService.create_workflow(self._request(), USER_ID)
+
+        assert stored.await_args.args[0].gate is None
+
+    def test_a_condition_on_a_trigger_with_no_event_is_refused_at_the_request(self) -> None:
+        with pytest.raises(ValidationError) as refused:
+            self._request(trigger_config={"type": "manual"}, runs_only_when="always")
+
+        assert (
+            refused.value.errors()[0]["msg"]
+            == "Value error, runs_only_when needs an integration trigger"
+        )
+
+
 # ===========================================================================
 # WorkflowService.delete_workflow tests
 # ===========================================================================
@@ -1672,7 +1925,7 @@ class TestBuildTriggerHint:
 class TestBuildAvailableTriggers:
     """Tests for _build_available_triggers."""
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     def test_empty_integrations(self):
         result = _build_available_triggers()
         assert result == ""
@@ -1686,7 +1939,7 @@ class TestBuildAvailableTriggers:
 class TestGenerateStepsWithLLM:
     """Tests for WorkflowGenerationService.generate_steps_with_llm."""
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     @patch(
         "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
@@ -1721,65 +1974,7 @@ class TestGenerateStepsWithLLM:
         assert result[0].title == "Step 1"
         assert mock_structured.await_args[0][0] is GeneratedWorkflow
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
-    @patch(
-        "app.services.workflow.generation_service.ainvoke_structured",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.services.workflow.generation_service.get_tool_registry",
-        new_callable=AsyncMock,
-    )
-    async def test_generate_invalid_output_regenerates_then_succeeds(
-        self, mock_registry_fn: AsyncMock, mock_structured: AsyncMock
-    ) -> None:
-        """A schema-invalid first attempt triggers one regeneration, which succeeds."""
-        mock_registry = MagicMock()
-        mock_registry.get_all_category_objects.return_value = {}
-        mock_registry.get_core_tools.return_value = []
-        mock_registry_fn.return_value = mock_registry
-
-        generated = GeneratedWorkflow(
-            steps=[GeneratedStep(title="Parsed", category="gaia", description="Second try")]
-        )
-        mock_structured.side_effect = [OutputParserException("bad output"), generated]
-
-        result = await WorkflowGenerationService.generate_steps_with_llm(
-            "Test prompt", "Test Title", user_id="test-user"
-        )
-
-        assert len(result) == 1
-        assert result[0].title == "Parsed"
-        assert mock_structured.await_count == 2
-
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
-    @patch(
-        "app.services.workflow.generation_service.ainvoke_structured",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.services.workflow.generation_service.get_tool_registry",
-        new_callable=AsyncMock,
-    )
-    async def test_generate_empty_steps_retries_then_fails(
-        self, mock_registry_fn: AsyncMock, mock_structured: AsyncMock
-    ) -> None:
-        """If LLM returns empty steps, retry and ultimately fail with a reason."""
-        mock_registry = MagicMock()
-        mock_registry.get_all_category_objects.return_value = {}
-        mock_registry.get_core_tools.return_value = []
-        mock_registry_fn.return_value = mock_registry
-
-        mock_structured.return_value = GeneratedWorkflow(steps=[])
-
-        with pytest.raises(WorkflowStepGenerationError, match="no usable steps"):
-            await WorkflowGenerationService.generate_steps_with_llm(
-                "Test prompt", "Test Title", user_id="test-user"
-            )
-
-        assert mock_structured.await_count == 2
-
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     @patch(
         "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
@@ -1791,7 +1986,7 @@ class TestGenerateStepsWithLLM:
     async def test_generate_llm_error_propagates(
         self, mock_registry_fn: AsyncMock, mock_structured: AsyncMock
     ) -> None:
-        """Provider errors surface as WorkflowStepGenerationError; retry lives in ainvoke_llm, not the generation loop."""
+        """Provider errors surface as WorkflowStepGenerationError; retry lives in ainvoke_llm, not the service."""
         mock_registry = MagicMock()
         mock_registry.get_all_category_objects.return_value = {}
         mock_registry.get_core_tools.return_value = []
@@ -1807,10 +2002,10 @@ class TestGenerateStepsWithLLM:
         # The reason names the underlying failure so the modal can show it.
         assert excinfo.value.reason == "RuntimeError: provider down"
         assert isinstance(excinfo.value.__cause__, RuntimeError)
-        # Called exactly once — the loop does not retry provider errors.
+        # Called exactly once — re-asking lives in ainvoke_llm.
         assert mock_structured.await_count == 1
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     @patch(
         "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
@@ -1840,43 +2035,11 @@ class TestGenerateStepsWithLLM:
         formatted_prompt = mock_structured.await_args[0][1]
         assert "Short description" in formatted_prompt
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
-    @patch(
-        "app.services.workflow.generation_service.ainvoke_structured",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.services.workflow.generation_service.get_tool_registry",
-        new_callable=AsyncMock,
-    )
-    async def test_generate_invalid_output_exhausts_attempts(
-        self, mock_registry_fn: AsyncMock, mock_structured: AsyncMock
-    ) -> None:
-        """Schema-invalid output on every attempt fails with a reason after retries."""
-        mock_registry = MagicMock()
-        mock_registry.get_all_category_objects.return_value = {}
-        mock_registry.get_core_tools.return_value = []
-        mock_registry_fn.return_value = mock_registry
-
-        mock_structured.side_effect = OutputParserException("bad output")
-
-        with pytest.raises(WorkflowStepGenerationError, match="no usable steps"):
-            await WorkflowGenerationService.generate_steps_with_llm(
-                "Prompt", "Title", user_id="test-user"
-            )
-
-        assert mock_structured.await_count == 2
-
-
-# ===========================================================================
-# WorkflowGenerationService.generate_workflow_prompt tests
-# ===========================================================================
-
 
 class TestGenerateWorkflowPrompt:
     """Tests for WorkflowGenerationService.generate_workflow_prompt."""
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     @patch(
         "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
@@ -1898,7 +2061,7 @@ class TestGenerateWorkflowPrompt:
         assert result["suggested_trigger"].type == "schedule"
         assert result["suggested_trigger"].cron_expression == "0 9 * * 1-5"
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     @patch(
         "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
@@ -1919,7 +2082,7 @@ class TestGenerateWorkflowPrompt:
         assert result["suggested_trigger"] is not None
         assert result["suggested_trigger"].type == "manual"
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     @patch(
         "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
@@ -1939,7 +2102,7 @@ class TestGenerateWorkflowPrompt:
         assert result["prompt"] == "Instructions"
         assert result["suggested_trigger"] is None
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     @patch(
         "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
@@ -2251,7 +2414,11 @@ class TestWorkflowQueueService:
             "execute_workflow_by_id:" + hashlib.sha256(dedup_payload.encode()).hexdigest()[:32]
         )
         mock_pool.enqueue_job.assert_awaited_once_with(
-            "execute_workflow_by_id", WORKFLOW_ID, {"key": "val"}, _job_id=expected_job_id
+            "execute_workflow_by_id",
+            WORKFLOW_ID,
+            {"key": "val"},
+            _job_id=expected_job_id,
+            _defer_until=None,
         )
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")
@@ -2277,7 +2444,7 @@ class TestWorkflowQueueService:
         )
         # context defaults to empty dict
         mock_pool.enqueue_job.assert_awaited_once_with(
-            "execute_workflow_by_id", WORKFLOW_ID, {}, _job_id=expected_job_id
+            "execute_workflow_by_id", WORKFLOW_ID, {}, _job_id=expected_job_id, _defer_until=None
         )
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")
@@ -2368,7 +2535,7 @@ class TestWorkflowQueueService:
 class TestTriggerService:
     """Tests for TriggerService."""
 
-    @patch("app.services.workflow.trigger_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_get_all_workflow_triggers_empty(self):
         result = await TriggerService.get_all_workflow_triggers()
         assert result == []

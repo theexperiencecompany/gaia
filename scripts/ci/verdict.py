@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12"
 # dependencies = ["defusedxml==0.7.1"]
 # ///
 """verdict.py — turning what a run produced into a verdict a reader can act on.
@@ -21,7 +21,7 @@ without anybody noticing.
 Subcommands:
     emit --lane L (--status S --summary "…" | --job-status <job.status>)
          [--finding f:l:msg [--detail-file p]]… [--advice "…"]…
-         [--findings F] [--out DIR] [--only-if-missing]
+         [--out DIR] [--only-if-missing]
         Write <out>/<lane>.json, annotate, summarise, and print the one-line
         human verdict. Always exits 0: it reports, it does not decide
         (`ci_verdict_die` in lib/log.sh is the dying call site). `--job-status`
@@ -39,7 +39,7 @@ Subcommands:
     consolidate DIR --expect "job[@family][*planned-members][=job-result],…"
         The gate's verdict. Print the table every lane's JSON forms and exit 1
         if any lane failed, timed out, errored — or never reported at all.
-    pytest-verdict <junit.xml> --lane L [--path-prefix P] [--out DIR]
+    pytest-verdict <junit.xml> --lane L --exit-code N [--path-prefix P] [--out DIR]
         Turn a pytest JUnit report into a verdict: one finding per failed test,
         at its own file and line, with the assertion tail as the detail.
     regression-proof-select <pr_file> <base_file> [<pr_file> <base_file> ...]
@@ -49,21 +49,22 @@ Subcommands:
         Decide whether the base-revision run actually proved anything: every
         regression test must have FAILED — not passed, not skipped, and not
         merely errored.
-    collect --into <findings.jsonl> [--fallback <path>]
-        Read mypy/tsc/ruff/biome/bandit output on stdin and append its
-        file:line findings to a JSONL that `emit` and `step-outcomes` fold
-        into the lane's one verdict. `--fallback` pins the whole output to one
-        path for a tool that names a package rather than a line (syncpack,
-        manypkg, nx). Prints nothing — annotating here too would put
-        every finding on the page twice.
-    step-outcomes --lane L [--findings F] [--out DIR] <name>=<outcome> [...]
-        Fail a job when any of its `continue-on-error` steps did not pass,
-        naming every one that did not.
-    mirror-previous-gate --repo R --sha S --workflow W --job J --run-id N
-        Repeat what the LAST completed run of this workflow concluded for this
-        same head SHA. The gate calls it on a PR edit that moved no code: it
-        must not re-run the lanes (nothing changed) and it must not skip
-        either, because a skipped required check counts as passing.
+    check [--lane L] [--fallback F] [--path-prefix P] -- <command...>
+        A check step's shell: run the command, stream its output, and when it
+        fails write `<job>/<step id>`'s verdict from what it printed (every
+        file:line it names, else its first error lines) and flag the job's next
+        upload step. Exits with the command's code.
+    sarif <report.sarif> --lane L [--out DIR]
+        Write a failed scanner step's verdict (gitleaks, semgrep) from its SARIF
+        report: one finding per result, at its location.
+    post-statuses --job J --results FILE --job-tasks JSON [--step check=outcome ...]
+                  [--reused JSON] [--check C]
+                  [--no-post | --repo R --sha S --run-id N --job-id J]
+        Post one `ci / <area> / <check>` commit status per check of job J (its
+        nx targets' metadata.ci), from run-job's task results and the outcome
+        of each check a step ran, and fail when any check failed. With --check,
+        post just that finished check (run-job calls it as each one ends); the
+        job's post then skips it.
 
 Interpreters: the JUnit readers need defusedxml and are invoked with
 `uv run --no-project` (the PEP 723 block above is what supplies it); the rest
@@ -82,11 +83,14 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import sys
 import time
-from typing import Any, NamedTuple, NotRequired, TypedDict
+from typing import NamedTuple, TypedDict
+
+from lib import nx_affected, output_findings
+from lib.github import GitHub, GitHubError, Json, field_of, records, text_of
+from lib.output_findings import Finding
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # Where verdicts go, most specific first. The checkout is LAST on purpose: a
@@ -147,15 +151,6 @@ ANNOTATION_LEVEL = {
 Row = tuple[str, "Status", str]
 
 
-class Finding(TypedDict):
-    """One concrete thing a reader can go fix, at the line it is on."""
-
-    file: str
-    line: int
-    message: str
-    detail: NotRequired[str]
-
-
 class VerdictDoc(TypedDict):
     """The on-disk contract: verify-logs/verdicts/<lane>.json."""
 
@@ -193,18 +188,43 @@ def lane_already_reported(lane: str, out_dir: Path) -> bool:
     return any(json.loads(p.read_text())["lane"] == lane for p in out_dir.rglob("*.json"))
 
 
+# Set in the job's environment when a failing verdict is written, and cleared by
+# the upload composite's `partial` mode: the upload step after every check runs
+# only while this is set, so a red check's verdict reaches `mise ci:remote`
+# minutes before its job ends instead of with it.
+PENDING_UPLOAD_ENV = "GAIA_VERDICT_PENDING"
+
+
+def flag_pending_upload() -> None:
+    """Ask the job's next upload step to ship the verdicts written so far."""
+    job_env = os.environ.get("GITHUB_ENV")
+    if job_env:
+        with Path(job_env).open("a") as handle:
+            handle.write(f"{PENDING_UPLOAD_ENV}=1\n")
+
+
 def write_verdict(doc: VerdictDoc, out_dir: Path) -> Path:
     path = verdict_path(doc["lane"], out_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
+    if Status(doc["status"]) in FAILING_STATUSES:
+        flag_pending_upload()
     return path
+
+
+def location(finding: Finding) -> str:
+    """Return `file:line`, or "" for a finding the tool gave no location."""
+    if not finding["file"]:
+        return ""
+    return f"{finding['file']}:{finding['line']}" if finding["line"] else finding["file"]
 
 
 def _summary_block(doc: VerdictDoc) -> str:
     status = doc["status"]
     lines = [f"### {doc['lane']} — {status}", "", doc["summary"], ""]
     for finding in doc["findings"]:
-        lines.append(f"- `{finding['file']}:{finding['line']}` {finding['message']}")
+        where = location(finding)
+        lines.append(f"- `{where}` {finding['message']}" if where else f"- {finding['message']}")
         detail = finding.get("detail")
         if detail:
             lines += [
@@ -222,19 +242,24 @@ def _summary_block(doc: VerdictDoc) -> str:
     return "\n".join(lines) + "\n"
 
 
-def announce(doc: VerdictDoc) -> None:
+def announce(doc: VerdictDoc, *, annotated: frozenset[str] = frozenset()) -> None:
     """Annotate every finding, append the step-summary block, print the verdict.
 
     All three, or none — forgetting one of them separately is the bug this
-    whole module exists to make impossible.
+    whole module exists to make impossible. `annotated` holds the locations the
+    tool already annotated itself; those are not annotated twice.
     """
     status = Status(doc["status"])
     level = ANNOTATION_LEVEL[status]
     for finding in doc["findings"]:
-        print(
-            f"::{level} file={finding['file']},line={finding['line']}::"
-            f"{_escape(finding['message'])}"
+        if finding["file"] and location(finding) in annotated:
+            continue
+        where = (
+            f"file={finding['file']},line={finding['line']}"
+            if finding["file"]
+            else f"title={doc['lane']}"
         )
+        print(f"::{level} {where}::{_escape(finding['message'])}")
 
     summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_file:
@@ -294,13 +319,6 @@ def _verdict_parser(prog: str, *, default_lane: str) -> argparse.ArgumentParser:
 #
 # The only producer. A lane calls it once, with everything it knows.
 # ---------------------------------------------------------------------------
-
-
-def read_findings(path: Path | None) -> list[Finding]:
-    """Read a `collect` JSONL, or nothing when the lane's tools wrote none."""
-    if path is None or not path.exists():
-        return []
-    return [json.loads(line) for line in path.read_text().splitlines() if line]
 
 
 class EmitUsageError(ValueError):
@@ -385,14 +403,6 @@ def cmd_emit(args: list[str]) -> int:
         ),
     )
     parser.add_argument("--advice", action="append", default=[])
-    # The same JSONL `step-outcomes` reads. A lane with ONE tool has no step
-    # outcomes to fold, but its tool's findings are no less worth carrying —
-    # without this, adopting the contract meant losing the file:line.
-    parser.add_argument(
-        "--findings",
-        type=Path,
-        help="JSONL written by `verdict.py collect` — appended to any --finding given",
-    )
     # A lane that died at its cap wrote nothing; the trailing step that notices
     # must not overwrite a real verdict when the lane DID report.
     parser.add_argument("--only-if-missing", action="store_true")
@@ -420,7 +430,7 @@ def cmd_emit(args: list[str]) -> int:
         opts.lane,
         status,
         summary,
-        findings=findings + read_findings(opts.findings),
+        findings=findings,
         advice=opts.advice or derived_advice,
         out_dir=opts.out,
     )
@@ -520,7 +530,7 @@ def _matching_lanes(family: str, found: dict[str, VerdictDoc]) -> list[str]:
 
     A lane may report as a FAMILY of sub-units: `test-python` as one verdict per
     slice, `test-mutation` as one per mutated module across every shard. How
-    many there are is decided at runtime (by the matrix, by `mutation.sh plan`),
+    many there are is decided at runtime (by the matrix, by `mutation.py plan`),
     so the gate expects the family and is satisfied by at least one member —
     a per-shard `--expect` list in YAML would drift from the planner on the
     first large diff.
@@ -532,7 +542,7 @@ def _missing_members(lane: str, family: str, matched: list[str], planned: str) -
     """Return the row a family owes when fewer members reported than were planned.
 
     `<job>@<family>*<n>` is how the runtime size of a matrix reaches the gate —
-    `mutation.sh plan` already emits the shard count it packed the diff into.
+    `mutation.py plan` already emits the shard count it packed the diff into.
     Without it a family is satisfied by ANY member, so a shard killed before its
     `if: always()` upload (a job-level cap, a superseded run) is spoken for by
     its siblings and the modules it carried go unmutated, silently.
@@ -621,7 +631,7 @@ def cmd_dir(args: list[str]) -> int:
 # "Belongs" is the same prefix rule `--expect` families use: a verdict belongs
 # to this job if its lane IS the job's family or sits under `<family>/`. The
 # family is the composite's `family` input, defaulting to its `lane` — the
-# mutation shards pass `mutation`, because mutation.sh writes one verdict per
+# mutation shards pass `mutation`, because mutation.py writes one verdict per
 # module under that namespace rather than under the shard's own lane.
 # ---------------------------------------------------------------------------
 
@@ -652,6 +662,34 @@ def cmd_check_ownership(args: list[str]) -> int:
     return 1
 
 
+GATE_LANE = "quality-gate"
+
+
+def _write_gate_verdict(rows: list[Row], out_dir: Path) -> None:
+    """Write the gate's verdict without announcing it — consolidate prints its own table.
+
+    A reader of a red gate wants which lanes, not the gate's log: each lane that
+    did not pass is one finding, named so its own verdict can be opened next.
+    """
+    bad = [(lane, status, summary) for lane, status, summary in rows if status in FAILING_STATUSES]
+    findings: list[Finding] = [
+        {"file": "", "line": 0, "message": f"{lane}: {str(status).upper()} — {summary}"}
+        for lane, status, summary in bad
+    ]
+    write_verdict(
+        {
+            "lane": GATE_LANE,
+            "status": str(Status.FAIL if bad else Status.PASS),
+            "summary": f"{len(bad)} of {len(rows)} lane(s) did not pass"
+            if bad
+            else f"{len(rows)} lane(s) reported, none failing",
+            "findings": findings,
+            "advice": ["Each lane's own verdict carries its findings at file:line."] if bad else [],
+        },
+        out_dir,
+    )
+
+
 def cmd_consolidate(args: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="verdict.py consolidate")
     parser.add_argument("directory", type=Path)
@@ -680,22 +718,19 @@ def cmd_consolidate(args: list[str]) -> int:
         ),
     )
     parser.add_argument(
-        "--reused",
-        default="{}",
-        help="JSON {job: note} from `reuse-plan`: a skipped lane listed here is labelled reused",
+        "--out",
+        type=Path,
+        help="also write the gate's own verdict here: one finding per lane that did not pass",
     )
     opts = parser.parse_args(args)
 
     found = _load_verdicts(opts.directory) if opts.directory.is_dir() else {}
-    reused: dict[str, str] = json.loads(opts.reused or "{}")
-    rows = [
-        (
-            lane,
-            status,
-            f"reused — {reused[lane]}" if status is Status.SKIP and lane in reused else summary,
-        )
-        for lane, status, summary in consolidated_rows(opts.expect, found)
-    ]
+    # A re-run gate downloads the verdict an earlier attempt of itself uploaded;
+    # it is this gate's output, never one of its lanes.
+    found.pop(GATE_LANE, None)
+    rows = consolidated_rows(opts.expect, found)
+    if opts.out:
+        _write_gate_verdict(rows, opts.out)
 
     print("::group::Per-lane verdicts")
     for lane, status, summary in rows:
@@ -707,7 +742,7 @@ def cmd_consolidate(args: list[str]) -> int:
         print(f"::error::{lane}: {str(status).upper()} — {_escape(summary)}")
         doc = found.get(lane)
         for finding in doc["findings"] if doc else []:
-            print(f"    {finding['file']}:{finding['line']}  {finding['message']}")
+            print(f"    {location(finding) or '-'}  {finding['message']}")
 
     summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_file:
@@ -858,6 +893,18 @@ def _location_from_traceback(text: str) -> tuple[str, int] | None:
     return file_path, int(line)
 
 
+JUNIT_ERROR_LINES = 20
+JUNIT_TAIL_LINES = 25
+
+
+def _junit_detail(text: str) -> str:
+    """Put the `E ` lines first — the assertion a reader opens it for — then the traceback's tail."""
+    lines = text.splitlines()
+    errors = [line[1:].strip() for line in lines if line.startswith("E ")][:JUNIT_ERROR_LINES]
+    tail = lines[-JUNIT_TAIL_LINES:]
+    return "\n".join([*errors, "--", *tail] if errors else tail)
+
+
 class JUnitCase(NamedTuple):
     """One `<testcase>`, flattened to what a verdict needs from it."""
 
@@ -902,10 +949,7 @@ def _read_junit(path: str, path_prefix: str = "") -> list[JUnitCase]:
                 failed=case.find("failure") is not None,
                 errored=case.find("error") is not None,
                 skipped=case.find("skipped") is not None,
-                # The tail, not the head: pytest puts the assertion and the
-                # exception at the END of the traceback, which is what a reader
-                # opens the detail for.
-                detail="\n".join(text.splitlines()[-40:]),
+                detail=_junit_detail(text),
             )
         )
     return cases
@@ -921,14 +965,22 @@ def _read_junit(path: str, path_prefix: str = "") -> list[JUnitCase]:
 # ---------------------------------------------------------------------------
 
 
+def _failure_label(case: JUnitCase, accepted: bool) -> str:
+    """Name how a test went wrong: FLAKY when the flake gate's rerun passed it."""
+    if accepted:
+        return "FLAKY"
+    return "ERROR" if case.errored and not case.failed else "FAILED"
+
+
 def cmd_pytest_verdict(args: list[str]) -> int:
     """Emit a slice's verdict from the JUnit report it already wrote."""
     parser = _verdict_parser("pytest-verdict", default_lane="")
     parser.add_argument("junit")
     # The slice's own exit code: pytest can fail for reasons JUnit does not
     # record (a collection abort, the flake gate), and a verdict that says
-    # `pass` over a red step is worse than none.
-    parser.add_argument("--exit-code", type=int, default=0)
+    # `pass` over a red step is worse than none. Required: a failed JUnit under
+    # exit 0 means the flake gate accepted a rerun, which only the caller knows.
+    parser.add_argument("--exit-code", type=int, required=True)
     opts = parser.parse_args(args)
     if not opts.lane:
         parser.error("--lane is required")
@@ -945,15 +997,28 @@ def cmd_pytest_verdict(args: list[str]) -> int:
         return 0
 
     broken = [c for c in cases if c.failed or c.errored]
+    # The JUnit is the first run's: the flake gate's rerun writes none, so a
+    # failure it accepted is still recorded here under a step that exited 0.
+    accepted = bool(broken) and not opts.exit_code
     findings: list[Finding] = [
         {
             "file": c.file,
             "line": c.line,
-            "message": f"{'ERROR' if c.errored and not c.failed else 'FAILED'} {c.name}",
+            "message": f"{_failure_label(c, accepted)} {c.name}",
             "detail": c.detail,
         }
         for c in broken
     ]
+    if accepted:
+        report(
+            opts.lane,
+            Status.PASS,
+            f"{len(cases)} test(s) passed, {len(broken)} only on the flake gate's rerun",
+            findings=findings,
+            advice=["Stabilise the FLAKY tests: the first-run traceback is in the step's output."],
+            out_dir=opts.out,
+        )
+        return 0
     if broken:
         report(
             opts.lane,
@@ -1104,334 +1169,485 @@ def cmd_regression_proof_verdict(args: list[str]) -> int:
 
 
 # ---------------------------------------------------------------------------
-# collect
+# check
 #
-# Turn mypy/tsc/ruff/biome/bandit output into findings for the lane's verdict.
+# A tool's output, read back as findings (lib/output_findings.py). `check` is
+# the shell a check step runs under, so a red check writes its own verdict the
+# moment it fails, whatever the tool printed; post-statuses does the same for
+# each failed nx task from its output.
 # ---------------------------------------------------------------------------
 
-# How much of a line-less tool's output the one fallback finding carries. The
-# tail, not the head: nx, syncpack and manypkg all put the verdict last.
-FALLBACK_DETAIL_LINES = 40
 
-ANNOTATION_PATTERNS = [
-    # mypy: path:line: error: msg  or path:line:col: error
-    re.compile(r"^(?P<file>[^:]+):(?P<line>\d+):(?:\d+:)?\s*(?:error|warning):"),
-    # tsc: path(line,col): error TS...
-    re.compile(r"^(?P<file>[^\(]+)\((?P<line>\d+),(?P<col>\d+)\):\s*error"),
-    # ruff concise: path:line:col: CODE msg
-    re.compile(r"^(?P<file>[^:]+):(?P<line>\d+):\d+:\s*[A-Z]+\d+\s"),
-    # biome concise: path:line:col lint/category
-    re.compile(r"^(?P<file>[^:]+):(?P<line>\d+):(?P<col>\d+)\s"),
-]
+def _default_check_lane() -> str:
+    """`<job>/<step id>` — what a check step's verdict is called when nothing says otherwise."""
+    job, step = os.environ.get("GITHUB_JOB", ""), os.environ.get("GITHUB_ACTION", "")
+    return f"{job}/{step}" if job and step else ""
 
 
-def cmd_collect(args: list[str]) -> int:
-    """Append stdin's file:line findings to a JSONL the lane's verdict will carry.
+def _run_teeing(command: list[str]) -> tuple[int, str]:
+    """Run ``command``, streaming its merged output to ours, and return (exit code, output)."""
+    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as child:
+        assert child.stdout is not None
+        captured: list[bytes] = []
+        for chunk in iter(child.stdout.readline, b""):
+            sys.stdout.buffer.write(chunk)
+            sys.stdout.buffer.flush()
+            captured.append(chunk)
+        return child.wait(), b"".join(captured).decode("utf-8", "replace")
 
-    It deliberately prints NOTHING. Annotating here and emitting the verdict
-    later would put every finding on the page twice; the lane's single `emit`
-    is the one producer, and this is how a tool's own output reaches it.
+
+def cmd_check(args: list[str]) -> int:
+    """Run one check; when it fails, write its verdict from what it printed and exit with its code.
+
+    A workflow step uses this as its shell (`shell: python3 scripts/ci/verdict.py
+    check -- bash -e {0}`), so the step body is unchanged. A check that wrote its
+    own verdict keeps it; a passing check writes nothing (the job's rollup says so).
     """
-    parser = argparse.ArgumentParser(prog="verdict.py collect")
-    parser.add_argument("--into", type=Path, required=True)
-    parser.add_argument(
-        "--fallback",
-        help=(
-            "repo-relative path to pin the whole output to when NO line carried a "
-            "file:line. syncpack, manypkg and nx name a package, not a line — "
-            "without this their lanes adopt the contract and lose their reason."
-        ),
-    )
+    parser = _verdict_parser("check", default_lane=_default_check_lane())
+    parser.add_argument("--fallback", help="file to pin a location-less result to")
+    parser.add_argument("command", nargs=argparse.REMAINDER)
     opts = parser.parse_args(args)
+    command = opts.command[1:] if opts.command[:1] == ["--"] else opts.command
+    if not command:
+        parser.error("give the check's command after --")
+    if not opts.lane:
+        parser.error("--lane is required outside a workflow step (no GITHUB_JOB/GITHUB_ACTION)")
 
-    text = sys.stdin.read()
-    found: list[Finding] = []
-    for line in text.splitlines():
-        for pattern in ANNOTATION_PATTERNS:
-            match = pattern.match(line.strip())
-            if match:
-                found.append(
-                    {
-                        "file": match.group("file").strip(),
-                        "line": int(match.group("line")),
-                        "message": line.strip()[:500],
-                    }
-                )
-                break
-    if not found and opts.fallback and text.strip():
-        body = [stripped for raw in text.splitlines() if (stripped := raw.strip())]
-        found.append(
-            {
-                "file": opts.fallback,
-                "line": 1,
-                "message": body[0][:500],
-                "detail": "\n".join(body[-FALLBACK_DETAIL_LINES:]),
-            }
+    rc, output = _run_teeing(command)
+    if rc == 0:
+        return 0
+    flag_pending_upload()
+    if not lane_already_reported(opts.lane, opts.out):
+        findings = output_findings.read(
+            output, fallback=opts.fallback, path_prefix=opts.path_prefix
         )
-    opts.into.parent.mkdir(parents=True, exist_ok=True)
-    with opts.into.open("a") as handle:
-        handle.writelines(json.dumps(f) + "\n" for f in found)
-    return 0
+        report_failed_check(opts.lane, rc, output, findings, opts.out)
+    return rc
 
 
-# ---------------------------------------------------------------------------
-# step-outcomes
-#
-# A job that runs several independent tools (see code-quality.yml's
-# python-static lane) marks each tool step `continue-on-error: true` so one red
-# tool does not hide the rest, then calls this with one "<name>=<outcome>" pair
-# per step. Outcome values are GitHub's own step outcomes: success, failure,
-# cancelled, skipped.
-# ---------------------------------------------------------------------------
-
-
-def cmd_step_outcomes(args: list[str]) -> int:
-    parser = _verdict_parser("step-outcomes", default_lane="")
-    parser.add_argument("outcome", nargs="+", metavar="name=outcome")
-    parser.add_argument(
-        "--findings",
-        type=Path,
-        help="JSONL written by `verdict.py collect` — the tools' own file:line findings",
+def report_failed_check(
+    lane: str, rc: int, output: str, findings: list[Finding], out: Path
+) -> None:
+    """Write and announce a failed check's verdict from the findings read out of what it printed."""
+    located = sum(1 for f in findings if f["file"])
+    check = lane.rsplit("/", 1)[-1]
+    summary = (
+        f"{check}: {len(findings)} finding(s) (exit {rc})"
+        if located
+        else f"{check} failed (exit {rc}); its output names no file:line — its first error lines are attached"
     )
+    # Written and announced here rather than through `report`: the tool already
+    # annotated the locations it printed as `::error`, and those are not repeated.
+    doc: VerdictDoc = {
+        "lane": lane,
+        "status": str(Status.FAIL),
+        "summary": summary,
+        "findings": findings,
+        "advice": [],
+    }
+    write_verdict(doc, out)
+    announce(doc, annotated=frozenset(output_findings.annotated_locations(output)))
+
+
+def _obj(value: object) -> Json:
+    return value if isinstance(value, dict) else {}
+
+
+def _objs(value: object) -> list[Json]:
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def _sarif_findings(doc: Json) -> list[Finding]:
+    """One finding per SARIF result, at its first physical location."""
+    findings: list[Finding] = []
+    for run in _objs(doc.get("runs")):
+        for result in _objs(run.get("results")):
+            locations = _objs(result.get("locations"))
+            physical = _obj(locations[0].get("physicalLocation")) if locations else {}
+            uri = str(_obj(physical.get("artifactLocation")).get("uri") or "")
+            line = _obj(physical.get("region")).get("startLine")
+            message = _obj(result.get("message")).get("text") or ""
+            findings.append(
+                {
+                    "file": uri,
+                    "line": (line if isinstance(line, int) else 1) if uri else 0,
+                    "message": f"{result.get('ruleId') or '?'}: {message}",
+                }
+            )
+    return findings
+
+
+def cmd_sarif(args: list[str]) -> int:
+    """Write a failed scanner step's verdict from the SARIF report it wrote (gitleaks, semgrep)."""
+    parser = _verdict_parser("sarif", default_lane="")
+    parser.add_argument("report", type=Path)
     opts = parser.parse_args(args)
     if not opts.lane:
         parser.error("--lane is required")
-
-    failed: list[str] = []
-    for pair in opts.outcome:
-        name, _, outcome = pair.partition("=")
-        print(f"  {name + ':':<16} {outcome}")
-        if outcome != "success":
-            failed.append(f"{name} ({outcome})")
-
-    findings: list[Finding] = []
-    if opts.findings and opts.findings.exists():
-        findings = [json.loads(line) for line in opts.findings.read_text().splitlines() if line]
-
-    if failed:
+    if not opts.report.is_file():
+        report(
+            opts.lane,
+            Status.ERROR,
+            f"the scanner failed and wrote no SARIF report at {opts.report}",
+            advice=["It died before scanning — its own step output says why."],
+            out_dir=opts.out,
+        )
+        return 0
+    findings = _sarif_findings(json.loads(opts.report.read_text()))
+    if findings:
         report(
             opts.lane,
             Status.FAIL,
-            f"{len(failed)} of {len(opts.outcome)} tool(s) did not pass: {', '.join(failed)}",
+            f"{len(findings)} finding(s) in {opts.report.name}",
             findings=findings,
-            advice=[
-                f"Expand the '{name.split(' ')[0]}' group above for its output." for name in failed
-            ],
             out_dir=opts.out,
         )
-        return 1
-    report(opts.lane, Status.PASS, f"all {len(opts.outcome)} tools passed", out_dir=opts.out)
+    else:
+        report(
+            opts.lane,
+            Status.ERROR,
+            f"the scanner failed but {opts.report.name} lists no result",
+            advice=["Its own step output says why it exited non-zero."],
+            out_dir=opts.out,
+        )
     return 0
 
 
 # ---------------------------------------------------------------------------
-# mirror-previous-gate
+# post-statuses
 #
-# `pull_request: edited` is carried for RETARGETS, which re-scope every lane
-# against the new base. It fires for a title or body edit too, and those move
-# no code, so the lane DAG is guarded to skip them. The GATE may not skip with
-# it: branch protection reads a skipped required check as PASSING, so the edit
-# run's skipped gate becomes the head SHA's latest verdict and a PR whose last
-# real run was RED turns mergeable on a typo fix. So the gate always runs, and
-# on that edit it repeats the verdict this same head SHA already earned.
+# The checks list names jobs, and a grouped job carries a dozen checks: a red
+# lint-node says nothing about WHICH of biome, knip or tsc broke. Each check —
+# an nx target whose metadata.ci names this job and a `check` — is posted as its
+# own commit status, `ci / <area> / <check>`, linked to the job that ran it; the
+# area makes the PR list sort into groups. Its outcome is its tasks' results
+# from `runner.py run-job`, or its step's outcome for a check an action runs.
+# The same step is the job's verdict: it fails when any check did. A fork's
+# token cannot write statuses (--no-post), and anywhere else a status that does
+# not land fails the step loudly.
 # ---------------------------------------------------------------------------
 
-# A gate job that did not conclude has no verdict to mirror. `skipped` is what
-# every run older than this subcommand left behind on an edit, and it is
-# precisely the value that must never read as a pass.
-NO_VERDICT_CONCLUSIONS = frozenset({None, "skipped"})
+STATUS_CONTEXT_PREFIX = "ci / "
+STATUS_AREA_SEPARATOR = " / "
 
 
-def _gh_json(endpoint: str) -> dict[str, Any] | None:
-    """`gh api <endpoint>` decoded, or None when gh or the API fails."""
-    if shutil.which("gh") is None:
-        print("  gh is not on PATH")
+def check_areas() -> dict[str, str]:
+    """Each posting check's area, read from its nx target's metadata."""
+    return {
+        check.check: check.area
+        for check in nx_affected.checks().values()
+        if check.check and check.area
+    }
+
+
+def status_context(check: str, area: str) -> str:
+    return f"{STATUS_CONTEXT_PREFIX}{area}{STATUS_AREA_SEPARATOR}{check}"
+
+
+def _check_of_context(context: str, areas: dict[str, str]) -> str | None:
+    """Return the check a `ci / <area> / <check>` context names, or None for any other context."""
+    if not context.startswith(STATUS_CONTEXT_PREFIX):
         return None
-    proc = subprocess.run(["gh", "api", endpoint], capture_output=True, text=True, check=False)
-    if proc.returncode != 0:
-        print(f"  gh api {endpoint} failed: {proc.stderr.strip()}")
-        return None
-    try:
-        return json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        print(f"  gh api {endpoint} returned no JSON")
-        return None
+    area, separator, check = context.removeprefix(STATUS_CONTEXT_PREFIX).partition(
+        STATUS_AREA_SEPARATOR
+    )
+    return check if separator and areas.get(check) == area else None
 
 
-def _run_jobs(repo: str, run_id: int) -> list[dict[str, Any]]:
-    """Return that run's jobs, or an empty list when gh or the API fails."""
-    jobs = _gh_json(f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100")
-    return list((jobs or {}).get("jobs", []))
+# The status API rejects a longer description.
+STATUS_DESCRIPTION_LIMIT = 140
+# A check's outcome -> (commit status state, description).
+OUTCOME_STATUS: dict[str, tuple[str, str]] = {
+    "success": ("success", "passed"),
+    "failure": ("failure", "failed — open the job's log for this check"),
+    "cancelled": ("error", "cancelled before it finished"),
+    "skipped": ("success", "skipped — nothing it checks changed"),
+}
+_UNKNOWN_OUTCOME = ("error", "reported no outcome")
 
 
-def _is_plain_edit_run(jobs: list[dict[str, Any]], gate_job: str) -> bool:
-    """Say whether this run only republished some other run's verdict.
+def job_outcomes(
+    job: str, planned: set[str], results: dict[str, str], steps: dict[str, str]
+) -> dict[str, str]:
+    """Each check of `job` and its outcome: its tasks' nx results rolled up, or its step's.
 
-    Every lane sits behind the same edited-event guard, so a title or body edit
-    skips all of them and leaves the gate mirroring alone. A run with no lane at
-    all fails closed instead: an unreadable job listing is not an edit.
+    A planned task nx has no result for did not run, which is a failure, never a skip.
     """
-    lanes = [job for job in jobs if job.get("name") != gate_job]
-    return bool(lanes) and all(job.get("conclusion") == "skipped" for job in lanes)
-
-
-def _gate_conclusion(jobs: list[dict[str, Any]], gate_job: str) -> str | None:
-    """Return what that run's gate job concluded, or None if it never concluded."""
-    for job in jobs:
-        if job.get("name") != gate_job:
+    tasks_of: dict[str, list[nx_affected.Check]] = {}
+    for check in nx_affected.checks().values():
+        if check.job == job and check.check:
+            tasks_of.setdefault(check.check, []).append(check)
+    outcomes: dict[str, str] = {}
+    for name, parts in sorted(tasks_of.items()):
+        if parts[0].runner != "nx":
+            outcomes[name] = steps.get(name, "skipped")
             continue
-        conclusion = job.get("conclusion")
-        return None if conclusion in NO_VERDICT_CONCLUSIONS else str(conclusion)
-    return None
+        due = [part.task for part in parts if part.task in planned]
+        if not due:
+            outcomes[name] = "skipped"
+        elif all(results.get(task) in nx_affected.PASSED for task in due):
+            outcomes[name] = "success"
+        else:
+            outcomes[name] = "failure"
+    return outcomes
 
 
-# How often a waiting mirror re-reads the runs: one listing plus one jobs call
-# per run, so the API budget stays far inside the token's hourly limit.
-MIRROR_POLL_SECONDS = 30
+def job_url(repo: str, run_id: int, job_id: int) -> str:
+    """Link to one job of a run; job_id is the job's check-run id (`job.check_run_id`)."""
+    server = os.environ.get("GITHUB_SERVER_URL") or "https://github.com"
+    return f"{server}/{repo}/actions/runs/{run_id}/job/{job_id}"
 
 
-class _MirrorDecision(NamedTuple):
-    """One pass over this head SHA's runs: an exit code, or None while the deciding run is still going."""
+def _one_line(finding: Finding) -> str:
+    if not finding["file"]:
+        # No location: the attached output's last line is where a tool states its conclusion.
+        lines = [
+            line
+            for line in (finding.get("detail") or finding["message"]).splitlines()
+            if line.strip()
+        ]
+        return " ".join((lines[-1] if lines else finding["message"]).split())
+    message = " ".join(finding["message"].split())
+    # Most tools' lines already open with their location; a bare message gets one.
+    if finding["file"] in message:
+        return message
+    return f"{finding['file']}:{finding['line']} {message}"
 
-    code: int | None
-    message: str
+
+def _status_fields(
+    name: str, area: str, outcome: str, reused: dict[str, str], url: str, finding: str | None
+) -> dict[str, str]:
+    state, description = OUTCOME_STATUS.get(outcome, _UNKNOWN_OUTCOME)
+    if outcome == "skipped" and name in reused:
+        description = f"reused — {reused[name]}"
+    elif outcome == "failure" and finding:
+        description = f"failed — {finding}"
+    return {
+        "state": state,
+        "context": status_context(name, area),
+        "description": description[:STATUS_DESCRIPTION_LIMIT],
+        "target_url": url,
+    }
 
 
-def _mirror_once(repo: str, sha: str, workflow: str, gate_job: str, run_id: int) -> _MirrorDecision:
-    listing = _gh_json(f"repos/{repo}/actions/workflows/{workflow}/runs?head_sha={sha}&per_page=50")
-    if listing is None:
-        return _MirrorDecision(
-            1, f"::error::quality-gate: could not read the runs for {sha} — nothing to mirror"
+STATUS_READ_BACKS = 3
+# A recorded status is matched on these; GitHub may normalise the description it stores.
+STATUS_IDENTITY = ("context", "state", "target_url")
+
+
+def _unrecorded(gh: GitHub, repo: str, sha: str, pending: list[dict[str, str]]) -> list[str]:
+    """Contexts GitHub answered 5xx to and never recorded; it can write a status, then 500."""
+    for attempt in range(1, STATUS_READ_BACKS + 1):
+        if not pending:
+            break
+        time.sleep(gh.backoff * attempt)
+        try:
+            recorded = gh.get_list(f"repos/{repo}/commits/{sha}/statuses?per_page=100")
+        except GitHubError as err:
+            print(f"  read-back {attempt}/{STATUS_READ_BACKS} failed: {err}")
+            continue
+        seen = {tuple(status.get(key) for key in STATUS_IDENTITY) for status in recorded}
+        pending = [f for f in pending if tuple(f[key] for key in STATUS_IDENTITY) not in seen]
+    return [fields["context"] for fields in pending]
+
+
+def _post(
+    gh: GitHub,
+    opts: argparse.Namespace,
+    outcomes: dict[str, str],
+    reused: dict[str, str],
+    findings: dict[str, str],
+) -> bool:
+    """Post one status per check; False when any did not land."""
+    url = job_url(opts.repo, opts.run_id, opts.job_id)
+    areas = check_areas()
+    endpoint = f"repos/{opts.repo}/statuses/{opts.sha}"
+    lost: list[str] = []
+    unknown: list[dict[str, str]] = []
+    for name, outcome in outcomes.items():
+        fields = _status_fields(name, areas[name], outcome, reused, url, findings.get(name))
+        try:
+            gh.post(endpoint, fields)
+        except GitHubError as err:
+            print(f"  {fields['context']:<28} not posted: {err}")
+            # No status code or a 5xx leaves the write's fate unknown; anything else was refused.
+            if err.status is None or err.status >= 500:
+                unknown.append(fields)
+            else:
+                lost.append(fields["context"])
+            continue
+        print(f"  {fields['context']:<28} {fields['state']:<8} {fields['description']}")
+    missing = _unrecorded(gh, opts.repo, opts.sha, unknown)
+    for fields in unknown:
+        if fields["context"] not in missing:
+            print(f"  {fields['context']:<28} {fields['state']:<8} recorded despite the error")
+    lost += missing
+    if lost:
+        print(f"::error::post-statuses: {len(lost)} status(es) never landed: {', '.join(lost)}")
+    return not lost
+
+
+def _report_failed_tasks(
+    job: str,
+    planned: set[str],
+    raw: dict[str, nx_affected.TaskResult],
+    known: dict[str, nx_affected.Check],
+) -> dict[str, str]:
+    """Write each failed task's verdict; return each failed check's first finding.
+
+    The PR's checks list shows that finding before the job's verdict uploads.
+    """
+    first_findings: dict[str, str] = {}
+    for task in sorted(planned):
+        result = raw.get(task)
+        if not result or result["status"] in nx_affected.PASSED:
+            continue
+        check = known[task]
+        lane = f"{job}/{check.check}"
+        findings = output_findings.read(
+            result["output"],
+            fallback=check.fallback,
+            path_prefix=f"{check.cwd}/" if check.cwd else "",
         )
-
-    # Newest first, as the API returns them. Only the NEWEST substantive run
-    # decides: falling back past one that is still running or was cancelled
-    # would republish a success the latest validation has not confirmed.
-    for run in listing.get("workflow_runs", []):
-        candidate = int(run["id"])
-        if candidate == run_id:
-            continue
-        jobs = _run_jobs(repo, candidate)
-        if _is_plain_edit_run(jobs, gate_job):
-            continue
-        conclusion = _gate_conclusion(jobs, gate_job)
-        if conclusion is None:
-            # Still running is worth waiting for; a finished run whose gate never
-            # concluded (cancelled) will not change, so it fails now.
-            code = None if run.get("status") != "completed" else 1
-            return _MirrorDecision(
-                code,
-                f"::error::quality-gate: the latest validation has not concluded — run {candidate} "
-                f"is the newest run deciding {sha} and its gate reached no verdict. "
-                "Re-run this gate once that run finishes.",
-            )
-        if conclusion == "success":
-            return _MirrorDecision(
-                0, f"quality-gate: PASSED — mirroring run {candidate}, which concluded success"
-            )
-        return _MirrorDecision(
-            1,
-            f"::error::quality-gate: run {candidate} concluded {conclusion} for this commit, and "
-            "this edit changed no code. Fix the failures and push, or re-run that run.",
-        )
-
-    return _MirrorDecision(
-        1,
-        f"::error::quality-gate: no run of {workflow} has validated {sha} yet, so there "
-        "is no verdict to mirror. Re-run this gate once the lanes finish.",
-    )
+        if findings:
+            first_findings.setdefault(str(check.check), _one_line(findings[0]))
+        if not lane_already_reported(lane, default_out_dir()):
+            report_failed_check(lane, result["code"], result["output"], findings, default_out_dir())
+    return first_findings
 
 
-def cmd_mirror_previous_gate(args: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="verdict.py mirror-previous-gate")
-    parser.add_argument("--repo", required=True, help="owner/name")
+def cmd_post_statuses(args: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="verdict.py post-statuses")
+    parser.add_argument("--job", required=True, help="the ci.yml job whose checks these are")
     parser.add_argument(
-        "--sha",
-        required=True,
-        help=(
-            "the PR HEAD sha, not github.sha — a pull_request run's github.sha is the "
-            "merge commit, while the check runs branch protection reads hang off the head"
-        ),
+        "--results", type=Path, required=True, help="runner.py run-job's task results"
     )
-    parser.add_argument("--workflow", required=True, help="this workflow's file name")
-    parser.add_argument("--job", required=True, help="the gate job's `name:`")
-    parser.add_argument("--run-id", required=True, type=int, help="this run, excluded")
     parser.add_argument(
-        "--wait-seconds",
+        "--step", action="append", default=[], metavar="check=outcome",
+        help="the outcome of a check a workflow step ran (an action, not an nx task)",
+    )  # fmt: skip
+    parser.add_argument(
+        "--job-tasks", default="{}", help="JSON {job: [task]} from detect: what this job had to run"
+    )
+    parser.add_argument("--reused", default="{}", help="JSON {check: note} from `reuse-plan`")
+    parser.add_argument(
+        "--check", help="post just this finished check now (run-job); the job's verdict waits"
+    )
+    parser.add_argument(
+        "--no-post", action="store_true", help="a fork's token cannot write statuses"
+    )
+    parser.add_argument("--repo")
+    parser.add_argument(
+        "--sha", help="the PR HEAD sha (a pull_request run's github.sha is the merge)"
+    )
+    parser.add_argument("--run-id", type=int)
+    parser.add_argument(
+        "--job-id",
         type=int,
-        default=0,
-        help=(
-            "keep polling while the deciding run is still in progress, up to this long — "
-            "an edit no longer cancels that run, so its verdict is worth waiting for"
-        ),
+        help="this job's check-run id (`job.check_run_id`): what statuses link to",
     )
     opts = parser.parse_args(args)
+    reused: dict[str, str] = json.loads(opts.reused or "{}")
+    raw: dict[str, nx_affected.TaskResult] = (
+        json.loads(opts.results.read_text()) if opts.results.is_file() else {}
+    )
+    results = {task: result["status"] for task, result in raw.items()}
+    steps = dict(pair.split("=", 1) for pair in opts.step)
+    known = nx_affected.checks()
+    planned = {
+        task
+        for task in json.loads(opts.job_tasks or "{}").get(opts.job, [])
+        if known[task].check not in reused
+    }
+    outcomes = job_outcomes(opts.job, planned, results, steps)
+    if opts.check:
+        planned = {task for task in planned if known[task].check == opts.check}
+    first_findings = _report_failed_tasks(opts.job, planned, raw, known)
 
-    deadline = time.monotonic() + opts.wait_seconds
-    while True:
-        decision = _mirror_once(opts.repo, opts.sha, opts.workflow, opts.job, opts.run_id)
-        if decision.code is not None or time.monotonic() >= deadline:
-            print(decision.message)
-            return 1 if decision.code is None else decision.code
-        print(
-            f"quality-gate: waiting for the deciding run to conclude (next look in {MIRROR_POLL_SECONDS}s)"
+    # Checks run-job already posted as they finished; their state cannot change since.
+    posted_file = opts.results.with_suffix(".posted")
+    posted = set(posted_file.read_text().split()) if posted_file.is_file() else set()
+    to_post = (
+        {opts.check: outcomes[opts.check]}
+        if opts.check
+        else {name: outcome for name, outcome in outcomes.items() if name not in posted}
+    )
+    landed = True
+    if not opts.no_post:
+        if not (opts.repo and opts.sha and opts.run_id and opts.job_id):
+            parser.error("--repo, --sha, --run-id and --job-id are required to post")
+        landed = _post(GitHub.from_env(), opts, to_post, reused, first_findings)
+    if opts.check:
+        if landed and not opts.no_post:
+            with posted_file.open("a") as handle:
+                handle.write(f"{opts.check}\n")
+        return 0
+
+    failed = [name for name, outcome in outcomes.items() if outcome not in ("success", "skipped")]
+    for name, outcome in outcomes.items():
+        label = f"reused — {reused[name]}" if outcome == "skipped" and name in reused else outcome
+        print(f"  {name + ':':<24} {label}")
+    if failed:
+        report(
+            opts.job,
+            Status.FAIL,
+            f"{len(failed)} of {len(outcomes)} check(s) did not pass: {', '.join(failed)}",
+            advice=[f"Open the job's log for {name}." for name in failed],
         )
-        time.sleep(MIRROR_POLL_SECONDS)
+        return 1
+    ran = sum(outcome == "success" for outcome in outcomes.values())
+    report(
+        opts.job,
+        Status.PASS,
+        f"{ran} of {len(outcomes)} check(s) ran and passed; the rest had nothing to check or were reused",
+    )
+    return 0 if landed else 1
 
 
 # ---------------------------------------------------------------------------
 # reuse-plan
 #
-# A push used to re-run every lane its PR touched against the base, even when
-# the push changed nothing a lane reads: the last commit on #1307 touched four
+# A push used to re-run every check its PR touched against the base, even when
+# the push changed nothing a check reads: the last commit on #1307 touched four
 # Python files and still rebuilt the web app, re-ran knip, jscpd and the TS
-# lanes. A lane's last PASS on this PR still holds when nothing in its scope
-# (the lane table's `scope` regexes, unioned per `ci_job`) and nothing in CI or
-# tooling changed between that pass's head commit and this one. `changes`
-# computes the plan, each reusable job skips on it, and the gate reads a skip
-# as a pass exactly as it does for an untouched language. Anything unreadable
-# means no reuse: the only safe direction here is running more.
+# checks. A check's last PASS on this PR still holds when nx would not select
+# its nx task (metadata.ci names the check) for what changed between that pass's head and
+# this one, head and base both: the same answer detect gates the check on, so a
+# file the check reads, its config and the CI harness all rerun it. `detect`
+# computes the plan, run-job skips each reused task, and post-statuses reads
+# the skip as a pass. Anything unreadable means no reuse: the only safe
+# direction here is running more.
+#
+# A pass is read from the check's own `ci / <area> / <check>` status (posted by
+# `post-statuses`), never from the job API: a `continue-on-error` step that
+# FAILED reports conclusion `success` there, so a red check read as an anchor.
+# The status's target_url names the run that posted it, which is how the plan
+# finds the base tip that run recorded.
 # ---------------------------------------------------------------------------
 
-LANES_FILE = REPO_ROOT / "scripts" / "dev" / "verify-lanes.json"
-
-# A change here can alter any lane's verdict without touching its scope: the
-# workflows and composites, the CI and lint tooling, and every config manifest.
-GLOBAL_INVALIDATORS = re.compile(
-    r"^(\.github/|\.dagger/|\.config/|\.mise/|scripts/|tools/|config/|patches/)"
-    r"|^[^/]+$"
-    r"|(^|/)(pyproject\.toml|package\.json|project\.json|tsconfig[^/]*\.json|biome\.jsonc?|uv\.lock|pnpm-lock\.yaml)$"
-)
 REUSE_LOOKBACK_RUNS = 30
-# The annotation each run's plan leaves on its `changes` job naming the base tip
+# The annotation each run's plan leaves on its `detect` job naming the base tip
 # it validated, so a later run can diff base movement too: a pull_request run
 # checks the MERGE of head and base, and the base moves between pushes.
 VALIDATED_BASE_TITLE = "reuse-plan base"
-CHANGES_JOB = "changes"
+DETECT_JOB = "detect"
+# A status that proves the check passed: it ran green, or it was itself reused
+# from a pass whose scope has not moved since.
+PROVEN_DESCRIPTION = re.compile(r"^(passed|reused)\b")
 
 
-def _job_display_names(workflow: Path) -> dict[str, str]:
-    """Map each job id to its `name:` (the job API reports display names only)."""
-    names: dict[str, str] = {}
-    job: str | None = None
-    for line in workflow.read_text().splitlines():
-        header = re.fullmatch(r"  ([A-Za-z0-9_-]+):", line)
-        if header:
-            job = header.group(1)
-            names.setdefault(job, job)
-            continue
-        named = re.fullmatch(r"    name: (.+)", line)
-        if job and named:
-            names[job] = named.group(1).strip().strip("\"'")
-    return names
+def _check_tasks() -> dict[str, list[str]]:
+    """Map each reusable check to the nx tasks that decide it; a check marked reuse: false always runs."""
+    tasks: dict[str, list[str]] = {}
+    for check in nx_affected.checks().values():
+        if check.check and check.reuse and check.runner == "nx":
+            tasks.setdefault(check.check, []).append(check.task)
+    return tasks
 
 
-def _job_scopes(lanes_file: Path) -> dict[str, list[re.Pattern[str]]]:
-    scopes: dict[str, list[re.Pattern[str]]] = defaultdict(list)
-    for lane in json.loads(lanes_file.read_text())["lanes"]:
-        if lane.get("ci_job"):
-            scopes[lane["ci_job"]].append(re.compile(lane["scope"]))
-    return dict(scopes)
+def _affected_tasks(changed: list[str]) -> dict[str, list[dict[str, str]]]:
+    """Return the nx tasks a set of changed files reaches, each with why."""
+    return nx_affected.select(["--files", *changed]).tasks if changed else {}
 
 
 def _changed_between(anchor: str, head: str) -> list[str] | None:
@@ -1464,16 +1680,32 @@ def _validated_base(head_sha: str) -> str | None:
     return next(parent for parent in commits[1:] if parent != head_sha)
 
 
-def _recorded_base(job: dict[str, Any]) -> str | None:
-    """Return the base tip an earlier run's plan annotated on its changes job, if it left one."""
-    url = str(job.get("check_run_url") or "")
+def _recorded_base(gh: GitHub, job: Json) -> str | None:
+    """Return the base tip an earlier run's plan annotated on its detect job, if it left one."""
+    url = text_of(job, "check_run_url")
     if "api.github.com/" not in url:
         return None
-    annotations = _gh_json(f"{url.split('api.github.com/', 1)[1]}/annotations")
-    for note in annotations if isinstance(annotations, list) else []:
+    for note in gh.get_list(f"{url.split('api.github.com/', 1)[1]}/annotations"):
         if note.get("title") == VALIDATED_BASE_TITLE:
             return str(note.get("message", "")).strip() or None
     return None
+
+
+def _proven_checks(gh: GitHub, repo: str, sha: str, run_id: int) -> set[str]:
+    """Return the checks whose LATEST status on sha is a pass that run `run_id` posted."""
+    combined = gh.get(f"repos/{repo}/commits/{sha}/status?per_page=100")
+    areas = check_areas()
+    proven: set[str] = set()
+    for status in records(combined, "statuses"):
+        check = _check_of_context(str(status.get("context", "")), areas)
+        if (
+            check is not None
+            and status.get("state") == "success"
+            and PROVEN_DESCRIPTION.match(str(status.get("description", "")))
+            and f"/actions/runs/{run_id}/" in str(status.get("target_url", ""))
+        ):
+            proven.add(check)
+    return proven
 
 
 class _Anchor(NamedTuple):
@@ -1492,46 +1724,98 @@ class _PrRuns(NamedTuple):
     run_id: int
 
 
-def _reuse_anchors(pr: _PrRuns, names: dict[str, str], changes_name: str) -> dict[str, _Anchor]:
-    """Each job's newest earlier PASS on this PR (same base branch, recorded base tip), keyed by job id."""
-    listing = _gh_json(
+def _run_jobs(gh: GitHub, repo: str, run_id: int) -> list[Json]:
+    return gh.collect(f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100", "jobs")
+
+
+def _base_refs(run: Json) -> set[object]:
+    return {
+        base.get("ref")
+        for entry in records(run, "pull_requests")
+        if isinstance(base := entry.get("base"), dict)
+    }
+
+
+def _reuse_anchors(gh: GitHub, pr: _PrRuns, wanted: set[str]) -> dict[str, _Anchor]:
+    """Each check's newest earlier PASS on this PR (same base branch, recorded base tip)."""
+    listing = gh.get(
         f"repos/{pr.repo}/actions/workflows/{pr.workflow}/runs"
         f"?branch={pr.branch}&event=pull_request&per_page={REUSE_LOOKBACK_RUNS}"
     )
-    if listing is None:
-        return {}
-    wanted = {name: job for job, name in names.items()}
     anchors: dict[str, _Anchor] = {}
-    for run in listing.get("workflow_runs", []):
-        if int(run["id"]) == pr.run_id or run.get("status") != "completed":
+    for run in records(listing, "workflow_runs"):
+        run_id = field_of(run, "id", int)
+        if run_id == pr.run_id or run.get("status") != "completed":
             continue
-        bases = {entry.get("base", {}).get("ref") for entry in run.get("pull_requests") or []}
-        if pr.base not in bases:
+        if pr.base not in _base_refs(run):
             continue
-        jobs = _run_jobs(pr.repo, int(run["id"]))
-        passed = [
-            wanted[str(job.get("name"))]
-            for job in jobs
-            if str(job.get("name")) in wanted
-            and wanted[str(job.get("name"))] not in anchors
-            and job.get("conclusion") == "success"
-        ]
-        changes = next((job for job in jobs if job.get("name") == changes_name), None)
-        recorded = _recorded_base(changes) if passed and changes else None
+        head_sha = field_of(run, "head_sha", str)
+        passed = (_proven_checks(gh, pr.repo, head_sha, run_id) & wanted) - set(anchors)
+        if not passed:
+            continue
+        detect = next(
+            (job for job in _run_jobs(gh, pr.repo, run_id) if job.get("name") == DETECT_JOB), None
+        )
+        recorded = _recorded_base(gh, detect) if detect else None
         if recorded:
-            for key in passed:
-                anchors[key] = _Anchor(int(run["id"]), str(run["head_sha"]), recorded)
+            for check in passed:
+                anchors[check] = _Anchor(run_id, head_sha, recorded)
         if len(anchors) == len(wanted):
             break
     return anchors
 
 
+def _reuse_note(
+    check: str,
+    tasks: list[str],
+    anchor: _Anchor | None,
+    affected: dict[tuple[str, str], dict[str, list[dict[str, str]]] | None],
+) -> str | None:
+    """Return why `check` is reused, or None (printing why it runs)."""
+    if anchor is None:
+        print(f"  {check + ':':<28} runs — no earlier pass on this PR")
+        return None
+    reached = affected[(anchor.head_sha, anchor.base_sha)]
+    if reached is None:
+        print(f"  {check + ':':<28} runs — run {anchor.run_id}'s commits are not in the checkout")
+        return None
+    hit = next((task for task in tasks if task in reached), None)
+    if hit:
+        why = reached[hit][0]
+        print(
+            f"  {check + ':':<28} runs — {why.get('file') or why['kind']} changed since run {anchor.run_id}"
+        )
+        return None
+    note = (
+        f"passed at {anchor.head_sha[:12]} in run {anchor.run_id}; nothing it reads changed since"
+    )
+    print(f"  {check + ':':<28} REUSED — {note}")
+    return note
+
+
+def _affected_since(
+    anchors: dict[str, _Anchor], head_sha: str, current_base: str
+) -> dict[tuple[str, str], dict[str, list[dict[str, str]]] | None]:
+    """Ask nx once per anchor what changed since it, on the head and the base; None when undiffable."""
+    out: dict[tuple[str, str], dict[str, list[dict[str, str]]] | None] = {}
+    for anchor in anchors.values():
+        key = (anchor.head_sha, anchor.base_sha)
+        if key in out:
+            continue
+        head_changes = _changed_between(anchor.head_sha, head_sha)
+        base_changes = _changed_between(anchor.base_sha, current_base)
+        out[key] = (
+            None
+            if head_changes is None or base_changes is None
+            else _affected_tasks(sorted(set(head_changes + base_changes)))
+        )
+    return out
+
+
 def cmd_reuse_plan(args: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="verdict.py reuse-plan")
     parser.add_argument("--repo", required=True)
-    parser.add_argument(
-        "--workflow", required=True, help="the workflow file name, e.g. code-quality.yml"
-    )
+    parser.add_argument("--workflow", required=True, help="the workflow file name, e.g. ci.yml")
     parser.add_argument("--branch", required=True, help="the PR head branch")
     parser.add_argument(
         "--base", required=True, help="the PR base branch this run validates against"
@@ -1542,7 +1826,6 @@ def cmd_reuse_plan(args: list[str]) -> int:
     parser.add_argument("--run-id", required=True, type=int)
     parser.add_argument("--run-attempt", type=int, default=1, help="a manual re-run reuses nothing")
     parser.add_argument("--event", required=True)
-    parser.add_argument("--lanes", type=Path, default=LANES_FILE)
     opts = parser.parse_args(args)
 
     reused: dict[str, str] = {}
@@ -1552,58 +1835,36 @@ def cmd_reuse_plan(args: list[str]) -> int:
     if current_base is None or opts.run_attempt > 1:
         print(
             f"reuse-plan: {opts.event} attempt {opts.run_attempt}, validated base "
-            f"{current_base or 'unknown'} — every lane runs"
+            f"{current_base or 'unknown'} — every check runs"
         )
     else:
-        scopes = _job_scopes(opts.lanes)
-        all_names = _job_display_names(REPO_ROOT / ".github" / "workflows" / opts.workflow)
-        names = {job: name for job, name in all_names.items() if job in scopes}
-        anchors = _reuse_anchors(
-            _PrRuns(opts.repo, opts.workflow, opts.branch, opts.base, opts.run_id),
-            names,
-            all_names.get(CHANGES_JOB, CHANGES_JOB),
-        )
-        for job in sorted(names):
-            anchor = anchors.get(job)
-            if anchor is None:
-                print(f"  {job + ':':<28} runs — no earlier pass on this PR")
-                continue
-            head_changes = _changed_between(anchor.head_sha, opts.head_sha)
-            base_changes = _changed_between(anchor.base_sha, current_base)
-            if head_changes is None or base_changes is None:
-                print(
-                    f"  {job + ':':<28} runs — run {anchor.run_id}'s commits are not in the checkout"
-                )
-                continue
-            changed = head_changes + base_changes
-            hit = next(
-                (
-                    path
-                    for path in changed
-                    if GLOBAL_INVALIDATORS.search(path)
-                    or any(rx.search(path) for rx in scopes[job])
-                ),
-                None,
+        tasks = _check_tasks()
+        try:
+            anchors = _reuse_anchors(
+                GitHub.from_env(),
+                _PrRuns(opts.repo, opts.workflow, opts.branch, opts.base, opts.run_id),
+                set(tasks),
             )
-            if hit:
-                print(f"  {job + ':':<28} runs — {hit} changed since run {anchor.run_id}")
-                continue
-            reused[job] = (
-                f"passed at {anchor.head_sha[:12]} in run {anchor.run_id}; nothing it reads changed since"
-            )
-            print(f"  {job + ':':<28} REUSED — {reused[job]}")
+        except GitHubError as err:
+            # Unreadable means no proof of an earlier pass; running more is the safe side.
+            print(f"reuse-plan: earlier runs are unreadable ({err}) — every check runs")
+            anchors = {}
+        affected = _affected_since(anchors, opts.head_sha, current_base)
+        for check in sorted(tasks):
+            note = _reuse_note(check, tasks[check], anchors.get(check), affected)
+            if note:
+                reused[check] = note
 
     outputs = os.environ.get("GITHUB_OUTPUT")
     if outputs:
         with Path(outputs).open("a") as handle:
-            handle.write(f"reused_jobs={json.dumps(sorted(reused))}\n")
             handle.write(f"reused={json.dumps(reused)}\n")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary and reused:
-        rows = "\n".join(f"| `{job}` | {note} |" for job, note in sorted(reused.items()))
+        rows = "\n".join(f"| `{check}` | {note} |" for check, note in sorted(reused.items()))
         with Path(summary).open("a") as handle:
-            handle.write(f"### Reused lanes\n\n| lane | why |\n| --- | --- |\n{rows}\n")
-    print(f"reuse-plan: {len(reused)} lane(s) reused")
+            handle.write(f"### Reused checks\n\n| check | why |\n| --- | --- |\n{rows}\n")
+    print(f"reuse-plan: {len(reused)} check(s) reused")
     return 0
 
 
@@ -1615,9 +1876,9 @@ SUBCOMMANDS = {
     "pytest-verdict": cmd_pytest_verdict,
     "regression-proof-select": cmd_regression_proof_select,
     "regression-proof-verdict": cmd_regression_proof_verdict,
-    "collect": cmd_collect,
-    "step-outcomes": cmd_step_outcomes,
-    "mirror-previous-gate": cmd_mirror_previous_gate,
+    "check": cmd_check,
+    "sarif": cmd_sarif,
+    "post-statuses": cmd_post_statuses,
     "reuse-plan": cmd_reuse_plan,
 }
 

@@ -43,7 +43,7 @@ class TestExecuteProxyRendering:
         assert entry is not None
         data = entry["data"]
         assert data["tool_name"] == "GMAIL_SEND_EMAIL"
-        assert data["tool_category"] == "GMAIL"
+        assert (data["tool_category"], data["integration_name"]) == ("gmail", "Gmail")
         assert data["inputs"] == {"recipient_email": "bob@example.com", "subject": "Re: deck"}
 
     async def test_task_description_is_the_display_label(self) -> None:

@@ -1,0 +1,28 @@
+#!/bin/sh
+#
+# Configured as part of the DigitalOcean 1-Click Image build process
+
+myip=$(hostname -I | awk '{print$1}')
+cat <<EOM
+********************************************************************************
+
+Welcome to the GAIA 1-Click Droplet.
+
+Finish setup in your browser: http://$myip/setup
+  * Create the admin account, then paste one AI provider key (OpenAI works).
+  * First boot pulls the images; if the page is not up yet, follow
+    /var/log/gaia-install.log.
+
+On the server, as the gaia user (sudo -iu gaia):
+  * gaia status    - every service and dependency
+  * gaia doctor    - what is broken and how to fix it
+  * gaia update    - move to the release your CLI ships
+  * HTTPS on your own domain: gaia up --domain gaia.example.com
+
+The UFW firewall allows only 22 (SSH), 80 (HTTP) and 443 (HTTPS).
+
+Docs: https://docs.heygaia.io/self-hosting/overview
+
+********************************************************************************
+To delete this message of the day: rm -rf $(readlink -f "${0}")
+EOM

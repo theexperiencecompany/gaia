@@ -1,8 +1,6 @@
 "use client";
 
-import type { FAQPage, WithContext } from "schema-dts";
 import FAQAccordion from "@/components/seo/FAQAccordion";
-import JsonLd from "@/components/seo/JsonLd";
 
 interface Feature {
   title: string;
@@ -96,29 +94,14 @@ export default function PersonaSEOSection({
         </div>
       </section>
 
-      {/* FAQs */}
+      {/* FAQs — page-level FAQPage JSON-LD is emitted by the page
+          via generateFAQSchema, fed from the same faqs array. */}
       {faqs.length > 0 && (
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
             Frequently Asked Questions
           </h2>
           <FAQAccordion faqs={faqs} />
-          <JsonLd
-            data={
-              {
-                "@context": "https://schema.org",
-                "@type": "FAQPage",
-                mainEntity: faqs.map((faq) => ({
-                  "@type": "Question",
-                  name: faq.question,
-                  acceptedAnswer: {
-                    "@type": "Answer",
-                    text: faq.answer,
-                  },
-                })),
-              } as WithContext<FAQPage>
-            }
-          />
         </section>
       )}
 

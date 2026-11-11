@@ -1,1 +1,86 @@
-{"slug":"poke","name":"Poke","domain":"poke.com","tagline":"AI-powered productivity assistant","description":"Poke offers AI-driven productivity features. GAIA provides a comprehensive open-source productivity OS with 50+ integrations and proactive automation.","metaTitle":"Poke Alternative with Proactive AI — GAIA vs Poke","metaDescription":"Compare GAIA and Poke for AI productivity. GAIA is open-source with 50+ integrations, proactive automation, and graph-based memory for comprehensive workflow management.","keywords":["GAIA vs Poke","Poke alternative","AI productivity tool","AI assistant comparison"],"intro":"Poke has entered the AI productivity space with features designed to streamline daily work. While helpful, GAIA takes a fundamentally different approach: a complete, open-source productivity operating system that proactively manages your entire digital workflow. GAIA connects all your tools, learns your patterns, and acts autonomously.","rows":[{"feature":"Core approach","gaia":"Open-source productivity OS with proactive AI that manages email, calendar, tasks, and workflows","competitor":"AI productivity assistant with targeted features"},{"feature":"Proactive automation","gaia":"Monitors your digital life 24/7 and acts before you ask","competitor":"Responds to user requests and interactions"},{"feature":"Integrations","gaia":"50+ integrations including Gmail, Slack, Notion, GitHub, Todoist, Asana, Linear","competitor":"Limited integration ecosystem"},{"feature":"Memory","gaia":"Graph-based memory connecting tasks, meetings, documents, and user preferences","competitor":"Basic conversation history"},{"feature":"Open source","gaia":"Fully open source with self-hosting via Docker","competitor":"Proprietary platform"},{"feature":"Workflow automation","gaia":"Multi-step workflows with smart triggers and cross-tool orchestration","competitor":"Basic task assistance and suggestions"},{"feature":"Multi-platform","gaia":"Web app, desktop (macOS, Windows, Linux), mobile, Discord, Slack, Telegram bots","competitor":"Web and mobile interfaces"}],"gaiaAdvantages":["Open source with full transparency and self-hosting","50+ deep integrations vs limited ecosystem","Proactive monitoring and autonomous actions","Graph-based persistent memory","Multi-step workflow automation","Multi-platform availability"],"competitorAdvantages":["Simpler onboarding for basic productivity needs","Focused feature set may be easier to learn"],"verdict":"Choose Poke if you want a simple AI productivity tool for basic task assistance. Choose GAIA if you want a comprehensive, open-source AI assistant that proactively manages your entire digital workflow with deep integrations and autonomous capabilities.","faqs":[{"question":"What makes GAIA different from Poke?","answer":"GAIA is a complete productivity operating system that proactively manages email, calendar, tasks, and workflows across 50+ integrations. It is fully open source and self-hostable, with graph-based memory that learns your work patterns over time."}]}
+{
+  "slug": "poke",
+  "name": "Poke",
+  "domain": "poke.com",
+  "tagline": "An AI assistant that lives in your text messages",
+  "description": "Poke is a personal assistant you text in Messages, WhatsApp or Telegram, connected to your email, calendar and apps. GAIA works from the same chat apps and adds web and desktop apps, workflows across your tools and source-available code.",
+  "metaTitle": "Poke AI Alternatives: GAIA vs Poke, Side by Side",
+  "metaDescription": "Poke lives in your texts. GAIA works in iMessage, WhatsApp and Telegram too, and adds web and desktop apps, triggered workflows and source-available code.",
+  "keywords": [
+    "poke ai alternatives",
+    "poke ai alternative",
+    "poke alternatives",
+    "GAIA vs Poke",
+    "poke assistant",
+    "imessage ai assistant"
+  ],
+  "intro": "Poke made a good idea popular: an assistant you simply text, with no app to learn. It connects to your email and calendar, nudges you when something needs attention, and runs recipes from the chat. GAIA shares the messaging habit, working in iMessage, WhatsApp and Telegram, and goes past the chat window: a web and desktop app for longer work, workflows triggered by your tools, memory you can inspect, and code that is public under a source-available license.",
+  "rows": [
+    {
+      "feature": "Core approach",
+      "gaia": "A personal AI assistant you reach from chat apps, the web and the desktop, working across email, calendar, tasks and your other tools",
+      "competitor": "A text-based assistant from The Interaction Company, acquired by Cognition in July 2026; you reach it in Messages, WhatsApp and Telegram"
+    },
+    {
+      "feature": "Proactive automation",
+      "gaia": "Workflows that run on a schedule or when something happens in Gmail, Google Calendar, Slack, GitHub, Linear and more",
+      "competitor": "Proactive nudges from connected email, calendar and apps; background automations on its paid plan"
+    },
+    {
+      "feature": "Integrations",
+      "gaia": "Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot and more, plus custom MCP servers",
+      "competitor": "Gmail, Google Calendar, Outlook, Notion, Linear, GitHub and more, plus custom integrations through MCP and shareable recipes"
+    },
+    {
+      "feature": "Memory",
+      "gaia": "Long-term memory of your preferences and people that you can view, edit and delete in settings",
+      "competitor": "Uses memory of past chats; what it stores and how you edit it is not documented publicly"
+    },
+    {
+      "feature": "Source-available",
+      "gaia": "Source-available (PolyForm Noncommercial) with self-hosting via Docker",
+      "competitor": "Proprietary, cloud-only"
+    },
+    {
+      "feature": "Workflow automation",
+      "gaia": "Multi-step workflows with schedule and integration triggers, editable in the app",
+      "competitor": "Recipes and plain-English automations, set up and run inside the chat"
+    },
+    {
+      "feature": "Where you use it",
+      "gaia": "iMessage, WhatsApp, Telegram, Slack and Discord, plus a web app and a desktop app for macOS, Windows and Linux",
+      "competitor": "No app to install; everything happens in Messages, WhatsApp or Telegram"
+    }
+  ],
+  "gaiaAdvantages": [
+    "The same texting habit, plus web and desktop apps for longer work",
+    "Workflows triggered by your email, calendar and team tools",
+    "Memory you can see, edit and delete",
+    "A desktop app that can look at your screen and use your clipboard",
+    "Source-available, with self-hosting via Docker"
+  ],
+  "competitorAdvantages": [
+    "Nothing to install: it lives entirely in your text messages",
+    "Approved as the first AI agent on Apple's Messages for Business",
+    "A community library of shareable recipes"
+  ],
+  "verdict": "Choose Poke if you want an assistant that lives only in your texts and you like building with recipes. Choose GAIA if you want the same chat convenience plus a web and desktop app, workflows that run across your tools, memory you control and code you can inspect.",
+  "faqs": [
+    {
+      "question": "What makes GAIA different from Poke?",
+      "answer": "Both are assistants you can text. Poke lives only inside your messaging apps. GAIA also has a web app and a desktop app, runs workflows triggered by your tools, lets you view and edit everything it remembers, and is source-available under the PolyForm Noncommercial license."
+    },
+    {
+      "question": "Does GAIA work in iMessage like Poke?",
+      "answer": "Yes. You link iMessage in GAIA's settings with your phone number and then text GAIA in Messages. It also works in WhatsApp, Telegram, Slack and Discord."
+    },
+    {
+      "question": "Is there a source-available alternative to Poke?",
+      "answer": "GAIA is one. Its code is public under the PolyForm Noncommercial license, so you can read it and self-host it for personal, noncommercial use. The hosted service is a paid subscription."
+    }
+  ],
+  "relatedPersonas": [
+    "solopreneurs",
+    "startup-founders"
+  ]
+}

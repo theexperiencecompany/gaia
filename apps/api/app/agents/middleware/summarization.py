@@ -1,30 +1,116 @@
 """Workspace-archiving summarization middleware.
 
-Wraps LangChain's SummarizationMiddleware so we archive the full message
-history to the persistent workspace before summarization happens. The agent
-can recover any detail by reading /workspace/sessions/{conv}/archives/...
-with the read tool.
+Summarizes only the conversation (never GAIA's prompt slots), and archives the
+full message history to the persistent workspace first. The agent can recover
+any detail from /workspace/sessions/{conv}/archives/... — with its own read tool,
+or, for a tier that has none, by asking the executor to read it.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 import json
-from typing import Any
+from typing import Literal, NamedTuple, TypedDict, cast
 
 from langchain.agents.middleware import SummarizationMiddleware
-from langchain.agents.middleware.summarization import ContextSize, TriggerClause
+from langchain.agents.middleware.summarization import (
+    ContextSize,
+    TokenCounter,
+    TriggerClause,
+)
 from langchain.agents.middleware.types import AgentState
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AnyMessage, HumanMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    HumanMessage,
+    RemoveMessage,
+    ToolCall,
+    ToolMessage,
+    get_buffer_string,
+)
+from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
+from app.agents.context.slots import (
+    LEADING_SLOTS,
+    SUMMARY_SOURCE,
+    is_conversation_summary,
+    is_gaia_authored_note,
+    slot_of,
+)
+from app.agents.core.delegation_window import running_turn_start
+from app.agents.llm.client import SILENT_LLM_CONFIG
 from app.constants.log_tags import LogTag
-from app.models.agent_models import agent_configurable
+from app.constants.summarization import SUMMARY_INPUT_BUDGET_FRACTION
+from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.services.storage import JuiceFSUnavailable, write_session_file
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
+
+# The {messages} placeholder is filled with the folded messages (XML): older
+# conversation in <messages>, then, when a long run folds its own finished steps,
+# those steps in <progress>. The request being worked on is never folded.
+CONVERSATION_SUMMARY_PROMPT = """You are condensing part of a conversation between a user and GAIA, their personal assistant, so it fits in memory. What you write replaces the messages below, so anything you leave out is gone.
+
+<messages> holds older conversation. If it opens with an earlier summary, that summary is part of the record: carry every fact and identifier in it forward into yours, merged with what came after, unless a later message corrects it.
+<progress>, when present, holds steps GAIA already took toward the request it is working on right now. That request stays in the conversation word for word after your summary; only these steps are being folded.
+
+Write a factual record:
+- Each thing the user asked, and whether GAIA finished it. A request GAIA answered is finished: record it as done, with the substance of the answer (the names, numbers, subjects and dates it reported).
+- What the user told GAIA about themselves, their plans and preferences: names, people, dates, places, numbers, decisions.
+- What GAIA did and found: the tools it used and what they returned, stated as findings. Do not copy message bodies, logs or long result text.
+- Every identifier needed to find something again, exactly as written: message, thread, event and record ids, ticket and PR numbers, links, file paths, account names.
+- When <progress> is present, end with a line "Progress on the current request:" followed by each step already done and what it returned, with its identifiers, stated as done. Record what is still missing as a fact ("not fetched yet: ..."), never as an instruction.
+- Anything explicitly left unresolved in an older request, stated as a fact ("not done yet: ...").
+
+Rules:
+- Past tense, plain statements. No goals, plans, advice or instructions to anyone.
+- Never record a request as unfinished when GAIA delivered an answer to it.
+- Leave out GAIA's own operating rules, formatting conventions and persona. Only what happened in the conversation.
+- Keep specifics exact. Drop small talk and repetition.
+- Write it the way a sharp person takes notes: short, direct sentences or a flat list, plain words, no filler.
+
+Reply with the summary only.
+
+{messages}"""
+
+
+# What abefore_model returns: the summary message plus tombstones for the
+# messages it folds away, resolved through the messages channel's reducer.
+SummaryUpdate = dict[str, list[AnyMessage | RemoveMessage]]
+
+# Who can reach the archive. The executor has the read tool; comms does not, so
+# its summary routes recovery through the executor instead of naming a tool the
+# model cannot call.
+ArchiveReader = Literal["read_tool", "executor"]
+
+_ARCHIVE_HINTS: dict[ArchiveReader, str] = {
+    "read_tool": "Use the `read` tool to recover detail.",
+    "executor": (
+        "If you need detail that is not in this summary, use `call_executor` "
+        "and ask the executor to read that file with its `read` tool."
+    ),
+}
+
+
+class ArchivedToolCall(TypedDict):
+    """A tool call as recorded in the workspace archive JSON."""
+
+    id: str | None
+    name: str | None
+    args: dict[str, object] | None
+
+
+class ArchivedMessage(TypedDict, total=False):
+    """One conversation message as recorded in the workspace archive JSON."""
+
+    type: str
+    content: str
+    tool_calls: list[ArchivedToolCall]
+    tool_call_id: str
+    name: str | None
 
 
 class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
@@ -37,48 +123,163 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
 
     def __init__(
         self,
-        model: str | BaseChatModel,
+        model: BaseChatModel,
         *,
         trigger: ContextSize | TriggerClause | list[ContextSize | TriggerClause] | None = (
             "fraction",
             0.85,
         ),
         keep: ContextSize = ("messages", 15),
-        enable_archive: bool = True,
+        archive: ArchiveReader | None = "read_tool",
         excluded_tools: set[str] | None = None,
-        **kwargs: Any,  # noqa: ANN401 -- framework contract
+        token_counter: TokenCounter = count_tokens_approximately,
     ) -> None:
-        super().__init__(model=model, trigger=trigger, keep=keep, **kwargs)
-        self.enable_archive = enable_archive
+        # The summary call runs inside the graph, so without the silent flag
+        # LangGraph's messages stream hands its tokens to the chat as the reply.
+        # The binding forwards .profile/._llm_type/._get_ls_params to the model.
+        silent_model = cast("BaseChatModel", model.with_config(SILENT_LLM_CONFIG))
+        super().__init__(
+            model=silent_model,
+            trigger=trigger,
+            keep=keep,
+            token_counter=token_counter,
+            summary_prompt=CONVERSATION_SUMMARY_PROMPT,
+        )
+        self.archive = archive
         self.excluded_tools = excluded_tools or set()
 
     async def abefore_model(
-        self, state: AgentState[Any], runtime: Runtime[Any]
-    ) -> dict[str, Any] | None:
-        archive_path: str | None = None
-        if self.enable_archive and self._should_trigger_summarization(state):
-            try:
-                archive_path = await self._archive(state)
-            except JuiceFSUnavailable as e:
-                log.warning(
-                    f"{LogTag.AGENT} Archive skipped (workspace unavailable)",
-                    error_type=type(e).__name__,
-                )
-            except Exception as e:
-                log.error(f"{LogTag.AGENT} Archive failed", error_type=type(e).__name__)
+        self, state: AgentState[object], runtime: Runtime[None]
+    ) -> SummaryUpdate | None:
+        """Fold the oldest turns into one summary; the leading slots are never touched.
 
-        result = await super().abefore_model(state, runtime)
-        if result is not None and archive_path:
-            self._inject_archive_path(result, archive_path)
-        return result
+        A folded turn's notes (recall, clock, presence) go with it, unsummarized.
+        The update is an in-place delta (summary takes the first folded id, the rest
+        are removed) so the checkpoint keeps it ahead of the preserved tail.
+        """
+        del runtime  # framework contract; the archive reads config via get_config()
+        if not self._should_trigger_summarization(state):
+            return None
 
-    def _should_trigger_summarization(self, state: AgentState[Any]) -> bool:
-        """Return whether the archive should be written before super().abefore_model runs.
+        conversation = [m for m in state["messages"] if slot_of(m) not in LEADING_SLOTS]
+        cutoff_index = self._determine_cutoff_index(conversation)
+        fold = _foldable(conversation, cutoff_index)
+        summarized = self._fitting_prefix(_removable([*fold.older, *fold.progress]))
+        if not summarized:
+            return None
 
-        Delegates to the parent's _should_summarize so the archive gate fires
-        in exact lockstep with summarization — re-deriving the thresholds here
-        once drifted from the parent and summarized history away with no
-        archive to recover it from.
+        # Notes (presence, recall, clock) are folded away with the history but never
+        # summarized: a stale line restated as summary text would read as current.
+        to_summarize = [m for m in summarized if not is_gaia_authored_note(m)]
+        if not to_summarize:
+            return None
+
+        progress_ids = {m.id for m in fold.progress}
+        summary_text = await self._asummarize(
+            _FoldedMessages(
+                older=[m for m in to_summarize if m.id not in progress_ids],
+                progress=[m for m in to_summarize if m.id in progress_ids],
+            )
+        )
+        if summary_text is None:
+            return None
+        summary_message = self._build_new_messages(summary_text)[0]
+        summary_message.id = summarized[0].id
+        if self.archive is not None:
+            archive_path = await self._archive_or_none(state)
+            if archive_path:
+                _inject_archive_path(summary_message, archive_path, self.archive)
+        return {
+            "messages": [
+                summary_message,
+                *(RemoveMessage(id=cast("str", m.id)) for m in summarized[1:]),
+            ]
+        }
+
+    def _fitting_prefix(self, messages: list[AnyMessage]) -> list[AnyMessage]:
+        """Return the longest leading run whose summary prompt fits the summary model's input.
+
+        Measured on the XML the prompt is sent as, which is longer than the raw
+        messages the trigger counts. Cut only before a non-tool message, so a call
+        and its results stay together; what is left folds on a later pass.
+        """
+        limit = self._get_profile_limits()
+        if limit is None or not messages:
+            return messages
+        budget = int(limit * SUMMARY_INPUT_BUDGET_FRACTION) - self._prompt_tokens(
+            self.summary_prompt.format(messages="")
+        )
+        used = 0
+        # Equivalent under mutation: a prefix never opens on a ToolMessage (_removable
+        # keeps pairs whole), so index 0 always sets this before it is read.
+        safe_end = 0  # pragma: no mutate
+        for index, message in enumerate(messages):
+            if not isinstance(message, ToolMessage):
+                safe_end = index
+            used += self._prompt_tokens(get_buffer_string([message], format="xml"))
+            if used > budget:
+                fitting = messages[:safe_end]
+                break
+        else:
+            return messages
+        if all(is_conversation_summary(m) for m in fitting):
+            # Nothing past the old summary fits: folding it alone frees no context.
+            log.error(
+                f"{LogTag.AGENT} Summary input over the model's budget",
+                message_count=len(messages),
+                budget_tokens=budget,
+            )
+            return []
+        return fitting
+
+    def _prompt_tokens(self, text: str) -> int:
+        """Estimate prompt text with the middleware's own counter."""
+        return self.token_counter([HumanMessage(content=text)])
+
+    async def _asummarize(self, folded: _FoldedMessages) -> str | None:
+        """Return the summary of the whole prefix, or None when history must stay.
+
+        Never trimmed: LangChain's 4000-token trim dropped the previous summary
+        and emptied behind one large tool result. Its _acreate_summary also turns
+        a failure into "Error generating summary" text that would replace the prefix.
+        """
+        prompt = self.summary_prompt.format(messages=_render_folded(folded))
+        try:
+            response = await self.model.ainvoke(
+                prompt, config={"metadata": {"lc_source": SUMMARY_SOURCE}}
+            )
+        except Exception as e:
+            log.error(
+                f"{LogTag.AGENT} Summary generation failed",
+                error_type=type(e).__name__,
+                message_count=len(folded.older) + len(folded.progress),
+            )
+            return None
+        text = response.text.strip()
+        if not text:
+            log.error(f"{LogTag.AGENT} Summary generation failed", error_type="EmptySummary")
+            return None
+        return text
+
+    async def _archive_or_none(self, state: AgentState[object]) -> str | None:
+        """Archive the full history; a failed archive is reported and never blocks the summary."""
+        try:
+            return await self._archive(state)
+        except JuiceFSUnavailable as e:
+            log.warning(
+                f"{LogTag.AGENT} Archive skipped (workspace unavailable)",
+                error_type=type(e).__name__,
+            )
+        except Exception as e:
+            log.error(f"{LogTag.AGENT} Archive failed", error_type=type(e).__name__)
+        return None
+
+    def _should_trigger_summarization(self, state: AgentState[object]) -> bool:
+        """Return whether the context is large enough to summarize.
+
+        Measured over the whole request (prompt slots included), since that is
+        what fills the window; delegates to the parent's _should_summarize so
+        the thresholds are never re-derived here.
         """
         filtered = [
             m
@@ -87,12 +288,12 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         ]
         return self._should_summarize(filtered, self.token_counter(filtered))
 
-    async def _archive(self, state: AgentState[Any]) -> str:
-        messages = state.get("messages", [])
+    async def _archive(self, state: AgentState[object]) -> str:
+        messages = [m for m in state.get("messages", []) if not is_gaia_authored_note(m)]
         # `runtime` carries no config (LangGraph's `Runtime` deliberately omits
         # it) — reading it from there once raised "requires 'user_id'" silently.
         # `get_config()` is the supported accessor, as LLMAccountingMiddleware uses.
-        configurable = agent_configurable(get_config())
+        configurable: AgentConfigurable = agent_configurable(get_config())
         user_id = configurable.get("user_id")
         thread_id = configurable.get("thread_id")
         conversation_id = configurable.get("vfs_session_id") or thread_id
@@ -118,19 +319,19 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         )
         return sandbox_path
 
-    def _serialize_messages(self, messages: list[AnyMessage]) -> list[dict[str, Any]]:
-        history: list[dict[str, Any]] = []
+    def _serialize_messages(self, messages: list[AnyMessage]) -> list[ArchivedMessage]:
+        history: list[ArchivedMessage] = []
         for msg in messages:
             # Text-extract so inline media never lands base64 in the archive —
             # the archive is a text record of the conversation, and a single
             # image block would add ~1.4 MB of base64 to the JSON.
-            entry: dict[str, Any] = {
+            entry: ArchivedMessage = {
                 "type": type(msg).__name__,
                 "content": extract_text_content(msg.content)
                 if hasattr(msg, "content")
                 else str(msg),
             }
-            tool_calls = getattr(msg, "tool_calls", None)
+            tool_calls: list[ToolCall] = getattr(msg, "tool_calls", None) or []
             if tool_calls:
                 entry["tool_calls"] = [
                     {"id": tc.get("id"), "name": tc.get("name"), "args": tc.get("args")}
@@ -142,20 +343,76 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             history.append(entry)
         return history
 
-    def _inject_archive_path(self, result: dict[str, Any], archive_path: str) -> None:
-        """Annotate the summary HumanMessage in result with the archive path.
 
-        Mutates result's messages in place.
-        """
-        messages = result.get("messages", [])
-        for msg in messages:
-            if isinstance(msg, HumanMessage):
-                additional_kwargs = getattr(msg, "additional_kwargs", {})
-                if additional_kwargs.get("lc_source") == "summarization":
-                    if hasattr(msg, "content") and isinstance(msg.content, str):
-                        msg.content += (
-                            f"\n\n[Full history archived at: {archive_path}. "
-                            f"Use the `read` tool to recover detail.]"
-                        )
-                    additional_kwargs["archive_path"] = archive_path
-                    break
+def _inject_archive_path(
+    summary_message: HumanMessage, archive_path: str, reader: ArchiveReader
+) -> None:
+    """Annotate the summary message with the archive path and how to read it."""
+    if isinstance(summary_message.content, str):
+        summary_message.content += (
+            f"\n\n[Full history archived at: {archive_path}. {_ARCHIVE_HINTS[reader]}]"
+        )
+    summary_message.additional_kwargs["archive_path"] = archive_path
+
+
+class _FoldedMessages(NamedTuple):
+    """What one fold summarizes: older conversation, and the running request's finished steps."""
+
+    older: list[AnyMessage]
+    progress: list[AnyMessage]
+
+
+def _render_folded(folded: _FoldedMessages) -> str:
+    """Render the summarizer's input: older conversation, then the running request's steps apart.
+
+    The steps are labelled so the summary records them as done toward the request
+    still in context, rather than as an old request left unfinished.
+    """
+    rendered = f"<messages>\n{get_buffer_string(folded.older, format='xml')}\n</messages>"
+    if folded.progress:
+        steps = get_buffer_string(folded.progress, format="xml")
+        rendered += f"\n\n<progress>\n{steps}\n</progress>"
+    return rendered
+
+
+def _foldable(conversation: list[AnyMessage], cutoff: int) -> _FoldedMessages:
+    """Return what to fold: history before the running turn, else that turn's finished steps.
+
+    Never the running turn's request nor the notes opening it (its recall block).
+    With only an old summary or notes before it (a long executor run), its finished
+    tool steps fold instead; cutoff is already a safe tool-pair boundary.
+    """
+    start = running_turn_start(conversation)
+    if start is None:
+        return _FoldedMessages(older=conversation[:cutoff], progress=[])
+    opening = start
+    while opening > 0 and is_gaia_authored_note(conversation[opening - 1]):
+        opening -= 1
+    before = conversation[: min(opening, cutoff)]
+    if any(not (is_conversation_summary(m) or is_gaia_authored_note(m)) for m in before):
+        return _FoldedMessages(older=before, progress=[])
+    steps = conversation[start + 1 : cutoff]
+    # Nothing new to fold: re-summarizing the old summary alone frees no context.
+    if not steps:
+        return _FoldedMessages(older=[], progress=[])
+    return _FoldedMessages(older=before, progress=steps)
+
+
+def _removable(prefix: list[AnyMessage]) -> list[AnyMessage]:
+    """Return the prefix messages a RemoveMessage can target, keeping tool pairs whole.
+
+    Threads written before out-of-band writes carried ids hold id-less messages;
+    those stay verbatim, and so does any AI message whose tool call one answers,
+    or the provider would get a tool result with no call.
+    """
+    pinned_calls = {m.tool_call_id for m in prefix if isinstance(m, ToolMessage) and m.id is None}
+    removable: list[AnyMessage] = []
+    for m in prefix:
+        if m.id is None:
+            continue
+        if isinstance(m, AIMessage):
+            tool_calls: list[ToolCall] = m.tool_calls
+            if {tc["id"] for tc in tool_calls} & pinned_calls:
+                continue
+        removable.append(m)
+    return removable

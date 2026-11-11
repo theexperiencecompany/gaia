@@ -28,17 +28,6 @@ class GmailDraftCreatedData(BaseModel):
     id: str | None = None
 
 
-class GmailAttachmentData(BaseModel):
-    """``GMAIL_FETCH_ATTACHMENT`` — the metadata kept for the LLM; the base64 body is dropped."""
-
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
-
-    attachment_id: str | None = Field(default="", alias="attachmentId")
-    filename: str | None = ""
-    mime_type: str | None = Field(default="", alias="mimeType")
-    size: int | None = 0
-
-
 class GmailSentDraftMessage(BaseModel):
     """The ``message`` block of a ``GMAIL_SEND_DRAFT`` result."""
 
@@ -180,11 +169,11 @@ class GmailComposeArguments(BaseModel):
 
     Covers ``GMAIL_SEND_EMAIL``, ``GMAIL_CREATE_EMAIL_DRAFT``,
     ``GMAIL_REPLY_TO_THREAD`` and ``GMAIL_FORWARD_MESSAGE``: ``recipient_email`` /
-    ``extra_recipients`` name the compose recipients, ``to_recipients`` the
+    ``extra_recipients`` name the compose recipients, ``recipients`` the
     forward ones, and ``to`` is the field agents reach for instead of
     ``recipient_email`` (the hook maps it across). Every value may be null — the
     agent decides what it sends — and a string where a list belongs is tolerated
-    the way the card always did (``to_recipients`` wraps it, ``extra_recipients``
+    the way the card always did (``recipients`` wraps it, ``extra_recipients``
     drops it).
     """
 
@@ -193,7 +182,7 @@ class GmailComposeArguments(BaseModel):
     recipient_email: str | None = ""
     to: str | list[str] | None = None
     extra_recipients: list[str] | str | None = Field(default_factory=list)
-    to_recipients: list[str] | str | None = Field(default_factory=list)
+    recipients: list[str] | str | None = Field(default_factory=list)
     cc: list[str] | str | None = Field(default_factory=list)
     bcc: list[str] | str | None = Field(default_factory=list)
     subject: str | None = ""

@@ -68,6 +68,11 @@ describe("ChatBubbleBot visibility", () => {
     expect(screen.queryByTestId("bot-footer")).toBeNull();
   });
 
+  it("renders a stopped turn that streamed nothing, so its Stopped line shows", () => {
+    renderBubble({ stopped: true });
+    expect(screen.getByTestId("text-bubble")).toBeDefined();
+  });
+
   it("gives a failed turn with no text the full chrome so Retry is reachable", () => {
     renderBubble({ error: "Provider down" });
     expect(screen.getByTestId("bot-avatar")).toBeDefined();

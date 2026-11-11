@@ -45,7 +45,7 @@ export function EnterpriseCard({ plan, ctaHref }: EnterpriseCardProps) {
 
       <div className="px-6 pb-4">
         <RaisedButton
-          className="w-full text-black!"
+          className="w-full"
           color="#00bbff"
           onClick={() => router.push(ctaHref)}
         >

@@ -22,7 +22,7 @@ tests:
             exp_annotations:
               description: >-
                 When inodes run out every write fails with ENOSPC while df -h still reports plenty of free space, so this looks like a corrupt disk rather than a full one and the disk-usage alert never fires. This box is small-file heavy — Docker layer directories, one Loki file per chunk, 30 days of Prometheus blocks, the JuiceFS cache and the embedding and voice model caches. Confirm with `df -i /`, then find the consumer with `du --inodes -d 2 /var/lib/docker` and the Loki volume.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-host-inodes
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-host-inodes
 
   - name: gaia-host-inodes stays quiet at 50% inode usage
     interval: 1m

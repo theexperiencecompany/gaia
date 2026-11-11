@@ -24,6 +24,7 @@ Usage::
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -42,8 +43,8 @@ _HERE = Path(__file__).resolve().parent
 BASELINE = _HERE / "plr_complexity_baseline.txt"
 PLR_RULES = ("PLR0911", "PLR0912", "PLR0913", "PLR0915")
 
-# Pinned to the same ruff version as the "Python ruff" CI lane
-# (.github/workflows/code-quality.yml) -- bump both together. `uvx` resolves
+# Pinned to the same ruff version as the python-ruff CI check
+# (.github/workflows/ci.yml) -- bump both together. `uvx` resolves
 # it without requiring a separate "install ruff onto PATH" CI step.
 _RUFF_CMD = ["uvx", "--no-build", "ruff@0.14.13"]
 
@@ -63,6 +64,18 @@ _BASELINE_HEADER = """\
 # warns instead). Past the date it fails again: fix it, or renew the deferral
 # with a fresh reason. --update keeps the field.
 """
+
+
+def _untracked_python() -> set[str]:
+    """Python files git does not track: prek stashes unstaged edits, not these, so no commit holds them."""
+    proc = subprocess.run(  # nosec B603 - fixed git argv, no shell
+        ["git", "ls-files", "--others", "--exclude-standard", "--", "*.py"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return set(proc.stdout.splitlines())
 
 
 def _current_violations() -> dict[tuple[str, str], int]:
@@ -91,9 +104,12 @@ def _current_violations() -> dict[tuple[str, str], int]:
         print(proc.stderr, file=sys.stderr)
         raise SystemExit(f"{RULE}: ruff failed unexpectedly (exit {proc.returncode})")
     violations = json.loads(proc.stdout)
+    outside_commit = _untracked_python() if os.environ.get("PRE_COMMIT") else set()
     out: dict[tuple[str, str], int] = {}
     for v in violations:
         path = Path(v["filename"]).resolve().relative_to(REPO_ROOT).as_posix()
+        if path in outside_commit:
+            continue
         key = (path, v["code"])
         out.setdefault(key, v["location"]["row"])
     return out

@@ -1,0 +1,64 @@
+---
+title: "Project tour"
+description: "Where each part of GAIA lives, and where to look for the change you want to make."
+icon: "map"
+---
+
+GAIA is one repository holding every app, from the web client to the bots. It is a **monorepo** managed by [Nx](https://nx.dev), a build tool that knows how the projects depend on each other, so a command like `mise run lint` checks every project and caches what hasn't changed.
+
+## The top level
+
+```
+gaia/
+├── apps/         The things that run: API, web, desktop, mobile, voice agent, bots
+├── libs/         Code shared between apps (Python and TypeScript)
+├── packages/     The gaia CLI, published to npm
+├── docs/         This documentation site (Mintlify)
+├── infra/docker/ Docker Compose files for the databases and services
+├── scripts/      Dev and CI scripts called by mise tasks
+├── tools/        Custom linters, the scripted test LLM, and other internal tools
+├── config/       Shared tool configuration (Biome rules, Knip, release-please)
+└── mise.toml     Tool versions and every task (mise dev, mise run lint, ...)
+```
+
+## The apps
+
+| Folder | What it is | Language |
+| --- | --- | --- |
+| `apps/api` | The backend: REST API, the AI agents, background jobs | Python (FastAPI, LangGraph) |
+| `apps/web` | The web app at heygaia.io, and the marketing site | TypeScript (Next.js) |
+| `apps/desktop` | The desktop app. It wraps the web app's build in Electron | TypeScript |
+| `apps/mobile` | The iOS and Android app | TypeScript (React Native, Expo) |
+| `apps/voice-agent` | The voice mode worker | Python (LiveKit) |
+| `apps/bots` | Discord, Slack, Telegram, WhatsApp and iMessage bots, plus a local simulator (`harness`) | TypeScript |
+
+## Where to make a change
+
+| You want to change | Start in |
+| --- | --- |
+| A page, component or style in the web app | `apps/web/src/features/<feature>/` (each feature keeps its components, hooks and stores together) |
+| An API endpoint | `apps/api/app/api/v1/endpoints/` |
+| Business logic behind an endpoint | `apps/api/app/services/` |
+| What the AI can do (a tool) | `apps/api/app/agents/tools/` |
+| How the AI behaves (prompts, agent graphs) | `apps/api/app/agents/` (read [Architecture](/developers/architecture) first) |
+| A connected app such as Gmail or Notion | `apps/api/app/config/oauth_config.py` ([Adding a native integration](/developers/native-integrations)) |
+| A bot | `apps/bots/<platform>/` and the shared framework in `libs/shared/ts/src/bots/` ([Bots](/bots/overview)) |
+| These docs | `docs/`, with the sidebar in `docs/docs.json` |
+
+## Rules that live next to the code
+
+Many folders carry a `CLAUDE.md` file (also linked as `AGENTS.md`). Despite the name, they are the house rules for that part of the codebase, written for people and AI coding assistants alike. Read the one in the folder you are changing:
+
+- `CLAUDE.md` at the root: repository-wide rules
+- `apps/api/CLAUDE.md`: backend conventions
+- `apps/web/CLAUDE.md`: frontend conventions
+- `apps/bots/CLAUDE.md`: bot conventions
+- `apps/api/tests/CLAUDE.md`: which test tier to use
+
+[Monorepo structure](/developers/monorepo) goes one level deeper into each app's folders and the Nx build.
+
+## Next
+
+<Card title="Run GAIA locally" icon="play" href="/developers/running-locally">
+  The ways to start GAIA: with or without sign-in, with background jobs, bots, mobile or desktop.
+</Card>

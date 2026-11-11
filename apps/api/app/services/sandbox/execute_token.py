@@ -19,16 +19,26 @@ from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
 from app.utils.errors import AppError
 
 
-class SandboxExecuteClaims(BaseModel):
+class ExecuteGrant(BaseModel):
+    """What one sandbox token lets a script do, and for which run."""
+
     user_id: str
     run_id: str
     stream_id: str | None = None
+    workflow_id: str | None = None
+    # The agent scope the call belongs to; None is the executor.
+    subagent_id: str | None = None
     # Which sandbox instance the token was minted for — audit correlation; the
     # route cannot verify network origin, so this is a record, not a check.
     sandbox_id: str | None = None
     # Minting agent tool space, confined as the in-graph proxy confines direct
     # calls; None is the executor space (whole registry).
-    scoped_tool_names: list[str] | None = None
+    scoped_tool_names: list[str] | None
+
+
+class SandboxExecuteClaims(ExecuteGrant):
+    """A grant as the token carries it, with when it stops being valid."""
+
     exp: int
 
 
@@ -56,23 +66,9 @@ def _sign(payload: bytes) -> str:
     return hmac.new(_secret(), payload, hashlib.sha256).hexdigest()
 
 
-def mint_execute_token(
-    user_id: str,
-    run_id: str,
-    *,
-    stream_id: str | None = None,
-    sandbox_id: str | None = None,
-    scoped_tool_names: list[str] | None,
-    ttl_seconds: int,
-) -> str:
-    claims = SandboxExecuteClaims(
-        user_id=user_id,
-        run_id=run_id,
-        stream_id=stream_id,
-        sandbox_id=sandbox_id,
-        scoped_tool_names=scoped_tool_names,
-        exp=_epoch_now() + ttl_seconds,
-    )
+def mint_execute_token(grant: ExecuteGrant, *, ttl_seconds: int) -> str:
+    """Sign grant into a token that expires ttl_seconds from now."""
+    claims = SandboxExecuteClaims(**grant.model_dump(), exp=_epoch_now() + ttl_seconds)
     payload = base64.urlsafe_b64encode(claims.model_dump_json().encode()).decode()
     return f"{payload}.{_sign(payload.encode())}"
 
@@ -99,3 +95,17 @@ def verify_execute_token(token: str) -> SandboxExecuteClaims:
     if claims.exp < _epoch_now():
         raise invalid
     return claims
+
+
+def claims_from_authorization(authorization: str) -> SandboxExecuteClaims:
+    """Bearer claims for a sandbox-held token; raises 401 AppError without one."""
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise AppError(
+            message="Missing sandbox execute token",
+            why="the route is token-authenticated; there is no session here",
+            fix="Tokens are injected into bash runs as GAIA_EXECUTE_TOKEN; send "
+            "'Authorization: Bearer <token>'",
+            status_code=401,
+        )
+    return verify_execute_token(token)

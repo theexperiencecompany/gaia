@@ -28,6 +28,7 @@ import {
 } from "react";
 import ColorPicker from "react-best-gradient-color-picker";
 import { TwitterShareButton } from "react-share";
+import { copyWithFeedback } from "@/lib/clipboard";
 
 /** Uniform [0,1) from Web Crypto. The card randomizer is cosmetic, but
  * crypto-grade randomness keeps security scanners quiet and costs nothing. */
@@ -537,8 +538,9 @@ export const HoloCardEditor = ({
         );
         break;
       case "copy":
-        navigator.clipboard.writeText(url);
-        toast.success("Link copied to clipboard");
+        void copyWithFeedback(url).then((copied) => {
+          if (copied) toast.success("Link copied to clipboard");
+        });
         break;
     }
   };

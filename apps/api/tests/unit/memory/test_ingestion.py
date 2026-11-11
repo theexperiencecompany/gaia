@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date as date_type, datetime, timedelta
 from difflib import SequenceMatcher
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, TypedDict, Unpack
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
@@ -26,6 +26,7 @@ from app.constants.memory import (
     EPISODE_ENTRY_DEDUPE_RATIO,
     FREE_MEMORY_CAP_COUNT_SAFETY_MARGIN,
     FREE_MEMORY_FACT_LIMIT,
+    RECENT_FACTS_LIMIT,
     RECONCILE_SIMILARITY_THRESHOLD,
     STATE_FACT_TTL_DAYS,
     TRANSCRIPT_CHUNK_MAX_CHARS,
@@ -58,28 +59,28 @@ USER = "user-1"
 NOW = datetime(2026, 8, 24, tzinfo=UTC)
 
 
-def make_fact(
-    content: str = "sam likes green tea",
-    *,
-    kind: MemoryKind = MemoryKind.FACT,
-    shelf_life: MemoryShelfLife = MemoryShelfLife.DURABLE,
-    category_path: str = "preferences",
-    importance: float = 0.5,
-    entities: list[ExtractedEntity] | None = None,
-    edges: list[ExtractedEdge] | None = None,
-    occurred_start: datetime | None = None,
-    occurred_end: datetime | None = None,
-) -> ExtractedFact:
+class _FactFields(TypedDict, total=False):
+    kind: MemoryKind
+    shelf_life: MemoryShelfLife
+    category_path: str
+    importance: float
+    entities: list[ExtractedEntity] | None
+    edges: list[ExtractedEdge] | None
+    occurred_start: datetime | None
+    occurred_end: datetime | None
+
+
+def make_fact(content: str = "sam likes green tea", **fields: Unpack[_FactFields]) -> ExtractedFact:
     return ExtractedFact(
         content=content,
-        kind=kind,
-        shelf_life=shelf_life,
-        category_path=category_path,
-        importance=importance,
-        entities=entities or [],
-        edges=edges or [],
-        occurred_start=occurred_start,
-        occurred_end=occurred_end,
+        kind=fields.get("kind", MemoryKind.FACT),
+        shelf_life=fields.get("shelf_life", MemoryShelfLife.DURABLE),
+        category_path=fields.get("category_path", "preferences"),
+        importance=fields.get("importance", 0.5),
+        entities=fields.get("entities") or [],
+        edges=fields.get("edges") or [],
+        occurred_start=fields.get("occurred_start"),
+        occurred_end=fields.get("occurred_end"),
     )
 
 
@@ -1325,6 +1326,8 @@ class TestRetain:
         assert kwargs["recent_facts"] == ["sam likes tea"]
         assert kwargs["journaled_today"] == ["already journaled"]
         assert kwargs["extraction_hints"] == "focus on preferences"
+        boundaries.get_folder_tree.assert_awaited_once_with(USER)
+        boundaries.get_recent_facts.assert_awaited_once_with(USER, limit=RECENT_FACTS_LIMIT)
 
     async def test_anonymous_caller_gets_the_default_user_name(
         self, boundaries: Boundaries
@@ -2014,6 +2017,66 @@ class TestRetainAgendaSideEffects:
 
         assert "agenda_ms" in event["memory"]["timings"]
 
+    async def test_the_completion_event_reports_the_counts_and_every_stage(
+        self, boundaries: Boundaries
+    ) -> None:
+        boundaries.extract_memories.return_value = ExtractedMemoryBatch(
+            facts=[make_fact("sam likes green tea"), make_fact("sam lives in pune")]
+        )
+        boundaries.reconcile.side_effect = lambda _user, facts, embeddings: [
+            make_reconciled(fact, embedding=embedding) for fact, embedding in zip(facts, embeddings)
+        ]
+
+        async with captured_wide_event() as event:
+            result = await retain(
+                USER,
+                [{"role": "user", "content": "hi"}],
+                source_type=MemorySourceType.CONVERSATION,
+            )
+
+        memory = event["memory"]
+        assert result.new == 2
+        assert {key: memory[key] for key in ("operation", "source_type", "success")} == {
+            "operation": "retain",
+            "source_type": MemorySourceType.CONVERSATION.value,
+            "success": True,
+        }
+        assert memory["facts_extracted"] == 2
+        assert memory["new_count"] == 2
+        assert memory["result_count"] == result.new + result.updated + result.extended
+        assert memory["episode_entries"] == result.episode_entries
+        assert memory["episode_entries_deduped"] == 0
+        assert set(memory["timings"]) == {
+            "context_ms",
+            "extract_ms",
+            "embed_ms",
+            "reconcile_ms",
+            "apply_ms",
+            "episodes_ms",
+            "chunks_ms",
+            "agenda_ms",
+            "total_ms",
+        }
+
+    async def test_an_empty_extraction_still_reports_a_successful_retain(
+        self, boundaries: Boundaries
+    ) -> None:
+        boundaries.extract_memories.return_value = ExtractedMemoryBatch()
+
+        async with captured_wide_event() as event:
+            await retain(
+                USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.EMAIL
+            )
+
+        memory = event["memory"]
+        assert (memory["facts_extracted"], memory["result_count"], memory["success"]) == (
+            0,
+            0,
+            True,
+        )
+        assert memory["source_type"] == MemorySourceType.EMAIL.value
+        assert "timings" not in memory or not memory["timings"]
+
 
 @pytest.mark.unit
 class TestRetainFreePlanCap:
@@ -2295,3 +2358,72 @@ class TestJournalNearDuplicateGate:
 
         boundaries.append_episode_entries.assert_not_awaited()
         assert result.episode_entries == 0
+
+
+async def test_retain_reports_every_count_the_apply_step_produced(boundaries: Boundaries) -> None:
+    parent = make_row()
+    boundaries.get_memories_by_ids.return_value = [parent]
+    sam, berlin = uuid.uuid4(), uuid.uuid4()
+    boundaries.supersede_memory.return_value = make_row()
+    boundaries.upsert_entities.return_value = {"sam carter": sam, "berlin": berlin}
+    boundaries.insert_edges.side_effect = lambda _user, edges, _record_id: len(edges)
+    linked = make_fact(
+        "sam lives in berlin",
+        entities=[
+            ExtractedEntity(name="Sam Carter", entity_type="person"),
+            ExtractedEntity(name="Berlin", entity_type="place"),
+        ],
+        edges=[ExtractedEdge(source="Sam Carter", relationship="lives_in", target="Berlin")],
+    )
+    extends, dupe = make_fact("extends one"), make_fact("dupe one")
+    boundaries.extract_memories.return_value = ExtractedMemoryBatch(facts=[linked, extends, dupe])
+    boundaries.reconcile.return_value = [
+        make_reconciled(linked, embedding=[1.0]),
+        make_reconciled(
+            extends, ReconcileOutcome.EXTENDS, embedding=[2.0], target_memory_id=str(parent.id)
+        ),
+        make_reconciled(dupe, ReconcileOutcome.DUPLICATE, embedding=[3.0], target_memory_id="old"),
+    ]
+
+    result = await retain(
+        USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+    )
+
+    counts = (
+        result.new,
+        result.updated,
+        result.extended,
+        result.duplicates,
+        result.entities_linked,
+        result.edges_added,
+    )
+    assert counts == (1, 0, 1, 1, 2, 1)
+
+
+async def test_a_live_retain_stamps_its_facts_with_an_aware_utc_instant(
+    boundaries: Boundaries,
+) -> None:
+    fact = make_fact("sam likes tea")
+    boundaries.extract_memories.return_value = ExtractedMemoryBatch(facts=[fact])
+    boundaries.reconcile.return_value = [make_reconciled(fact, embedding=[1.0])]
+
+    await retain(
+        USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+    )
+
+    (record,) = boundaries.inserted_records
+    assert record.mentioned_at is not None
+    assert record.mentioned_at.utcoffset() == timedelta(0)
+
+
+async def test_the_free_cap_is_read_for_the_retaining_user(boundaries: Boundaries) -> None:
+    TestRetainFreePlanCap._two_new_facts(boundaries)
+    plan, cached, *rest = TestRetainFreePlanCap._free_plan(cached_live=0, counted_live=0)
+
+    with plan as plan_lookup, cached as cached_lookup, rest[0], rest[1], rest[2]:
+        await retain(
+            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+        )
+
+    plan_lookup.assert_awaited_with(USER)
+    cached_lookup.assert_awaited_with(USER)

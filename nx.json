@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nrwl/nx/refs/heads/master/packages/nx/schemas/nx-schema.json",
   "installation": {
-    "version": "22.7.7",
+    "version": "24.0.0",
     "plugins": {
       "sources": []
     }
@@ -9,16 +9,29 @@
   "useDaemonProcess": false,
   "defaultBase": "master",
   "namedInputs": {
-    "default": ["{projectRoot}/**/*"],
-    "production": [
-      "!{projectRoot}/**/*.spec.ts",
-      "!{projectRoot}/**/*.test.ts"
+    "default": [
+      "{projectRoot}/**/*",
+      "!{projectRoot}/**/README.md",
+      "!{projectRoot}/**/CLAUDE.md",
+      "!{projectRoot}/**/AGENTS.md"
     ],
-    "python": [
-      "{workspaceRoot}/pyproject.toml",
-      "{workspaceRoot}/uv.lock",
-      "{workspaceRoot}/apps/api/pyproject.toml",
-      "{workspaceRoot}/libs/shared/py/**/*"
+    "production": [
+      "default",
+      "!{projectRoot}/**/*.{spec,test}.{ts,tsx,js,jsx}"
+    ],
+    "typecheck": [
+      "default",
+      {
+        "env": "GAIA_TS_CHECKER"
+      }
+    ],
+    "python": ["{workspaceRoot}/pyproject.toml", "{workspaceRoot}/uv.lock"],
+    "ciHarness": [
+      "{workspaceRoot}/scripts/ci/**/*",
+      "!{workspaceRoot}/scripts/ci/**/*.md",
+      "{workspaceRoot}/.github/workflows/ci.yml",
+      "{workspaceRoot}/.github/actions/**/*",
+      "{workspaceRoot}/tools/nx-ci-status/**/*"
     ]
   },
   "targetDefaults": {
@@ -27,11 +40,26 @@
     },
     "build": {
       "cache": true,
-      "dependsOn": ["sync", "^build"]
+      "inputs": ["production", "^production"],
+      "dependsOn": ["sync", "^build"],
+      "metadata": {
+        "ci": {
+          "job": "ts-build-test",
+          "check": "build",
+          "area": "build"
+        }
+      }
     },
     "test": {
       "cache": true,
-      "inputs": ["default", "^production"]
+      "inputs": ["default", "^production"],
+      "metadata": {
+        "ci": {
+          "job": "ts-build-test",
+          "check": "test-typescript",
+          "area": "tests"
+        }
+      }
     },
     "lint": {
       "cache": true,
@@ -49,7 +77,14 @@
     },
     "type-check": {
       "cache": true,
-      "inputs": ["default", "^production"]
+      "inputs": ["typecheck", "^production"],
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "type-check",
+          "area": "node"
+        }
+      }
     },
     "dev": {
       "cache": false
@@ -80,7 +115,8 @@
         "watchDepsTargetName": "watch-deps"
       }
     },
-    "@nx/docker"
+    "@nx/docker",
+    "./tools/nx-ci-status/index.js"
   ],
   "release": {
     "releaseTag": {
@@ -91,10 +127,10 @@
     },
     "groups": {
       "apps": {
-        "projects": ["api", "voice-agent"],
+        "projects": ["tag:release:apps"],
         "projectsRelationship": "independent",
         "docker": {
-          "groupPreVersionCommand": "npx nx run-many -t docker:build -p api,voice-agent --parallel --skipNxCache",
+          "groupPreVersionCommand": "npx nx run-many -t docker:build -p tag:release:apps --parallel --skipNxCache",
           "skipVersionActions": true,
           "registryUrl": "ghcr.io"
         },
@@ -103,16 +139,10 @@
         }
       },
       "bots": {
-        "projects": [
-          "bot-discord",
-          "bot-slack",
-          "bot-telegram",
-          "bot-whatsapp",
-          "bot-imessage"
-        ],
+        "projects": ["tag:release:bots"],
         "projectsRelationship": "fixed",
         "docker": {
-          "groupPreVersionCommand": "npx nx run-many -t docker:build -p bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage --parallel --skipNxCache",
+          "groupPreVersionCommand": "npx nx run-many -t docker:build -p tag:release:bots --parallel --skipNxCache",
           "skipVersionActions": true,
           "registryUrl": "ghcr.io"
         },
@@ -132,7 +162,8 @@
   "analytics": false,
   "pluginsConfig": {
     "@nx/js": {
-      "analyzeSourceFiles": false
+      "analyzeSourceFiles": false,
+      "projectsAffectedByDependencyUpdates": "auto"
     }
   }
 }

@@ -1,37 +1,42 @@
 # Quality gate
 
-The `quality-gate` job in `.github/workflows/code-quality.yml` is one of the
-two branch-protection gate jobs on `master` (the other is `main.yml`'s
-`quality-gate`). It aggregates every code-quality lane and **fails the merge
-if any lane is red**.
+The `quality-gate` job in `.github/workflows/ci.yml` is the branch-protection
+gate on `master` and the merge queue's required check. It reads every lane's
+verdict (`scripts/ci/verdict.py consolidate`) and **fails the merge if any lane
+is red**.
 
 ## Enforcement model
 
 Every lane is enforced: a lane whose result is neither `success` nor `skipped`
-(where `skipped` means the `changes` job proved the lane's language was
-untouched) fails the gate. There is no informational tier.
+fails the gate. `skipped` means `detect` proved the lane had nothing to check
+(its language untouched, or the lane belongs to the full tier and this is a PR
+push). There is no informational tier. A lane that ran and reported nothing is
+`NO VERDICT` and fails too.
 
-This replaced the old marker-file ratchet (`.github/quality-gate/enforced/<lane>`)
-that let lanes start informational and be ratcheted up by resolution PRs. The
-rollout is complete — every lane is enforced — and the two sources of truth
-(marker files vs the `LANES` array) had drifted. A flat "all lanes block" is
-the end state: one list, no directory scan, no sync to maintain.
+Inside a grouped job (lint-node, lint-python, lint-mixed, repo-policy, scan,
+python-audit, ts-build-test) every check is an nx task: `runner.py run-job`
+runs the job's affected ones and `verdict.py post-statuses` posts each as its
+own `ci / <area> / <check>` commit status and fails the job if any failed. A
+check skipped because its last pass on the PR still holds
+(`verdict.py reuse-plan`) counts as a pass.
 
-## Adding a new lane
+## Adding a check
 
-1. Add the job to `.github/workflows/code-quality.yml`.
-2. Add its result to the `needs:` list and the `RESULT` map in the `quality-gate`
-   job.
-3. Add its name to the `LANES` array in the verdict step.
+1. Add it as a target of `tools/ci/project.json` (or of the code project it
+   checks), with the `inputs` it reads and
+   `"metadata": {"ci": {"job": "<grouped job>", "check": "<id>", "area": "<area>"}}`.
+   That is the whole change: detect selects it, run-job runs it, post-statuses
+   posts it, reuse-plan may reuse it (`"reuse": false` opts out) and
+   `mise ci:local` runs it.
+2. A check that only runs on some events names them (`"events": [...]`, and
+   `"branch"` for master-only). A check an action runs takes `"runner": "action"`
+   and a step in its job with `id: <id>`, passed to post-statuses as
+   `--step <id>=${{ steps.<id>.outcome }}`.
 
-The gate enforces it from the first run — there is no informational grace
+A new JOB goes in the gate's `needs:` list and its `EXPECT` entry, and uploads
+its verdict through `./.github/actions/upload-verdict`;
+`scripts/ci/tests/test_workflow_verdicts.py` fails if any of those drift.
+
+The gate enforces a check from its first run. There is no informational grace
 period. If a rollout period is ever wanted again, that is a deliberate decision
 to reintroduce, not a default.
-
-## Lane names
-
-`biome`, `deps`, `circular`, `file-size`, `types-location`, `components-per-file`,
-`duplicates`, `package-hygiene`, `type-check`, `python-static`,
-`python-mypy`, `observability`, `wide-event-conformance`, `dead-code`, `alert-rules`,
-`suppression-hygiene`, `gitleaks`, `semgrep`, `test-mutation-plan`, `test-mutation`
-(twenty — keep this list, the `LANES` array and the `needs:` list in step).

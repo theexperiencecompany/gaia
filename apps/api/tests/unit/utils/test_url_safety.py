@@ -10,6 +10,8 @@ from unittest.mock import patch
 import pytest
 
 from app.utils.url_safety import (
+    assert_endpoint_url_allowed,
+    assert_endpoint_url_shape,
     assert_public_http_url,
     assert_public_http_url_sync,
     assert_safe_url_shape,
@@ -195,3 +197,98 @@ async def test_public_url_wraps_dns_failure_as_value_error() -> None:
     with patch("app.utils.url_safety._resolve", side_effect=OSError("nxdomain")):
         with pytest.raises(ValueError):
             await assert_public_http_url("https://does-not-resolve.example.com/")
+
+
+PRIVATE_ENDPOINTS = [
+    "http://127.0.0.1:8931/mcp",
+    "http://[::1]:8931/mcp",
+    "http://192.168.1.20/mcp",
+    "http://10.0.0.5:3000/sse",
+]
+
+ALWAYS_REFUSED_ENDPOINTS = [
+    "http://169.254.169.254/latest/meta-data",
+    "http://[fe80::1]/mcp",
+    "http://[::ffff:169.254.169.254]/",
+    "http://0.0.0.0:8000/mcp",
+    "http://metadata.google.internal/computeMetadata/v1",
+    "http://user:pass@192.168.1.20/mcp",
+    "file:///etc/passwd",
+]
+
+
+@pytest.mark.parametrize("url", PRIVATE_ENDPOINTS)
+def test_endpoint_shape_allows_a_private_host_only_when_allowed(url: str) -> None:
+    assert_endpoint_url_shape(url, allow_private=True)
+    with pytest.raises(ValueError):
+        assert_endpoint_url_shape(url, allow_private=False)
+
+
+@pytest.mark.parametrize("url", ALWAYS_REFUSED_ENDPOINTS)
+def test_endpoint_shape_refuses_metadata_link_local_and_credentials_even_when_allowed(
+    url: str,
+) -> None:
+    with pytest.raises(ValueError):
+        assert_endpoint_url_shape(url, allow_private=True)
+
+
+async def test_endpoint_allows_a_name_resolving_to_a_lan_address_only_when_allowed() -> None:
+    with patch("app.utils.url_safety._resolve", return_value=["192.168.65.254"]) as resolve:
+        await assert_endpoint_url_allowed(
+            "http://host.docker.internal:8931/mcp", allow_private=True
+        )
+        resolve.assert_called_once_with("host.docker.internal", 8931)
+        with pytest.raises(ValueError):
+            await assert_endpoint_url_allowed(
+                "http://host.docker.internal:8931/mcp", allow_private=False
+            )
+
+
+async def test_endpoint_refuses_a_name_resolving_to_the_metadata_address_even_when_allowed() -> (
+    None
+):
+    with patch("app.utils.url_safety._resolve", return_value=["169.254.169.254"]):
+        with pytest.raises(ValueError):
+            await assert_endpoint_url_allowed("http://rebind.example.com/", allow_private=True)
+
+
+async def test_endpoint_wraps_dns_failure_as_value_error() -> None:
+    with patch("app.utils.url_safety._resolve", side_effect=OSError("nxdomain")):
+        with pytest.raises(ValueError, match=r"^DNS resolution failed: nxdomain$"):
+            await assert_endpoint_url_allowed("http://nope.invalid/", allow_private=True)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://user@192.168.1.20/mcp",
+        "http://:secret@192.168.1.20/mcp",
+        "http://user:secret@192.168.1.20/mcp",
+    ],
+)
+def test_endpoint_refuses_a_username_or_a_password_on_its_own(url: str) -> None:
+    with pytest.raises(ValueError, match=r"^URL must not embed credentials$"):
+        assert_endpoint_url_shape(url, allow_private=True)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://metadata.google.internal./computeMetadata/v1",
+        "http://METADATA/",
+        "http://metadata../",
+    ],
+)
+def test_endpoint_refuses_a_metadata_hostname_written_with_trailing_dots_or_capitals(
+    url: str,
+) -> None:
+    with pytest.raises(ValueError, match=r"^refusing to connect to metadata host metadata"):
+        assert_endpoint_url_shape(url, allow_private=True)
+
+
+def test_endpoint_names_the_link_local_address_it_refuses() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"^refusing to connect to link-local or reserved address 169\.254\.169\.254$",
+    ):
+        assert_endpoint_url_shape("http://169.254.169.254/latest/meta-data", allow_private=True)

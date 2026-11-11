@@ -59,6 +59,8 @@ STRING_KEY_READ = "TB002"
 # to the repo root; every entry states why.
 BOUNDARY_MODULES: dict[str, str] = {
     "apps/api/app/db/repositories/base.py": "the Mongo document -> model boundary",
+    "apps/api/app/schemas/errors.py": "the error-body boundary: whatever detail a caller raised "
+    "is parsed into ErrorEnvelope here once, and FastAPI types responses= as dict[str, Any]",
     "apps/api/app/override/": "vendored overrides of third-party library internals",
     "apps/api/app/patches/": "monkeypatches of third-party library internals",
     "apps/api/app/browser_host/cdp_mux.py": "the CDP wire: Chrome owns every command and result shape",
@@ -87,6 +89,8 @@ EXTERNAL_TYPEDDICTS = (
     "OutputTokenDetails",
     # composio.core.models._modifiers.ToolExecuteParams: what a before-execute hook receives.
     "ToolExecuteParams",
+    # chromadb.api.types.GetResult: what Collection.get returns.
+    "GetResult",
 )
 # Library TypedDicts app classes subclass, by the path they are imported from: the
 # local name is often an alias (``State as _BigtoolState``), so the bare name can't

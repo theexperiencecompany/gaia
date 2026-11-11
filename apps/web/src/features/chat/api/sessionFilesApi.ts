@@ -1,4 +1,5 @@
 import type { PathSerializer } from "openapi-fetch";
+import { currentConversationId } from "@/features/chat/utils/currentConversationId";
 import { apiBaseUrl } from "@/lib/api/client";
 import { api } from "@/lib/api/typed";
 
@@ -32,11 +33,8 @@ export function resolveArtifactSrc(
   const m = /^(?:\.?\/)?artifacts\/(.+)$/.exec(src);
   if (!m) return src;
   let convId = conversationId;
-  if (!convId && globalThis.window !== undefined) {
-    const pathMatch = /\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)?c\/([^/?#]+)/.exec(
-      globalThis.window.location.pathname,
-    );
-    if (pathMatch) convId = pathMatch[1];
+  if (!convId) {
+    convId = currentConversationId();
   }
   if (!convId) return src;
   return sessionFilesApi.artifactUrl(convId, m[1]);

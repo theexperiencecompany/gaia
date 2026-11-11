@@ -9,7 +9,7 @@ must never downgrade early.
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from dodopayments.types import Subscription
@@ -44,6 +44,7 @@ from shared.py.analytics.catalog.billing import (
     SubscriptionActivated,
     SubscriptionCancelled,
     SubscriptionExpired,
+    SubscriptionLapsed,
     SubscriptionRenewed,
 )
 from tests.helpers import captured_wide_event
@@ -336,6 +337,8 @@ class TestActivationCreatesTheRow:
             SubscriptionActivated(
                 subscription_id="sub_xyz789",
                 plan_name="Pro",
+                product_id="prod_abc123",
+                billing_interval="month",
                 amount=9.99,
                 currency="USD",
                 amount_charged_pre_tax=9.99,
@@ -587,7 +590,39 @@ class TestTransitionsDriveTheSideEffects:
         assert _written_fields(mock_webhook_subscription_repository)["status"] == "expired"
         mock_deactivate_workflows.assert_awaited_once_with(FAKE_USER_ID)
         mock_track_subscription.assert_called_once_with(
-            UserId(FAKE_USER_ID), SubscriptionExpired(subscription_id="sub_xyz789")
+            UserId(FAKE_USER_ID),
+            SubscriptionExpired(
+                subscription_id="sub_xyz789", product_id="prod_abc123", billing_interval="month"
+            ),
+        )
+
+    @pytest.mark.parametrize(
+        ("kind", "status"),
+        [(SubscriptionEventKind.FAILED, "failed"), (SubscriptionEventKind.ON_HOLD, "on_hold")],
+    )
+    async def test_a_lapse_names_the_plan_it_lost(
+        self,
+        mock_webhook_subscription_repository,
+        mock_track_subscription,
+        mock_subscription_plan_cache_drop,
+        mock_deactivate_workflows,
+        kind: SubscriptionEventKind,
+        status: Literal["failed", "on_hold"],
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            return_value=_row(last_event_at=None)
+        )
+
+        await _apply(kind)
+
+        mock_track_subscription.assert_called_once_with(
+            UserId(FAKE_USER_ID),
+            SubscriptionLapsed(
+                subscription_id="sub_xyz789",
+                status=status,
+                product_id="prod_abc123",
+                billing_interval="month",
+            ),
         )
 
     async def test_a_plan_change_touches_neither_workflows_nor_analytics(
@@ -987,6 +1022,8 @@ class TestResultsNameTheOwnerAndTheRow:
             UserId(FAKE_USER_ID),
             SubscriptionRenewed(
                 subscription_id="sub_xyz789",
+                product_id="prod_abc123",
+                billing_interval="month",
                 currency="USD",
                 amount_charged_pre_tax=9.99,
                 currency_charged="USD",

@@ -2,6 +2,7 @@
 
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -24,10 +25,17 @@ class JevChoiceAnswer(BaseModel):
     probabilities: dict[str, float] | None = None
 
 
+class JevNoulAnswer(BaseModel):
+    """One yes/no question's answer: the probability its statement is true."""
+
+    type: Literal["noul"]
+    noul: float
+
+
 class JevDecisionsResponse(BaseModel):
     """A Decisions API body, answers keyed by the question names the request sent."""
 
-    answers: dict[str, JevChoiceAnswer]
+    answers: dict[str, JevChoiceAnswer | JevNoulAnswer]
     usage: JevUsage | None = None
 
     def choice(
@@ -37,11 +45,20 @@ class JevDecisionsResponse(BaseModel):
         answer = self.answers.get(question)
         if answer is None:
             raise ValueError(f"JEV {label}answer missing for question {question!r}")
-        if answer.type != "choice":
+        if not isinstance(answer, JevChoiceAnswer) or answer.type != "choice":
             raise ValueError(f"non-choice JEV {label}answer: {answer!r}"[:300])
         if answer.choice not in allowed:
             raise ValueError(f"unknown JEV {label}choice: {answer.choice!r}")
         return answer
+
+    def noul(self, question: str) -> float:
+        """Return the named yes/no question's P(true); raise unless it is a noul within [0, 1]."""
+        answer = self.answers.get(question)
+        if not isinstance(answer, JevNoulAnswer):
+            raise ValueError(f"no JEV noul answer for question {question!r}: {answer!r}"[:300])
+        if not 0.0 <= answer.noul <= 1.0:
+            raise ValueError(f"JEV noul for {question!r} is out of range: {answer.noul!r}")
+        return answer.noul
 
     def tokens(self) -> tuple[int, int]:
         """Return (input, output) tokens, zero when the body reports none."""

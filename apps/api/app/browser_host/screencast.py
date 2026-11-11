@@ -222,6 +222,8 @@ def _route_event(
     if method == _SCREENCAST_FRAME_EVENT:
         _on_screencast_frame(mux, stream, frames, background, params)
     elif method == _FRAME_NAVIGATED_EVENT and params.get("frame", {}).get("parentId") is None:
+        # The new page's frames can arrive before the reread; they must not name the old page.
+        stream.meta.url = params.get("frame", {}).get("url", stream.meta.url)
         _spawn(background, _refresh_meta(mux, stream))
     elif method == _DETACHED_EVENT:
         stream.detached.set()

@@ -6,6 +6,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
     category: "AI Intelligence",
     icon: "MessageMultiple02Icon",
     title: "Smart Chat",
+    metaTitle: "AI Chat That Takes Action, Not Just Answers",
     tagline: "Conversations that take real action, not just give answers",
     headline: "Ask anything. Watch it happen.",
     subheadline:
@@ -93,6 +94,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
     category: "AI Intelligence",
     icon: "Search01Icon",
     title: "Deep Research",
+    metaTitle: "AI Deep Research: Multi-Source Answers in Seconds",
     tagline: "Multi-source research synthesized in seconds",
     headline: "Research three angles at once, automatically.",
     subheadline:
@@ -184,6 +186,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
     category: "AI Intelligence",
     icon: "BrainIcon",
     title: "Memory",
+    metaTitle: "AI Assistant With Memory: It Remembers You",
     tagline: "Builds a knowledge graph of you and remembers everything",
     headline: "Knows your team. Your tools. Your preferences.",
     subheadline:
@@ -274,6 +277,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
     category: "AI Intelligence",
     icon: "Notification01Icon",
     title: "Proactive AI",
+    metaTitle: "Proactive AI: Briefings and Actions Before You Ask",
     tagline: "Briefings and actions delivered before you even ask",
     headline: "Your 9am briefing, written before you open your laptop.",
     subheadline:
@@ -366,6 +370,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
     category: "AI Intelligence",
     icon: "Image01Icon",
     title: "Image Generation",
+    metaTitle: "AI Image Generation Inside Your Chat",
     tagline: "Create images from natural language, inline in chat",
     headline: "Describe it. See it in seconds.",
     subheadline:
@@ -457,6 +462,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
     category: "AI Intelligence",
     icon: "SourceCodeSquareIcon",
     title: "Code Execution",
+    metaTitle: "AI Code Execution in a Secure Sandbox",
     tagline: "Run code in a secure sandbox and see results instantly",
     headline: "Write code. Run it. See the output.",
     subheadline:
@@ -548,7 +554,9 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
     category: "AI Intelligence",
     icon: "DashboardBrowsingIcon",
     title: "Rich Responses",
-    tagline: "Charts, tables, timelines, and 30+ interactive components inline",
+    metaTitle: "Rich AI Responses: Charts, Tables and Timelines",
+    tagline:
+      "Charts, tables, timelines, and other interactive components inline",
     headline: "AI answers that look like dashboards.",
     subheadline:
       "GAIA generates 36 types of interactive components inline (bar charts, timelines, comparison tables, file trees, status cards, and more) directly in the conversation.",

@@ -18,8 +18,7 @@ from typing import Any
 from hypothesis import given, settings, strategies as st
 import pytest
 
-from app.models.integration_instructions_models import InstructionsEditor
-from app.schemas.integrations.responses import IntegrationInstructionsResponse
+from app.models.user_instructions_models import InstructionsEditor, InstructionsResponse
 from app.schemas.outbound import OutboundAttachment, OutboundMessageEnvelope
 
 UTC_OFFSET_ZERO = timedelta(0)
@@ -149,44 +148,41 @@ class TestOutboundEnvelopeRoundTrip:
 
 
 # ---------------------------------------------------------------------------
-# IntegrationInstructionsResponse — camelCase alias round-trip
+# InstructionsResponse: wire round-trip (the editor's revision guard reads it)
 # ---------------------------------------------------------------------------
 
-CAMEL_SCHEMA_FIELDS = {
-    "integration_id": "integrationId",
-    "content": "content",
-    "updated_by": "updatedBy",
-    "updated_at": "updatedAt",
-}
+INSTRUCTIONS_WIRE_FIELDS = {"scope", "content", "revision", "updated_by", "updated_at"}
 
 
-class TestCamelCaseAliasRoundTrip:
+class TestInstructionsResponseRoundTrip:
     @settings(deadline=None)
     @given(
-        integration_id=st.text(min_size=1, max_size=50),
+        scope=st.text(min_size=1, max_size=50),
         content=st.text(max_size=8000),
-        updated_by=st.sampled_from(list(InstructionsEditor)),
+        revision=st.integers(min_value=0),
+        updated_by=st.one_of(st.none(), st.sampled_from(list(InstructionsEditor))),
         updated_at=st.one_of(st.none(), st.datetimes(timezones=st.just(UTC))),
     )
-    def test_alias_dump_validates_back_to_equal_model(
+    def test_wire_dump_validates_back_to_equal_model(
         self,
-        integration_id: str,
+        scope: str,
         content: str,
-        updated_by: InstructionsEditor,
+        revision: int,
+        updated_by: InstructionsEditor | None,
         updated_at: Any,
     ) -> None:
-        model = IntegrationInstructionsResponse(
-            integration_id=integration_id,
+        model = InstructionsResponse(
+            scope=scope,
             content=content,
+            revision=revision,
             updated_by=updated_by,
             updated_at=updated_at,
         )
-        alias_dump = model.model_dump(by_alias=True)
-        assert set(alias_dump) == set(CAMEL_SCHEMA_FIELDS.values())
-        restored = IntegrationInstructionsResponse.model_validate(alias_dump)
-        assert restored == model
+        wire = model.model_dump(by_alias=True)
+        assert set(wire) == INSTRUCTIONS_WIRE_FIELDS
+        assert InstructionsResponse.model_validate(wire) == model
         # A JSON wire round-trip must preserve the instant and its zone.
-        json_restored = IntegrationInstructionsResponse.model_validate_json(
+        json_restored = InstructionsResponse.model_validate_json(
             model.model_dump_json(by_alias=True)
         )
         assert json_restored == model

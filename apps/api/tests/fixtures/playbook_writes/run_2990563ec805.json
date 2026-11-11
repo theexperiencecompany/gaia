@@ -1,0 +1,49 @@
+{
+ "run": "run_2990563ec805",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "check_integrations_status",
+   "tool_category": "integrations",
+   "args": {
+    "integration_names": [
+     "linear"
+    ]
+   },
+   "result_digest": "Lhhiuw: f Kze Jukrtjhyu"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 5,
+   "record_len": 2,
+   "written": {
+    "description": "Ytt lar 'Onwny sdnqmme avjsrfif hx ursyk yliivvuhen' jcqviucr: check Lhhiuw mondsseazv, qiq bg zpoocckcfzvf report lar mondsseazv depyv vls nxkadezi.",
+    "steps": [
+     {
+      "id": "check_linear",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "linear"
+       ]
+      }
+     }
+    ],
+    "result_brief": "Cvouqs lar Lhhiuw mondsseazv status. Hx Lhhiuw uc Kze Jukrtjhyu, kfhta uzku lar Lhhiuw lniglmkhtgi uc zpoocckcfzvf ow ga ayhogju cuioau sjuyg ku kzaveewed, qiq uzku ga avjsrfif uign tbgkjtyjdd (mondsseazv depyv vls lar jcqviucr'n nxkadezi). Bo mth slfldlfbb sja luhvbqd. Hx Lhhiuw uign qtlgdynes, lar rui njsgg tcocowl oa search ayhogju cuioau, yoo xhuc lar voyznab status lar qjjnea uc lar mondsseazv-depyv nxkadezi."
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "check_integrations_status#1",
+     "id": "check_linear"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

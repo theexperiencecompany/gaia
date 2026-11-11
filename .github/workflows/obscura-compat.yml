@@ -40,7 +40,8 @@ permissions:
 
 jobs:
   probe:
-    name: Obscura vs Chrome on common sites
+    # The name carries it because a red X in the checks list is read before any summary.
+    name: Obscura vs Chrome on common sites (non-blocking — loads live third-party sites)
     runs-on: ubuntu-latest
     # A cold cargo build of Obscura is most of this; the probe itself is ~10 min.
     timeout-minutes: 60
@@ -50,7 +51,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      # The build main.yml's obscura-bin job makes too, under one cache scope.
+      # The build ci.yml's obscura-bin job makes too, under one cache scope.
       - uses: ./.github/actions/build-obscura
 
       - name: Locate the binaries (Obscura built above, Chrome from the runner image)
@@ -75,6 +76,12 @@ jobs:
       - name: Write the probe report to the job summary
         if: always()
         run: |
+          {
+            echo "### Non-blocking: this probe loads live third-party sites and gates nothing"
+            echo ""
+            echo "A red run means a site renders differently in Obscura than in Chrome — read the report. It is never a required check."
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
           [ -s "$RUNNER_TEMP/probe.txt" ] || exit 0
           { echo '```'; cat "$RUNNER_TEMP/probe.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
@@ -89,12 +96,12 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # cargo test runs inside the obscura-test stage, so a failing test fails
       # this build. Nothing is exported or cached: the test binaries are GBs.
       - name: Run cargo test in the obscura-test stage of apps/api/Dockerfile
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: apps/api/Dockerfile

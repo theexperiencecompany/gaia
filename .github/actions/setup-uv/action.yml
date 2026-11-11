@@ -3,9 +3,9 @@ description: >
   Install uv with the right cache strategy for the runner. GitHub-hosted
   runners restore/save the uv cache through actions/cache (ephemeral disk).
   Self-hosted runners keep ~/.cache/uv on the box and must NOT round-trip it
-  through GitHub's cache service: with enable-cache true every Code Quality
+  through GitHub's cache service: with enable-cache true every lint
   job spent 170-260 s restoring and saving a multi-GB cache over the box's
-  uplink (run 33189680013, vs 26-32 s on GitHub) — Code Quality took 11.6 min
+  uplink (run 33189680013, vs 26-32 s on GitHub) — the lint workflow took 11.6 min
   on the box against 6.6 min on GitHub. Same split as
   setup-python-test-env, shared here so every workflow uses one rule.
 inputs:
@@ -14,12 +14,12 @@ inputs:
     required: false
     # Same uv as the api/voice-agent Dockerfiles. 0.8.x cannot read a lock
     # that records `exclude-newer-span` (uv.lock is written by >= 0.10).
-    default: "0.10.6"
+    default: "0.12.23"
 runs:
   using: composite
   steps:
-    - name: Resolve the persistent uv cache path (self-hosted)
-      if: runner.environment == 'self-hosted'
+    - name: Resolve the persistent uv cache path (the box)
+      if: startsWith(runner.name, 'gaia-home-')
       id: uvcache
       shell: bash
       run: |
@@ -28,17 +28,25 @@ runs:
         mkdir -p "$UV_DIR"
         echo "path=$UV_DIR" >> "$GITHUB_OUTPUT"
         echo "uv cache (persistent, no GH cache): $UV_DIR ($(du -sh "$UV_DIR" 2>/dev/null | cut -f1))"
-    - name: Setup uv (self-hosted — persistent local cache)
-      if: runner.environment == 'self-hosted'
+    - name: Setup uv (the box — persistent local cache)
+      if: startsWith(runner.name, 'gaia-home-')
       uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       with:
         version: ${{ inputs.version }}
         enable-cache: false
         cache-local-path: ${{ steps.uvcache.outputs.path }}
-    - name: Setup uv (GitHub-hosted — cache via actions/cache)
-      if: runner.environment != 'self-hosted'
+    - name: Setup uv (off the box — cache via actions/cache)
+      if: ${{ !startsWith(runner.name, 'gaia-home-') }}
       uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       with:
         version: ${{ inputs.version }}
         enable-cache: true
         prune-cache: true
+    # Before any `uv sync` / `uv run`, so a missing interpreter fails HERE, under
+    # its own name, instead of inside whichever command first needed it
+    # ("No interpreter found for Python 3.12.15", four red lanes after the pin
+    # bump). Reads .python-version; a no-op when that build is already installed
+    # (the box keeps it under ~/.local/share/uv/python between jobs).
+    - name: Install the pinned Python (.python-version)
+      shell: bash
+      run: uv python install
