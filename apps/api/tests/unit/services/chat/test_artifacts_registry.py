@@ -5,13 +5,13 @@ would show a dead link; the short_links collection is the one source of truth.
 """
 
 from datetime import UTC, datetime
-import inspect
 from unittest.mock import AsyncMock, patch
 
 from app.services.artifact_events import ArtifactEventMessage
 from app.services.chat import artifacts_registry
 
 _REPO = "app.services.chat.artifacts_registry.conversation_repository"
+_DELETE_CACHE = "app.decorators.caching.delete_cache"
 
 EVENT: ArtifactEventMessage = {
     "event": "upsert",
@@ -27,12 +27,13 @@ EVENT: ArtifactEventMessage = {
 
 
 async def _upsert(update_matched: bool) -> AsyncMock:
-    with patch(_REPO) as repo:
+    with patch(_REPO) as repo, patch(_DELETE_CACHE, new=AsyncMock()) as delete_cache:
         repo.update_artifact = AsyncMock(return_value=update_matched)
         repo.push_artifact = AsyncMock()
-        await inspect.unwrap(artifacts_registry.upsert_conversation_artifact)(
+        await artifacts_registry.upsert_conversation_artifact(
             "507f1f77bcf86cd799439011", "conv-1", EVENT
         )
+        delete_cache.assert_awaited_once_with("conv_artifacts:507f1f77bcf86cd799439011:conv-1")
         return repo
 
 

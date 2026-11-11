@@ -65,6 +65,7 @@ from app.services.mcp.mcp_client_pool import MCPClientPool, PooledClient
 from app.services.mcp.mcp_errors import (
     DCRNotSupportedError,
     MCPAuthorizationRequiredError,
+    MCPIntegrationNotFoundError,
     StepUpAuthRequiredError,
     _extract_response_signal,
     is_terminal_auth_failure,
@@ -545,8 +546,10 @@ class TestMCPClientDoConnect:
     async def test_raises_when_integration_not_found(self, mock_resolver):
         mock_resolver.resolve = AsyncMock(return_value=None)
         client = MCPClient(user_id=USER_ID)
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(MCPIntegrationNotFoundError) as raised:
             await client._do_connect(INTEGRATION_ID)
+        assert raised.value.integration_id == INTEGRATION_ID
+        assert str(raised.value) == f"MCP integration {INTEGRATION_ID} not found"
 
     @patch("app.services.mcp.mcp_client.IntegrationResolver")
     async def test_raises_when_no_mcp_config(self, mock_resolver):
@@ -554,8 +557,10 @@ class TestMCPClientDoConnect:
         resolved.mcp_config = None
         mock_resolver.resolve = AsyncMock(return_value=resolved)
         client = MCPClient(user_id=USER_ID)
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(MCPIntegrationNotFoundError) as raised:
             await client._do_connect(INTEGRATION_ID)
+        assert raised.value.integration_id == INTEGRATION_ID
+        assert str(raised.value) == f"MCP integration {INTEGRATION_ID} not found"
 
     @patch("app.services.mcp.mcp_client.IntegrationResolver")
     @patch("app.services.mcp.mcp_client.BaseMCPClient")

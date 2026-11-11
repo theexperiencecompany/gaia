@@ -68,3 +68,14 @@ class TestPublishConnected:
             error_type="ConnectionError",
         )
         broadcast.assert_awaited_once()
+
+    async def test_a_new_connection_queues_that_users_scout_for_that_integration(self) -> None:
+        queue = AsyncMock()
+        with (
+            patch(f"{MODULE}.schedule_user_integrations_sync", MagicMock()),
+            patch(f"{MODULE}.queue_scout_learn", queue),
+            patch(f"{MODULE}.websocket_manager.broadcast_to_user", AsyncMock()),
+        ):
+            await publish_connected("user-1", "linear")
+
+        queue.assert_awaited_once_with("user-1", "linear")

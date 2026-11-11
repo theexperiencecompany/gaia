@@ -128,7 +128,7 @@ def slot_problems(field: str, text: str, values: SlotValues) -> list[str]:
         "[[fact:N]], [[fact:N.time]], [[fact:N.count]] or [the phrase](fact:N) exactly"
         for match in _SLOT_RESIDUE_RE.finditer(bare)
     ]
-    bare = _SLOT_RESIDUE_RE.sub(" ", bare)
+    bare = _SLOT_RESIDUE_RE.sub(" ", bare)  # pragma: no mutate — digit-free filler reads the same
     typed = _typed_figures(bare, values)
     if typed:
         problems.append(

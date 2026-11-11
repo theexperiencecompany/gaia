@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 from pydantic import ValidationError
 import pytest
+from tests.helpers import captured_wide_event
 
 from app.constants.briefing import BRIEF_FAITHFULNESS_LABEL, BRIEF_FAITHFULNESS_TEMPERATURE
 from app.services.briefing import faithfulness
@@ -79,6 +80,39 @@ async def test_a_claim_quoting_words_the_brief_never_wrote_is_dropped(model: Asy
     claims = await unsupported_claims(_USER, _FACTS, _DRAFT)
 
     assert [c.quote for c in claims] == ["arjun is  waiting on the redlines"]
+
+
+async def test_a_dropped_claim_is_logged_with_its_quote(model: AsyncMock) -> None:
+    model.return_value = _judged(
+        ("Sent to fourteen investors", "contradicted", 1),
+        ("Then Sequoia", "absent", None),
+        ("a made up sentence", "absent", None),
+    )
+
+    async with captured_wide_event() as event:
+        claims = await unsupported_claims(_USER, _FACTS, _DRAFT)
+
+    assert [c.quote for c in claims] == ["Then Sequoia"]
+    assert {
+        "msg": "briefing.faithfulness_unquoted",
+        "quotes": ["Sent to fourteen investors", "a made up sentence"],
+    } in event["warnings"]
+
+
+async def test_a_quote_matches_the_prose_with_or_without_the_brackets_round_a_filled_value(
+    model: AsyncMock,
+) -> None:
+    model.return_value = _judged(
+        ("Sequoia at 11:00 AM.", "contradicted", 2),
+        ("Then Sequoia at \u27e611:00 AM\u27e7.", "absent", None),
+    )
+
+    claims = await unsupported_claims(_USER, _FACTS, _DRAFT)
+
+    assert [c.quote for c in claims] == [
+        "Sequoia at 11:00 AM.",
+        "Then Sequoia at \u27e611:00 AM\u27e7.",
+    ]
 
 
 async def test_the_model_reads_the_facts_and_every_rendered_field_at_zero_temperature(

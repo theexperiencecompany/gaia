@@ -322,6 +322,47 @@ class TestContent:
 
         assert content["more"] == {"needs_you": 2, "updates": 0, "gaia_did": 0}
 
+    def test_the_updates_and_gaia_sections_report_their_own_overflow(self) -> None:
+        content = _build(
+            _payload(
+                sections=[
+                    {
+                        "numeral": "I",
+                        "title": "Updates",
+                        "key": "updates",
+                        "items": [_item("Payout landed", "lookback")],
+                        "more": 5,
+                    },
+                    {
+                        "numeral": "II",
+                        "title": "GAIA's work",
+                        "key": "gaia_did",
+                        "items": [_item("Deck", "lookback")],
+                        "more": 7,
+                    },
+                ]
+            )
+        )["content"]
+
+        assert content["more"] == {"needs_you": 0, "updates": 5, "gaia_did": 7}
+
+    def test_a_brief_without_a_gaia_section_says_none_were_left_out_of_it(self) -> None:
+        content = _build(
+            _payload(
+                sections=[
+                    {
+                        "numeral": "I",
+                        "title": "Updates",
+                        "key": "updates",
+                        "items": [_item("Payout landed", "lookback")],
+                        "more": 5,
+                    }
+                ]
+            )
+        )["content"]
+
+        assert content["more"] == {"needs_you": 0, "updates": 5, "gaia_did": 0}
+
 
 @pytest.mark.unit
 class TestHeadline:

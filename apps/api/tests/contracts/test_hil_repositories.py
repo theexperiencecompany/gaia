@@ -13,8 +13,17 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.constants.hil import HIL_UNRESUMED_SWEEP_STATUSES
-from app.db.repositories.hil import HilApprovalRepository, HilToolRiskRepository
-from app.models.hil_models import HILApprovalRecord, HILApprovalUpdate, HILToolRiskRecord
+from app.db.repositories.hil import (
+    HilApprovalRepository,
+    HilToolRiskRepository,
+    ToolReadOnlyVerdictRepository,
+)
+from app.models.hil_models import (
+    HILApprovalRecord,
+    HILApprovalUpdate,
+    HILToolRiskRecord,
+    ToolReadOnlyVerdict,
+)
 
 
 def _record(approval_id: str, **overrides: object) -> HILApprovalRecord:
@@ -51,6 +60,11 @@ def repo(raw_collection) -> HilApprovalRepository:
 @pytest.fixture
 def risk_repo(raw_collection) -> HilToolRiskRepository:
     return HilToolRiskRepository()
+
+
+@pytest.fixture
+def verdict_repo(raw_collection) -> ToolReadOnlyVerdictRepository:
+    return ToolReadOnlyVerdictRepository()
 
 
 class TestHilApprovalRepository:
@@ -210,6 +224,19 @@ class TestHilApprovalRepository:
 
         assert [r.approval_id for r in pending] == ["old", "new"]
 
+    async def test_pending_for_user_is_scoped_unexpired_and_oldest_first(self, repo):
+        now = datetime.now(UTC)
+        await repo.create_if_absent(_record("new"))
+        await repo.create_if_absent(_record("old", created_at=now - timedelta(minutes=5)))
+        await repo.create_if_absent(_record("other-user", user_id="u2"))
+        await repo.create_if_absent(_record("expired", expires_at=now - timedelta(minutes=1)))
+        await repo.create_if_absent(_record("done"))
+        await repo.mark_decided("done", "denied", feedback=None, scope="once", decided_by=None)
+
+        pending = await repo.list_pending_for_user("u1", now)
+
+        assert [r.approval_id for r in pending] == ["old", "new"]
+
 
 class TestAutoApprovalRecords:
     """An auto-approved action already ran: its record is a receipt, never a request."""
@@ -295,3 +322,47 @@ class TestHilToolRiskRepository:
         got = await risk_repo.find_classification("t", "h1")
 
         assert got is not None and got.is_destructive is False
+
+
+class TestToolReadOnlyVerdictRepository:
+    async def test_a_stored_verdict_is_found_by_its_exact_tool_hash(self, verdict_repo):
+        await verdict_repo.upsert_verdict(
+            ToolReadOnlyVerdict(tool_hash="h1", tool_name="list_issues", read_only=True)
+        )
+
+        got = await verdict_repo.find_verdict("h1")
+
+        assert got is not None
+        assert (got.tool_hash, got.tool_name, got.read_only) == ("h1", "list_issues", True)
+        assert await verdict_repo.find_verdict("other-hash") is None
+
+    async def test_a_verdict_is_stored_as_one_document_keyed_by_tool_hash_with_no_id_field(
+        self, verdict_repo, raw_collection
+    ):
+        await verdict_repo.upsert_verdict(
+            ToolReadOnlyVerdict(tool_hash="h1", tool_name="t", read_only=True)
+        )
+
+        [stored] = await raw_collection.find({}).to_list(None)
+
+        assert set(stored) == {
+            "_id",
+            "tool_hash",
+            "tool_name",
+            "read_only",
+            "rationale",
+            "classified_at",
+        }
+
+    async def test_a_second_verdict_on_one_hash_overwrites_the_first_in_place(self, verdict_repo):
+        await verdict_repo.upsert_verdict(
+            ToolReadOnlyVerdict(tool_hash="h1", tool_name="t", read_only=True, rationale="reads")
+        )
+        await verdict_repo.upsert_verdict(
+            ToolReadOnlyVerdict(tool_hash="h1", tool_name="t", read_only=False, rationale="writes")
+        )
+
+        got = await verdict_repo.find_verdict("h1")
+
+        assert got is not None
+        assert (got.read_only, got.rationale) == (False, "writes")

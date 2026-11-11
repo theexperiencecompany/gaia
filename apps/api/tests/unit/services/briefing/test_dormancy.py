@@ -85,3 +85,20 @@ class TestLatestActivitySince:
         self._dates(monkeypatch, None)
 
         assert await dormancy.latest_activity_since("u1", _SINCE) is None
+
+
+class TestClimbIdleLadder:
+    async def test_an_idle_day_after_one_idle_day_reaches_the_warning_rung(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        set_day = AsyncMock()
+        monkeypatch.setattr(user_repository, "set_dormancy_day", set_day)
+        user = UserDocument(id="u1", created_at=datetime.now(UTC) - timedelta(days=90))
+        prior = DormancyState(idle_days=1, date="2026-10-13", dormant_since=None)
+
+        ladder = await dormancy.climb_idle_ladder(
+            user, prior, "2026-10-14", has_news=False, has_goal=False
+        )
+
+        assert ladder == dormancy.IdleLadder(first_week=False, idle_days=2, wind_down="warn")
+        set_day.assert_awaited_once_with("u1", idle_days=2, date_str="2026-10-14")
