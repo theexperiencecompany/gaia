@@ -20,6 +20,7 @@ from app.config.deployment import (
     BlobStoreKind,
     DeploymentKind,
     DeploymentProfile,
+    LinkBase,
     deployment_profile,
 )
 from app.config.secrets import inject_infisical_secrets
@@ -42,7 +43,7 @@ from app.constants.search import (
 from shared.py.wide_events import log
 
 # The web app route a heygaia.link slug rewrites to.
-DEV_SHORTLINK_WEB_ROUTE = "/l"
+SHORTLINK_WEB_ROUTE = "/l"
 
 load_dotenv()
 
@@ -142,8 +143,8 @@ class Settings(BrowserHostSettings):
     # ----------------------------------------------
     HOST: str = "https://api.heygaia.io"
     FRONTEND_URL: str = "https://heygaia.io"
-    # Short-link display domain (heygaia.link/<slug>). The dedicated domain
-    # rewrites to the app's /l route, which resolves the slug. No trailing slash.
+    # Short-link base (heygaia.link/<slug> on GAIA Cloud). Unset elsewhere, it is
+    # FRONTEND_URL/l, the instance's own route. No trailing slash.
     SHORTLINK_BASE_URL: str = "https://heygaia.link"
     # Sender address for outbound briefing email; the same in every environment.
     EMAIL_FROM: str = "brief@heygaia.io"
@@ -612,6 +613,9 @@ class Settings(BrowserHostSettings):
     # Bot Configuration
     # ----------------------------------------------
     GAIA_BOT_API_KEY: str | None = None
+    # Shared with the web app's server: proves a request's viewer-IP header was set
+    # by GAIA's own SSR, so rate limits key on the viewer. Unset trusts no such header.
+    INTERNAL_RESOLVER_TOKEN: str | None = None
     DISCORD_BOT_TOKEN: str | None = None
     DISCORD_CLIENT_ID: str | None = None
     SLACK_BOT_TOKEN: str | None = None
@@ -661,13 +665,13 @@ class Settings(BrowserHostSettings):
         return self
 
     @model_validator(mode="after")
-    def _short_links_on_the_local_web_app(self) -> Self:
-        """Point minted links at this checkout's web app /l route; no heygaia.link alias exists locally."""
+    def _short_links_on_the_instances_web_app(self) -> Self:
+        """Point minted links at this instance's web app /l route unless it resolves heygaia.link."""
         if (
-            self.deployment.kind is DeploymentKind.DEVELOPMENT
+            self.deployment.link_base is LinkBase.INSTANCE_WEB_ROUTE
             and "SHORTLINK_BASE_URL" not in self.model_fields_set
         ):
-            self.SHORTLINK_BASE_URL = f"{self.FRONTEND_URL}{DEV_SHORTLINK_WEB_ROUTE}"
+            self.SHORTLINK_BASE_URL = f"{self.FRONTEND_URL}{SHORTLINK_WEB_ROUTE}"
         return self
 
     @model_validator(mode="before")
