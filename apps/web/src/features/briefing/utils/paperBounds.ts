@@ -13,6 +13,8 @@ const END_PERCENTILE = 0.85;
 const SIDE_PERCENTILE = 0.15;
 /** Within this of the desk's colour in every channel a pixel is desk; a paper vignette stays inside it. */
 const DESK_CONTRAST = 64;
+/** A pixel at least this opaque is drawn; below it the desk is clear and the page shows through. */
+const OPAQUE_ALPHA = 128;
 /** A sheet set at less than this angle, in radians, is left as drawn. */
 const MIN_TILT = 0.002;
 
@@ -31,8 +33,8 @@ export interface PaperSheet {
   height: number;
   /** Mean paper colour, 0..255 per channel. */
   rgb: [number, number, number];
-  /** The desk's colour, which fills the corners when the sheet is turned square. */
-  desk: [number, number, number];
+  /** The desk's colour, which fills the corners when the sheet is turned square; null for a clear desk. */
+  desk: [number, number, number] | null;
   /** How far the sheet is turned on its desk, in radians; 0 when it is not on one. */
   tilt: number;
 }
@@ -116,11 +118,15 @@ export function findPaper(edition: EditionSource): PaperSheet {
   const pixels = readPixels(edition);
   const { width, height, data } = pixels;
   const at = (x: number, y: number) => (y * width + x) * 4;
+  // A clear desk is told apart by alpha alone: its colour is undefined, and a dark sheet would match it.
+  const isClearDesk = data[3] < OPAQUE_ALPHA;
   const isDeskAt = (index: number) =>
-    [0, 1, 2].every(
-      (channel) =>
-        Math.abs(data[index + channel] - data[channel]) <= DESK_CONTRAST,
-    );
+    isClearDesk
+      ? data[index + 3] < OPAQUE_ALPHA
+      : [0, 1, 2].every(
+          (channel) =>
+            Math.abs(data[index + channel] - data[channel]) <= DESK_CONTRAST,
+        );
 
   const left = cropDepth(
     edgePoints(width, height, (line, along) => isDeskAt(at(line, along))),
@@ -161,7 +167,9 @@ export function findPaper(edition: EditionSource): PaperSheet {
     number,
     number,
   ];
-  const desk: [number, number, number] = [data[0], data[1], data[2]];
+  const desk: [number, number, number] | null = isClearDesk
+    ? null
+    : [data[0], data[1], data[2]];
 
   // A desk runs one flat colour along the whole edge and is clearly unlike the
   // paper; an edge that is the sheet itself keeps its full margin.
@@ -170,9 +178,10 @@ export function findPaper(edition: EditionSource): PaperSheet {
     Array.from({ length: height }, (_, y) => at(0, y)).every(isDeskAt);
   const isOnADesk =
     edgeIsFlat &&
-    paper.some(
-      (channel, index) => Math.abs(channel - desk[index]) > DESK_CONTRAST,
-    );
+    (desk === null ||
+      paper.some(
+        (channel, index) => Math.abs(channel - desk[index]) > DESK_CONTRAST,
+      ));
   if (!isOnADesk) {
     return {
       x: 0,
@@ -210,8 +219,10 @@ export function straighten(
   canvas.height = height;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("No 2D canvas to straighten the edition on");
-  context.fillStyle = `rgb(${sheet.desk.join(", ")})`;
-  context.fillRect(0, 0, width, height);
+  if (sheet.desk) {
+    context.fillStyle = `rgb(${sheet.desk.join(", ")})`;
+    context.fillRect(0, 0, width, height);
+  }
   context.translate(width / 2, height / 2);
   context.rotate(-sheet.tilt);
   context.drawImage(image, -width / 2, -height / 2);

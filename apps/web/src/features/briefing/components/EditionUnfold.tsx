@@ -176,7 +176,8 @@ export interface EditionUnfoldProps {
 /**
  * The edition as a letter folded in panels. One spring takes it from folded to
  * open on mount and back the same way when the modal closes; creases overlap so
- * the letter opens as one motion. Reduced motion gets a fade.
+ * the letter opens as one motion, and once open it rests as the one whole sheet.
+ * Reduced motion gets a fade.
  */
 export function EditionUnfold({
   edition,
@@ -277,18 +278,27 @@ export function EditionUnfold({
           className="absolute inset-0 origin-top rounded-xl shadow-[0_40px_90px_-28px_rgba(0,0,0,0.8),0_14px_30px_-14px_rgba(0,0,0,0.55)]"
           style={{ scaleY: reduceMotion ? 1 : shadowScale }}
         />
-        <div
-          className="absolute inset-0"
-          style={{ perspective: 1800, perspectiveOrigin: "50% 0%" }}
-        >
-          <Panel
-            index={0}
-            edition={edition}
-            progress={progress}
-            isFlat={reduceMotion}
-            isMoving={isMoving}
-          />
-        </div>
+        {isPresent && !isMoving ? (
+          <div
+            className="absolute inset-0 overflow-hidden"
+            style={{ borderRadius: CORNER_RADIUS_PX }}
+          >
+            <PanelFace bitmap={edition.sheet} />
+          </div>
+        ) : (
+          <div
+            className="absolute inset-0"
+            style={{ perspective: 1800, perspectiveOrigin: "50% 0%" }}
+          >
+            <Panel
+              index={0}
+              edition={edition}
+              progress={progress}
+              isFlat={reduceMotion}
+              isMoving={isMoving}
+            />
+          </div>
+        )}
       </m.div>
     </>
   );

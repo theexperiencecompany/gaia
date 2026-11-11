@@ -73,4 +73,9 @@ def test_needs_you_counts_every_item_waiting_on_the_reader_in_any_section() -> N
     )
 
     assert view.needs_you_count == 3
-    assert view.edition_name == "The Blueprint"
+
+
+def test_only_air_mail_is_named_so_no_design_explorer_name_reaches_the_user() -> None:
+    view = briefing_view(_brief(template_family="flightplan"))
+
+    assert (view.edition_name, view.stamp_city_name) == (None, None)

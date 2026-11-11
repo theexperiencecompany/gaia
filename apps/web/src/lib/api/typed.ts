@@ -192,6 +192,8 @@ async function call<R>(
       } as never,
     )) as CallResult;
   } catch (error) {
+    // The caller cancelled the request: that is its decision, not a failure to report.
+    if (axios.isCancel(error)) throw error;
     throw reportFailure(
       httpMethod,
       String(path),

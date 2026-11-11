@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.db.repositories.base import UserScopedDocument
 from app.models.briefing_models import BriefingItemKind, BriefingKind, BriefingMood, BriefingStat
 from app.models.workflow_execution_models import WorkflowExecutionStatus
+from app.schemas.common import ResponseModel
 
 
 class ShortLinkTargetType(StrEnum):
@@ -147,7 +148,7 @@ PublicShortLinkView = Annotated[
 
 
 class ShortLinkTargetRequest(BaseModel):
-    """One of the owner's artifacts, to share (mint or fetch its link) or stop sharing."""
+    """One of the owner's artifacts, to share (mint or fetch its link), read or stop sharing."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -159,3 +160,15 @@ class ShortLinkResponse(BaseModel):
     """A minted heygaia.link URL."""
 
     url: str
+
+
+class ShortLinkShareState(ResponseModel):
+    """Whether one of the owner's artifacts is shared: its live heygaia.link, or None."""
+
+    url: str | None
+
+
+class StopSharingResult(ResponseModel):
+    """Whether stopping killed a live link; False when the artifact was not shared."""
+
+    revoked: bool

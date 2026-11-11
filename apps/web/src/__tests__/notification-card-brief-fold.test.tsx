@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
@@ -29,7 +29,24 @@ import {
 const HEADLINE = "Three decisions are waiting on you";
 const MESSAGE = "The Acme renewal needs your sign-off today.";
 
-function notification(metadata: Record<string, unknown>): NotificationView {
+const OPEN_BRIEFING = {
+  id: "open",
+  type: "redirect",
+  label: "Open briefing",
+  style: "primary",
+  config: {
+    redirect: {
+      url: "/brief/brief_1",
+      open_in_new_tab: false,
+      close_notification: true,
+    },
+  },
+};
+
+function notification(
+  metadata: Record<string, unknown>,
+  actions: unknown[] = [],
+): NotificationView {
   return {
     id: "n1",
     user_id: "user_1",
@@ -37,7 +54,7 @@ function notification(metadata: Record<string, unknown>): NotificationView {
     type: "info",
     status: NotificationStatus.DELIVERED,
     channels: [],
-    content: { title: HEADLINE, body: MESSAGE, actions: [] },
+    content: { title: HEADLINE, body: MESSAGE, actions },
     metadata,
     created_at: new Date().toISOString(),
   } as unknown as NotificationView;
@@ -154,6 +171,47 @@ describe("briefing notification", () => {
     expect(await screen.findByRole("img", { name: HEADLINE })).toBeTruthy();
     expect(screen.queryByText(MESSAGE)).toBeNull();
     expect(fetchBriefing).toHaveBeenCalledWith("brief_2");
+  });
+
+  it("opens the brief from the card alone, without a second button to the same brief", () => {
+    renderCard(notification({ briefing_id: "brief_1" }, [OPEN_BRIEFING]));
+
+    expect(
+      screen.getByRole("button", { name: `Open brief: ${HEADLINE}` }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open briefing" })).toBeNull();
+  });
+
+  it("closes the opened brief from its close button", async () => {
+    fetchBriefing.mockResolvedValue({
+      id: "brief_1",
+      date: "2026-10-22",
+      edition_image_url: null,
+      payload: {
+        kicker: "THE MORNING BRIEF",
+        date: "2026-10-22",
+        headline: HEADLINE,
+        lede: "",
+        caption: "",
+        message: MESSAGE,
+        stats: [],
+        sections: [],
+      },
+    });
+    renderCard(notification({ briefing_id: "brief_1" }));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: `Open brief: ${HEADLINE}` }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Close" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("keeps an action that goes somewhere other than the brief", () => {
+    renderCard(notification({}, [OPEN_BRIEFING]));
+
+    expect(screen.getByRole("button", { name: "Open briefing" })).toBeTruthy();
   });
 
   it("leaves any other notification's body as it was", () => {

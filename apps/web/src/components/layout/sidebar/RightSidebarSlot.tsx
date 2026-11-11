@@ -14,6 +14,7 @@ import {
   useCloseRightSidebar,
   useRightSidebarState,
 } from "@/stores/layoutStore";
+import type { RightSidebarMode } from "@/stores/layoutStore.types";
 
 /**
  * The right sidebar's portal target. Pages don't push elements into a store;
@@ -28,6 +29,13 @@ const SlotSetterContext = createContext<
 >(null);
 
 export const useRightSidebarSlot = () => useContext(RightSidebarSlotContext);
+
+/** Sheet and sidebar chrome draw the close button; an artifact-mode panel draws its own. */
+const chromeDrawsClose = (mode: RightSidebarMode) => mode !== "artifact";
+
+/** Whether the panel in the slot must draw its own close button. */
+export const usePanelDrawsClose = () =>
+  !chromeDrawsClose(useRightSidebarState().mode);
 
 export function RightSidebarSlotProvider({
   children,
@@ -85,7 +93,7 @@ export default function RightSidebarSlot() {
     };
   }, [isOpen, close]);
 
-  const closeButton = (
+  const closeButton = isOpen && chromeDrawsClose(mode) && (
     <div className="flex w-full items-center justify-end px-3 pt-3 pb-1">
       <Button
         onPress={close}
@@ -117,7 +125,7 @@ export default function RightSidebarSlot() {
         }}
         aria-hidden={!sheetOpen}
       >
-        {sheetOpen && closeButton}
+        {isSheet && closeButton}
         {isSheet ? <Slot /> : <div className={SLOT_CLASSNAME} />}
       </aside>
 
@@ -145,7 +153,7 @@ export default function RightSidebarSlot() {
             overflow: "hidden",
           }}
         >
-          {isOpen && closeButton}
+          {closeButton}
           <Slot />
         </aside>
       )}

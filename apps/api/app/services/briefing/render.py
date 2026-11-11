@@ -21,10 +21,13 @@ _CHROMIUM_LAUNCH_ARGS = ["--no-sandbox", "--disable-dev-shm-usage", "--font-rend
 # avoids capturing a frame mid-layout without polling for an arbitrary condition.
 _FONT_SETTLE_MS = 150
 
-# How far (0-255, any channel) a pixel must differ from the image edge's own pixel
+# How far (0-255, any colour channel) a pixel must differ from the image edge's own pixel
 # in the same row or column to count as content rather than background. Above a
 # desk's gradient drift, below the faintest visible shadow.
 TRIM_THRESHOLD = 24
+# The same for coverage: a transparent background has no drift, so any alpha is content.
+TRIM_ALPHA_THRESHOLD = 0
+_TRIM_THRESHOLDS = (TRIM_THRESHOLD, TRIM_THRESHOLD, TRIM_THRESHOLD, TRIM_ALPHA_THRESHOLD)
 
 # The fold sits this many CSS px above the marker, so an antialiased edge never shows.
 FOLD_CLEARANCE_PX = 2
@@ -61,7 +64,7 @@ class ImageRenderOptions:
         image_format: "png" or "jpeg" (smaller, to dodge Gmail's ~102KB clip).
         quality: JPEG quality 0-100 (ignored for PNG).
         timeout_ms: Per-navigation timeout for set_content.
-        clip_selector: Capture exactly this element's box.
+        clip_selector: Capture exactly this element's box, grown by clip_bleed_px a side.
         trim_margin_px: Cut the background around the visible content (shadows and
             tilted pieces included) down to this even margin, in CSS pixels.
     """
@@ -73,11 +76,18 @@ class ImageRenderOptions:
     quality: int | None = None
     timeout_ms: int = 15000
     clip_selector: str | None = None
+    clip_bleed_px: int = 0
     trim_margin_px: int | None = None
     #: The element whose top is where the edition folds, reported as a share of the image height.
     fold_selector: str | None = None
     #: The element that is the edition's paper, reported as its box in shares of the image.
     paper_selector: str | None = None
+    #: Leave the page's own white out, so a PNG keeps alpha wherever the document paints nothing.
+    omit_background: bool = False
+
+    def __post_init__(self) -> None:
+        if self.omit_background and self.image_format == "jpeg":
+            raise ValueError("omit_background needs a PNG: JPEG has no alpha")
 
 
 @dataclass(frozen=True)
@@ -113,18 +123,27 @@ async def render_html_to_image(
             if page_errors:
                 raise RuntimeError(f"Page script failed while rendering: {page_errors[0]}")
             await page.wait_for_timeout(_FONT_SETTLE_MS)
-            clip = await _clip_for(page, options.clip_selector) if options.clip_selector else None
+            clip = (
+                await _clip_for(page, options.clip_selector, options.clip_bleed_px)
+                if options.clip_selector
+                else None
+            )
             if options.image_format == "jpeg":
                 image = await page.screenshot(
                     full_page=options.full_page, type="jpeg", quality=options.quality, clip=clip
                 )
             else:
-                image = await page.screenshot(full_page=options.full_page, type="png", clip=clip)
+                image = await page.screenshot(
+                    full_page=options.full_page,
+                    type="png",
+                    clip=clip,
+                    omit_background=options.omit_background,
+                )
             fold_px = await _fold_px(page, options, clip)
             paper_px = await _paper_px(page, options, clip)
             if options.trim_margin_px is not None:
                 margin = options.trim_margin_px * options.device_scale_factor
-                box = content_box(Image.open(io.BytesIO(image)).convert("RGB"), margin)
+                box = content_box(Image.open(io.BytesIO(image)), margin)
                 if box is not None:
                     if fold_px is not None:
                         fold_px -= box[1]
@@ -202,8 +221,8 @@ def _fold_share(image_bytes: bytes, fold_px: float | None) -> float | None:
     return share if 0 < share < 1 else None
 
 
-async def _clip_for(page: Page, selector: str) -> FloatRect:
-    """Return the page-coordinate box of the selector's first element.
+async def _clip_for(page: Page, selector: str, bleed_px: int) -> FloatRect:
+    """Return the page-coordinate box of the selector's first element, grown by bleed_px a side.
 
     A selector that matches nothing raises rather than ship an uncropped page.
     """
@@ -212,18 +231,19 @@ async def _clip_for(page: Page, selector: str) -> FloatRect:
         raise RuntimeError(f"Clip element not rendered: {selector!r}")
     scroll = await page.evaluate("() => [window.scrollX, window.scrollY]")
     return {
-        "x": box["x"] + scroll[0],
-        "y": box["y"] + scroll[1],
-        "width": box["width"],
-        "height": box["height"],
+        "x": box["x"] + scroll[0] - bleed_px,
+        "y": box["y"] + scroll[1] - bleed_px,
+        "width": box["width"] + 2 * bleed_px,
+        "height": box["height"] + 2 * bleed_px,
     }
 
 
 def background_run(image: Image.Image) -> int:
-    """Count the pixel columns, walking left to right, that match the first one.
+    """Count the pixel columns of a premultiplied (RGBa) image, walking left to right, that match the first.
 
-    A column matches when no pixel differs from the first column's pixel beside it by
-    more than TRIM_THRESHOLD in any channel. Other sides are walked by transposing.
+    A column matches when no pixel differs from the first column's pixel beside it by more
+    than TRIM_THRESHOLD in a colour channel or TRIM_ALPHA_THRESHOLD in alpha; premultiplied,
+    a clear pixel's hidden colour never counts. Other sides are walked by transposing.
     """
     width, height = image.size
 
@@ -233,7 +253,7 @@ def background_run(image: Image.Image) -> int:
     edge = column(0)
     for x in range(width):
         extrema = ImageStat.Stat(ImageChops.difference(column(x), edge)).extrema
-        if max(high for _, high in extrema) > TRIM_THRESHOLD:
+        if any(high > limit for (_, high), limit in zip(extrema, _TRIM_THRESHOLDS, strict=True)):
             return x
     return width
 
@@ -242,15 +262,17 @@ def content_box(image: Image.Image, margin_px: int) -> tuple[int, int, int, int]
     """Return the box that cuts each side's background run down to margin_px, or None for a blank image.
 
     Background is whatever matches the image's own edge pixels; a side whose content
-    already sits within the margin is left as captured.
+    already sits within the margin is left as captured. The image is compared premultiplied,
+    so a transparent capture's shadows count by their coverage.
     """
+    premultiplied = image.convert("RGBA").convert("RGBa")
     width, height = image.size
-    left = background_run(image)
+    left = background_run(premultiplied)
     if left == width:
         return None
-    right = background_run(image.transpose(Image.Transpose.FLIP_LEFT_RIGHT))
-    top = background_run(image.transpose(Image.Transpose.TRANSPOSE))
-    bottom = background_run(image.transpose(Image.Transpose.TRANSVERSE))
+    right = background_run(premultiplied.transpose(Image.Transpose.FLIP_LEFT_RIGHT))
+    top = background_run(premultiplied.transpose(Image.Transpose.TRANSPOSE))
+    bottom = background_run(premultiplied.transpose(Image.Transpose.TRANSVERSE))
     return (
         max(0, left - margin_px),
         max(0, top - margin_px),
@@ -260,14 +282,20 @@ def content_box(image: Image.Image, margin_px: int) -> tuple[int, int, int, int]
 
 
 def trim_to_content(image_bytes: bytes, margin_px: int, options: ImageRenderOptions) -> bytes:
-    """Cut each side's background run down to margin_px device pixels; a blank image is returned unchanged."""
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    """Cut each side's background run down to margin_px device pixels; a blank image is returned unchanged.
+
+    A PNG keeps its alpha; a JPEG, which has none, is flattened.
+    """
+    image = Image.open(io.BytesIO(image_bytes))
     box = content_box(image, margin_px)
     if box is None:
         return image_bytes
+    cropped = image.crop(box)
+    if options.image_format == "jpeg":
+        cropped = cropped.convert("RGB")
     save_options: dict[str, int | bool] = (
         {"quality": options.quality or 75} if options.image_format == "jpeg" else {"optimize": True}
     )
     out = io.BytesIO()
-    image.crop(box).save(out, format=options.image_format, **save_options)
+    cropped.save(out, format=options.image_format, **save_options)
     return out.getvalue()
