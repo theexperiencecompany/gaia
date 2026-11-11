@@ -235,6 +235,7 @@ class _StreamState:
         "e2e_ack_ms",
         "e2e_full_ms",
         "error",
+        "first_shown_at",
         "follow_up_actions",
         "held_completion",
         "is_cancelled",
@@ -253,6 +254,11 @@ class _StreamState:
         "usage_metadata",
         "user_message_id",
     )
+
+    @property
+    def reply_date(self) -> datetime | None:
+        """The saved reply's date: when it first showed, else when its turn completed."""
+        return self.first_shown_at or self.turn_completed_at
 
     def __init__(self, turn_id: str | None = None) -> None:
         self.complete_message: str = ""
@@ -292,6 +298,9 @@ class _StreamState:
         # the saved user/comms messages keep timestamps EARLIER than a delegated
         # executor's answer (saved mid-wait). The frontend sorts by createdAt.
         self.turn_completed_at: datetime | None = None
+        # When the reply's first text or card reached the client: where it sorts,
+        # so a message the user sends after reading it never lands above it.
+        self.first_shown_at: datetime | None = None
         # Monotonic stamps (never logged raw) and their ms derivations. A None
         # ms means the span never happened — never zero-filled.
         self.t0_perf: float | None = None
@@ -769,6 +778,8 @@ async def _dispatch_stream_chunk(
         if frames is not None and frames.reasoning is not None:
             absorb_reasoning_delta(frames.reasoning, state.tool_entries)
 
+    if state.first_shown_at is None and _puts_something_on_screen(chunk):
+        state.first_shown_at = datetime.now(UTC)
     if state.ttft_perf is None and extract_response_text(chunk):
         # Init/description/keepalive/tool frames carry no "response"
         # key — this is first reply text, not first byte.
@@ -957,6 +968,23 @@ async def _handle_stream_error(
     return user_error
 
 
+class _ShownChunk(BaseModel):
+    """A ``data:`` chunk, read only for whether it puts reply text or a card on screen."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    response: str = ""
+    tool_data: object = None
+
+
+def _puts_something_on_screen(chunk: str) -> bool:
+    payload = _data_frame_payload(chunk)
+    if payload is None:
+        return False
+    shown = _ShownChunk.model_validate(payload)
+    return bool(shown.response) or shown.tool_data is not None
+
+
 class _CompletionChunk(BaseModel):
     """A ``data:`` chunk, read only for whether it announces the answer complete."""
 
@@ -1077,7 +1105,7 @@ async def _persist_turn(
             reply=BotReply(
                 complete_message="",
                 bot_message_id=state.bot_message_id,
-                bot_timestamp=state.turn_completed_at,
+                bot_timestamp=state.reply_date,
                 error=TURN_REPLY_NOT_SAVED,
             ),
         )
@@ -1119,7 +1147,7 @@ async def _save_reply(
             bot_message_id=state.bot_message_id,
             tool_data=state.tool_data,
             metadata=state.usage_metadata,
-            bot_timestamp=state.turn_completed_at,
+            bot_timestamp=state.reply_date,
             error=state.error or None,
             follow_up_actions=state.follow_up_actions or None,
             kind=state.message_kind,

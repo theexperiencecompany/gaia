@@ -14,7 +14,7 @@ mocked so tests exercise service logic only.
 
 from collections.abc import AsyncGenerator, Iterator, Sequence
 import contextlib
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import json
 import time
 from typing import Any
@@ -23,6 +23,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage
 from prometheus_client import REGISTRY
 import pytest
+import time_machine
 
 from app.agents.core.background.session import (
     RunKind,
@@ -2080,6 +2081,26 @@ class TestRunChatStreamBackground:
         order = [next(iter(frame)) for _, frame in frames]
         first_completion = order.index("main_response_complete")
         assert order.index("emoji_ack") < first_completion
+
+    @pytest.mark.regression
+    async def test_a_reply_is_dated_when_it_first_showed_not_when_its_turn_ended(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        """Dated at completion, a reply sorted below a message the user sent after reading it (prod 49ad837c)."""
+        shown_at = datetime(2026, 11, 11, 18, 36, 30, tzinfo=UTC)
+        sm = _make_stream_manager_mock()
+        with time_machine.travel(shown_at, tick=False) as clock:
+
+            async def publish(stream_id: str, chunk: str) -> None:
+                if '"response"' in chunk:
+                    clock.shift(timedelta(seconds=30))
+
+            sm.publish_chunk.side_effect = publish
+            _, save, _ = await self._run_turn(
+                test_user, "Want me to connect it?", stream_manager=sm
+            )
+
+        assert save.await_args.kwargs["reply"].bot_timestamp == shown_at
 
     async def test_a_text_reply_forwards_the_graphs_early_completion_frame(
         self, test_user: AuthenticatedUser
