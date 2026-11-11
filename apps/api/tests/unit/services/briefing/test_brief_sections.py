@@ -127,6 +127,7 @@ _COMPOSITION = BriefComposition.model_validate(
             {"kind": "quote", "quote_id": "q1"},
             {
                 "kind": "items",
+                "state": "done",
                 "heading": "Worth a look",
                 "items": [
                     {

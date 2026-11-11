@@ -8,6 +8,7 @@ caption, mood and message as its entire final message.
 from dataclasses import dataclass
 
 from app.constants.briefing import (
+    LEAD_HEADING,
     MAX_BRIEF_CAPTION_CHARS,
     MAX_BRIEF_HEADLINE_CHARS,
     MAX_BRIEF_LEDE_CHARS,
@@ -78,8 +79,9 @@ system fills it in from the facts:
   ("Approve the Acme MSA renewal"), so "approve the [[fact:3]]" reads "approve the Approve
   the ...". Use it only where the title reads naturally as it stands; otherwise write
   "[approve the Acme renewal](fact:3)".
-The message must refer to every item waiting on the user and every calendar event through
-one of its slots, usually its phrase; a brief that leaves one out is sent back.
+The message must refer to the lead (the item under [{LEAD_HEADING}]) through
+one of its slots, usually its phrase; a brief that leaves it out is sent back. Everything else
+the edition already shows, so what else the message says is your call.
 Every count the brief carries has a slot: the items waiting, done, in progress and while away,
 the events, the open todos, each request count and each charted figure. A figure you type must
 stand as it is in a fact's own words (its title, detail or a quote: "the Q3 interviews", "the
@@ -235,8 +237,6 @@ class VoicePromptBlocks:
     setup: str = ""
     # What the user's connected apps hold that needs them, with what earlier briefs said.
     signals: str = ""
-    # The facts the message must refer to, each by id and title, one per line.
-    references: str = ""
 
     @property
     def context(self) -> str:
@@ -245,17 +245,6 @@ class VoicePromptBlocks:
             f"{self.reader}\n{self.facts}\n{self.goal}\n{self.lookback}\n{self.replies}"
             f"\n{self.setup}\n{self.signals}"
         )
-
-
-def _references_section(references: str) -> str:
-    if not references:
-        return ""
-    return (
-        "\n## BEFORE YOU ANSWER\n"
-        "Your message refers to each of these through its slot, usually [your phrase](fact:N); "
-        "a brief that leaves one out is sent back:\n"
-        f"{references}\n"
-    )
 
 
 def _signals_section(signals: str) -> str:
@@ -416,7 +405,7 @@ a hard failure. Never ask an open-ended "what can I help with".
 {_SLOTS}
 
 {_VOICE_CONTRACT}
-{_references_section(blocks.references)}"""
+"""
 
 
 def voice_correction_note(problems: list[str], last: str) -> str:
@@ -491,7 +480,7 @@ digest's one ask. Never a generic "next week let's keep the momentum going".
 {_SLOTS}
 
 {_WEEKLY_VOICE_CONTRACT}
-{_references_section(blocks.references)}"""
+"""
 
 
 def build_day_zero_hello_prompt(*, first_name: str, goal_block: str, has_goal: bool) -> str:

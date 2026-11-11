@@ -3,6 +3,11 @@
 BRIEF_HEADING_PROMPT = """You check the headings of a brief. GAIA grouped the items it placed and wrote a
 heading over each group. Judge whether every item under each heading satisfies it.
 
+Each group declares its state, which code has already checked every item against:
+needs_you (every item asks something of the user), done (every item finished) or in_progress
+(every item started and still running). A heading must be true of its declared state: a done
+heading over a needs_you or in_progress group is untrue, whatever its items.
+
 Each item shows its title, its state, and exactly one of:
 - an action, what the user still has to do: approve, reply, review, retry, read, attend;
 - an outcome, where it got to with nothing asked of the user: approved, landed, drafted,

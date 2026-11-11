@@ -116,10 +116,9 @@ MAX_BRIEF_CAPTION_CHARS: Final[int] = 148
 MAX_BRIEF_MESSAGE_CHARS: Final[int] = 2700
 # How many recent briefs' opening lines the model sees, so today's opens differently.
 RECENT_OPENINGS_SHOWN: Final[int] = 5
-# Voice attempts per brief: up to two mends of the last brief when its slots, references
-# or claims fail the facts (each mend shows it what it wrote), then the run fails rather
-# than ship it.
-MAX_VOICE_ATTEMPTS: Final[int] = 3
+# Voice attempts per brief: one mend of the last brief when its slots or its claims fail
+# the facts (the mend shows it what it wrote), then the run fails rather than ship it.
+MAX_VOICE_ATTEMPTS: Final[int] = 2
 #: The faithfulness check's metering label.
 BRIEF_FAITHFULNESS_LABEL: Final[str] = "brief_faithfulness_check"
 #: The check judges, it does not write: the same draft gets the same verdict.

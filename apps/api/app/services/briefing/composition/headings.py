@@ -42,7 +42,7 @@ def _groups(composition: BriefComposition) -> dict[int, ComposedItems]:
 
 
 def _group_lines(number: int, group: ComposedItems, pool: FactPool) -> str:
-    lines = [f'block {number}, heading "{group.heading}":']
+    lines = [f'block {number}, heading "{group.heading}", state {group.state.value}:']
     for item in group.items:
         state = BRIEFING_ITEM_STATES[pool.items[item.id].state].lower()
         said = item.action or item.outcome

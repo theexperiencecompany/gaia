@@ -1,5 +1,6 @@
 """The daily brief: look back since yesterday, choose what matters, voice it and publish it."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from app.agents.prompts.briefing_prompts import (
@@ -42,7 +43,6 @@ from app.services.briefing.facts import (
     TODAY,
     FactSources,
     build_facts,
-    references,
     user_todos_note,
     work_stats,
 )
@@ -66,6 +66,7 @@ from app.services.briefing.sections import (
     log_composition,
 )
 from app.services.briefing.slots import (
+    figures_in,
     referenced_facts,
 )
 from app.services.integrations.user_integrations import (
@@ -225,9 +226,6 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         goal=goal_block,
         lookback=lookback_block,
         replies=await chat_sync.format_replies_block(user_id, since),
-        references=references(facts)
-        if not (winback.is_winback or ladder.wind_down is not None)
-        else "",
         setup=await _setup_block(user, first_week=ladder.first_week, offer_lighter=offer_lighter),
         signals=signals_block(remembered, seen_at),
     )
@@ -248,11 +246,10 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         clock,
         prompt,
         Writing(
-            values=facts.values,
+            # What was done since the last brief is the user's own record, quotable as it stands.
+            values=replace(facts.values, quoted=facts.values.quoted | figures_in([lookback_block])),
             context=f"Today is {clock.now_local:%A %-d %B %Y}.\n{blocks.context}",
-            must_mention=frozenset()
-            if winback.is_winback or ladder.wind_down is not None
-            else facts.must_mention,
+            lead=None if winback.is_winback or ladder.wind_down is not None else facts.lead,
             kind=BRIEFING_KIND_DAILY,
         ),
     )

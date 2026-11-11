@@ -76,8 +76,9 @@ class Writing:
 
     values: SlotValues
     context: str
-    #: The facts the message must refer to by a slot; empty for a winback or wind-down note.
-    must_mention: frozenset[int]
+    #: The lead's fact, which the message refers to by a slot; None without a lead, or for a
+    #: winback or wind-down note.
+    lead: int | None
     kind: BriefingKind
 
 
@@ -114,11 +115,13 @@ async def _held_to_facts(
         for name in _VOICED_FIELDS
         for problem in slot_problems(name, getattr(voice, name), writing.values)
     ]
-    problems += [
-        f"the message never refers to fact {fact_id} ({writing.values.facts[fact_id].title}); "
-        f"say it in your own words as [your phrase](fact:{fact_id})"
-        for fact_id in sorted(writing.must_mention - referenced_facts(voice.message))
-    ]
+    lead = writing.lead
+    if lead is not None and lead not in referenced_facts(voice.message):
+        problems.append(
+            f"the message never refers to the lead, fact {lead} "
+            f"({writing.values.facts[lead].title}); say it in your own words as "
+            f"[your phrase](fact:{lead})"
+        )
     if problems:
         return problems
     try:

@@ -183,10 +183,11 @@ class TestSeriesSlots:
 
 
 class TestATypedFigureNamesItsSlot:
-    def test_a_typed_time_names_the_time_slot(self) -> None:
-        """E2E busy day: "10:00" came back typed; the retry was only told to use a slot."""
-        assert slot_problems("message", "Sequoia at 11:00.", _VALUES) == [
-            "the message types '11:00' itself; write [[fact:9.time]] where it says 11:00"
+    @pytest.mark.parametrize("typed", ["11:00", "11"])
+    def test_a_typed_time_names_the_time_slot(self, typed: str) -> None:
+        """E2E: "10:00" and "11 AM" came back typed; the retry was only told to use a slot."""
+        assert slot_problems("message", f"Sequoia at {typed} AM.", _VALUES) == [
+            f"the message types {typed!r} itself; write [[fact:9.time]] where it says {typed}"
         ]
 
     @pytest.mark.parametrize(

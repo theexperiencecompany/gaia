@@ -85,6 +85,7 @@ _GROUPED = BriefComposition.model_validate(
         "blocks": [
             {
                 "kind": "items",
+                "state": "needs_you",
                 "heading": "Landed overnight",
                 "items": [
                     {
@@ -104,6 +105,7 @@ _UNKNOWN_ID = BriefComposition.model_validate(
         "blocks": [
             {
                 "kind": "items",
+                "state": "needs_you",
                 "heading": "Waiting on you",
                 "items": [
                     {
@@ -275,6 +277,7 @@ class TestItemWording:
                 "blocks": [
                     {
                         "kind": "items",
+                        "state": "needs_you",
                         "heading": "Waiting on you",
                         "items": [
                             {
@@ -310,6 +313,7 @@ class TestItemWording:
                 "blocks": [
                     {
                         "kind": "items",
+                        "state": "needs_you",
                         "heading": "Money",
                         "items": [
                             {

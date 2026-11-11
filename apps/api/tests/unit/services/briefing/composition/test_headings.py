@@ -50,6 +50,7 @@ COMPOSITION = BriefComposition.model_validate(
             {"kind": "note", "text": "A light day."},
             {
                 "kind": "items",
+                "state": "done",
                 "heading": "Landed overnight",
                 "items": [
                     _item(1, "Offsite venues", action="review"),
@@ -80,7 +81,7 @@ async def test_each_group_is_shown_with_its_items_states_and_sides(model: AsyncM
     schema, prompt = model.await_args.args
     assert schema is HeadingVerdicts
     assert (
-        'block 2, heading "Landed overnight":\n'
+        'block 2, heading "Landed overnight", state done:\n'
         "- item 1: Offsite venues | waiting on you | action review\n"
         "- item 2: Investor update | done | outcome sent"
     ) in prompt

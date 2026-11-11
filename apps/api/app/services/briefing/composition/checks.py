@@ -19,6 +19,7 @@ from app.constants.briefing import (
     MAX_BRIEF_CHARTS,
     MAX_BRIEF_ITEMS,
     MIN_TREND_POINTS,
+    BriefOutcome,
 )
 from app.models.brief_composition_models import (
     BriefBlockKind,
@@ -31,6 +32,7 @@ from app.models.brief_composition_models import (
     ComposedLead,
     ComposedProgress,
     ComposedQuote,
+    GroupState,
     placed_items,
 )
 from app.models.brief_pool_models import DataSeries, SeriesShape
@@ -161,6 +163,42 @@ def _lead_problems(where: str, index: int, block: ComposedLead, values: SlotValu
     return problems + _text_problems(where, "offer", block.offer, BRIEF_OFFER_MAX_CHARS, values)
 
 
+# The outcomes each group state holds; a needs_you group holds actions instead.
+_STATE_OUTCOMES: dict[GroupState, frozenset[BriefOutcome]] = {
+    GroupState.DONE: frozenset(BriefOutcome) - {BriefOutcome.STARTED, BriefOutcome.FAILED},
+    GroupState.IN_PROGRESS: frozenset({BriefOutcome.STARTED}),
+}
+
+
+def _state_of(item: ComposedItem) -> GroupState | None:
+    """Return the group state an item's action or outcome belongs in; None when none holds it."""
+    if item.action is not None:
+        return GroupState.NEEDS_YOU
+    return next((s for s, held in _STATE_OUTCOMES.items() if item.outcome in held), None)
+
+
+def _state_problems(where: str, block: ComposedItems) -> list[str]:
+    """Name each item the group's declared state does not hold, and the state that does."""
+    problems: list[str] = []
+    for item in block.items:
+        side = item.action or item.outcome
+        belongs = _state_of(item)
+        if side is None or belongs is block.state:
+            continue
+        said = f"{'action' if item.action else 'outcome'} {side.value}"
+        article = "an" if block.state is GroupState.IN_PROGRESS else "a"
+        home = (
+            f"move it to {'an' if belongs is GroupState.IN_PROGRESS else 'a'} {belongs.value} group"
+            if belongs is not None
+            else "a failed item needs the user: give it action retry in a needs_you group"
+        )
+        problems.append(
+            f"{where}, item {item.id} has {said}, which {article} {block.state.value} group "
+            f"does not hold; {home}"
+        )
+    return problems
+
+
 def _own_problems(
     index: int, block: ComposedBlock, pool: FactPool, values: SlotValues
 ) -> list[str]:
@@ -169,7 +207,8 @@ def _own_problems(
     if isinstance(block, ComposedLead):
         return _lead_problems(where, index, block, values)
     if isinstance(block, ComposedItems):
-        return _text_problems(where, "heading", block.heading, BRIEF_HEADING_MAX_CHARS, values)
+        heading = _text_problems(where, "heading", block.heading, BRIEF_HEADING_MAX_CHARS, values)
+        return heading + _state_problems(where, block)
     if isinstance(block, ComposedChart):
         return _chart_problems(where, block, pool, values)
     if isinstance(block, ComposedQuote):

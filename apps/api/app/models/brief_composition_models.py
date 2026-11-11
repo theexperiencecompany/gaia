@@ -52,10 +52,22 @@ class ComposedLead(BaseModel):
     offer: str = Field(description="What GAIA does when the user says yes, one short sentence")
 
 
+class GroupState(StrEnum):
+    """What every item of a group is: waiting on the user, done, or still running."""
+
+    NEEDS_YOU = "needs_you"
+    DONE = "done"
+    IN_PROGRESS = "in_progress"
+
+
 class ComposedItems(BaseModel):
-    """A group of items under a heading GAIA writes."""
+    """A group of items, all in one state, under a heading GAIA writes."""
 
     kind: Literal["items"]
+    state: GroupState = Field(
+        description="needs_you: every item has an action; done: every item finished; "
+        "in_progress: every item started and still running"
+    )
     heading: str
     items: list[ComposedItem] = Field(min_length=1, max_length=MAX_ITEMS_PER_BLOCK)
 
