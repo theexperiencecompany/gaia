@@ -17,6 +17,7 @@ from types import SimpleNamespace
 from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from composio.types import ToolExecuteParams
 from pydantic import BaseModel
 from pymongo.errors import ServerSelectionTimeoutError
 import pytest
@@ -574,7 +575,9 @@ class TestSentWithGaia:
 
     def _send(self, lookup: AsyncMock, *, user_id: str | None = USER_ID) -> tuple[dict, list[dict]]:
         sent: list[dict] = []
-        params: dict = {"arguments": {"to": "r@x.com", "subject": "Hi", "body": "Hello"}}
+        params: ToolExecuteParams = {
+            "arguments": {"to": "r@x.com", "subject": "Hi", "body": "Hello"}
+        }
         if user_id:
             params["user_id"] = user_id
         with (
