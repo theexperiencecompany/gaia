@@ -56,6 +56,32 @@ class TestVerbatimSpan:
         assert verbatim_span("word " * 60) is None
 
 
+class TestVerbatimSpanBoundaries:
+    def test_a_message_exactly_as_long_as_the_cap_is_quoted_whole(self) -> None:
+        text = "x" * QUOTE_MAX_CHARS
+
+        assert verbatim_span(text) == text
+
+    def test_a_message_exactly_as_long_as_the_floor_is_quoted_and_one_less_is_not(self) -> None:
+        assert verbatim_span("x" * QUOTE_MIN_CHARS) == "x" * QUOTE_MIN_CHARS
+        assert verbatim_span("x" * (QUOTE_MIN_CHARS - 1)) is None
+
+    def test_a_sentence_ending_exactly_at_the_cap_is_kept(self) -> None:
+        first = "x" * (QUOTE_MAX_CHARS - 1) + "."
+
+        assert verbatim_span(f"{first} And then some more.") == first
+
+    def test_a_sentence_ending_exactly_at_the_floor_is_kept(self) -> None:
+        first = "x" * (QUOTE_MIN_CHARS - 1) + "."
+
+        assert verbatim_span(f"{first} {'y' * QUOTE_MAX_CHARS}.") == first
+
+    def test_the_cut_is_the_last_sentence_end_that_fits_not_the_first_or_second(self) -> None:
+        sentences = "One sentence is long enough here. Two follows it. Three follows too."
+
+        assert verbatim_span(f"{sentences} {'z' * QUOTE_MAX_CHARS}") == sentences
+
+
 class TestQuoteSpans:
     def test_each_persons_words_become_a_quote_on_the_item_they_belong_to(self) -> None:
         items = {
@@ -81,6 +107,15 @@ class TestQuoteSpans:
             url="https://mail.google.com/x",
             item_id=4,
         )
+
+    def test_an_item_with_nothing_to_quote_does_not_end_the_search(self) -> None:
+        items = {
+            1: BriefCandidate(source="gaia", app="GAIA", state="lookback", title="Deck"),
+            2: _message("ok thanks", ["Priya Raman"]),
+            3: _message("Can we move the offsite to the week after Diwali?", ["Priya Raman"]),
+        }
+
+        assert [(q.id, q.item_id) for q in quote_spans(items)] == [("q1", 3)]
 
 
 def _todo(title: str, *, completed: bool = False) -> TodoDocument:

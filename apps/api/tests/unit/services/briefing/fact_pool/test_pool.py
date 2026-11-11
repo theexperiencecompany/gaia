@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from tests.factories import make_user_id
 
-from app.constants.briefing import BriefAction, BriefOutcome
+from app.constants.briefing import BRIEFING_RHYTHM_WORKFLOW_KEYS, BriefAction, BriefOutcome
 from app.constants.desk_buckets import DeskBucket
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.email_verdicts import email_verdict_repository
@@ -34,7 +34,13 @@ from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.workflow_execution_models import RunMoment
 from app.services.briefing.context import StatedGoal
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext, PoolReads, build_fact_pool
-from app.services.briefing.fact_pool.render import goal_line, item_line, pool_block, series_line
+from app.services.briefing.fact_pool.render import (
+    context_block,
+    goal_line,
+    item_line,
+    pool_block,
+    series_line,
+)
 from app.services.briefing.fact_pool.window import SeriesWindow
 
 USER_ID = make_user_id()
@@ -209,6 +215,14 @@ class TestTheFactPool:
         stores.runs.assert_awaited_once_with(
             USER_ID, WINDOW.start, exclude_workflow_ids=["wf-daily-brief"]
         )
+        stores.rhythm.assert_awaited_once_with(USER_ID, BRIEFING_RHYTHM_WORKFLOW_KEYS)
+        stores.open_todos.assert_awaited_once_with(USER_ID, limit=50)
+        stores.tracked.assert_awaited_once_with(USER_ID, limit=20)
+
+    async def test_each_apps_criteria_ride_with_the_pool(self, stores: Stores) -> None:
+        pool = await _pool()
+
+        assert pool.criteria == {"Gmail": "a person waiting on a reply"}
 
     async def test_a_pool_of_only_the_calendar_has_nothing_to_compose(
         self, stores: Stores, monkeypatch: pytest.MonkeyPatch
@@ -270,6 +284,28 @@ class TestSeveralOfEachPart:
             line.split(" | ")[0] for line in lines[lines.index("QUOTES") + 1 : lines.index("GOALS")]
         ] == ["q1", "q2"]
         assert [line.split(" | ")[0] for line in lines[lines.index("GOALS") + 1 :]] == ["g1", "g2"]
+
+
+class TestTheContextBlock:
+    def test_the_day_the_calendar_and_how_recent_briefs_opened_are_each_a_line(self) -> None:
+        context = replace(
+            CONTEXT,
+            today=date(2026, 11, 5),
+            recent_openings=["Priya replied overnight.", "Big day for the raise."],
+        )
+
+        assert context_block(context).splitlines() == [
+            "Thursday 5 November 2026, Asia/Kolkata.",
+            "Calendar today: 2 event(s), every one listed below.",
+            'Recent briefs opened on: "Priya replied overnight."; "Big day for the raise.". '
+            "Lead somewhere new unless the same thing still matters most.",
+        ]
+
+    def test_an_empty_calendar_and_no_openings_say_just_that(self) -> None:
+        assert context_block(replace(CONTEXT, calendar_events=0)).splitlines() == [
+            "Wednesday 11 November 2026, Asia/Kolkata.",
+            "Nothing on the calendar today.",
+        ]
 
 
 class TestAnItemLine:

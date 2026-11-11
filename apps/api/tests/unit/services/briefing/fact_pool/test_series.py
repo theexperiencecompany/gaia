@@ -20,7 +20,7 @@ from app.services.briefing.fact_pool.mail_series import sorted_mail_series, thre
 from app.services.briefing.fact_pool.render import series_line
 from app.services.briefing.fact_pool.run_series import run_series
 from app.services.briefing.fact_pool.signal_series import signal_series
-from app.services.briefing.fact_pool.window import SeriesWindow
+from app.services.briefing.fact_pool.window import SeriesName, SeriesWindow, day_series
 from app.services.briefing.fact_pool.work_series import work_series
 
 USER_ID = make_user_id()
@@ -199,6 +199,10 @@ class TestMailSeries:
 
         assert (taken.id, taken.points) == ("gmail_threads_taken", _ys([0, 0, 0, 0, 2, 1, 0]))
         assert (closed.id, closed.points) == ("gmail_threads_closed", _ys([1, 0, 0, 0, 1, 0, 1]))
+        assert [(s.label, s.unit) for s in (taken, closed)] == [
+            ("Mail threads GAIA took on", "threads"),
+            ("Mail threads closed", "threads"),
+        ]
 
     def test_the_days_mail_is_counted_by_what_the_desk_does_with_it(self) -> None:
         buckets = [DeskBucket.JUNK] * 5 + [DeskBucket.REPLY] * 2 + [DeskBucket.FYI, None]
@@ -209,8 +213,9 @@ class TestMailSeries:
 
         [series] = sorted_mail_series(verdicts)
 
-        assert (series.id, series.shape, series.unit) == (
+        assert (series.id, series.label, series.shape, series.unit) == (
             "gmail_sorted",
+            "Mail sorted since yesterday",
             SeriesShape.CATEGORICAL,
             "emails",
         )
@@ -292,6 +297,26 @@ class TestSignalSeries:
             [SeriesPoint(x="INV-9 Initech", y=7)],
         )
 
+    def test_a_unitless_amount_comes_before_the_same_kinds_united_ones(self) -> None:
+        signals = [
+            _signal("INV-1", amount=1, amount_unit="USD"),
+            _signal("INV-2", amount=2, amount_unit=None),
+        ]
+
+        assert [(s.id, s.unit) for s in signal_series(signals)] == [
+            ("stripe_open_invoice", None),
+            ("stripe_open_invoice_usd", "USD"),
+        ]
+
+    def test_a_kind_with_punctuation_is_a_clean_series_id(self) -> None:
+        signal = _signal("INV-1", amount=1, amount_unit="USD").model_copy(
+            update={"kind": "(Open) invoice!"}
+        )
+
+        [series] = signal_series([signal])
+
+        assert series.id == "stripe_open_invoice_usd"
+
     def test_a_series_with_no_unit_is_told_without_one(self) -> None:
         [series] = signal_series([_signal("INV-9 Initech", amount=7, amount_unit=None)])
 
@@ -314,6 +339,13 @@ class TestSignalSeries:
 
     def test_signals_without_figures_are_no_series(self) -> None:
         assert signal_series([_signal("Dispute DP-17")]) == []
+
+
+def test_a_series_must_have_one_value_per_window_day() -> None:
+    name = SeriesName(id="x", label="X", unit="u", source="s", app="App")
+
+    with pytest.raises(ValueError, match="argument 2 is shorter"):
+        day_series(name, [1.0, 2.0], WINDOW)
 
 
 def test_a_window_moment_outside_every_day_counts_nowhere() -> None:
