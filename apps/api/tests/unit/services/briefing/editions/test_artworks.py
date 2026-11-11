@@ -49,6 +49,13 @@ class TestCatalogue:
         assert len({row["slug"] for row in rows}) == len(rows)
         assert len({row["met_object_id"] for row in rows}) == len(rows)
 
+    def test_the_catalogue_is_every_row_of_the_json_keyed_by_slug(self) -> None:
+        artwork_catalogue.cache_clear()
+
+        assert {slug: work.title for slug, work in artwork_catalogue().items()} == {
+            row["slug"]: row["title"] for row in json.loads(ARTWORKS_JSON.read_text())
+        }
+
     def test_every_work_is_hosted_at_its_own_versionless_url(self) -> None:
         for slug, work in artwork_catalogue().items():
             hosted = _HOSTED_URL.match(work.url)

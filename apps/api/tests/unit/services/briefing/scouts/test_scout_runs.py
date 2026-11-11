@@ -25,6 +25,7 @@ from app.models.playbook_models import PlaybookBody, ToolStep
 from app.models.scout_models import (
     ScoutDocument,
     ScoutOutcome,
+    ScoutResult,
     ScoutSkipReason,
     ScoutStatus,
     Signal,
@@ -212,6 +213,16 @@ class TestReplayOrLearn:
         assert result.criteria == CRITERIA
         scouts.learn.assert_not_awaited()
 
+    async def test_a_learn_that_finds_nothing_to_watch_says_so(self, scouts: Scouts) -> None:
+        scouts.learn.side_effect = lambda user, user_id, integration, tools: Learned(
+            signals=[],
+            scout=_scout(integration, status=ScoutStatus.NOTHING_TO_WATCH),
+        )
+
+        [result] = await service.run_scouts(USER)
+
+        assert (result.outcome, result.signals) == (ScoutOutcome.NOTHING_TO_WATCH, [])
+
     async def test_a_changed_tool_list_relearns_and_refreezes(self, scouts: Scouts) -> None:
         scouts.stored["linear"] = _scout(LINEAR, fingerprint="fp-old")
         scouts.fingerprint = "fp-new"
@@ -267,6 +278,36 @@ class TestReplayOrLearn:
         scouts.learn.assert_not_awaited()
 
 
+class TestScoutSignals:
+    async def test_only_a_replays_criteria_reach_the_brief_keyed_by_app(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        results = [
+            ScoutResult(
+                integration_id="linear",
+                app="Linear",
+                outcome=ScoutOutcome.REPLAYED,
+                criteria="open issues assigned to the user",
+            ),
+            ScoutResult(
+                integration_id="github",
+                app="GitHub",
+                outcome=ScoutOutcome.LEARNED,
+                criteria="open pull requests awaiting the user",
+            ),
+            ScoutResult(
+                integration_id="notion", app="Notion", outcome=ScoutOutcome.REPLAYED, criteria=None
+            ),
+        ]
+        monkeypatch.setattr(service, "run_scouts", AsyncMock(return_value=results))
+        monkeypatch.setattr(service, "remember", AsyncMock(return_value=[]))
+
+        signals = await service.scout_signals(USER, _NOW)
+
+        assert signals.criteria == {"Linear": "open issues assigned to the user"}
+        assert signals.results == results
+
+
 class TestWhoRunsScouts:
     async def test_a_free_user_runs_no_scout_and_spends_nothing(self, scouts: Scouts) -> None:
         scouts.plan = PlanType.FREE
@@ -292,6 +333,23 @@ class TestWhoRunsScouts:
 
         scouts.learn.assert_not_awaited()
         assert event["scouts"] == {"skipped": "dormant"}
+
+
+class TestLearningAFreshConnection:
+    async def test_the_connected_integration_is_scouted_and_no_other(self, scouts: Scouts) -> None:
+        scouts.integrations = [GITHUB, LINEAR]
+
+        result = await service.learn_connected_integration(USER, "linear")
+
+        assert result is not None
+        assert (result.integration_id, result.outcome) == ("linear", ScoutOutcome.LEARNED)
+        assert list(scouts.stored) == ["linear"]
+
+    async def test_an_integration_no_scout_watches_is_not_scouted(self, scouts: Scouts) -> None:
+        scouts.integrations = [GITHUB]
+
+        assert await service.learn_connected_integration(USER, "linear") is None
+        scouts.learn.assert_not_awaited()
 
 
 class TestTypedSkips:
@@ -353,6 +411,16 @@ class TestBackoff:
             1,
             _NOW + SCOUT_RELEARN_BACKOFF[0],
         )
+
+    async def test_a_relearn_that_raises_extends_the_streak_it_ended_the_backoff_of(
+        self, scouts: Scouts
+    ) -> None:
+        scouts.stored["linear"] = _failed(2, _NOW)
+        scouts.learn.side_effect = TimeoutError()
+
+        await service.run_scouts(USER)
+
+        assert scouts.stored["linear"].failed_learns == 3
 
     async def test_inside_the_backoff_the_scout_is_skipped_without_a_learn(
         self, scouts: Scouts
@@ -419,6 +487,9 @@ class TestOneScoutFailing:
         assert (linear.outcome, _ids(linear)) == (ScoutOutcome.REPLAYED, ["replayed-1"])
         [error] = event["errors"]
         assert error["integration_id"] == "github"
+        assert error["msg"] == "briefing.scout_failed"
+        assert error["error"] == "no tools reachable for github"
+        assert error["error_type"] == "AppError"
 
 
 class TestWhatEachScoutIsHanded:

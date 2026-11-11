@@ -254,6 +254,21 @@ class TestReads:
         cursor.to_list.assert_awaited_once_with(length=200)
         assert len(docs) == 1 and docs[0].approval_id == "ap_1"
 
+    async def test_list_pending_for_user_reads_the_users_pending_rows_oldest_first(
+        self, repo: ApprovalLedgerRepository, collection: MagicMock
+    ) -> None:
+        cursor = MagicMock()
+        cursor.sort = MagicMock(return_value=cursor)
+        cursor.to_list = AsyncMock(return_value=[_doc()])
+        collection.find = MagicMock(return_value=cursor)
+
+        docs = await repo.list_pending_for_user("u1")
+
+        collection.find.assert_called_once_with({"user_id": "u1", "state": "pending"})
+        cursor.sort.assert_called_once_with("created_at", 1)
+        cursor.to_list.assert_awaited_once_with(length=200)
+        assert [d.approval_id for d in docs] == ["ap_1"]
+
     async def test_find_live_queries_live_rows_newest_first(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:

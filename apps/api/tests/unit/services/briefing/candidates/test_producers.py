@@ -10,7 +10,12 @@ from unittest.mock import AsyncMock
 import pytest
 from tests.factories import make_user_id
 
-from app.constants.briefing import BriefAction, BriefItemSource, BriefOutcome
+from app.constants.briefing import (
+    BRIEFING_RHYTHM_WORKFLOW_KEYS,
+    BriefAction,
+    BriefItemSource,
+    BriefOutcome,
+)
 from app.constants.todos import (
     BLOCKING_LABEL,
     FAILED_LABEL,
@@ -38,6 +43,7 @@ from app.models.scout_models import (
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowDocument
+from app.services.briefing.candidates.app_names import integration_name
 from app.services.briefing.candidates.app_signals import app_signal_candidates
 from app.services.briefing.candidates.approvals import approval_candidates
 from app.services.briefing.candidates.calendar import calendar_candidates
@@ -50,6 +56,8 @@ from app.services.briefing.candidates.tracked import (
     waiting_candidates,
 )
 from app.services.briefing.context import TrackedWork
+from app.services.hil.tool_key import MCPToolIdentity, mcp_tool_key
+from app.services.todos.inbox_desk import INBOX_DESK_REF
 
 USER_ID = make_user_id()
 NOW = datetime(2026, 11, 10, 2, 30, tzinfo=UTC)
@@ -63,6 +71,19 @@ def _todo(todo_id: str, title: str, *labels: str, **fields: Any) -> TodoDocument
 
 
 class TestTrackedTodos:
+    def test_a_todos_description_and_due_date_travel_with_its_candidate(self) -> None:
+        due = NOW + timedelta(days=2)
+        work = TrackedWork(
+            blocked=[_todo("d1", "Pay the invoice", description="Acme, net 30", due_date=due)],
+            running=[_todo("d2", "Draft the memo")],
+        )
+
+        [waiting] = waiting_candidates(work)
+        [running] = gaia_work_candidates(work)
+
+        assert (waiting.detail, waiting.due_at) == ("Acme, net 30", due)
+        assert (running.detail, running.due_at) == (None, None)
+
     def test_what_waits_on_the_user_comes_first_then_what_failed(self) -> None:
         work = TrackedWork(
             blocked=[_todo("b1", "Approve the Priya reply", WAITING_FOR_APPROVAL_LABEL)],
@@ -142,6 +163,7 @@ class TestTrackedTodos:
             ("Send the deck to Priya", "lookback", "u1", 2),
             ("File the VAT return", "lookback", "u3", 1),
         ]
+        assert {c.outcome for c in found} == {BriefOutcome.FINISHED}
 
 
 def _held(
@@ -190,7 +212,47 @@ class TestHeldResults:
             ),
         ]
         assert found[1].detail is None
-        assert find_desk.await_args.args[0] == USER_ID
+        assert find_desk.await_args.args == (USER_ID, INBOX_DESK_REF)
+
+    async def test_only_a_todo_result_of_the_desk_itself_is_a_gmail_finding(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            todo_repository,
+            "find_latest_by_external_ref",
+            AsyncMock(return_value=_todo(DESK_ID, "Inbox desk")),
+        )
+        held = [
+            _held("h1", BriefItemSource.TODO, "other-todo", "Weekly review", "Wrote the summary"),
+            _held("h2", BriefItemSource.WORKFLOW, DESK_ID, "Research digest", "Three new papers"),
+        ]
+
+        found = await held_candidates(USER_ID, held)
+
+        assert [(c.app, c.title) for c in found] == [
+            ("GAIA", "Weekly review: Wrote the summary"),
+            ("GAIA", "Research digest: Three new papers"),
+        ]
+
+    async def test_a_result_is_carried_by_its_first_non_blank_line_or_its_title(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            todo_repository,
+            "find_latest_by_external_ref",
+            AsyncMock(return_value=_todo(DESK_ID, "Inbox desk")),
+        )
+        held = [
+            _held(
+                "h1", BriefItemSource.WORKFLOW, "wf-1", "Research digest", "\n  \n  Papers  \nmore"
+            ),
+            _held("h2", BriefItemSource.WORKFLOW, "wf-2", "Backup", "  \n "),
+            _held("h3", BriefItemSource.TODO, DESK_ID, "Inbox desk", "   "),
+        ]
+
+        found = await held_candidates(USER_ID, held)
+
+        assert [c.title for c in found] == ["Research digest: Papers", "Backup", "Inbox desk"]
 
     async def test_with_nothing_held_nothing_is_read(self, monkeypatch: pytest.MonkeyPatch) -> None:
         find_desk = AsyncMock()
@@ -235,11 +297,20 @@ class TestAppSignals:
             SignalImportance.HIGH,
         )
         assert (found.url, found.people, found.signal) == (signal.url, ["Priya"], signal)
+        assert found.due_at == signal.due_at
         assert (found.action, found.outcome) == (None, None)
         assert found.detail == (
             "issue assigned to you | state: In Progress | why: due tomorrow | first seen "
             "2 days ago, mentioned 1 time(s), last yesterday, moved from Todo to In Progress"
         )
+
+
+class TestIntegrationName:
+    def test_an_id_the_catalog_does_not_hold_names_itself_in_the_error(self) -> None:
+        with pytest.raises(KeyError) as raised:
+            integration_name("nope")
+
+        assert raised.value.args == ("no integration 'nope' in the catalog",)
 
 
 class TestCalendar:
@@ -309,9 +380,69 @@ class TestApprovals:
             ("GAIA", "Approve create_reminder", "you"),
             ("Slack", "Message #launch on Slack", "you"),
         ]
+        assert [c.source for c in found] == ["gmail", "gaia", "Slack"]
         assert {c.action for c in found} == {BriefAction.APPROVE}
+        assert {c.detail for c in found} == {"waiting for your approval"}
         assert ledger.await_args.args == (USER_ID,)
         assert gate.await_args.args == (USER_ID, NOW)
+
+    async def test_a_ledger_row_names_the_app_its_mcp_tool_key_points_at(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        row = _ledger(
+            "ap_1",
+            tool_key=mcp_tool_key(MCPToolIdentity(integration_id="linear", server_name="linear")),
+        )
+        monkeypatch.setattr(
+            approval_ledger_repository, "list_pending_for_user", AsyncMock(return_value=[row])
+        )
+        monkeypatch.setattr(
+            hil_approval_repository, "list_pending_for_user", AsyncMock(return_value=[])
+        )
+
+        [found] = await approval_candidates(USER_ID, NOW, set())
+
+        assert (found.source, found.app) == ("linear", "Linear")
+
+    async def test_a_gate_approval_without_an_integration_is_gaias_and_a_blank_summary_names_the_tool(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        record = HILApprovalRecord(
+            approval_id="appr-1",
+            user_id=USER_ID,
+            conversation_id="conv-2",
+            stream_id="s-1",
+            tool_name="delete_file",
+            expires_at=NOW + timedelta(minutes=15),
+        )
+        monkeypatch.setattr(
+            approval_ledger_repository, "list_pending_for_user", AsyncMock(return_value=[])
+        )
+        monkeypatch.setattr(
+            hil_approval_repository, "list_pending_for_user", AsyncMock(return_value=[record])
+        )
+
+        [found] = await approval_candidates(USER_ID, NOW, set())
+
+        assert (found.source, found.app, found.title) == ("gaia", "GAIA", "Approve delete_file")
+
+    async def test_a_row_owned_by_an_uncovered_todo_still_waits_on_the_user(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        rows = [
+            _ledger("ap_1", owner_run_type="todo", owner_id="b1"),
+            _ledger("ap_2", owner_run_type="todo", owner_id="b2"),
+        ]
+        monkeypatch.setattr(
+            approval_ledger_repository, "list_pending_for_user", AsyncMock(return_value=rows)
+        )
+        monkeypatch.setattr(
+            hil_approval_repository, "list_pending_for_user", AsyncMock(return_value=[])
+        )
+
+        found = await approval_candidates(USER_ID, NOW, {"b1"})
+
+        assert len(found) == 1
 
 
 class TestReminders:
@@ -377,18 +508,12 @@ class TestFailedRuns:
         ]
         list_since = AsyncMock(return_value=runs)
         monkeypatch.setattr(workflow_executions_repository, "list_since", list_since)
-        monkeypatch.setattr(
-            workflow_repository,
-            "find_system_workflows",
-            AsyncMock(return_value=[_workflow("wf-brief", "Daily briefing")]),
+        find_system = AsyncMock(return_value=[_workflow("wf-brief", "Daily briefing")])
+        find_titles = AsyncMock(
+            return_value=[_workflow("wf-sync", "CRM sync"), _workflow("wf-digest", "Digest")]
         )
-        monkeypatch.setattr(
-            workflow_repository,
-            "find_by_ids_for_user",
-            AsyncMock(
-                return_value=[_workflow("wf-sync", "CRM sync"), _workflow("wf-digest", "Digest")]
-            ),
-        )
+        monkeypatch.setattr(workflow_repository, "find_system_workflows", find_system)
+        monkeypatch.setattr(workflow_repository, "find_by_ids_for_user", find_titles)
 
         found = await failed_run_candidates(USER_ID, since)
 
@@ -396,6 +521,11 @@ class TestFailedRuns:
             ("CRM sync failed", "HubSpot token expired", "failed", BriefAction.RETRY),
             ("Digest failed", "Timed out", "failed", BriefAction.RETRY),
         ]
-        assert list_since.await_args.kwargs["status"] == "failed"
-        assert list_since.await_args.kwargs["exclude_workflow_ids"] == ["wf-brief"]
+        assert list_since.await_args.kwargs == {
+            "status": "failed",
+            "exclude_workflow_ids": ["wf-brief"],
+            "limit": 20,
+        }
         assert list_since.await_args.args == (USER_ID, since)
+        assert find_system.await_args.args == (USER_ID, BRIEFING_RHYTHM_WORKFLOW_KEYS)
+        assert find_titles.await_args.args == (["wf-sync", "wf-digest"], USER_ID)
