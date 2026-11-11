@@ -1,7 +1,6 @@
 """Unit tests for the edition webfont manifest and its @font-face rules."""
 
 import base64
-from collections.abc import Iterator
 import json
 from pathlib import Path
 import re
@@ -20,11 +19,10 @@ _FONTS_DIR = Path(__file__).parents[5] / "app" / "services" / "briefing" / "edit
 
 
 @pytest.fixture(autouse=True)
-def _fresh_font_caches() -> Iterator[None]:
+def _fresh_font_caches() -> None:
     """Clear the font caches so each test builds from the manifest itself."""
     edition_fonts.font_faces.cache_clear()
     edition_fonts._family_rules.cache_clear()
-    return
 
 
 @pytest.mark.unit
