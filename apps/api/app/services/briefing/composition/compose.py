@@ -114,7 +114,7 @@ async def compose_brief(user_id: str, pool: FactPool, kind: BriefingKind) -> Com
             )
         except MalformedStructuredOutputError as exc:
             # A reply that is no whole composition is a broken answer like any other: named, asked again.
-            return None, [f"the answer was not a whole BriefComposition tool call ({exc})"]
+            return None, [f"the answer was not a whole BriefComposition tool call ({exc.reason})"]
         return answer, await _problems(user_id, answer, pool, values)
 
     answer, problems = await attempt("")

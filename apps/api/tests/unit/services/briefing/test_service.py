@@ -9,7 +9,7 @@ stored and delivered, and on every failure path, that nothing is.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import json
@@ -18,10 +18,14 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, sentinel
 
+from pydantic import ValidationError
 import pytest
 from tests.helpers import captured_wide_event
 import time_machine
 
+from app.agents.core import agent as agent_module
+from app.agents.llm.client import metered_config
+from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.agents.prompts.briefing_prompts import (
     VoiceSituation,
     build_briefing_voice_prompt,
@@ -29,6 +33,7 @@ from app.agents.prompts.briefing_prompts import (
     voice_unreadable_note,
 )
 from app.constants.briefing import (
+    BRIEF_VOICE_LABEL,
     FIRST_WEEK_DAYS,
     IDLE_DORMANT_DAYS,
     MAX_BRIEF_HEADLINE_CHARS,
@@ -72,6 +77,7 @@ from app.models.briefing_models import (
     BriefingTallies,
     BriefingWeek,
     BriefingWeekDay,
+    BriefVoice,
     NewStamp,
 )
 from app.models.chat_models import ConversationSource
@@ -97,6 +103,7 @@ from app.models.user_models import (
     UserDocument,
 )
 from app.models.workflow_execution_models import WorkflowExecutionDocument
+from app.services.analytics_service import AIFeature
 from app.services.briefing import (
     chat_sync,
     context,
@@ -107,7 +114,6 @@ from app.services.briefing import (
     errors,
     prose,
     publish,
-    silent_turn,
     store,
     weekly,
 )
@@ -118,10 +124,12 @@ from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artwork_weights, artworks_for
 from app.services.briefing.scouts import service as scout_service
+from app.services.cost_budget import DAILY_BUDGET_STOP_FREE
 from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
 from app.utils.errors import AppError
+from app.utils.markdown_utils import model_from_reply
 from app.utils.message_breaks import split_message_bubbles
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingSent
@@ -459,6 +467,20 @@ def _patch_context_reads(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
     monkeypatch.setattr(signal_memory_repository, "mark_shown", w.shown)
 
 
+def _voice_call(agent: AsyncMock) -> Callable[..., Awaitable[BriefVoice]]:
+    """Stand in for the voice's structured call: agent's reply, its fact tokens filled, read as the voice."""
+
+    async def voice_call(schema: type[BriefVoice], prompt: str, **kwargs: Any) -> BriefVoice:
+        reply = await agent(schema=schema, prompt=prompt, **kwargs)
+        text = _message_written(prompt, reply.message)
+        parsed = model_from_reply(text, schema)
+        if isinstance(parsed, list):
+            raise MalformedStructuredOutputError("; ".join(parsed), llm_output=text)
+        return parsed
+
+    return voice_call
+
+
 @pytest.fixture
 def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     w = World(
@@ -502,11 +524,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     monkeypatch.setattr(daily, "build_briefing_voice_prompt", w.voice_prompt)
     monkeypatch.setattr(weekly, "build_weekly_voice_prompt", w.weekly_prompt)
 
-    async def model(**kwargs: Any) -> SimpleNamespace:
-        reply = await w.agent(**kwargs)
-        return SimpleNamespace(message=_message_written(kwargs["request"].message, reply.message))
-
-    monkeypatch.setattr(silent_turn, "call_agent_silent", model)
+    monkeypatch.setattr(prose, "ainvoke_structured", _voice_call(w.agent))
     monkeypatch.setattr(briefing_repository, "list_recent", w.recent)
     monkeypatch.setattr(briefing_repository, "list_stamped", w.stamped)
     monkeypatch.setattr(briefing_repository, "upsert_briefing", w.upsert)
@@ -587,7 +605,7 @@ def _stored_payload(w: World) -> BriefingPayload:
 
 
 def _prompt(w: World) -> str:
-    return w.agent.await_args.kwargs["request"].message
+    return w.agent.await_args.kwargs["prompt"]
 
 
 def _family_first(w: World, family: str) -> None:
@@ -1202,7 +1220,7 @@ class TestTheWeeklyHoldsToItsFacts:
 
         await weekly.run_weekly_digest(_USER)
 
-        retry = world.agent.await_args_list[1].kwargs["request"].message
+        retry = world.agent.await_args_list[1].kwargs["prompt"]
         assert "the lede types '9', a figure no fact carries" in retry
 
     async def test_a_recap_without_a_lead_need_not_name_the_failed_run_or_the_week_ahead(
@@ -1380,7 +1398,7 @@ class TestTheProseHoldsToItsFacts:
 
         await daily.run_daily_briefing(_USER)
 
-        assert named in world.agent.await_args_list[1].kwargs["request"].message
+        assert named in world.agent.await_args_list[1].kwargs["prompt"]
         assert _stored_payload(world).headline == "A quiet one"
 
     async def test_a_headline_past_its_limit_once_filled_is_regenerated(
@@ -1401,7 +1419,7 @@ class TestTheProseHoldsToItsFacts:
 
         await daily.run_daily_briefing(_USER)
 
-        retry = world.agent.await_args_list[1].kwargs["request"].message
+        retry = world.agent.await_args_list[1].kwargs["prompt"]
         assert (
             f"the headline once its slots are filled: String should have at most "
             f"{MAX_BRIEF_HEADLINE_CHARS} characters"
@@ -1437,7 +1455,7 @@ class TestTheMessageRefersToTheLead:
 
         await daily.run_daily_briefing(_USER)
 
-        retry = world.agent.await_args_list[1].kwargs["request"].message
+        retry = world.agent.await_args_list[1].kwargs["prompt"]
         assert "the message never refers to the lead, fact 1 (Approve the Priya reply)" in retry
         assert "Sequoia" not in retry.rsplit("## YOUR LAST BRIEF WAS REJECTED", 1)[1]
         assert (
@@ -1515,33 +1533,46 @@ class TestAnUnreadableVoiceIsRetried:
         await daily.run_daily_briefing(_USER)
 
         assert world.agent.await_count == 2
-        first = world.agent.await_args_list[0].kwargs["request"].message
-        retry = world.agent.await_args_list[1].kwargs["request"].message
+        first = world.agent.await_args_list[0].kwargs["prompt"]
+        retry = world.agent.await_args_list[1].kwargs["prompt"]
         assert (
             retry
             == f"{first}\n\n{voice_unreadable_note(['mood: Field required'], _message_written(first, _MOOD_LEFT_OUT.message))}"
         )
         assert _stored_payload(world).headline == _VOICE["headline"]
 
-    async def test_an_unreadable_reply_is_logged_by_length_and_problems_never_its_text(
-        self, world: World
-    ) -> None:
+    async def test_an_unreadable_reply_is_logged_by_its_problems(self, world: World) -> None:
         world.agent.side_effect = [_MOOD_LEFT_OUT, SimpleNamespace(message=_fenced(_VOICE))]
 
         async with captured_wide_event() as event:
             await daily.run_daily_briefing(_USER)
 
-        first = world.agent.await_args_list[0].kwargs["request"].message
-        assert {
-            "msg": "briefing.voice_unreadable",
-            "raw_length": len(_message_written(first, _MOOD_LEFT_OUT.message)),
-            "problems": ["mood: Field required"],
-        } in event["warnings"]
+        warning = next(w for w in event["warnings"] if w["msg"] == "briefing.voice_unreadable")
+        assert warning["problems"] == ["mood: Field required"]
+
+    async def test_a_reply_off_the_schema_names_its_fields_never_its_text(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        try:
+            BriefVoice.model_validate({"headline": "Arjun's redlines", "lede": "x", "caption": "y"})
+        except ValidationError as error:
+            off_schema = MalformedStructuredOutputError(
+                f"BriefVoice: tool-call arguments do not fit the schema: {error}"
+            )
+            off_schema.__cause__ = error
+        monkeypatch.setattr(prose, "ainvoke_structured", AsyncMock(side_effect=off_schema))
+
+        async with captured_wide_event() as event:
+            with pytest.raises(errors.VoiceUnreadableError) as raised:
+                await daily.run_daily_briefing(_USER)
+
+        assert raised.value.problems == ["mood: Field required", "message: Field required"]
+        assert "Arjun" not in str(event["warnings"])
 
     def test_the_failure_lists_every_problem_joined(self) -> None:
         error = errors.VoiceUnreadableError(["first problem", "second problem"])
 
-        assert str(error) == "No valid voice JSON in agent output: first problem; second problem"
+        assert str(error) == "The voice reply was no whole voice: first problem; second problem"
 
     async def test_a_reply_unreadable_on_every_attempt_fails_naming_the_shape_not_the_text(
         self, world: World
@@ -1776,20 +1807,29 @@ class TestTheDailyRunWiring:
 
         assert world.voice_prompt.call_args.kwargs["situation"].is_first_briefing is True
 
-    async def test_the_agent_runs_once_in_the_background_on_a_fresh_daily_thread(
-        self, world: World
-    ) -> None:
+    async def test_the_voice_is_one_structured_call_metered_to_the_user(self, world: World) -> None:
         await daily.run_daily_briefing(_USER)
 
         call = world.agent.await_args.kwargs
-        request = call["request"]
-        assert [(m["role"], m["content"]) for m in request.messages] == [("user", request.message)]
-        assert re.fullmatch(
-            rf"briefing-daily-{_USER}-{_DATE}-[0-9a-f]{{6}}", call["conversation_id"]
-        )
-        assert (call["user"].user_id, call["user"].timezone) == (_USER, _TZ)
-        assert call["options"].trigger_context == {"execution_mode": "background"}
-        assert call["options"].source == "briefing"
+        assert call["schema"] is BriefVoice
+        assert call["label"] == BRIEF_VOICE_LABEL
+        assert call["config"] == metered_config(_USER)
+        assert call["options"].schema_held
+        assert world.agent.await_count == 1
+
+    async def test_a_user_at_todays_usage_limit_still_gets_their_brief(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Live: a capped user's voice turn came back as the usage-limit stop text, and the brief failed."""
+        capped_turn = AsyncMock(return_value=SimpleNamespace(message=DAILY_BUDGET_STOP_FREE))
+        monkeypatch.setattr(agent_module, "call_agent_silent", capped_turn)
+        world.work = _brief_work()
+
+        await daily.run_daily_briefing(_USER)
+
+        capped_turn.assert_not_awaited()
+        assert _stored_payload(world).headline == _VOICE["headline"]
+        assert AIFeature.for_label(BRIEF_VOICE_LABEL) is AIFeature.BRIEFING
 
     async def test_the_brief_is_dated_and_stamped_in_the_users_timezone(self, world: World) -> None:
         world.work = _brief_work()
@@ -2170,7 +2210,7 @@ class TestOnlyTheItemsTheBriefLinksAreShared:
         await daily.run_daily_briefing(_USER)
 
         assert world.agent.await_count == 2
-        retry = world.agent.await_args_list[1].kwargs["request"].message
+        retry = world.agent.await_args_list[1].kwargs["prompt"]
         assert named in retry
         assert _stored_payload(world).message == (
             f"[The shortlist is ready]({_todo_link('c1')})\n"
@@ -2550,7 +2590,7 @@ class TestTheAgentOutput:
             await daily.run_daily_briefing(_USER)
 
         assert str(err.value) == (
-            "No valid voice JSON in agent output: invalid JSON: Expecting value (char 0 of 400)"
+            "The voice reply was no whole voice: invalid JSON: Expecting value (char 0 of 400)"
         )
 
     async def test_a_lede_alone_typing_a_figure_is_sent_back_and_logged(
@@ -2568,7 +2608,7 @@ class TestTheAgentOutput:
             await daily.run_daily_briefing(_USER)
 
         assert world.agent.await_count == 2
-        assert problem in world.agent.await_args_list[1].kwargs["request"].message
+        assert problem in world.agent.await_args_list[1].kwargs["prompt"]
         assert {"msg": "briefing.voice_rejected", "problems": [problem]} in event["warnings"]
 
 
@@ -2610,9 +2650,6 @@ class TestTheWeeklyRunWiring:
             _USER, _WEEK_START, datetime(2026, 10, 14, 18, 30, tzinfo=UTC)
         )
         world.reads["list_completed_since"].assert_awaited_once_with(_USER, since=_WEEK_START)
-        assert world.agent.await_args.kwargs["conversation_id"].startswith(
-            f"briefing-weekly-{_USER}-{_DATE}-"
-        )
         payload = _stored_payload(world)
         assert (payload.hue, payload.generated_at) == (79, "7:05 AM")
         assert (event["component"], event["operation"], event["user_id"]) == (
@@ -2642,7 +2679,7 @@ class TestTheWeeklyRunWiring:
             await weekly.run_weekly_digest(_USER)
 
         assert str(err.value) == (
-            "No valid voice JSON in agent output: invalid JSON: Expecting value (char 0 of 400)"
+            "The voice reply was no whole voice: invalid JSON: Expecting value (char 0 of 400)"
         )
         assert world.agent.await_count == MAX_VOICE_ATTEMPTS
         _assert_nothing_sent(world)

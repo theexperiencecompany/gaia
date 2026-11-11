@@ -7,7 +7,6 @@ from app.agents.prompts.briefing_prompts import (
     VoicePromptBlocks,
     VoiceSituation,
     build_briefing_voice_prompt,
-    reader_line,
 )
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
@@ -52,7 +51,14 @@ from app.services.briefing.lifecycle import (
     clear_bootstrap,
     wake_or_skip,
 )
-from app.services.briefing.prose import Prose, Writing, links_in, voiced_payload, written_brief
+from app.services.briefing.prose import (
+    Prose,
+    Writing,
+    links_in,
+    reader_block,
+    voiced_payload,
+    written_brief,
+)
 from app.services.briefing.publish import PoolCounts, Push, publish_brief
 from app.services.briefing.schedule import describe_briefing_schedule
 from app.services.briefing.scouts.facts import signals_block
@@ -74,7 +80,6 @@ from app.services.integrations.user_integrations import (
     get_connected_integrations_named,
 )
 from app.services.user_activity.status import activity_status_of
-from app.utils.auth_utils import build_user_context
 from app.utils.timezone import Timezone
 from app.utils.user_display import display_first_name
 from shared.py.wide_events import log
@@ -221,7 +226,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     offer_lighter = await activity_status_of(user_id) == ActivityStatus.IDLE
 
     blocks = VoicePromptBlocks(
-        reader=reader_line(display_first_name(user)),
+        reader=reader_block(user),
         facts=facts.block,
         goal=goal_block,
         lookback=lookback_block,
@@ -242,14 +247,12 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         recent_openings=openings,
     )
     voice, draft = await written_brief(
-        build_user_context(user, auth_provider=None),
-        clock,
+        user_id,
         prompt,
         Writing(
             # What was done since the last brief is the user's own record, quotable as it stands.
             values=replace(facts.values, quoted=facts.values.quoted | figures_in([lookback_block])),
             lead=None if winback.is_winback or ladder.wind_down is not None else facts.lead,
-            kind=BRIEFING_KIND_DAILY,
         ),
     )
     links = await links_in(user_id, voice.message, facts)

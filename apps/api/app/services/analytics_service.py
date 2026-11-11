@@ -20,6 +20,7 @@ from app.constants.analytics import (
 from app.constants.briefing import (
     BRIEF_COMPOSITION_LABEL,
     BRIEF_HEADING_CHECK_LABEL,
+    BRIEF_VOICE_LABEL,
 )
 from app.core.lazy_loader import providers
 from app.db.redis import redis_cache
@@ -111,7 +112,7 @@ class AIFeature(StrEnum):
     TODO_MAINTENANCE = "todo_maintenance", ("todo_health_check",)
     BRIEFING = (
         "briefing",
-        (BRIEF_COMPOSITION_LABEL, BRIEF_HEADING_CHECK_LABEL),
+        (BRIEF_COMPOSITION_LABEL, BRIEF_HEADING_CHECK_LABEL, BRIEF_VOICE_LABEL),
     )
     MODERATION = "moderation", ("profanity",)
     BROWSER = "browser", ("browser_task",)

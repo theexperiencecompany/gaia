@@ -249,7 +249,7 @@ def test_the_correction_note_shows_the_last_brief_and_asks_to_fix_only_its_probl
         "This was your last brief:",
         last,
         "Change only what each problem names, keep every other word and slot as it was, "
-        "then return the whole JSON.",
+        "then return the whole voice.",
     ]
 
 
@@ -258,13 +258,13 @@ def test_the_unreadable_note_lists_each_problem_on_its_own_line_between_header_a
 
     assert note.splitlines() == [
         "## YOUR LAST REPLY COULD NOT BE READ",
-        "It was not the voice JSON object:",
+        "It was not a whole voice:",
         "- mood: Field required",
         "- lede: Field required",
         "This was your last reply:",
         "the last reply",
         "Change only what each problem names, keep everything else as it was, and return the "
-        "whole JSON in one ```json fence, with every field of the schema.",
+        "whole voice, with every field filled.",
     ]
 
 
@@ -296,7 +296,7 @@ def test_daily_and_weekly_share_one_message_voice_and_slot_grammar(
     prompt = build()
 
     assert "## THE MESSAGE (``message``)" in prompt
-    assert '"message": "<the brief as a text, see THE MESSAGE>"' in prompt
+    assert "- message: the brief as a text, see THE MESSAGE" in prompt
     assert "## SLOTS (how every count, time and link gets into your prose)" in prompt
     assert "You are writing VOICE ONLY." in prompt
 
@@ -306,7 +306,7 @@ def test_the_weekly_voices_the_weeks_facts_and_goals_never_the_daily_extras() ->
 
     assert f"## THIS WEEK'S FACTS (final: voice them, never alter them)\n{_BLOCKS.facts}" in prompt
     assert _GOAL in prompt
-    assert '"mood": "<weekly>"' in prompt
+    assert "- mood: weekly" in prompt
     assert "## NEXT WEEK'S EDGE" in prompt
     for daily_only in (_BLOCKS.lookback, _BLOCKS.replies, "TODAY'S FACTS", "EMPTY DAYS"):
         assert daily_only not in prompt

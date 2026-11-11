@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from app.agents.prompts.briefing_prompts import (
     VoicePromptBlocks,
     build_weekly_voice_prompt,
-    reader_line,
 )
 from app.constants.briefing import (
     BRIEFING_KIND_WEEKLY,
@@ -39,14 +38,20 @@ from app.services.briefing.facts import (
 from app.services.briefing.lifecycle import (
     already_delivered,
 )
-from app.services.briefing.prose import Prose, Writing, links_in, voiced_payload, written_brief
+from app.services.briefing.prose import (
+    Prose,
+    Writing,
+    links_in,
+    reader_block,
+    voiced_payload,
+    written_brief,
+)
 from app.services.briefing.publish import PoolCounts, Push, publish_brief
 from app.services.briefing.sections import (
     event_ids,
     lay_out,
     log_composition,
 )
-from app.utils.auth_utils import build_user_context
 from app.utils.timezone import Timezone
 from app.utils.user_display import display_first_name
 from shared.py.wide_events import log
@@ -119,7 +124,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         clock,
     )
     blocks = VoicePromptBlocks(
-        reader=reader_line(display_first_name(user)),
+        reader=reader_block(user),
         facts=facts.block,
         goal=goal_block,
         lookback="",
@@ -129,13 +134,11 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
     # worker slot (observed live 2026-08-07).
     async with asyncio.timeout(WEEKLY_GENERATION_TIMEOUT_SECONDS):
         voice, draft = await written_brief(
-            build_user_context(user, auth_provider=None),
-            clock,
+            user_id,
             build_weekly_voice_prompt(date_local=clock.date_str, blocks=blocks),
             Writing(
                 values=facts.values,
                 lead=facts.lead,
-                kind=BRIEFING_KIND_WEEKLY,
             ),
         )
     links = await links_in(user_id, voice.message, facts)

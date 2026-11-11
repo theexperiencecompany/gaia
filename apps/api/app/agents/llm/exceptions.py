@@ -35,6 +35,11 @@ class MalformedStructuredOutputError(OutputParserException):
     sample of the same request is usually well formed.
     """
 
+    def __init__(self, reason: str, *, llm_output: str | None = None) -> None:
+        super().__init__(reason, llm_output=llm_output)
+        #: Why the reply is malformed, without LangChain's troubleshooting link: what a retry is told.
+        self.reason = reason
+
 
 class LLMNotConfiguredError(RuntimeError):
     """No provider key is configured for the requested model.

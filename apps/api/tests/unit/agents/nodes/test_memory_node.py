@@ -19,6 +19,7 @@ from app.agents.core.nodes.memory_node import (
     _store_user_memory_background,
     memory_node,
 )
+from app.constants.briefing import SilentTurnSource
 from app.constants.memory import (
     MEMORY_DELTA_CONTEXT_MESSAGES,
     MEMORY_INGEST_MARK_KEY,
@@ -462,11 +463,11 @@ class TestSystemGeneratedConversations:
         retain = await self._ingest(system_generated=False)
         retain.assert_awaited_once()
 
-    @pytest.mark.parametrize("source", ["briefing", "day_zero_hello"])
+    @pytest.mark.parametrize("source", list(SilentTurnSource))
     async def test_a_turn_gaia_wrote_the_prompt_for_is_never_learned_from(
         self, source: str
     ) -> None:
-        """Live: the brief's voice turn stored its own facts as memories, then read them back as goals."""
+        """Live: a silent turn stored the facts GAIA wrote into its prompt as memories, then read them back as goals."""
         state = State(messages=[HumanMessage(content="Figma team plan is awaiting approval")])
         config: RunnableConfig = {
             "configurable": {
