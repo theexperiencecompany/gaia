@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { MotionGlobalConfig } from "motion/react";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -72,6 +73,14 @@ function renderCard(view: NotificationView) {
 }
 
 describe("briefing notification", () => {
+  // The letter's unfold and exit run on timers jsdom does not keep in step; settle them at once.
+  beforeAll(() => {
+    MotionGlobalConfig.skipAnimations = true;
+  });
+  afterAll(() => {
+    MotionGlobalConfig.skipAnimations = false;
+  });
+
   it("folds the brief and opens it, loaded by id, as a letter", async () => {
     fetchBriefing.mockResolvedValue({
       id: "brief_1",
