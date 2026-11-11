@@ -1331,6 +1331,7 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run";
+    "viewer_signed_in": boolean;
   };
   "short_link:revoked": {
     "actor": "user" | "agent";

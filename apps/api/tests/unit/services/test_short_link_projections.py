@@ -36,7 +36,7 @@ from app.services.canvas_markdown import deliverable_markdown
 from app.services.short_link_projections import (
     PUBLIC_TEXT_MAX_BYTES,
     project_target,
-    session_artifact_file,
+    target_file,
 )
 from app.services.storage import ArtifactInfo
 from app.services.tracked_todo_service import CANVAS_TEMPLATE
@@ -297,7 +297,7 @@ class TestEscapingTargetIds:
         assert await project_target(SESSION, "owner", target_id) is None
 
     async def test_the_public_file_route_finds_nothing(self) -> None:
-        assert await session_artifact_file("owner", "conv-1/../../../../secret.txt") is None
+        assert await target_file(SESSION, "owner", "conv-1/../../../../secret.txt") is None
 
 
 class TestSessionArtifact:
@@ -374,12 +374,23 @@ class TestSessionArtifact:
         stat.return_value = None
 
         assert await project_target(SESSION, "owner", "conv-1/q3.html") is None
-        assert await session_artifact_file("owner", "conv-1/q3.html") is None
+        assert await target_file(SESSION, "owner", "conv-1/q3.html") is None
         resolve.assert_not_awaited()
 
     async def test_the_public_file_route_streams_the_owners_host_file(self, workspace):
         host_file, stat, resolve = workspace
         stat.return_value = _info("reports/q3.html", size=1, content_type="text/html")
 
-        assert await session_artifact_file("owner", "conv-1/reports/q3.html") == host_file
+        assert await target_file(SESSION, "owner", "conv-1/reports/q3.html") == host_file
         resolve.assert_awaited_once_with("owner", "conv-1", "artifacts", "reports/q3.html")
+
+    @pytest.mark.parametrize(
+        "target_type",
+        [t for t in ShortLinkTargetType if t is not ShortLinkTargetType.SESSION_ARTIFACT],
+    )
+    async def test_a_target_type_with_no_bytes_has_no_file(self, workspace, target_type):
+        _, stat, resolve = workspace
+
+        assert await target_file(target_type, "owner", "conv-1/q3.html") is None
+        stat.assert_not_awaited()
+        resolve.assert_not_awaited()

@@ -9,8 +9,10 @@ import { PREVIEWABLE_CONTENT_TYPES } from "@/features/chat/constants/files";
 import { shortLinkFileUrl } from "@/features/short-links/api/shortLinksApi";
 import type { PublicSessionArtifact } from "@/types/features/shortLinkTypes";
 
-// Frames (HTML preview, PDF viewer, images) need a definite height to fill.
-const FRAMED_CONTENT_TYPES = new Set(["text/html", "application/pdf"]);
+// Frames (HTML preview, images) need a definite height to fill. A PDF is not
+// framed: the API host that serves it holds the session cookie, so it serves
+// PDFs as downloads until links get their own content origin.
+const FRAMED_CONTENT_TYPES = new Set(["text/html"]);
 
 interface PublicSessionArtifactViewProps {
   slug: string;
@@ -23,8 +25,7 @@ export function PublicSessionArtifactView({
 }: PublicSessionArtifactViewProps) {
   const fileUrl = shortLinkFileUrl(slug);
   const isImage = view.content_type.startsWith("image/");
-  const isPdf = view.content_type === "application/pdf";
-  const canRender = isImage || isPdf || view.content !== null;
+  const canRender = isImage || view.content !== null;
   const isFramed = isImage || FRAMED_CONTENT_TYPES.has(view.content_type);
 
   return (
@@ -56,7 +57,7 @@ export function PublicSessionArtifactView({
         >
           <FileViewerBody
             isImage={isImage}
-            isPdf={isPdf}
+            isPdf={false}
             loading={false}
             error={false}
             content={view.content}

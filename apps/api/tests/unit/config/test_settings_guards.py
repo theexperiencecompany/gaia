@@ -298,6 +298,27 @@ def test_production_short_links_use_the_heygaia_link_domain(monkeypatch):
     assert _prod_settings().SHORTLINK_BASE_URL == "https://heygaia.link"
 
 
+def test_selfhost_short_links_live_on_the_instances_own_domain(monkeypatch) -> None:
+    """heygaia.link resolves on GAIA Cloud only, so a self-host link there would 404."""
+    monkeypatch.delenv("SHORTLINK_BASE_URL", raising=False)
+
+    settings_obj = _selfhost_settings("local", FRONTEND_URL="https://gaia.example.org/")
+
+    assert settings_obj.SHORTLINK_BASE_URL == "https://gaia.example.org/l"
+
+
+def test_an_explicit_selfhost_short_link_base_wins(monkeypatch) -> None:
+    monkeypatch.delenv("SHORTLINK_BASE_URL", raising=False)
+
+    settings_obj = _selfhost_settings(
+        "local",
+        FRONTEND_URL="https://gaia.example.org",
+        SHORTLINK_BASE_URL="https://go.example.org",
+    )
+
+    assert settings_obj.SHORTLINK_BASE_URL == "https://go.example.org"
+
+
 def test_short_sandbox_execute_secret_refuses_to_boot():
     """A sandbox execute token names whose tools the host runs, and nothing else binds that claim — a guessable signing secret means running any user's tools."""
     with pytest.raises(

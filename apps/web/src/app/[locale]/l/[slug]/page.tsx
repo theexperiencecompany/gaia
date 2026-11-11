@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 
+import { LinkOpenBeacon } from "@/features/short-links/components/LinkOpenBeacon";
 import { PublicLinkView } from "@/features/short-links/components/PublicLinkView";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
+import { viewerForwardingHeaders } from "@/lib/viewerForwardingHeaders";
 import type {
   PublicShortLinkView,
   ShortLinkTargetType,
@@ -42,7 +45,8 @@ const PREVIEW_COPY: Record<
  * The public view behind a slug, fetched on the server with no caching —
  * the owner can revoke a link at any moment. `null` means unknown, revoked or
  * deleted (the API answers 404 for all three); any other failure throws.
- * `cache` dedupes the call between `generateMetadata` and the page.
+ * `cache` dedupes the call between `generateMetadata` and the page. It names
+ * the viewer, so the API rate-limits each viewer rather than this server.
  */
 const fetchPublicView = cache(
   async (slug: string): Promise<PublicShortLinkView | null> => {
@@ -52,7 +56,10 @@ const fetchPublicView = cache(
     }
     const response = await fetch(
       `${apiBaseUrl}/l/${encodeURIComponent(slug)}`,
-      { cache: "no-store" },
+      {
+        cache: "no-store",
+        headers: viewerForwardingHeaders(await headers()),
+      },
     );
     if (response.status === 404) return null;
     if (!response.ok) {
@@ -86,5 +93,10 @@ export default async function ShortLinkPage({ params }: PageProps) {
   const { slug } = await params;
   const view = await fetchPublicView(slug);
   if (!view) notFound();
-  return <PublicLinkView slug={slug} view={view} />;
+  return (
+    <>
+      <LinkOpenBeacon slug={slug} />
+      <PublicLinkView slug={slug} view={view} />
+    </>
+  );
 }
