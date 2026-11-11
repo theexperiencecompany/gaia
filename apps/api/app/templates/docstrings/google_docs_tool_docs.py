@@ -26,7 +26,7 @@ Returns:
 - total_failed: Count of failed shares
 
 Example usage:
-- "Share my project document with john@example.com and jane@example.com as writers"
+- "Share my project document with maya@company.com and theo@company.com as writers"
 - "Give read access to this document to the marketing team"
 - "Share the meeting notes with alice@company.com as reader and bob@company.com as writer"
 

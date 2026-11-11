@@ -11,8 +11,9 @@ from app.models.oauth_models import IntegrationContent
 from app.schemas.common import ResponseModel, SuccessResponse
 
 
-# Base model that auto-converts snake_case to camelCase for JSON serialization
 class CamelModel(BaseModel):
+    """Base model that serializes snake_case fields as camelCase."""
+
     model_config = ConfigDict(
         populate_by_name=True,
         alias_generator=to_camel,
@@ -30,6 +31,8 @@ class CloneCountMixin(BaseModel):
 
 
 class IntegrationConfigItem(CamelModel):
+    """One platform integration in the public catalog."""
+
     id: str
     name: str
     description: str
@@ -44,13 +47,15 @@ class IntegrationConfigItem(CamelModel):
     auth_type: Literal["none", "oauth", "bearer"] | None = None
     requires_auth: bool = False
     source: Literal["platform"] = "platform"
-    slug: str  # For platform integrations, this is the same as id
+    slug: str  # For platform integrations, OAuthIntegration.slug
     # "instance": a Composio toolkit the instance admin enabled; no hand-written tools or triggers.
     origin: Literal["code", "instance"] = "code"
     icon_url: str | None = None
 
 
 class IntegrationsConfigResponse(BaseModel):
+    """The public catalog of platform integrations."""
+
     integrations: list[IntegrationConfigItem]
 
 
@@ -77,6 +82,8 @@ class CreateCustomIntegrationResponse(SuccessResponse, CamelModel):
 
 
 class IntegrationTool(BaseModel):
+    """A tool an integration exposes, as listed on its pages."""
+
     name: str
     description: str | None = None
     # HIL default: this tool is gated (irreversible) unless the user overrides it.
@@ -181,6 +188,8 @@ class IntegrationToolsResponse(CamelModel, ResponseModel):
 
 
 class ConnectIntegrationResponse(ResponseModel, CamelModel):
+    """The outcome of a connect request: connected, a redirect to follow, or an error."""
+
     status: Literal["connected", "redirect", "error"]
     integration_id: str
     name: str

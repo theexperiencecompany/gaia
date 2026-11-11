@@ -136,3 +136,13 @@ async def test_bearer_connect_stores_the_token_and_reports_what_it_connected(
         "auth_type": "bearer",
         "tools_count": tools_count,
     }
+
+
+def test_config_gives_native_integrations_kebab_case_slugs() -> None:
+    service.build_integrations_config.cache_clear()
+    slugs = {item.id: item.slug for item in service.build_integrations_config().integrations}
+
+    assert slugs["google_maps"] == "google-maps"
+    assert slugs["microsoft_teams"] == "microsoft-teams"
+    assert slugs["gmail"] == "gmail"
+    assert all("_" not in slug for slug in slugs.values())
