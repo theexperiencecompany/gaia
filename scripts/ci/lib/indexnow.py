@@ -64,6 +64,13 @@ DATA_FILE = re.compile(rf"^{PUBLIC}/data/([^/]+)/([^/]+)\.json$")
 I18N_FILE = re.compile(rf"^{PUBLIC}/data/i18n/([^/]+)/([^/]+)\.json$")
 BLOG_SOURCE = re.compile(rf"^{WEB}/content/blog/([^/]+)\.mdx?$")
 LANDING_FILE = re.compile(rf"^{re.escape(WEB + '/src/app/[locale]/(landing)/')}(.+)$")
+# Page copy kept outside the route tree, by path prefix -> the route family it renders.
+LANDING_DATA = {
+    f"{WEB}/src/features/landing/data/features/": "/features",
+    f"{WEB}/src/features/landing/data/featuresData.ts": "/features",
+    f"{WEB}/src/features/landing/data/featuresAtAGlance.ts": "/features",
+    f"{WEB}/src/features/landing/data/personaFaqs.ts": "/for",
+}
 FRONTMATTER_SLUG = re.compile(
     r"\A---\n.*?^slug:\s*[\"']?([^\"'\n]+?)[\"']?\s*$.*?^---", re.M | re.S
 )
@@ -288,6 +295,8 @@ def map_changes(repo: Repo, diff: list[tuple[str, str]]) -> Changes:
             _map_blog(repo, changes, path, revs, match.group(1))
         elif match := LANDING_FILE.match(path):
             _map_landing(changes, match.group(1), status == "D")
+        elif route := next((r for p, r in LANDING_DATA.items() if path.startswith(p)), None):
+            changes.routes.add(route)
     return changes
 
 

@@ -309,21 +309,30 @@ def _commit(repo: Path, files: dict[str, str]) -> str:
     return _git(repo, "rev-parse", "HEAD")
 
 
-SITEMAP_PATHS = ["", "/about", "/compare", "/compare/b", "/compare/a", "/compare/c", "/de/compare", "/de/compare/c", "/de/compare/b"]  # fmt: skip
+SITEMAP_PATHS = ["", "/about", "/compare", "/compare/b", "/compare/a", "/compare/c", "/de/compare", "/de/compare/c", "/de/compare/b", "/features", "/features/x", "/features/y"]  # fmt: skip
+LANDING = "apps/web/src/app/[locale]/(landing)"
+TEMPLATES = ["", "/about", "/compare", "/compare/a", "/de/compare", "/de/compare/b", "/features", "/features/x"]  # fmt: skip
 
 
+@pytest.mark.parametrize(
+    ("changed", "extra"),
+    [
+        ({"apps/web/public/data/comparisons/c.json": '{"name": "C"}'}, ["/compare/c", "/de/compare/c"]),
+        ({f"{LANDING}/compare/[slug]/page.tsx": "2"}, ["/compare/b", "/compare/c", "/de/compare/c"]),
+        ({"apps/web/src/features/landing/data/features/productivity.ts": "2"}, ["/features/y"]),
+        ({f"{LANDING}/layout.tsx": "2"}, []),
+    ],
+    ids=["page-data", "route-template", "page-copy-module", "site-shell"],
+)  # fmt: skip
 def test_a_pr_audits_one_page_per_template_per_locale_and_every_page_its_diff_renders(
-    tmp_path: Path,
+    tmp_path: Path, changed: dict[str, str], extra: list[str]
 ) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-q")
     config = 'export const locales = ["en", "de"] as const;\nexport const defaultLocale: Locale = "en";\n'
-    previous = _commit(
-        repo,
-        {"apps/web/src/i18n/config.ts": config, "apps/web/public/data/comparisons/c.json": "{}"},
-    )
-    head = _commit(repo, {"apps/web/public/data/comparisons/c.json": '{"name": "C"}'})
+    previous = _commit(repo, {"apps/web/src/i18n/config.ts": config, **dict.fromkeys(changed, "1")})
+    head = _commit(repo, changed)
     urls = "".join(f"<url><loc>{SITE}{p}</loc></url>" for p in SITEMAP_PATHS)
     routes: Routes = {"/sitemap.xml": (200, {}, f"<urlset>{urls}</urlset>")}
     out = tmp_path / "pages.txt"
@@ -336,16 +345,13 @@ def test_a_pr_audits_one_page_per_template_per_locale_and_every_page_its_diff_re
             check=True,
             env={**os.environ},
         )  # fmt: skip
-    assert out.read_text().split() == [
-        SITE,
-        f"{SITE}/about",
-        f"{SITE}/compare",
-        f"{SITE}/compare/a",
-        f"{SITE}/compare/c",
-        f"{SITE}/de/compare",
-        f"{SITE}/de/compare/b",
-        f"{SITE}/de/compare/c",
-    ]
+    assert out.read_text().split() == sorted({SITE + p for p in TEMPLATES + extra})
+
+
+def test_a_full_crawl_drops_the_lines_of_a_page_the_sitemap_no_longer_lists(tmp_path: Path) -> None:
+    proc = _ratchet(tmp_path, [], "/gone\tcore/h1/missing-h1\n", "--tighten")
+    assert proc.returncode == 0, proc.stdout
+    assert _lines(tmp_path) == []
 
 
 def test_a_sample_does_not_judge_a_rule_that_needs_the_whole_site(tmp_path: Path) -> None:

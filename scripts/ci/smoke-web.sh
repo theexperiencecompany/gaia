@@ -288,7 +288,12 @@ cmd_tighten() {
   local baseline="${SMOKE_SQUIRREL_BASELINE:-$REPO_ROOT/scripts/ci/baselines/squirrel-live.txt}"
   local branch="chore/squirrel-baseline-tighten" existing
   local title="chore(seo): drop the findings the full crawl no longer sees"
+  existing="$(gh pr list --head "$branch" --base master --state open --json number --jq '.[0].number')"
   if git -C "$REPO_ROOT" diff --quiet -- "$baseline"; then
+    # A baseline PR an earlier crawl opened proposes what this crawl no longer sees.
+    if [ -n "$existing" ]; then
+      gh pr close "$existing" --delete-branch --comment "The latest full crawl no longer improves on the baseline, so this tightening would fail the next crawl."
+    fi
     ci_ok "smoke-web: tighten OK (the crawl fixed nothing the baseline lists)"
     return 0
   fi
@@ -298,9 +303,8 @@ cmd_tighten() {
   git -C "$REPO_ROOT" add -- "$baseline"
   git -C "$REPO_ROOT" commit -m "$title"
   git -C "$REPO_ROOT" push --force origin "$branch"
-  existing="$(gh pr list --head "$branch" --base master --json url --jq '.[0].url')"
   if [ -n "$existing" ]; then
-    ci_ok "smoke-web: tighten OK (updated $existing)"
+    ci_ok "smoke-web: tighten OK (updated #$existing)"
     return 0
   fi
   gh pr create --base master --head "$branch" --title "$title" \

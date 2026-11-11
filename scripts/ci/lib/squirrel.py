@@ -16,7 +16,7 @@ import argparse
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from contextlib import closing
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 import re
@@ -27,7 +27,7 @@ import urllib.parse
 
 # python -I leaves scripts/ci off sys.path; the sitemap reader and the diff mapping are shared.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib.indexnow import load_repo, map_changes, split_url, web_diff
+from lib.indexnow import classify, load_repo, map_changes, split_url, web_diff
 from lib.seo_audit import LOCALE_PREFIX as SITE_LOCALE, Site, sitemap_urls
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -329,8 +329,9 @@ def judge(crawl: Crawl, scores: dict[str, int] | None, baseline: Baseline) -> Ve
         found = {f for f in crawl.findings if f.rule not in CRAWL_RELATIVE_RULES}
         judged = {f for f in baseline.findings if _sampled(f, crawl)}
     else:
+        # Every line, a page no longer in the sitemap included: its findings are gone too.
         found = set(crawl.findings)
-        judged = {f for f in baseline.findings if f.page in crawl.pages or f.page == SITE_WIDE}
+        judged = set(baseline.findings)
     dropped: list[ScoreChange] = []
     raised: list[ScoreChange] = []
     for key in sorted((scores or {}).keys() | baseline.scores.keys()):
@@ -470,8 +471,10 @@ def cmd_pages(args: argparse.Namespace) -> int:
         chosen = set(urls)
     else:
         repo = load_repo(args.repo, args.previous, args.head)
-        changes = map_changes(repo, web_diff(repo))
-        changed = {page.url(site) for page in changes.touched | changes.removed} & set(urls)
+        # Every page the diff renders, as IndexNow is told, but for a change to the shell
+        # every page wraps: it renders the same on each, so one page per template judges it.
+        changes = replace(map_changes(repo, web_diff(repo)), whole_site=False)
+        changed, _ = classify(changes, set(urls), site, repo)
         templates = sample(urls, site, repo.locales)
         chosen = set(templates) | changed
         print(
