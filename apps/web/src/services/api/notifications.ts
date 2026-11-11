@@ -1,4 +1,12 @@
-import type { BriefingSchedule, ChannelPlatform } from "@gaia/shared/types";
+import type { ChannelPlatform } from "@gaia/shared/types";
+import { ApiError } from "@shared/api";
+import type {
+  BriefDeliveryWorkflow,
+  BriefDeliveryWorkflowsConflict,
+  BriefingScheduleUpdate,
+} from "@shared/api/generated";
+import { z } from "zod";
+import { API_ERROR_CODES } from "@/lib/api/errorCodes";
 import { api } from "@/lib/api/typed";
 import {
   type BulkActionRequest,
@@ -86,9 +94,11 @@ export class NotificationsAPI {
     return api.get("/api/v1/notifications/preferences/briefing-schedule");
   }
 
-  static updateBriefingSchedule(schedule: BriefingSchedule) {
+  /** Silent so a refused "off" can open its own dialog instead of a toast. */
+  static updateBriefingSchedule(update: BriefingScheduleUpdate) {
     return api.put("/api/v1/notifications/preferences/briefing-schedule", {
-      body: schedule,
+      body: update,
+      silent: true,
     });
   }
 
@@ -100,4 +110,31 @@ export class NotificationsAPI {
       body: { [channel]: enabled },
     });
   }
+}
+
+const BriefDeliveryWorkflowsSchema = z.array(
+  z.object({
+    id: z.string(),
+    title: z.string(),
+  }) satisfies z.ZodType<BriefDeliveryWorkflow>,
+);
+
+/** A refused "off": the API's own words and the workflows still delivering to the brief. */
+export type BriefsOffBlock = Pick<
+  BriefDeliveryWorkflowsConflict,
+  "message" | "workflows"
+>;
+
+/** What blocked turning briefs off, when that is why the save failed, else null. */
+export function readBriefsOffBlock(error: unknown): BriefsOffBlock | null {
+  if (
+    !(error instanceof ApiError) ||
+    error.code !== API_ERROR_CODES.BRIEF_DELIVERY_WORKFLOWS_EXIST
+  ) {
+    return null;
+  }
+  return {
+    message: error.message,
+    workflows: BriefDeliveryWorkflowsSchema.parse(error.envelope?.workflows),
+  };
 }
