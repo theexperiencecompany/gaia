@@ -68,6 +68,11 @@ class TestRendering:
         with pytest.raises(SlotError):
             render_slots(written, _VALUES, {})
 
+    def test_a_fact_standing_for_two_requests_voices_its_count(self) -> None:
+        values = SlotValues(facts={4: BriefFact(title="Reply to Dan", count=2)}, counts={})
+
+        assert render_slots("[[fact:4]] x[[fact:4.count]]", values, {}) == "Reply to Dan x2"
+
     def test_the_facts_a_text_speaks_of_are_every_fact_a_slot_names(self) -> None:
         written = "[[fact:3]], at [[fact:9.time]], the [deck](fact:7), [[count:needs_you]]"
 
@@ -129,6 +134,36 @@ class TestProblems:
             "and any other figure is said in words"
         ]
 
+    def test_a_day_with_no_counts_says_none_were_offered(self) -> None:
+        values = SlotValues(facts={}, counts={CountSlot.DONE: 0})
+
+        assert slot_problems("message", "[[count:done]] done", values) == [
+            "the message: [[count:done]] is not a count the facts list (offered: none today)"
+        ]
+
+    def test_a_malformed_slot_is_named_with_the_shapes_that_work(self) -> None:
+        assert slot_problems("message", "see fact:7", _VALUES) == [
+            "the message has a malformed slot 'fact:7'; write [[count:name]], [[fact:N]], "
+            "[[fact:N.time]], [[fact:N.count]] or [the phrase](fact:N) exactly"
+        ]
+
+    def test_a_figure_glued_to_a_slot_is_named_as_typed_without_the_slot(self) -> None:
+        assert slot_problems("message", "[[count:events]]x2", _VALUES) == [
+            "the message types 'x2' itself; every count, time and date is a slot, "
+            "and any other figure is said in words"
+        ]
+
+    def test_every_typed_figure_is_listed(self) -> None:
+        assert slot_problems("message", "3 then 4", _VALUES) == [
+            "the message types '3', '4' itself; every count, time and date is a slot, "
+            "and any other figure is said in words"
+        ]
+
+    def test_a_title_word_wrapped_in_punctuation_still_licenses_the_bare_figure(self) -> None:
+        values = SlotValues(facts={1: BriefFact(title='Review the "(Q3)" plan')}, counts={})
+
+        assert slot_problems("message", "the Q3 plan", values) == []
+
     def test_a_figure_as_it_stands_in_a_title_may_be_typed(self) -> None:
         assert slot_problems("message", "the (Q4) deck, then the [Q4 deck](fact:7).", _VALUES) == []
 
@@ -138,6 +173,9 @@ class TestProblems:
         assert problems == [
             "the message writes the address 'https://linear.app/acme'; link a phrase with (fact:N)"
         ]
+
+    def test_a_count_slot_names_no_fact(self) -> None:
+        assert referenced_facts("[[count:12]] and [[fact:3]]") == {3}
 
     def test_a_figure_inside_a_slot_is_not_typed_by_the_model(self) -> None:
         assert slot_problems("message", "[[fact:7]] at [[fact:9.time]]", _VALUES) == []

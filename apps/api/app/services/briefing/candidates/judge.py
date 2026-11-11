@@ -140,6 +140,10 @@ def _item_kind(key: SectionKey, candidate: BriefCandidate) -> BriefingItemKind:
     return candidate.state
 
 
+def _detail(chosen: ChosenItem) -> str | None:
+    return (chosen.detail or "").strip() or None
+
+
 def _item(
     key: SectionKey, chosen: ChosenItem, candidate: BriefCandidate, offer: str | None
 ) -> BriefingItem:
@@ -147,7 +151,7 @@ def _item(
     asks = key in ACTION_SECTIONS
     return BriefingItem(
         text=chosen.title.strip(),
-        detail=(chosen.detail or "").strip() or None,
+        detail=_detail(chosen),
         action=(candidate.action or chosen.action) if asks else None,
         outcome=None if asks else (candidate.outcome or chosen.outcome),
         todo_id=candidate.todo_id,
@@ -169,8 +173,8 @@ def _wording_problems(key: SectionKey, chosen: ChosenItem, candidate: BriefCandi
         problems.append(
             f"{where}: a title of {len(title)} characters, not 1 to {BRIEF_ITEM_TITLE_MAX_CHARS}"
         )
-    detail = (chosen.detail or "").strip()
-    if len(detail) > BRIEF_ITEM_DETAIL_MAX_CHARS:
+    detail = _detail(chosen)
+    if detail is not None and len(detail) > BRIEF_ITEM_DETAIL_MAX_CHARS:
         problems.append(
             f"{where}: a detail of {len(detail)} characters, over {BRIEF_ITEM_DETAIL_MAX_CHARS}"
         )
@@ -246,10 +250,10 @@ def checked_selection(answer: BriefSelectionAnswer, pool: CandidatePool) -> Brie
     )
 
 
-async def _ask(user_id: str, prompt: str, note: str) -> BriefSelectionAnswer:
+async def _ask(user_id: str, prompt: str) -> BriefSelectionAnswer:
     return await ainvoke_structured(
         BriefSelectionAnswer,
-        f"{prompt}\n{note}" if note else prompt,
+        prompt,
         label=BRIEF_SELECTION_LABEL,
         config=metered_config(user_id),
     )
@@ -284,11 +288,13 @@ async def select_candidates(
         actions=", ".join(BriefAction),
         outcomes=", ".join(BriefOutcome),
     )
-    note = ""
+    asked = prompt
     for _ in range(MAX_SELECTION_ATTEMPTS - 1):
         try:
-            return checked_selection(await _ask(user_id, prompt, note), pool)
+            return checked_selection(await _ask(user_id, asked), pool)
         except AppError as exc:
             log.warning("briefing.selection_rejected", problem=exc.why)
-            note = f"Your last answer was rejected: {exc.why}. Answer again, fixing that."
-    return checked_selection(await _ask(user_id, prompt, note), pool)
+            asked = (
+                f"{prompt}\nYour last answer was rejected: {exc.why}. Answer again, fixing that."
+            )
+    return checked_selection(await _ask(user_id, asked), pool)

@@ -13,8 +13,8 @@ from app.services.briefing.candidates.app_names import integration_name
 from app.services.todos.inbox_desk import INBOX_DESK_REF
 
 
-def _first_line(text: str) -> str:
-    return next((line.strip() for line in text.splitlines() if line.strip()), "")
+def _first_line(text: str) -> str | None:
+    return next((line.strip() for line in text.splitlines() if line.strip()), None)
 
 
 async def held_candidates(

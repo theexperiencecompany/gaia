@@ -88,7 +88,6 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
             artifacts=gather_artifacts(
                 context.TrackedWork(completed=[*completed.gaia, *completed.user])
             ),
-            open_todos=0,
             calendar=week.ahead,
             event_ids=event_ids(gathered.pool),
             span=WEEK_AHEAD,

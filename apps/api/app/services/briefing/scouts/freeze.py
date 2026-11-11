@@ -121,9 +121,9 @@ def _agrees(step_value: object, recorded_value: object) -> bool:
             for key, item in step_value.items()
         )
     if isinstance(step_value, list):
-        return (
-            isinstance(recorded_value, list)
-            and len(step_value) == len(recorded_value)
-            and all(_agrees(a, b) for a, b in zip(step_value, recorded_value, strict=True))
-        )
+        if not isinstance(recorded_value, list) or len(step_value) != len(recorded_value):
+            return False
+        # strict only restates the length check above, so no input reaches it.
+        pairs = zip(step_value, recorded_value, strict=True)  # pragma: no mutate
+        return all(_agrees(a, b) for a, b in pairs)
     return step_value == recorded_value

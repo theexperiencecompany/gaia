@@ -132,12 +132,12 @@ class FactSources:
     """
 
     artifacts: dict[str, ArtifactFact]
-    open_todos: int
     calendar: list[BriefingEvent]
     #: The pool id of each calendar event, in calendar order.
     event_ids: list[int]
     span: CalendarSpan
     todos_note: str | None
+    open_todos: int = 0
 
 
 def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts:
@@ -154,6 +154,7 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
     counts = _counts(items, sources.open_todos, len(sources.calendar))
     voiced = " · ".join(f"{slot.value}: {n}" for slot, n in counts.items())
     fact_lines = [f"[COUNTS] {voiced}"] if voiced else []
+    must_mention: list[int] = []
     for sec, picked in zip(chosen.sections, chosen.picked, strict=True):
         fact_lines.append(f"[{sec.title}]")
         for it, (fact_id, candidate) in zip(sec.items, picked, strict=True):
@@ -168,6 +169,8 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
                 time=_due_on(candidate.due_at, clock) if candidate.due_at else None,
                 count=it.count,
             )
+            if it.kind in NEEDS_YOU_ITEM_KINDS:
+                must_mention.append(fact_id)
             linkable = fact_id in deliverables or fact_id in addresses
             if candidate.signal is not None:
                 continue
@@ -177,7 +180,8 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
                 else _work_fact_line(fact_id, it, facts[fact_id], art)
             )
             fact_lines.append(f"{line} | linkable" if linkable else line)
-    for fact_id, event in zip(sources.event_ids, sources.calendar, strict=True):
+    events = list(zip(sources.event_ids, sources.calendar, strict=True))
+    for fact_id, event in events:
         facts[fact_id] = BriefFact(title=event.title, time=_event_time(event, clock))
     if not chosen.sections:
         fact_lines.append(
@@ -186,33 +190,27 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
         )
     if sources.todos_note is not None:
         fact_lines.append(sources.todos_note)
-    fact_lines.append(_calendar_note(sources, clock))
+    fact_lines.append(_calendar_note(events, sources.span, clock))
     return Facts(
         sections=chosen.sections,
         block="\n".join(fact_lines),
         values=SlotValues(facts=facts, counts=counts),
         deliverables=deliverables,
         addresses=addresses,
-        must_mention=frozenset(
-            [
-                fact_id
-                for sec, picked in zip(chosen.sections, chosen.picked, strict=True)
-                for it, (fact_id, _) in zip(sec.items, picked, strict=True)
-                if it.kind in NEEDS_YOU_ITEM_KINDS
-            ]
-            + sources.event_ids
-        ),
+        must_mention=frozenset([*must_mention, *sources.event_ids]),
     )
 
 
-def _calendar_note(sources: FactSources, clock: UserClock) -> str:
-    if not sources.calendar:
-        return sources.span.empty
+def _calendar_note(
+    events: list[tuple[int, BriefingEvent]], span: CalendarSpan, clock: UserClock
+) -> str:
+    if not events:
+        return span.empty
     lines = [
         f"- fact {fact_id} | {_event_time(e, clock) or 'all day'}: {e.title}"
-        for fact_id, e in zip(sources.event_ids, sources.calendar, strict=True)
+        for fact_id, e in events
     ]
-    return f"{sources.span.heading}:\n" + "\n".join(lines)
+    return f"{span.heading}:\n" + "\n".join(lines)
 
 
 def user_todos_note(open_count: int, open_titles: list[str]) -> str:

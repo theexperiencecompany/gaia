@@ -25,7 +25,6 @@ from app.models.briefing_models import (
     BriefingPayload,
     BriefingTallies,
 )
-from app.models.scout_models import Signal
 from app.models.user_models import UserDocument
 from app.services.briefing import chat_sync, context, dormancy
 from app.services.briefing.artifacts import gather_artifacts
@@ -97,13 +96,9 @@ async def _recent_openings(user_id: str) -> list[str]:
     return [next(line.strip() for line in m.splitlines() if line.strip()) for m in messages]
 
 
-def _is_empty_day(payload: BriefingPayload, signals: list[Signal]) -> bool:
+def _is_empty_day(payload: BriefingPayload) -> bool:
     """Nothing needs the user, in GAIA or their apps, and nothing is on their calendar."""
-    return (
-        not signals
-        and not payload.calendar
-        and not any(section.items for section in payload.sections)
-    )
+    return not payload.calendar and not any(section.items for section in payload.sections)
 
 
 async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
@@ -246,9 +241,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         # The idle ladder's goal question, warning and goodbye are messages in
         # their own right, so they push even on an otherwise empty day.
         Push(
-            push=not _is_empty_day(payload, signals)
-            or ladder.wind_down is not None
-            or winback.is_winback,
+            push=not _is_empty_day(payload) or ladder.wind_down is not None or winback.is_winback,
             signal_count=len(signals),
         ),
     )
