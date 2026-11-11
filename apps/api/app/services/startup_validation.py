@@ -1,5 +1,6 @@
 """Startup validation for GAIA."""
 
+from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.db.repositories.plans import plan_repository
 from app.services.payments.plan_tier_backfill import backfill_plan_tiers
@@ -25,7 +26,7 @@ async def is_payment_setup() -> bool:
     auto_initialize=True,
 )
 async def validate_startup_requirements() -> None:
-    """Halt startup when payment plans are not seeded, then tag any row that predates plan_type.
+    """Halt a billing deployment whose plans are not seeded, then tag any row that predates plan_type.
 
     Registered strategy=ERROR, so raising here aborts a blocking boot with an
     actionable message. A prior broad except swallowed this RuntimeError and
@@ -37,6 +38,10 @@ async def validate_startup_requirements() -> None:
 
     if await is_payment_setup():
         await backfill_plan_tiers()
+        return
+    if not settings.deployment.bills:
+        # Nothing is sold here (dev, self-host), so an empty catalogue is correct.
+        log.info("No payment plans seeded; billing is disabled for this deployment")
         return
 
     remedies = [f"Payment plans not set up — run: {SEED_PLANS_COMMAND}"]

@@ -1,7 +1,7 @@
 """What the delegation runner tells the executor about a subagent it started.
 
 Tool results and inbox entries, read by the executor model and never shown to the
-user as-is. Shared by spawn_subagent and handoff, which run on the same runner.
+user as-is. Used by spawn_subagent's runner.
 """
 
 BACKGROUND_DELEGATION_ACK = (
@@ -25,6 +25,11 @@ THREAD_BUSY_REFUSAL = (
 SUBAGENT_RESULT_ENTRY = "{name} (subagent {subagent_id}): {result}"
 
 SUBAGENT_FAILED_RESULT = "Error from {name}: {error}"
+
+SUBAGENT_NARRATION_ONLY_RESULT = (
+    "The {name} subagent ended without running any tool; it only produced planning text: "
+    '"{text}". Re-issue the task with an explicit instruction to perform the action.'
+)
 
 SUBAGENT_PARKED_ENTRY = (
     "{name} (subagent {subagent_id}) is waiting for the user's approval: {summaries}. "

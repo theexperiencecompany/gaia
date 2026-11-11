@@ -7,14 +7,13 @@ and BUILTIN_SUBAGENTS (registered directly, no OAuth).
 Integrations activate in-context via activate_integration (only per-user MCP
 integrations still run as subagent graphs); the manifest backs activation,
 tool-space mapping, connect cards, and skill targets, all through all_subagents()
-and get_subagent_by_id(). OAuth integration code continues to iterate
-OAUTH_INTEGRATIONS directly and never sees builtins.
+and get_subagent_by_id(). OAuth integration code iterates all_integrations()
+directly and never sees builtins.
 """
 
-from functools import cache
 import re
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import CatalogCached, all_integrations
 from app.models.oauth_models import OAuthIntegration
 from app.models.subagent_models import Subagent
 
@@ -32,20 +31,19 @@ def _from_oauth(integ: OAuthIntegration) -> Subagent:
         config=integ.subagent_config,
         short_name=integ.short_name,
         mcp_config=integ.mcp_config,
+        available=integ.available,
     )
 
 
-@cache
+@CatalogCached
 def all_subagents() -> tuple[Subagent, ...]:
-    """All subagents — OAuth-derived + builtins. Process-lifetime cached.
+    """All subagents — integration-derived + builtins, rebuilt when the instance-enabled set changes.
 
-    Cache is safe because OAUTH_INTEGRATIONS and BUILTIN_SUBAGENTS are
-    module-level constants that are never mutated at runtime. If a test
-    needs to inject a fake subagent, call all_subagents.cache_clear().
+    If a test needs to inject a fake subagent, call all_subagents.cache_clear().
     """
     oauth_subagents = tuple(
         _from_oauth(i)
-        for i in OAUTH_INTEGRATIONS
+        for i in all_integrations()
         if i.subagent_config and i.subagent_config.has_subagent
     )
     return oauth_subagents + BUILTIN_SUBAGENTS
@@ -65,7 +63,7 @@ def get_subagent_by_id(subagent_id: str) -> Subagent | None:
     return None
 
 
-@cache
+@CatalogCached
 def _third_party_name_matchers() -> tuple[tuple[Subagent, re.Pattern[str]], ...]:
     """One whole-word matcher per third-party provider, over its name and its id.
 
@@ -86,7 +84,7 @@ def _third_party_name_matchers() -> tuple[tuple[Subagent, re.Pattern[str]], ...]
 
 
 # Provider ids that are also ordinary English words: a lowercase occurrence reads
-# as prose, a capitalized one as the product, so foreign_provider_named_in flags
+# as prose, a capitalized one as the product, so providers_named_in counts
 # these only on a capitalized mention. Every other provider flags on any match.
 _COMMON_WORD_PROVIDER_IDS: frozenset[str] = frozenset({"slack", "linear", "notion"})
 
@@ -108,23 +106,13 @@ def providers_named_in(text: str) -> list[Subagent]:
     return named
 
 
-def foreign_provider_named_in(text: str, target_id: str) -> Subagent | None:
-    """Return the third-party provider text names that is not target_id, if any.
-
-    A task routed to one subagent while naming another credits the named product
-    with work it never did (eight GAIA todos once reached the user as "8 tasks
-    created (Todoist)"). Ids in _COMMON_WORD_PROVIDER_IDS flag only when capitalized.
-    """
-    return next((sa for sa in providers_named_in(text) if sa.id != target_id), None)
-
-
-@cache
+@CatalogCached
 def _subagent_id_by_agent_name() -> dict[str, str]:
     """Map each subagent's agent_name to its canonical id.
 
     agent_name is the one handle the skill catalog is keyed on. Built from
-    all_subagents(), covering OAuth-derived AND builtin subagents; it is
-    also the LangGraph graph-registration key, so it is unique by construction.
+    all_subagents(), covering OAuth-derived AND builtin subagents. Uniqueness
+    is pinned by test_oauth_catalog.test_every_subagent_agent_name_is_unique.
     """
     return {sa.config.agent_name: sa.id for sa in all_subagents()}
 

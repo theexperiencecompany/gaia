@@ -83,7 +83,7 @@ class TestResolve:
     ) -> None:
         with (
             patch(f"{ENDPOINT}.resolve_referral_code", _resolved(True)),
-            patch(f"{ENDPOINT}.settings.ENV", "production"),
+            patch("app.utils.auth_utils.settings.ENV", "production"),
         ):
             response = await unauthed_client.get(f"{URL}/resolve/aryan-k7f2")
 

@@ -14,11 +14,21 @@ import type {
   DesktopToolRequest,
   ProtectedFolder,
 } from "@gaia/shared/desktop-tools";
-import { app, BrowserWindow, ipcMain, ShareMenu, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+  ipcMain,
+  ShareMenu,
+  shell,
+} from "electron";
 import { IPC } from "../ipc-channels";
 import { listAppIcons, setAppIcon } from "./app-icon";
 import { registerBridgeIpcHandlers } from "./bridge/ipc";
 import { updatePopupShortcut } from "./popup-shortcut";
+import { getServerUrl } from "./server";
+import { connectSelfHostServer, switchToGaiaCloud } from "./server-switch";
 import { getDesktopSettings } from "./settings";
 import { dispatchDesktopTool } from "./tools";
 import {
@@ -43,6 +53,10 @@ function isShareItem(item: unknown): item is { text: string; url: string } {
     typeof url === "string" &&
     /^https?:\/\//.test(url)
   );
+}
+
+function isBundledAppSender(event: IpcMainEvent | IpcMainInvokeEvent): boolean {
+  return event.senderFrame?.origin === new URL(getServerUrl()).origin;
 }
 
 /**
@@ -143,6 +157,20 @@ export function registerIpcHandlers(onWindowReady: () => void): void {
   ipcMain.handle(IPC.desktopSettingsSetIcon, (_event, id: string) =>
     setAppIcon(String(id)),
   );
+
+  // Only the bundled web app may change servers, so a page served by a
+  // self-hosted server can never repoint the app somewhere else.
+  ipcMain.handle(IPC.desktopServerConnect, (event, address: unknown) => {
+    if (!isBundledAppSender(event)) {
+      throw new Error("Servers can only be changed from the desktop app");
+    }
+    return connectSelfHostServer(String(address));
+  });
+
+  ipcMain.on(IPC.desktopServerUseCloud, (event) => {
+    if (!isBundledAppSender(event)) return;
+    switchToGaiaCloud();
+  });
 
   // Device bridge: pair/status/start/stop + server management, and the
   // main→renderer status push. Configures the host state dir up front so the

@@ -1,0 +1,72 @@
+{
+ "run": "run_d74c6b8bfac6",
+ "captured_from": "2026-09-01",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 25,
+   "record_len": 18,
+   "written": {},
+   "old_outcome": "refused",
+   "unmappable": "no_steps",
+   "unmappable_detail": "steps was NoneType",
+   "expected": "unmappable"
+  }
+ ]
+}

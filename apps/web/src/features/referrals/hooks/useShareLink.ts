@@ -4,8 +4,8 @@ import type { EventProperties } from "@gaia/shared/analytics/events";
 import type { ReferralCopyVariant } from "@shared/api/generated";
 import { useEffect, useRef, useState } from "react";
 import { track } from "@/lib/analytics";
+import { copyWithFeedback } from "@/lib/clipboard";
 import { getElectronAPI } from "@/lib/electron/api";
-import { toast } from "@/lib/toast";
 import {
   channelHref,
   type LinkChannel,
@@ -56,12 +56,7 @@ export function useShareLink({
     });
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-    } catch {
-      toast.error("Couldn't copy. Select the link and copy it yourself.");
-      return;
-    }
+    if (!(await copyWithFeedback(url))) return;
     record("copy");
     setCopied(true);
     clearTimeout(resetTimer.current);

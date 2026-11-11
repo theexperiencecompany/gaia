@@ -53,7 +53,7 @@ export function Payment() {
       {isUnknown ? (
         <Spinner size="lg" aria-label="Checking your subscription" />
       ) : returned && (failed || timedOut) ? (
-        // Declined, or nothing landed in two minutes: say so and hand the
+        // Declined, or nothing landed inside the confirmation budget: say so and hand the
         // plans back rather than spinning until the user gives up.
         <div className="w-full max-w-sm">
           <CheckoutFailed declined={failed} onRetry={retry} />
@@ -65,10 +65,10 @@ export function Payment() {
           <CheckoutConfirming isLate={isLate} />
         </div>
       ) : gaiaDone ? (
-        // Scaled so the whole card sits on a laptop screen without scrolling;
-        // `zoom` shrinks the layout box too, unlike a transform.
+        // Scaled on laptop screens so the whole card fits without scrolling;
+        // `zoom` shrinks the layout box too. Phones scroll, and keep full-size tap targets.
         <m.div
-          className="flex w-full flex-col items-center gap-4 [zoom:0.85]"
+          className="flex w-full flex-col items-center gap-4 lg:[zoom:0.85]"
           {...MOTION_FADE_UP}
         >
           <BillingPeriodTabs isYearly={isYearly} onChange={setIsYearly} />

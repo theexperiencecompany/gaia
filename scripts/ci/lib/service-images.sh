@@ -4,10 +4,7 @@
 # Digest-pinned (the tag is a readability label; the digest is what is pulled)
 # so every run boots identical bits and a flake can never be image drift.
 #
-# There is exactly one other copy of these references, deliberately: the local
-# Dagger harness at .dagger/src/gaia_ci/main.py, which must give a dev machine
-# the same topology CI gets. Bump the two together — nothing else may hold a
-# service image reference.
+# Nothing else may hold a service image reference.
 #
 # Sourced by scripts/ci/test-services.sh, and read textually by
 # gaia-infra:self-hosted-runner/create-runner-user.sh (which greps

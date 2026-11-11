@@ -2,11 +2,17 @@
 
 Comms has no work tools, so a comms hop in front of a background todo run only
 paraphrased the brief and wrote a pre-work acknowledgement that was then
-delivered as if it were the result. The executor does the work here; its
-terminal outcome goes through result_delivery to todo_run_delivery.
+delivered as if it were the result. The executor does the work here, in the
+todo's own chat: the run streams into it live, and its terminal outcome goes
+through result_delivery, which keeps the report there, to todo_run_delivery.
+
+The chat is reused across runs, but each new run starts from an empty executor
+thread: what it needs of earlier runs comes from the todo's canvas and activity,
+never from a replayed checkpoint. Only an approval resume continues the thread.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 import time
 from typing import cast
@@ -18,8 +24,15 @@ from app.agents.core.background.executor_capture import (
     register_executor_capture,
     teardown_executor_capture,
 )
-from app.agents.core.background.executor_queue import build_lock_value, try_acquire_lock
+from app.agents.core.background.executor_queue import (
+    announce_detached_stream,
+    build_lock_value,
+    end_detached_stream,
+    release_lock_if_owned,
+    try_acquire_lock,
+)
 from app.agents.core.background.executor_runner import run_executor_background
+from app.agents.core.background.result_delivery import record_todo_run_wake
 from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
@@ -31,6 +44,9 @@ from app.agents.core.background.session import (
 )
 from app.agents.llm.lane import AgentRole
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT, EXECUTOR_BUSY_PREFIX
+from app.constants.log_tags import LogTag
+from app.constants.streaming import DetachedStreamKind
+from app.core.stream_manager import StreamManager
 from app.helpers.agent_helpers import (
     AgentIdentity,
     AgentLane,
@@ -40,9 +56,12 @@ from app.helpers.agent_helpers import (
 )
 from app.models.agent_config import AgentConfigurable
 from app.models.agent_models import agent_user_context
+from app.models.message_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser
+from app.services.checkpoint_thread_reset import reset_conversation_threads
 from app.utils.background_tasks import spawn_background_task
 from app.utils.user_preferences_utils import onboarding_preferences
+from shared.py.wide_events import log
 
 TODO_EXECUTOR_TASK_NAME = "tracked-todo-executor-run"
 
@@ -51,28 +70,66 @@ class TodoRunFailedError(RuntimeError):
     """The executor ended a tracked todo run in an error, or never finished it."""
 
 
+class ExecutorBusyError(RuntimeError):
+    """Another executor run holds the todo's chat, so this run never started."""
+
+
+class TodoRunCancelledError(RuntimeError):
+    """The user stopped the run from its chat before it finished."""
+
+
 @dataclass(frozen=True)
 class TodoRunRequest:
-    """One tracked todo run: whose, which todo, the brief, and the conversation it runs in."""
+    """One tracked todo run: whose, which todo, the brief, and the todo's chat it runs in."""
 
     user: AuthenticatedUser
     todo_run: TodoRun
     todo_title: str
     task: str
     conversation_id: str
+    #: A new run starts from an empty executor thread; an approval resume
+    #: continues the thread the parked run left.
+    fresh_thread: bool
+    #: What woke the run, shown on the user's side of the chat before it streams.
+    wake: TodoRunWake
+    #: Awaited once the chat's executor lock is this run's, so a run that finds
+    #: the chat busy never reads as started.
+    on_started: Callable[[], Awaitable[object]] | None = None
 
 
 async def run_todo_on_executor(request: TodoRunRequest) -> None:
     """Run the brief on the executor through to delivery; raises TodoRunFailedError on failure."""
     stream_id = str(uuid4())
     task_id = str(uuid4())
+    conversation_id = request.conversation_id
     configurable = await _todo_run_configurable(request, stream_id)
 
-    lock_key = f"{EXECUTOR_BUSY_PREFIX}{request.conversation_id}"
+    lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
     if not await try_acquire_lock(lock_key, build_lock_value(stream_id, task_id)):
-        raise TodoRunFailedError(
-            f"the executor is already running in conversation {request.conversation_id}"
+        raise ExecutorBusyError(
+            f"the executor is already running in conversation {conversation_id}"
         )
+
+    try:
+        if request.on_started is not None:
+            await request.on_started()
+        # Under the lock: no other executor can be writing the threads it drops.
+        if request.fresh_thread:
+            await _reset_executor_threads(conversation_id)
+        # Before the stream, so the chat reads what woke the run, then the run.
+        await record_todo_run_wake(conversation_id, request.user, request.wake)
+        await announce_detached_stream(
+            stream_id,
+            conversation_id=conversation_id,
+            user_id=request.user.user_id,
+            task_id=task_id,
+            bot_message_id=None,
+            kind=DetachedStreamKind.EXECUTOR,
+        )
+    except Exception:
+        # No run owns the lock yet, so nothing else would ever release it.
+        await release_lock_if_owned(conversation_id, stream_id, task_id)
+        raise
 
     register_executor_capture(stream_id)
     try:
@@ -82,7 +139,7 @@ async def run_todo_on_executor(request: TodoRunRequest) -> None:
                 configurable,
                 identity=RunIdentity(
                     stream_id=stream_id,
-                    conversation_id=request.conversation_id,
+                    conversation_id=conversation_id,
                     kind=RunKind.LIVE,
                     task_id=task_id,
                     user_message_id=None,
@@ -109,10 +166,33 @@ async def run_todo_on_executor(request: TodoRunRequest) -> None:
             run_task.cancel()
             await asyncio.wait({run_task})
             raise TodoRunFailedError(reason) from None
+        if await StreamManager.is_cancelled(stream_id):
+            raise TodoRunCancelledError(
+                f"the user stopped the run in conversation {conversation_id}"
+            )
         if failure := executor_failure(stream_id):
             raise TodoRunFailedError(failure)
     finally:
         teardown_executor_capture(stream_id)
+        # After delivery saved the report, so a client reading the chat at [DONE] finds it.
+        await end_detached_stream(stream_id, cancelled=await StreamManager.is_cancelled(stream_id))
+
+
+async def _reset_executor_threads(conversation_id: str) -> None:
+    """Drop the executor threads earlier runs and follow-ups left, keeping the chat's own thread."""
+    result = await reset_conversation_threads(conversation_id, keep_conversation_thread=True)
+    if result is None:
+        # No Postgres checkpointer (a dev box): there is no persisted thread to replay.
+        log.warning(
+            f"{LogTag.TODO} Todo chat executor-thread reset skipped — no checkpointer pool",
+            conversation_id=conversation_id,
+        )
+        return
+    log.set_ns(
+        "tracked_todo",
+        threads_reset=result.reset,
+        threads_skipped_inflight=result.skipped_inflight,
+    )
 
 
 async def _todo_run_configurable(request: TodoRunRequest, stream_id: str) -> AgentConfigurable:

@@ -52,7 +52,7 @@ inputs:
       directory whose lane is neither this nor under it fails the step, naming
       the file — because a job uploads a directory, so anything else in the job
       that writes a verdict reaches the gate as a lane nobody can find. The
-      mutation shards pass `mutation`: mutation.sh writes one verdict per
+      mutation shards pass `mutation`: mutation.py writes one verdict per
       module under that namespace, not under the shard's own lane.
     required: false
     default: ""
@@ -67,6 +67,16 @@ inputs:
       GAIA_VERDICT_DIR).
     required: false
     default: ""
+  partial:
+    description: >
+      "true" for the upload a job runs after each check, mid-job: it ships the
+      verdicts written so far, so `mise ci:remote` can read a red check minutes
+      before the job ends. It records no status-derived verdict (the job is not
+      over) and clears GAIA_VERDICT_PENDING, the flag `verdict.py` sets when it
+      writes a failing verdict and the step's `if:` reads. Every upload
+      overwrites the job's one artifact, so the last one is what the gate reads.
+    required: false
+    default: "false"
 runs:
   using: composite
   steps:
@@ -75,7 +85,7 @@ runs:
     # that wrote its OWN verdict (with findings at file:line) keeps it; this
     # only fills the silence.
     - name: Record a verdict for a lane that wrote none
-      if: always()
+      if: always() && inputs.partial != 'true'
       shell: bash
       env:
         VERDICT_DIR: ${{ inputs.path || format('{0}/verdicts', runner.temp) }}
@@ -105,3 +115,9 @@ runs:
         if-no-files-found: warn
         include-hidden-files: true
         retention-days: 7
+        # The mid-job uploads and the final one share the job's artifact name.
+        overwrite: true
+    - name: Mark the verdicts so far as uploaded
+      if: always() && inputs.partial == 'true'
+      shell: bash
+      run: echo "GAIA_VERDICT_PENDING=" >> "$GITHUB_ENV"

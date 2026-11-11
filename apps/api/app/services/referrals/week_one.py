@@ -21,7 +21,7 @@ from app.constants.referrals import (
 from app.db.repositories.usage_daily import usage_daily_repository
 from app.db.repositories.users import user_repository
 from app.models.user_models import UserDocument
-from app.services.delivery.chat_channel import ChatChannel, resolve_chat_channel
+from app.services.delivery.chat_channel import ChatChannel, resolve_proactive_target
 from app.services.outbound_delivery import OutboundResult, publish_outbound_message
 from app.services.payments.payment_service import payment_service
 from app.services.referrals.codes import ensure_code, share_link
@@ -66,10 +66,10 @@ async def _offer_week_one_dm(user: UserDocument, now: datetime) -> bool:
         return False
     if not _in_week_one(user, now) or not await _had_a_good_week(user.id, now):
         return False
-    channel = await resolve_chat_channel(user.id)
-    if channel is None:
+    target = await resolve_proactive_target(user.id)
+    if not isinstance(target, ChatChannel):
         return False
-    return await send_pitch(user.id, ReferralNudge.WEEK_ONE_DM, lambda: _send_dm(user, channel))
+    return await send_pitch(user.id, ReferralNudge.WEEK_ONE_DM, lambda: _send_dm(user, target))
 
 
 async def send_week_one_dms() -> str:

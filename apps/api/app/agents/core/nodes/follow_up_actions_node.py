@@ -12,6 +12,7 @@ from langgraph.store.base import BaseStore
 from langgraph.types import StreamWriter
 from pydantic import BaseModel, Field
 
+from app.agents.context.slots import is_gaia_authored_note
 from app.agents.core.integration_capabilities import get_user_integration_capabilities
 from app.agents.llm.client import ainvoke_structured
 from app.agents.tools.core.registry import get_tool_registry
@@ -133,7 +134,8 @@ async def _follow_up_actions(state: State, config: RunnableConfig) -> State:
         )
         return state
 
-    messages = state.get("messages", [])
+    # GAIA's own notes are not part of the exchange the user is having.
+    messages = [m for m in state.get("messages", []) if not is_gaia_authored_note(m)]
 
     # When delegated to a background executor, it produces the user-visible
     # answer separately with its own follow-ups; emitting here would attach

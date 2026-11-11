@@ -1,7 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import type { UnifiedMessage } from "@kapso/whatsapp-cloud-api";
 import type {
   ExtractedMedia,
   KapsoMessageEvent,
+  KapsoMessageFailedEvent,
+  MetaStatusError,
   WaMediaPayload,
 } from "./webhook.types";
 
@@ -33,7 +36,9 @@ export function verifyKapsoSignature(
  * wa_id is the sender's phone number without the leading '+', e.g. "15551234567".
  * Kapso provides conversation.phone_number with a leading '+'.
  */
-export function extractWaId(event: KapsoMessageEvent): string {
+export function extractWaId(
+  event: Pick<KapsoMessageEvent | KapsoMessageFailedEvent, "conversation">,
+): string {
   return event.conversation.phone_number.replace(/^\+/, "");
 }
 
@@ -130,4 +135,42 @@ export function extractMedia(event: KapsoMessageEvent): ExtractedMedia | null {
     prefetchedUrl,
     sizeBytes,
   };
+}
+
+const COUNTRY_PREFIX_PATTERN = /^([A-Z]{2})\./;
+
+/**
+ * The recipient's country from Meta's business-scoped user id ("BR.1630..."), or
+ * undefined when the id is absent or not country-prefixed.
+ */
+export function countryFromBusinessScopedUserId(
+  id: string | undefined,
+): string | undefined {
+  return id ? COUNTRY_PREFIX_PATTERN.exec(id)?.[1] : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/**
+ * Meta's error on a message's latest failed status, as the Kapso message API
+ * returns it under `kapso.statuses[].errors[]`; undefined when it has none.
+ */
+export function extractStatusError(
+  message: UnifiedMessage,
+): MetaStatusError | undefined {
+  const statuses = message.kapso?.statuses;
+  if (!Array.isArray(statuses)) return undefined;
+  for (const status of [...statuses].reverse()) {
+    if (!isRecord(status) || status.status !== "failed") continue;
+    const [error] = Array.isArray(status.errors) ? status.errors : [];
+    if (!isRecord(error) || typeof error.code !== "number") continue;
+    return {
+      code: error.code,
+      title: typeof error.title === "string" ? error.title : undefined,
+      message: typeof error.message === "string" ? error.message : undefined,
+    };
+  }
+  return undefined;
 }

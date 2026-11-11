@@ -1,0 +1,95 @@
+---
+title: "Chat bots (Telegram, Discord, Slack)"
+sidebarTitle: "Chat bots"
+description: "Run GAIA's Telegram, Discord and Slack bots on your self-hosted instance with your own bot tokens"
+icon: "robot"
+---
+
+Chat with your GAIA on Telegram, Discord or Slack. You make a bot on each platform, then add it with one command:
+
+```bash
+gaia bots add telegram
+```
+
+Use `discord` or `slack` in place of `telegram`. The command asks for the bot's token, checks it, saves it and starts the bot. No public URL or domain is needed.
+
+<Note>
+  Run it on the machine where you ran `gaia up`. Older installs need `gaia update` first.
+</Note>
+
+## Telegram
+
+1. In Telegram, message [@BotFather](https://t.me/BotFather) and send `/newbot`. Pick a name and a username.
+2. BotFather replies with a token like `123456789:AA...`. Copy it.
+3. Run `gaia bots add telegram` and paste the token.
+
+A wrong or revoked token is rejected, and nothing changes:
+
+<Frame caption="A token that Telegram rejects is never saved">
+  <img src="/images/self-hosting/terminal-gaia-bots-add.webp" width="537" alt="Terminal output of gaia bots add telegram: it explains where to get a token from @BotFather, asks for the Telegram bot token, checks the credentials, and stops with Error: Telegram rejected the bot token: Unauthorized. Copy it again from @BotFather." />
+</Frame>
+
+## Discord
+
+1. Open the [Discord Developer Portal](https://discord.com/developers/applications) and create an application.
+2. On the **Bot** page, click **Reset Token** and copy the token.
+3. On the same page, turn on **Message Content Intent**. Without it the bot can't read messages.
+4. Run `gaia bots add discord` and paste the token.
+
+The command prints a link to add the bot to your server.
+
+## Slack
+
+You need three values from your app's page at [api.slack.com/apps](https://api.slack.com/apps).
+
+1. Create an app **From scratch** in your workspace.
+2. **Socket Mode**: turn it on and create an app-level token with the `connections:write` scope (starts with `xapp-`).
+3. **OAuth & Permissions**: add the bot scopes `app_mentions:read`, `chat:write`, `commands`, `im:history`, `im:read` and `im:write`. Install the app and copy the **Bot User OAuth Token** (starts with `xoxb-`).
+4. **Event Subscriptions**: turn them on and subscribe to `app_mention` and `message.im`.
+5. **Slash Commands**: create `/gaia`, `/auth`, `/workflow`, `/todo` and `/conversations`. Leave the request URL empty.
+6. **Basic Information**: copy the **Signing Secret**.
+7. Run `gaia bots add slack` and enter the three values.
+
+## Link your GAIA account
+
+The bot only answers people who linked their chat account. In a chat with the bot, send `/auth`, open the link it sends and sign in. Each person does this once.
+
+Your instance's **Bots** page (`/bots`) links to your bots.
+
+## Check on your bots
+
+```bash
+gaia bots list     # every bot you added, and whether it is running
+gaia status        # the whole install, bots included
+gaia doctor        # flags a bot that is restarting or never started
+```
+
+<Frame caption="gaia bots list on an install with no bots yet">
+  <img src="/images/self-hosting/terminal-gaia-bots-list.webp" width="477" alt="Terminal output of gaia bots list: No chat bots enabled. Add one with: gaia bots add <telegram|discord|slack>" />
+</Frame>
+
+A bot that keeps restarting usually has a revoked token. Run `gaia bots add <platform>` again with a fresh one. To see the error, run `docker compose -p gaia-selfhost logs bot-telegram` (or `bot-discord`, `bot-slack`).
+
+## Remove a bot
+
+```bash
+gaia bots remove telegram
+```
+
+This stops the bot and deletes its token. People's linked accounts stay linked.
+
+## Scripts and automation
+
+Pass the values as flags:
+
+```bash
+gaia bots add telegram --token <token>
+gaia bots add discord --token <token>
+gaia bots add slack --token xoxb-... --app-token xapp-... --signing-secret <secret>
+```
+
+<Accordion title="What GAIA sets up for you">
+  - A shared key, `GAIA_BOT_API_KEY`, in `apps/api/.env`
+  - Your bot tokens in `apps/bots/.env`, readable only by your user
+  - The published bot images, at your install's version. `gaia update` updates them
+</Accordion>

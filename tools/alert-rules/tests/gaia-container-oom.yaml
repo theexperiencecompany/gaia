@@ -18,7 +18,7 @@ tests:
             exp_annotations:
               description: >-
                 The kernel killed a container for exceeding its memory limit. Swarm silently replaces the task, so without this alert an OOM loop looks like nothing at all. The tightest limits are the embedding sidecar at 3G against roughly 2.4G of resident models, and the ARQ worker and voice agent at 2G each. Check "Memory Usage % of Limit" to see which one is at its ceiling.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-container-oom
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-container-oom
               __dashboardUid__: gaia-containers
               __panelId__: '7'
 

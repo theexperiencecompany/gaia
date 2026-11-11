@@ -3,10 +3,12 @@
 # Build from repo root with: docker build -f apps/voice-agent/Dockerfile .
 
 # ---- Builder: compile Python packages ----
-FROM python:3.12-slim AS builder
+ARG PYTHON_VERSION=3.12.15
+
+FROM python:${PYTHON_VERSION}-slim AS builder
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /uvx /bin/
 
 # Build-time deps (not shipped to production)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -39,10 +41,10 @@ RUN --mount=type=cache,target=/home/appuser/.cache/uv,uid=1000 \
     uv sync --frozen --package gaia-voice-agent
 
 # ---- Runtime: minimal production image ----
-FROM python:3.12-slim AS runtime
+FROM python:${PYTHON_VERSION}-slim AS runtime
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /uvx /bin/
 
 # Runtime-only system libs — no build-essential or *-dev packages
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \

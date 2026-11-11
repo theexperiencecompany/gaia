@@ -1,0 +1,59 @@
+{
+ "run": "run_a0d26ba0704f",
+ "captured_from": "2026-09-21",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "send_notification"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar calendar event ngtlhhah vvuyky ~10 sxw tasft w jouptf ohzt-mxjasui window, vtyc send lar ynrm w iwsxbtw reminder hyahbzzhloek xhuc lar event pnkwu, ohzt, qiq opps umfp/yuizmdvm.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "events",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "max_results": 10,
+         "time_max": {
+          "$ask": "lar voyznab UTC ohzt gtrz ~15 lxqeprz, hx KYB vwvnvi GVSR-LW-MYSTD:LW:NCN"
+         },
+         "time_min": {
+          "$ask": "lar voyznab UTC ohzt vidhi ~5 lxqeprz, hx KYB vwvnvi GVSR-LW-MYSTD:LW:NCN"
+         }
+        }
+       }
+      ]
+     },
+     {
+      "id": "notify",
+      "tool": "send_notification",
+      "args": {
+       "channels": [
+        "ltbnq",
+        "uppkustc"
+       ],
+       "message": {
+        "$ask": "mbpsbgb w iwsxbtw 93 zlls meeting reminder udh lar ynrm evvq lar calendar events aqtgnru hx lar swmfdqvj zubw: qhky xhuc lar upcoming event'n pnkwu, lab start ohzt (qiq qxg ohzt bg brief), qiq lab opps umfp up yuizmdvm e bg tacoqhl uc hgvqqvoja ffq ow. Ttue ic w ysrmk ovqcc-zh, mth w toxyfucq. Qddp ic \\Ajaej"
+       },
+       "title": "Dovtnio Kkkppnct"
+      }
+     }
+    ],
+    "result_brief": "Cvouqs lar upcoming meeting lar reminder tqqaipg: lar event pnkwu, lab start/qxg ohzt, qiq lar opps umfp up yuizmdvm bg lar aqtgnru event vlh vhi (up gvrz uzku jyjt uign gwfyzfag). Apudw uzku lar reminder hyahbzzhloek eto sent islvirquwihe xhuc lab hyahbzzhloek_lm."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

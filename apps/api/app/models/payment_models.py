@@ -171,22 +171,32 @@ class UserSubscriptionStatus(ResponseModel):
     """Response model for user subscription status."""
 
     user_id: str = Field(..., description="User ID")
-    current_plan: PlanResponse | None = Field(None, description="Current plan details")
-    subscription: "SubscriptionDocument | None" = Field(None, description="Current subscription")
-    is_subscribed: bool = Field(False, description="Whether user has an active subscription")
-    days_remaining: int | None = Field(None, description="Days remaining in current period")
-    can_upgrade: bool = Field(True, description="Whether user can upgrade")
-    can_downgrade: bool = Field(True, description="Whether user can downgrade")
+    current_plan: PlanResponse | None = Field(default=None, description="Current plan details")
+    subscription: "SubscriptionDocument | None" = Field(
+        default=None, description="Current subscription"
+    )
+    is_subscribed: bool = Field(
+        default=False, description="Whether user has an active subscription"
+    )
+    days_remaining: int | None = Field(default=None, description="Days remaining in current period")
+    can_upgrade: bool = Field(default=True, description="Whether user can upgrade")
+    can_downgrade: bool = Field(default=True, description="Whether user can downgrade")
 
     has_ever_subscribed: bool = Field(
-        False,
+        default=False,
         description="Whether the user has ever had a subscription, in any status; "
         "separates a lapsed subscriber from one who has never paid",
     )
 
-    has_subscription: bool | None = Field(None, description="Legacy field - use is_subscribed")
-    plan_type: PlanType | None = Field(None, description="Legacy field - check current_plan")
-    status: SubscriptionStatus | None = Field(None, description="Legacy field - check subscription")
+    has_subscription: bool | None = Field(
+        default=None, description="Legacy field - use is_subscribed"
+    )
+    plan_type: PlanType | None = Field(
+        default=None, description="Legacy field - check current_plan"
+    )
+    status: SubscriptionStatus | None = Field(
+        default=None, description="Legacy field - check subscription"
+    )
 
 
 # Database Models (Internal)

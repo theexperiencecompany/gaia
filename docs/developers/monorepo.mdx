@@ -1,228 +1,86 @@
 ---
-title: "Monorepo Structure"
-description: "Overview of the GAIA monorepo layout and how it's organized"
+title: "Monorepo structure"
+description: "Inside each app, the shared libraries, and how Nx builds, caches and runs every project."
 icon: "folder-tree"
 ---
 
-GAIA is a full-stack monorepo managed with [Nx](https://nx.dev). All apps, services, and shared libraries live in a single repository for unified tooling, shared code, and coordinated releases.
+[Project tour](/developers/project-tour) shows the top level. This page goes one level down.
 
-## Top-level layout
+## The API (`apps/api`)
 
-<Tree>
-  <Tree.Folder name="apps" defaultOpen>
-    <Tree.Folder name="api" defaultOpen>
-      <Tree.File name="app/" />
-      <Tree.File name="pyproject.toml" />
-      <Tree.File name=".env.example" />
-    </Tree.Folder>
-    <Tree.Folder name="web" defaultOpen>
-      <Tree.File name="src/" />
-      <Tree.File name="package.json" />
-      <Tree.File name="next.config.ts" />
-    </Tree.Folder>
-    <Tree.Folder name="desktop">
-      <Tree.File name="src/" />
-      <Tree.File name="electron.vite.config.ts" />
-    </Tree.Folder>
-    <Tree.Folder name="mobile">
-      <Tree.File name="src/" />
-      <Tree.File name="app.json" />
-    </Tree.Folder>
-    <Tree.Folder name="bots">
-      <Tree.Folder name="discord">
-        <Tree.File name="src/" />
-        <Tree.File name="package.json" />
-      </Tree.Folder>
-      <Tree.Folder name="slack">
-        <Tree.File name="src/" />
-        <Tree.File name="package.json" />
-      </Tree.Folder>
-      <Tree.Folder name="telegram">
-        <Tree.File name="src/" />
-        <Tree.File name="package.json" />
-      </Tree.Folder>
-      <Tree.Folder name="whatsapp">
-        <Tree.File name="src/" />
-        <Tree.File name="package.json" />
-      </Tree.Folder>
-    </Tree.Folder>
-    <Tree.Folder name="voice-agent">
-      <Tree.File name="src/" />
-      <Tree.File name="pyproject.toml" />
-    </Tree.Folder>
-  </Tree.Folder>
-  <Tree.Folder name="libs">
-    <Tree.Folder name="shared">
-      <Tree.Folder name="py">
-        <Tree.File name="gaia_shared/" />
-        <Tree.File name="pyproject.toml" />
-      </Tree.Folder>
-      <Tree.Folder name="ts">
-        <Tree.File name="src/" />
-        <Tree.File name="package.json" />
-      </Tree.Folder>
-    </Tree.Folder>
-  </Tree.Folder>
-  <Tree.Folder name="infra">
-    <Tree.Folder name="docker">
-      <Tree.File name="docker-compose.yml" />
-      <Tree.File name="docker-compose.prod.yml" />
-    </Tree.Folder>
-  </Tree.Folder>
-  <Tree.Folder name="docs">
-    <Tree.File name="docs.json" />
-    <Tree.File name="introduction.mdx" />
-  </Tree.Folder>
-  <Tree.File name="nx.json" />
-  <Tree.File name="mise.toml" />
-  <Tree.File name="pnpm-workspace.yaml" />
-  <Tree.File name="package.json" />
-</Tree>
-
-## Apps
-
-| App | Stack | Description |
-| --- | ----- | ----------- |
-| `apps/api` | FastAPI, LangGraph, Python | Backend API and AI agent system |
-| `apps/web` | Next.js 16, React 19, TypeScript | Primary web application |
-| `apps/desktop` | Electron, Next.js | Desktop app wrapping the web build |
-| `apps/mobile` | React Native, Expo | iOS and Android app |
-| `apps/bots/discord` | TypeScript, discord.js | Discord bot integration |
-| `apps/bots/slack` | TypeScript, Slack Bolt | Slack bot integration |
-| `apps/bots/telegram` | TypeScript, grammY | Telegram bot integration |
-| `apps/bots/whatsapp` | TypeScript, WhatsApp Cloud API | WhatsApp bot integration |
-| `apps/voice-agent` | Python | Voice processing worker |
-
-All four bots are thin TypeScript adapters, the platform-agnostic logic (commands, streaming, API client, config) lives in `libs/shared/ts/src/bots/` and is shared via `@gaia/shared`.
-
-## Backend structure (`apps/api`)
-
-<Tree>
-  <Tree.Folder name="apps/api" defaultOpen>
-    <Tree.Folder name="app" defaultOpen>
-      <Tree.Folder name="agents" defaultOpen>
-        <Tree.Folder name="core">
-          <Tree.File name="agent.py" />
-          <Tree.File name="state.py" />
-          <Tree.File name="graph_manager.py" />
-          <Tree.File name="nodes/" />
-          <Tree.File name="subagents/" />
-        </Tree.Folder>
-        <Tree.Folder name="tools">
-          <Tree.File name="calendar.py" />
-          <Tree.File name="email.py" />
-          <Tree.File name="tasks.py" />
-        </Tree.Folder>
-        <Tree.Folder name="memory">
-          <Tree.File name="manager.py" />
-        </Tree.Folder>
-        <Tree.Folder name="llm">
-          <Tree.File name="client.py" />
-        </Tree.Folder>
-        <Tree.Folder name="prompts">
-          <Tree.File name="system.py" />
-        </Tree.Folder>
-      </Tree.Folder>
-      <Tree.Folder name="api">
-        <Tree.Folder name="v1">
-          <Tree.File name="chat.py" />
-          <Tree.File name="integrations.py" />
-          <Tree.File name="tasks.py" />
-        </Tree.Folder>
-      </Tree.Folder>
-      <Tree.Folder name="core">
-        <Tree.File name="app.py" />
-        <Tree.File name="middleware.py" />
-        <Tree.File name="lifespan.py" />
-      </Tree.Folder>
-      <Tree.Folder name="db">
-        <Tree.File name="postgresql.py" />
-        <Tree.File name="mongodb.py" />
-        <Tree.File name="redis.py" />
-        <Tree.File name="chroma.py" />
-      </Tree.Folder>
-      <Tree.Folder name="models">
-        <Tree.File name="user.py" />
-        <Tree.File name="task.py" />
-      </Tree.Folder>
-      <Tree.Folder name="services">
-        <Tree.File name="calendar.py" />
-        <Tree.File name="email.py" />
-      </Tree.Folder>
-      <Tree.Folder name="workers">
-        <Tree.File name="arq_worker.py" />
-      </Tree.Folder>
-      <Tree.File name="main.py" />
-    </Tree.Folder>
-    <Tree.File name="pyproject.toml" />
-    <Tree.File name=".env.example" />
-  </Tree.Folder>
-</Tree>
-
-## Frontend structure (`apps/web`)
-
-<Tree>
-  <Tree.Folder name="apps/web/src" defaultOpen>
-    <Tree.Folder name="app" defaultOpen>
-      <Tree.Folder name="(landing)">
-        <Tree.File name="page.tsx" />
-        <Tree.File name="layout.tsx" />
-      </Tree.Folder>
-      <Tree.Folder name="(app)">
-        <Tree.File name="chat/" />
-        <Tree.File name="tasks/" />
-        <Tree.File name="calendar/" />
-      </Tree.Folder>
-    </Tree.Folder>
-    <Tree.Folder name="features">
-      <Tree.File name="chat/" />
-      <Tree.File name="todo/" />
-      <Tree.File name="calendar/" />
-      <Tree.File name="workflows/" />
-      <Tree.File name="integrations/" />
-    </Tree.Folder>
-    <Tree.Folder name="components">
-      <Tree.File name="ui/" />
-    </Tree.Folder>
-    <Tree.Folder name="stores">
-      <Tree.File name="chat.ts" />
-      <Tree.File name="user.ts" />
-    </Tree.Folder>
-    <Tree.Folder name="lib">
-      <Tree.File name="utils.ts" />
-      <Tree.File name="api.ts" />
-    </Tree.Folder>
-    <Tree.Folder name="types">
-      <Tree.File name="index.ts" />
-    </Tree.Folder>
-  </Tree.Folder>
-</Tree>
-
-## Shared libraries (`libs/`)
-
-The `libs/shared` directory contains code shared across multiple apps:
-
-- **`libs/shared/py`**: Python package (`gaia-shared`) with common utilities, logging, config, and Pydantic models. Automatically available to all Python apps via workspace dependencies.
-- **`libs/shared/ts`**: TypeScript package (`@gaia/shared`) used by the web and desktop apps and all four bots, including the shared bot logic in `src/bots/`.
-
-## Infrastructure (`infra/`)
-
-Docker Compose files live in `infra/docker/`:
-
-- `docker-compose.yml`, Local development (PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ)
-- `docker-compose.prod.yml`, Production deployment
-
-## Build system
-
-GAIA uses [Nx](https://nx.dev) for orchestrating builds, linting, formatting, and type-checking across all projects. Each app declares its own targets in `project.json` and Nx handles caching and parallelization.
-
-```bash
-# Run a target across all projects
-nx run-many -t build
-
-# Run a target for a specific app
-nx build web
-nx dev api
+```
+apps/api/
+├── app/
+│   ├── main.py           Entry point. Builds the app through core/app_factory.py
+│   ├── worker.py         ARQ worker settings (the background job runner)
+│   ├── api/v1/
+│   │   ├── routes.py     Mounts every router under /api/v1
+│   │   ├── endpoints/    One module per route group
+│   │   ├── middleware/   Auth, logging, rate limits
+│   │   └── dependencies/ FastAPI dependencies, such as the current user
+│   ├── agents/           The AI agents: graphs, tools, prompts, skills, memory hooks
+│   ├── services/         Business logic, *_service.py
+│   ├── models/           Pydantic models, *_models.py
+│   ├── db/               MongoDB, PostgreSQL, Redis, ChromaDB and RabbitMQ clients, plus repositories/
+│   ├── memory/           The memory engine
+│   ├── workers/tasks/    The ARQ job functions
+│   ├── config/           Settings (settings.py) and integration definitions (oauth_config.py)
+│   └── constants/        Named constants, grouped by domain
+├── tests/                See Testing
+└── scripts/              One-off operational scripts
 ```
 
-See [Development Commands](/developers/commands) for the full list.
+An endpoint stays thin: it validates input and calls a service, and the service does the work through a repository in `db/repositories/`. `apps/api/CLAUDE.md` is the full contract.
+
+## The web app (`apps/web`)
+
+```
+apps/web/src/
+├── app/[locale]/         Next.js routes, one folder per URL, under a language prefix
+│   ├── (landing)/        Marketing pages, login and signup
+│   ├── (main)/           The signed-in app: /c (chat), /todos, /calendar, /settings, ...
+│   └── (desktop)/        Screens only the desktop app uses
+├── features/<feature>/   Everything one feature owns: components, hooks, stores, api/
+├── components/           UI shared across features
+├── stores/               Global Zustand stores
+├── lib/                  Cross-cutting helpers (api client, analytics, ...)
+└── types/                Shared TypeScript types
+```
+
+Folders in parentheses, such as `(main)`, are Next.js **route groups**: they share a layout without adding to the URL. API request and response types are generated from the API's OpenAPI schema into `@gaia/shared/api/generated`, never written by hand. `apps/web/CLAUDE.md` covers state, components and styling.
+
+## Shared libraries
+
+| Library | Imported as | Holds |
+| --- | --- | --- |
+| `libs/shared/py` | `shared.py` (the `gaia-shared` package, defined in `libs/pyproject.toml`) | Logging and wide events, settings helpers, secrets loading, the analytics catalog |
+| `libs/shared/ts` | `@gaia/shared` | The bot framework, the generated API and analytics types, chat and tool helpers, icons |
+| `libs/wake-word` | `@gaia/wake-word` | On-device "Hey GAIA" detection |
+
+The Python apps get `gaia-shared` through the uv workspace, so `uv sync` installs it. Shared code goes here rather than being copied between apps.
+
+## Packages
+
+`packages/cli` is the `gaia` command, published to npm as `@heygaia/cli`. [CLI internals](/developers/cli-internals) covers trying and releasing it. `packages/gaia-ui` holds only a README: the `@heygaia/ui` component kit lives in [its own repository](https://github.com/theexperiencecompany/gaia-ui).
+
+## How Nx runs everything
+
+Every app, library and package is an Nx **project** with a `project.json` that declares its **targets**: `dev`, `build`, `lint`, `type-check`, `test` and so on. The root `mise` tasks call Nx, and Nx runs the targets in dependency order, in parallel, and caches the result so unchanged projects are skipped.
+
+```bash
+nx show projects              # every project name
+nx show project api           # one project's targets
+nx dev api                    # run one target of one project
+nx run-many -t lint           # run a target across every project
+nx affected -t test           # only the projects your branch changed
+```
+
+Project names mostly match the folder (`api`, `web`, `mobile`, `desktop`, `voice-agent`, `cli`, `docs`, `wake-word`), with a few exceptions: the bots are `bot-discord`, `bot-slack`, `bot-telegram`, `bot-whatsapp` and `bot-imessage`, the bot simulator is `bot-harness`, the shared bot tests are `bots-e2e`, the shared libraries are `shared-python` and `shared-typescript`, and the Docker services are `docker`.
+
+mise can also run a task defined in an app's own `mise.toml` from the root, with `//` syntax: `mise //apps/api:mypy` runs `mypy` from `apps/api/mise.toml`. [Commands](/developers/commands) lists them.
+
+## Next
+
+<Card title="Conventions" icon="ruler" href="/configuration/code-style">
+  How GAIA code is written: style, commits, design.
+</Card>

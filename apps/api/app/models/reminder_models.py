@@ -95,28 +95,31 @@ class CreateReminderRequest(BaseModel):
 
     agent: AgentType = Field(..., description="Agent handling the reminder task (static only)")
     repeat: RecurringSchedule | None = Field(
-        None, description="Cron expression for recurring tasks (optional)"
+        default=None, description="Cron expression for recurring tasks (optional)"
     )
     scheduled_at: datetime | None = Field(
-        None, description="First execution time (optional, defaults to None)"
+        default=None, description="First execution time (optional, defaults to None)"
     )
-    max_occurrences: int | None = Field(None, description="Maximum number of executions (optional)")
+    max_occurrences: int | None = Field(
+        default=None, description="Maximum number of executions (optional)"
+    )
     stop_after: datetime | None = Field(
-        None,
+        default=None,
         description="Stop executing after this date (optional); defaults to 180 days after creation",
     )
     payload: StaticReminderPayload = Field(
         ..., description="Task-specific data for static reminder"
     )
     timezone: str | None = Field(
-        None,
+        default=None,
         description=(
             "IANA name or ±HH:MM offset the schedule runs in (the recurrence "
             "wall-clock zone). None falls back to UTC."
         ),
     )
     source_conversation_id: str | None = Field(
-        None, description="The chat that created the reminder; delivery target when it fires."
+        default=None,
+        description="The chat that created the reminder; delivery target when it fires.",
     )
 
     @field_validator("timezone")

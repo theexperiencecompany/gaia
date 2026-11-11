@@ -1,5 +1,6 @@
 """Models for per-user E2B sandbox lifecycle (the ``e2b_sandboxes`` collection)."""
 
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
@@ -39,6 +40,19 @@ class E2bSandboxDocument(MongoDocument):
     last_used_at: datetime | None = None
     paused_at: datetime | None = None
     last_canary_ts: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SandboxAcquisition:
+    """What one acquire learned about the user's live sandbox, written in one upsert."""
+
+    user_id: str
+    sandbox_id: str | None
+    template_id: str | None
+    shard_id: int
+    workspace_version: int
+    last_canary_ts: str
+    timestamp: datetime
 
 
 class E2bSandboxUpdate(BaseModel):

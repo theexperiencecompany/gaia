@@ -18,7 +18,8 @@
 #                         stack on the same box sets its own so its sidecars
 #                         never share a port with this one (setup.sh puts it in
 #                         the runner unit; hooks/job-started.sh reads it too).
-#   RUNNER_ENVIRONMENT    "self-hosted" enables keep-warm across jobs.
+#   RUNNER_NAME           a box runner name (gaia-home-<n>, lib/runner-host.sh)
+#                         enables keep-warm across jobs.
 #   GAIA_CI_RUNDIR,
 #   RUNNER_LOCAL_CACHE    where the pid/stamp/log files live.
 #   GAIA_SIDECAR_LOG      override the log path.
@@ -35,6 +36,8 @@ set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
 source "$(dirname "$0")/lib/log.sh"
+# shellcheck source=scripts/ci/lib/runner-host.sh
+source "$(dirname "$0")/lib/runner-host.sh"
 
 # Resolve the per-lane paths every subcommand works with. Called from the
 # subcommands, never at source time.
@@ -144,7 +147,7 @@ cmd_start() {
   fi
   STAMP="${STAMP_TREES}$(git -C "$REPO_ROOT" hash-object uv.lock 2>/dev/null || echo none)"
 
-  if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null \
+  if ci_on_the_box && [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null \
      && [ "$(cat "$STAMPFILE" 2>/dev/null)" = "$STAMP" ] && curl -sf --max-time 5 "${URL}/health" > /dev/null 2>&1; then
     echo "embedding sidecar reused at ${URL} (pid $(cat "$PIDFILE"), warm)"
     REUSED=1
@@ -228,9 +231,9 @@ cmd_stop() {
   set +e
   _paths
   local pid
-  # Self-hosted runners keep the sidecar warm for the next job on this runner
+  # The box keeps the sidecar warm for the next job on this runner
   # (`start` reuses it while its stamp matches). STOP_SIDECAR=1 forces a stop.
-  if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ "${STOP_SIDECAR:-0}" != "1" ] \
+  if ci_on_the_box && [ "${STOP_SIDECAR:-0}" != "1" ] \
      && [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
     ci_ok "embedding sidecar left warm (runner index ${RUNNER_INDEX}, pid $(cat "$PIDFILE"))"
     exit 0

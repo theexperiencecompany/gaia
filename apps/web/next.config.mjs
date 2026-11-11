@@ -5,6 +5,10 @@ import fs from "fs";
 import createNextIntlPlugin from "next-intl/plugin";
 import path from "path";
 import { fileURLToPath } from "url";
+import { expandCanonicalRedirects } from "./canonical-redirects.mjs";
+import { NEXT_SECURITY_HEADER_RULES } from "./security-headers.mjs";
+import { POSTHOG_HOST } from "./third-party-origins.mjs";
+import { vanityRedirects } from "./vanity-redirects.mjs";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
@@ -34,10 +38,7 @@ const useCloudflareImageLoader = process.env.IMAGE_LOADER === "cloudflare";
 // PostHog proxies through /ingest to stay first-party and survive ad blockers,
 // following NEXT_PUBLIC_POSTHOG_HOST for region-correct ingestion. PostHog Cloud
 // serves SDK bundles from a sibling <region>-assets host; self-hosted uses the same origin (the unmatched fallback).
-const posthogHost = (
-  process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com"
-).replace(/\/+$/, "");
-const posthogAssetsHost = posthogHost.replace(
+const posthogAssetsHost = POSTHOG_HOST.replace(
   /^(https?:\/\/)(us|eu)\.i\.posthog\.com$/,
   "$1$2-assets.i.posthog.com",
 );
@@ -96,9 +97,8 @@ const nextConfig = {
             "onnxruntime-web/wasm": "./scripts/empty-module.mjs",
           }
         : {}),
-      // Stub out unused heavy deps (mirrors the webpack hook below). Webpack's
-      // `alias: false` doesn't exist for Turbopack — we point to a tiny empty
-      // module that exports a no-op proxy.
+      // Stub out unused heavy deps: Turbopack has no `alias: false`, so they
+      // point to a tiny empty module that exports a no-op proxy.
       cytoscape: "./scripts/empty-module.mjs",
       "cytoscape-cose-bilkent": "./scripts/empty-module.mjs",
       "cytoscape-fcose": "./scripts/empty-module.mjs",
@@ -129,12 +129,13 @@ const nextConfig = {
       "node:diagnostics_channel": "diagnostics_channel",
     },
   },
+  typescript: {
+    // Next's own check spawns the tsc inside the typescript package, which is
+    // not the compiler this repo uses. The nx type-check target runs tsrs and
+    // next:build depends on it.
+    ignoreBuildErrors: true,
+  },
   experimental: {
-    // Dagger's local quality gate sets this to keep Next's static-page workers
-    // from consuming the whole developer machine; CI leaves its normal default.
-    ...(process.env.GAIA_BUILD_WORKERS
-      ? { cpus: Number(process.env.GAIA_BUILD_WORKERS) }
-      : {}),
     // prefetchInlining stays OFF until OpenNext serves Next's segment-prefetch
     // protocol (as of @opennextjs/cloudflare 1.20.2 it doesn't — /_tree gets the
     // full build-time RSC payload, no x-nextjs-postponed header). With inlining on, the client marks the route cache stale and refetches at ~5 req/s per visible <Link> (observed heygaia.io /signup, 2026-08-18).
@@ -167,46 +168,11 @@ const nextConfig = {
       "schema-dts",
     ],
   },
-  webpack: (config, { isServer }) => {
-    // Exclude cytoscape from bundle since it's not used (both client and server)
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      cytoscape: false,
-      "cytoscape-cose-bilkent": false,
-      "cytoscape-fcose": false,
-    };
-    // Alias @icons to the active icon variant — change here to swap the entire set
-    config.resolve.alias["@icons"] =
-      "@theexperiencecompany/gaia-icons/solid-rounded";
-
-    // Desktop-only wake-word ONNX runtime — stub out of the Cloudflare build
-    // so its WASM never lands in the Worker script (see turbopack alias above).
-    if (useCloudflareImageLoader) {
-      config.resolve.alias["onnxruntime-web"] = false;
-      config.resolve.alias["onnxruntime-web/wasm"] = false;
-    }
-
-    // Keep gaia-icons out of the eager initial chunk: by default, modules reachable
-    // from ≥2 chunks hoist into a shared common chunk, putting ~137 icons on the
-    // critical path though most are only used by dynamically-imported below-the-fold sections; scoping to chunks:"async" consolidates them into one async chunk while Navbar's icons stay inlined in main.
-    if (!isServer && config.optimization?.splitChunks) {
-      const splitChunks = config.optimization.splitChunks;
-      splitChunks.cacheGroups = {
-        ...splitChunks.cacheGroups,
-        gaiaIcons: {
-          test: /[\\/]node_modules[\\/]@theexperiencecompany[\\/]gaia-icons[\\/]/,
-          name: "gaia-icons-async",
-          chunks: "async",
-          priority: 40,
-          reuseExistingChunk: true,
-          enforce: true,
-        },
-      };
-    }
-
-    return config;
-  },
   images: {
+    // The largest source image on the site is 2442px and no layout exceeds
+    // 1920 CSS px; asking Cloudflare for 3840 upscaled files (500KB+) with no
+    // visible gain on any viewport.
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
     // Offload optimization to Cloudflare Image Resizing (/cdn-cgi/image/) via a
     // custom loader — edge-cached, off the worker. Requires Transformations enabled
     // on the zone; gated on the Cloudflare build (see image-loader.ts), else falls through to Next's built-in optimizer.
@@ -248,19 +214,22 @@ const nextConfig = {
     ...(process.env.NODE_ENV === "development" ? ["dev.ts", "dev.tsx"] : []),
   ],
   async headers() {
+    // ISR hub pages send s-maxage only; browsers need max-age and a validator.
+    // Scope it to those routes: static pages already pass, app routes need
+    // their private/no-store headers.
+    const marketingHubs = ["alternative-to", "automate", "compare", "learn", "for", "blog", "use-cases"];
+    const buildLastModified = new Date().toUTCString();
     return [
-      // Baseline security headers on every route. A full Content-Security-Policy
-      // is intentionally deferred — a wrong CSP silently breaks the app and can't
-      // be verified by a build alone, so it needs its own scoped rollout.
+      ...NEXT_SECURITY_HEADER_RULES,
       {
-        source: "/:path*",
+        source: `/:locale(de|es|fr|ja|ko|pt-br)?/(${marketingHubs.join("|")})/:path*`,
         headers: [
-          { key: "X-Frame-Options", value: "DENY" },
-          { key: "X-Content-Type-Options", value: "nosniff" },
           {
-            key: "Referrer-Policy",
-            value: "strict-origin-when-cross-origin",
+            key: "Cache-Control",
+            value:
+              "public, max-age=0, s-maxage=60, stale-while-revalidate=86400",
           },
+          { key: "Last-Modified", value: buildLastModified },
         ],
       },
       // /_next/static/*: intentionally NOT setting a custom Cache-Control here.
@@ -292,6 +261,12 @@ const nextConfig = {
         source: "/sitemap.xml",
         destination: "/api/sitemap-xml",
       },
+      // Markdown variant of a page for agents (src/app/md). A separate URL,
+      // not Accept negotiation, because the edge cache does not key on Vary.
+      {
+        source: "/:path+.md",
+        destination: "/md/:path+",
+      },
       {
         source: "/ingest/static/:path*",
         destination: `${posthogAssetsHost}/static/:path*`,
@@ -302,16 +277,22 @@ const nextConfig = {
       },
       {
         source: "/ingest/:path*",
-        destination: `${posthogHost}/:path*`,
+        destination: `${POSTHOG_HOST}/:path*`,
       },
       {
         source: "/ingest/flags",
-        destination: `${posthogHost}/flags`,
+        destination: `${POSTHOG_HOST}/flags`,
       },
     ];
   },
   // This is required to support PostHog trailing slash API requests
   skipTrailingSlashRedirect: true,
+  // Consolidated near-duplicate pages 308-redirect to their canonical: the
+  // pairs mirror the canonicalSlug/canonicalPath markers in public/data (see
+  // canonical-redirects.mjs). Runs before routing/middleware, per locale prefix.
+  async redirects() {
+    return [...expandCanonicalRedirects(), ...vanityRedirects()];
+  },
 };
 
 const withMDX = createMDX({
@@ -326,6 +307,10 @@ export default withSentryConfig(
 
   org: "gaia-la",
   project: "gaia-frontend",
+  // One release for the upload and for the events: the CI commit SHA.
+  release: process.env.SENTRY_RELEASE
+    ? { name: process.env.SENTRY_RELEASE }
+    : undefined,
 
   // Only print logs for uploading source maps in CI
   silent: !process.env.CI,
@@ -336,8 +321,11 @@ export default withSentryConfig(
   // Upload a larger set of source maps for prettier stack traces (increases build time)
   widenClientFileUpload: true,
 
-  // Keep source maps in the build output so browsers can load them (don't delete after Sentry upload)
-  hideSourceMaps: false,
+  // Sentry uploads the maps but never deletes them: web-build.yml removes them
+  // from the deployed .open-next tree, and the build checks after it read .next's.
+  sourcemaps: {
+    deleteSourcemapsAfterUpload: false,
+  },
 
   // Uncomment to route Sentry requests through a Next.js rewrite to bypass
   // ad-blockers (raises server load/hosting cost); ensure the route doesn't collide with Next.js middleware or client-side error reporting fails.

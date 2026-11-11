@@ -12,8 +12,6 @@ from app.services.voice_service import list_voices, set_user_voice
 from app.utils.errors import AppError
 from app.utils.timezone import is_valid_timezone
 
-MAX_CUSTOM_INSTRUCTIONS_CHARS = 500
-
 CHANNEL_FLAGS = ("telegram", "discord", "whatsapp", "slack", "email")
 
 
@@ -107,26 +105,6 @@ async def set_preferences(
     return f"Preferences updated: {'; '.join(updated)}."
 
 
-async def set_custom_instructions(user_id: str, *, instructions: str) -> str:
-    """Replace the standing custom instructions; an empty string clears them."""
-    value = instructions.strip() or None
-    if value is not None and len(value) > MAX_CUSTOM_INSTRUCTIONS_CHARS:
-        raise AppError(
-            message=f"Custom instructions must be {MAX_CUSTOM_INSTRUCTIONS_CHARS} characters or less",
-            fix="Shorten the instructions and try again",
-            status_code=400,
-        )
-    # model_construct (not __init__): builds a PATCH-style update whose
-    # fields_set holds exactly what was passed, so the repository writes only
-    # this one dotted path and never clobbers sibling preference fields.
-    result = await user_repository.update_onboarding_preferences(
-        user_id, OnboardingPreferences.model_construct(custom_instructions=value)
-    )
-    if result is None:
-        raise AppError(message="User not found", status_code=404)
-    return "Custom instructions cleared." if value is None else "Custom instructions updated."
-
-
 async def select_voice(user_id: str, *, voice: str) -> str:
     """Select a voice by catalog name (case-insensitive) or ElevenLabs id."""
     query = voice.strip()
@@ -149,7 +127,6 @@ async def select_voice(user_id: str, *, voice: str) -> str:
 
 __all__ = [
     "select_voice",
-    "set_custom_instructions",
     "set_notification_channels",
     "set_preferences",
 ]

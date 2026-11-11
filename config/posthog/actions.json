@@ -4,23 +4,38 @@
   "actions": [
     {
       "name": "Active user (human)",
-      "description": "SINGLE SOURCE for 'active user' across all dashboards — reference this action, never re-list events. user:active is the server's one-per-user-per-IST-day signal; the four proxies (session resumed, logged in, chat message submitted, bot message received) keep history before it shipped readable. Excludes background/agent/system events and anonymous pageviews.",
+      "description": "SINGLE SOURCE for 'active user' across all dashboards — reference this action, never re-list events. A person is active on a day they used GAIA: sent a chat message (web, desktop, mobile, voice or a linked bot) or ran a workflow themselves. Signup, onboarding, page loads, paywall hits and settings changes are not use. The steps are the facts in shared.py.analytics.activity.ACTIVE_USE_EVENTS, which user:active is emitted from (a test keeps the two equal), so the series means the same before and after user:active was narrowed to them on 2026-11-03; renamed events carry the same bounds as their continuity actions.",
       "tags": ["canonical"],
       "steps": [
         {
-          "event": "user:active"
-        },
-        {
-          "event": "user:session_resumed"
-        },
-        {
-          "event": "user:logged_in"
+          "event": "chat:message_sent",
+          "properties": [
+            {
+              "key": "timestamp < toDateTime('2026-08-17 11:25:02.541', 'UTC')",
+              "type": "hogql"
+            }
+          ]
         },
         {
           "event": "chat:message_submitted"
         },
         {
-          "event": "bot:message_received"
+          "event": "workflows:executed",
+          "properties": [
+            {
+              "key": "timestamp < toDateTime('2026-08-18 19:16:12.478', 'UTC')",
+              "type": "hogql"
+            }
+          ]
+        },
+        {
+          "event": "workflow:executed",
+          "properties": [
+            {
+              "key": "properties.actor = 'user'",
+              "type": "hogql"
+            }
+          ]
         }
       ]
     },
@@ -45,7 +60,7 @@
     },
     {
       "name": "Workflow created (continuous)",
-      "description": "workflows:created (web client) before 2026-08-18 19:16:12.478 UTC, the first server-side workflow:* event, then workflow:created. The web emitter stopped on 2026-08-16, so the bound only guards the cutover.",
+      "description": "Workflows a user asked for. workflows:created (web client) before 2026-08-18 19:16:12.478 UTC, the first server-side workflow:* event, then workflow:created except, on events from before origin existed, is_todo_workflow true: the workflows generated unasked with every new todo (they also held the few a user requested from a todo, which cannot be told apart). Todos no longer generate workflows unasked. The web emitter stopped on 2026-08-16, so the bound only guards the cutover.",
       "tags": ["canonical"],
       "steps": [
         {
@@ -58,7 +73,13 @@
           ]
         },
         {
-          "event": "workflow:created"
+          "event": "workflow:created",
+          "properties": [
+            {
+              "key": "NOT (properties.origin IS NULL AND properties.is_todo_workflow = true)",
+              "type": "hogql"
+            }
+          ]
         }
       ]
     },
@@ -199,6 +220,19 @@
         },
         {
           "event": "hil:decision_submitted"
+        }
+      ]
+    },
+    {
+      "name": "Instructions updated (continuous)",
+      "description": "integration:instructions_updated before the rename, then instructions:updated. The old name covered only per-integration instructions and was emitted by the code the rename replaced, so the two never overlap and neither is date-bounded; instructions:updated also counts global instructions (scope_kind=global) and GAIA's own saves (updated_by=agent).",
+      "tags": ["canonical"],
+      "steps": [
+        {
+          "event": "integration:instructions_updated"
+        },
+        {
+          "event": "instructions:updated"
         }
       ]
     }

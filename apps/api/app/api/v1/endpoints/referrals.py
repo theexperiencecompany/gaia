@@ -8,7 +8,6 @@ from fastapi.responses import HTMLResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
-from app.config.settings import settings
 from app.constants.referrals import (
     ATTRIBUTION_WINDOW,
     CODE_MAX_LENGTH,
@@ -42,6 +41,7 @@ from app.services.referrals.overview import get_referral_overview, resolve_refer
 from app.services.referrals.suggestions import suggest_invitees
 from app.services.referrals.weekly_card import claim_weekly_card
 from app.services.referrals.workflow_credit import workflow_creator_code
+from app.utils.auth_utils import session_cookie_secure
 from app.utils.notification.unsubscribe import (
     UNSUBSCRIBE_INVALID_HTML,
     render_unsubscribe_confirmation,
@@ -141,7 +141,7 @@ def _set_first_touch_cookie(
         value=cookie,
         max_age=int(ATTRIBUTION_WINDOW.total_seconds()),
         httponly=True,
-        secure=settings.ENV == "production",
+        secure=session_cookie_secure(request),
     )
     return True
 

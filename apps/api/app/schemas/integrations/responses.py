@@ -6,7 +6,6 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
-from app.models.integration_instructions_models import InstructionsEditor
 from app.models.integration_models import UserIntegrationStatus
 from app.models.oauth_models import IntegrationContent
 from app.schemas.common import ResponseModel, SuccessResponse
@@ -46,6 +45,9 @@ class IntegrationConfigItem(CamelModel):
     requires_auth: bool = False
     source: Literal["platform"] = "platform"
     slug: str  # For platform integrations, this is the same as id
+    # "instance": a Composio toolkit the instance admin enabled; no hand-written tools or triggers.
+    origin: Literal["code", "instance"] = "code"
+    icon_url: str | None = None
 
 
 class IntegrationsConfigResponse(BaseModel):
@@ -59,15 +61,6 @@ class IntegrationSuccessResponse(SuccessResponse, CamelModel):
 class AddUserIntegrationResponse(SuccessResponse, CamelModel):
     integration_id: str
     connection_status: UserIntegrationStatus
-
-
-class IntegrationInstructionsResponse(ResponseModel, CamelModel):
-    """A user's custom instructions for one integration."""
-
-    integration_id: str
-    content: str
-    updated_by: InstructionsEditor
-    updated_at: datetime | None = None
 
 
 class CustomIntegrationConnectionResult(CamelModel):
@@ -90,6 +83,12 @@ class IntegrationTool(BaseModel):
     # Only meaningful for curated Composio toolkits; MCP tools always report False
     # (their gating is resolved at runtime by the classifier, not pre-known here).
     destructive: bool = False
+
+
+class IntegrationToolApproval(IntegrationTool):
+    approval_key: str = Field(
+        description="Key the user's per-tool approval override is stored under; send it back unchanged."
+    )
 
 
 class IntegrationResponse(CamelModel, CloneCountMixin):
@@ -144,8 +143,11 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
     is_featured: bool = False
     display_priority: int = 0
     available: bool = True
+    # A Composio integration with no auth config on this instance; Connect cannot work.
+    instance_setup_required: bool = False
     icon_url: str | None = None
     slug: str | None = None
+    origin: Literal["code", "instance"] = "code"
     tool_count: int = 0
     # Custom-integration fields (None/0 for platform entries).
     is_public: bool | None = None
@@ -174,7 +176,7 @@ class IntegrationToolsResponse(CamelModel, ResponseModel):
     """Full tool list for a single integration (catalog data, on demand)."""
 
     integration_id: str
-    tools: list[IntegrationTool] = []
+    tools: list[IntegrationToolApproval] = []
     count: int = 0
 
 

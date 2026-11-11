@@ -5,21 +5,24 @@ keys) and the voice catalog/selection/star routes. Service layer is mocked;
 status codes, response shapes, and payload forwarding are verified.
 """
 
+from collections.abc import Callable
 import json
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 from httpx import AsyncClient
-from jose import jwt
 import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.middleware.agent_auth import AgentTokenInfo, verify_agent_token
 from app.config.settings import settings
 from app.models.payment_models import PlanType
 from app.schemas.voice_schemas import VoiceListResponse, VoiceOption
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
+from tests.helpers import read_jwt
 
 VOICE_BASE = "/api/v1"
 USER_ID = "507f1f77bcf86cd799439011"
@@ -74,7 +77,7 @@ def _voice_option(voice_id: str = "v1", name: str = "Aria") -> VoiceOption:
 
 def _decode_token(token: str) -> dict:
     """Decode the participant JWT without verifying (payload inspection only)."""
-    return jwt.decode(token, "", options={"verify_signature": False})
+    return read_jwt(token)[1]
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +124,8 @@ class TestGetVoiceToken:
         assert metadata["identity"] == f"user_{USER_ID}"
         assert metadata["roomName"] == body["roomName"]
         assert metadata["voiceId"] == "voice-1"
+        # The voice worker replays this on chat-stream; it must pass the agent-token check.
+        assert verify_agent_token(metadata["agentToken"]) == AgentTokenInfo(user_id=USER_ID)
 
     @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)
     async def test_token_carries_conversation_id_and_backend_url(
@@ -153,7 +158,8 @@ class TestGetVoiceToken:
         emailless = test_app.dependency_overrides[get_current_user]().model_copy(
             update={"email": None}
         )
-        monkeypatch.setitem(test_app.dependency_overrides, get_current_user, lambda: emailless)
+        dependency: Callable[..., Any] = get_current_user
+        monkeypatch.setitem(test_app.dependency_overrides, dependency, lambda: emailless)
 
         resp = await client.get(VOICE_BASE + "/token")
 
@@ -171,6 +177,27 @@ class TestGetVoiceToken:
         resp = await client.get(VOICE_BASE + "/token")
         assert resp.status_code == 500
         assert "Failed to generate voice token" in resp.json()["message"]
+
+    async def test_a_self_host_refuses_voice_naming_why(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ):
+        self._enable_livekit(monkeypatch)
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+        resp = await client.get(VOICE_BASE + "/token")
+
+        assert resp.status_code == 501
+        body = resp.json()
+        assert body["code"] == "voice_not_available"
+        assert body["message"] == "Voice isn't available on this GAIA instance."
+        assert body["why"] == (
+            "Voice needs a LiveKit server and GAIA's voice worker, "
+            "which the self-host install does not include."
+        )
+        assert body["fix"] == (
+            "See https://docs.heygaia.io/self-hosting/overview#self-host-vs-cloud"
+        )
 
     async def test_requires_auth(self, unauthed_client: AsyncClient):
         resp = await unauthed_client.get(VOICE_BASE + "/token")

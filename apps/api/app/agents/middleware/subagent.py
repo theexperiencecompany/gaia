@@ -7,19 +7,20 @@ shared delegation runner (core/subagents/delegation.py): in the background by
 default, blocking on request.
 """
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Annotated, Any, Protocol
+from typing import Annotated, Any, Protocol, cast
 from weakref import WeakKeyDictionary
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,
     AgentState,
     OmitFromInput,
+    ToolCallRequest,
 )
 from langchain.tools import InjectedToolCallId
 from langchain_core.language_models import LanguageModelLike
-from langchain_core.messages import SystemMessage, ToolMessage
+from langchain_core.messages import AnyMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from langgraph.errors import GraphBubbleUp
@@ -30,17 +31,22 @@ from langgraph.types import Command
 
 from app.agents.context.tiers import AgentTier
 from app.agents.core.subagents.delegation import Delegation, SubagentDisplay, delegate
+from app.agents.core.subagents.integration_activation import preload_integrations
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     ThreadSeed,
     build_initial_messages,
     subagent_row_id,
 )
+from app.agents.middleware.compaction import as_tool_message_command
 from app.agents.prompts.spawn_subagent_prompts import (
+    LARGE_RESULT_SPAWN_HINT,
     SPAWN_SUBAGENT_DESCRIPTION,
     SPAWN_SUBAGENT_SYSTEM_PROMPT,
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
+from app.agents.workspace.offload import read_offload
+from app.constants.agents import LARGE_TOOL_RESULT_CHARS
 from app.constants.general import SPAWN_AGENT_NAME, SPAWN_THREAD_PREFIX
 from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.constants.llm import SUBAGENT_RECURSION_LIMIT
@@ -109,6 +115,22 @@ class SubagentMiddlewareConfig:
     inherit_parent_tools: bool = False
 
 
+def _with_spawn_hint(message: ToolMessage) -> ToolMessage | None:
+    """Append LARGE_RESULT_SPAWN_HINT to a large message; None when it is not large.
+
+    Large means saved to a workspace file (the output was too big to keep) or
+    at least LARGE_TOOL_RESULT_CHARS of text kept in context.
+    """
+    if read_offload(message) is None and len(message.text) < LARGE_TOOL_RESULT_CHARS:
+        return None
+    hint = f"\n\n{LARGE_RESULT_SPAWN_HINT}"
+    content = message.content
+    hinted = (
+        content + hint if isinstance(content, str) else [*content, {"type": "text", "text": hint}]
+    )
+    return message.model_copy(update={"content": hinted})
+
+
 class SubagentState(AgentState[Any]):
     """State schema for subagent middleware."""
 
@@ -157,6 +179,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             config: RunnableConfig,
             context: str = "",
             background: bool = True,
+            integration_ids: list[str] | None = None,
         ) -> Command[str]:
             """Spawn a subagent to handle a subtask with focused execution."""
             if middleware._llm is None:
@@ -170,6 +193,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                     parent_configurable=configurable,
                     tool_call_id=tool_call_id,
                     inherited_tool_names=selected_tool_ids,
+                    integration_ids=integration_ids or [],
                 )
                 result = await delegate(
                     delegation,
@@ -197,10 +221,19 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         parent_configurable: AgentConfigurable,
         tool_call_id: str,
         inherited_tool_names: list[str] | None,
+        integration_ids: Sequence[str] = (),
     ) -> Delegation:
-        """Build the delegation one spawn_subagent call runs; a parked spawn is rebuilt the same way."""
+        """Build the delegation one spawn_subagent call runs; a parked spawn is rebuilt the same way.
+
+        integration_ids are activated here, once: the tools they bind join the
+        inherited ones in the recipe, so a parked spawn rebuilds with them and
+        without activating again (its thread already holds the activations).
+        """
+        preloaded = await preload_integrations(integration_ids, parent_configurable)
+        inherited = list(inherited_tool_names or [])
+        inherited += [name for name in preloaded.bind if name not in inherited]
         ctx = await self._build_context(
-            task, context, parent_configurable, tool_call_id, inherited_tool_names
+            task, context, parent_configurable, tool_call_id, inherited, preloaded.messages
         )
         # The task names the row, so the UI shows what is running rather than
         # three identical "Subagent" rows.
@@ -213,7 +246,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             tool_call_id=tool_call_id,
             task=task,
             context=context,
-            inherited_tool_names=tuple(inherited_tool_names or ()),
+            inherited_tool_names=tuple(inherited),
             parent_configurable=parent_configurable,
             display=SubagentDisplay(
                 name=name,
@@ -230,6 +263,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         configurable: AgentConfigurable,
         tool_call_id: str,
         inherited_tool_names: list[str] | None,
+        preloaded_messages: Sequence[AnyMessage] = (),
     ) -> SubagentExecutionContext:
         inherited = (
             [name for name in (inherited_tool_names or []) if name not in self._excluded_tools]
@@ -311,7 +345,8 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             configurable=new_configurable,
             integration_id="spawn",
             initial_state={
-                "messages": messages,
+                # The integrations it was spawned with read as its own first activations.
+                "messages": [*messages, *preloaded_messages],
                 "todos": [],
                 # Empty unless inheriting: spawn binds its minimal set, retrieves
                 # the rest on demand; activated parent tools are seeded here and
@@ -321,6 +356,29 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             user_id=user_id,
             stream_id=configurable.get("stream_id"),
         )
+
+    async def awrap_tool_call(
+        self,
+        request: ToolCallRequest,
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[str]]],
+    ) -> ToolMessage | Command[str]:
+        """Point a large tool result at spawns, so further reading of that size leaves this context.
+
+        Only the agent that can spawn carries this middleware: a spawned
+        subagent never sees the hint.
+        """
+        result = await handler(request)
+        if isinstance(result, ToolMessage):
+            return _with_spawn_hint(result) or result
+        matched = as_tool_message_command(result)
+        if matched is None:
+            return result
+        command, message = matched
+        hinted = _with_spawn_hint(message)
+        if hinted is None:
+            return result
+        update = cast(dict[str, object], command.update)
+        return replace(command, update={**update, "messages": [hinted]})
 
     def set_spawn_graph_provider(self, provider: SpawnGraphProvider) -> None:
         """Wire the builder that compiles the graph a spawn runs on.

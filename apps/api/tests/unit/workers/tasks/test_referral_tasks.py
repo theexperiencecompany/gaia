@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, call, patch
 from arq import Retry
 import pytest
 
+from app.workers.task_envelope import ArqJobContext
 from app.workers.tasks.referral_tasks import apply_banked_referral_months_task
 
 TASK = "app.workers.tasks.referral_tasks"
@@ -37,7 +38,7 @@ async def test_the_users_banked_months_are_applied_and_counted() -> None:
     ids=["first-try-default", "first-try", "third-try"],
 )
 async def test_a_failure_is_retried_later_each_time_and_logged(
-    ctx: dict[str, int], defer: timedelta
+    ctx: ArqJobContext, defer: timedelta
 ) -> None:
     with (
         patch(f"{TASK}.apply_banked_months", AsyncMock(side_effect=ConnectionError("dodo down"))),

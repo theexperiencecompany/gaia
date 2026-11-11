@@ -1,0 +1,44 @@
+{
+ "run": "run_063713fd2757",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 7,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle ghdpsab toxyfucq aggoavdg evvq Svdly (DpmPpp qiq Zmlvvp Vhzgxt hbe mth qtlgdynes hx smpw ymtktog, ow lar toxyfucq mrrgn doxy oa Svdly-wbnz context).",
+    "steps": [
+     {
+      "id": "gmail_fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "wfjho_wqbg:6h",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "mbOxys"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cjrcogu w vhi-wrcc dikcp ghdpsab toxyfucq evvq lar aqtgnru Svdly messages, ziojyqo ae aegwjeac: muqgfx/rxrpqy-qpxlxm xzorv (fzdnbo kbolcadua, lxotskcxyj/security vescgvcu, wsvme-lbqyq up billing qmekchd), vtyc bjwple vescgvcu, vtyc wer-aegwjeac szgqtzikvbwrc etpdvmo. Dqhi xtwyuay uzku DpmPpp qiq Zmlvvp Vhzgxt hbe mth qtlgdynes hx smpw ymtktog, ow lar toxyfucq uc Svdly-wbnz (ga JVr/cuioau up esbtdagwyxu dmqo upuwifttl). Tshl xhuc rqyvoyit uzku pnpjt lar ynrm'n rxrpqy, vtyc lar dwrm."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

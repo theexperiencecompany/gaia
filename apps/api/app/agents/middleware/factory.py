@@ -22,6 +22,7 @@ from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.media import MediaDescriptionMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware, SubagentMiddlewareConfig
 from app.agents.middleware.summarization import (
+    ArchiveReader,
     WorkspaceArchivingSummarizationMiddleware,
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
@@ -31,6 +32,7 @@ from app.constants.llm import (
     EXECUTOR_RECURSION_LIMIT,
 )
 from app.constants.log_tags import LogTag
+from app.constants.offload import OFFLOAD_MIN_MESSAGES
 from app.constants.summarization import (
     COMMS_SUMMARIZATION_TRIGGER_TOKENS,
     COMPACTION_THRESHOLD,
@@ -46,9 +48,12 @@ from shared.py.wide_events import log
 CODING_TOOL_NAMES = {"bash", "read", "write", "edit", "query_json", "grep"}
 SPAWN_SUBAGENT_TOOL = {"spawn_subagent"}
 
-# Tools that already perform their own context-safe offload (small digest +
-# clean file). Generic compaction must leave their output alone.
-SELF_OFFLOADING_TOOL_NAMES = {"GMAIL_FETCH_MESSAGES", "GMAIL_FETCH_THREAD"}
+# Gmail fetches spill to a mineable JSONL file once they carry more messages than
+# this, however few chars they are, so a metadata-only scan stays out of context.
+RECORD_LIMITED_TOOLS: Mapping[str, int] = {
+    "GMAIL_FETCH_MESSAGES": OFFLOAD_MIN_MESSAGES,
+    "GMAIL_FETCH_THREAD": OFFLOAD_MIN_MESSAGES,
+}
 
 
 @dataclass(frozen=True)
@@ -86,7 +91,8 @@ class ContextOptions:
     compact: bool = True
     summarization_trigger: ContextSize = ("fraction", SUMMARIZATION_TRIGGER_FRACTION)
     summarization_keep: ContextSize = ("tokens", SUMMARIZATION_KEEP_TOKENS)
-    archive: bool = True
+    #: Where this agent can recover archive detail; None disables archiving.
+    archive: ArchiveReader | None = "read_tool"
     summarization_excluded_tools: set[str] | None = None
     compaction_threshold: float = COMPACTION_THRESHOLD
     max_output_chars: int = MAX_OUTPUT_CHARS
@@ -175,7 +181,7 @@ def create_middleware_stack(
                 model=cast("BaseChatModel", chat_llm),
                 trigger=context.summarization_trigger,
                 keep=context.summarization_keep,
-                enable_archive=context.archive,
+                archive=context.archive,
                 excluded_tools=context.summarization_excluded_tools,
             )
             middleware.append(summarization)
@@ -193,6 +199,7 @@ def create_middleware_stack(
             max_output_chars=context.max_output_chars,
             context_window=DEFAULT_MAX_TOKENS,
             excluded_tools=context.compaction_excluded_tools,
+            max_output_records=RECORD_LIMITED_TOOLS,
             summary_llm=chat_llm,  # same model as the conversation; None keeps deterministic tiers
         )
         middleware.append(compaction)
@@ -233,9 +240,7 @@ def create_executor_middleware(
         # The executor is the tier that spawns, so enablement is not the caller's to choose.
         subagent=replace(subagent or SubagentStackOptions(), enabled=True),
         context=ContextOptions(
-            compaction_excluded_tools=CODING_TOOL_NAMES
-            | SPAWN_SUBAGENT_TOOL
-            | SELF_OFFLOADING_TOOL_NAMES,
+            compaction_excluded_tools=CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL,
         ),
     )
 
@@ -243,9 +248,8 @@ def create_executor_middleware(
 def create_comms_middleware(chat_llm: LanguageModelLike | None = None) -> AgentMiddlewareStack:
     """Create the middleware stack for the comms agent.
 
-    Comms delegates all real work to the executor, so it only gets summarization.
-    File-offload compaction is intentionally off: comms has no read/bash/subagent
-    tool, so a compacted output would leave it holding an unreadable file path.
+    It delegates all work to the executor, so it gets summarization but not
+    compaction; its archive pointer asks the executor to read missed details.
     """
     stack = create_middleware_stack(
         agent_name="comms_agent",
@@ -253,6 +257,7 @@ def create_comms_middleware(chat_llm: LanguageModelLike | None = None) -> AgentM
         subagent=SubagentStackOptions(enabled=False),
         context=ContextOptions(
             compact=False,
+            archive="executor",
             summarization_trigger=("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS),
         ),
     )
@@ -288,8 +293,6 @@ def create_subagent_middleware(
             # Summarization and compaction stay on (the ContextOptions defaults):
             # without summarization a subagent run grows unbounded, averaging 91k
             # input tokens per call in production against 43k for comms/executor.
-            compaction_excluded_tools=CODING_TOOL_NAMES
-            | SPAWN_SUBAGENT_TOOL
-            | SELF_OFFLOADING_TOOL_NAMES,
+            compaction_excluded_tools=CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL,
         ),
     )

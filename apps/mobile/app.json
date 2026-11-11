@@ -16,7 +16,6 @@
     },
     "android": {
       "package": "io.heygaia.gaiamobile",
-      "newArchEnabled": false,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECEIVE_BOOT_COMPLETED",

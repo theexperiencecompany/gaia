@@ -36,12 +36,10 @@ from app.utils.composio_hooks.gmail_hooks import (
     _normalize_compose_body,
     _pending_draft_card,
     _stream_compose_preview,
-    gmail_attachment_after_hook,
     gmail_compose_before_hook,
     gmail_create_draft_after_hook,
     gmail_draft_detail_after_hook,
     gmail_drafts_after_hook,
-    gmail_fetch_by_id_after_hook,
     gmail_get_contacts_after_hook,
     gmail_modify_labels_before_hook,
     gmail_send_draft_after_hook,
@@ -278,12 +276,12 @@ class TestNormalizeComposeBody:
 class TestComposeRecipients:
     def test_forward_string_becomes_single_element_list(self):
         assert _compose_recipients(
-            "GMAIL_FORWARD_MESSAGE", _compose({"to_recipients": "a@b.com"})
+            "GMAIL_FORWARD_MESSAGE", _compose({"recipients": "a@b.com"})
         ) == ["a@b.com"]
 
     def test_forward_list_passes_through(self):
         assert _compose_recipients(
-            "GMAIL_FORWARD_MESSAGE", _compose({"to_recipients": ["a@b.com", "c@d.com"]})
+            "GMAIL_FORWARD_MESSAGE", _compose({"recipients": ["a@b.com", "c@d.com"]})
         ) == ["a@b.com", "c@d.com"]
 
     def test_compose_prepends_recipient_then_extras(self):
@@ -818,7 +816,6 @@ class TestTemplatedAfterHooks:
         [
             (gmail_drafts_after_hook, "GMAIL_LIST_DRAFTS", "process_list_drafts_response"),
             (gmail_draft_detail_after_hook, "GMAIL_GET_DRAFT", "draft_template"),
-            (gmail_fetch_by_id_after_hook, "GMAIL_FETCH_EMAIL_BY_ID", "detailed_message_template"),
         ],
     )
     def test_payload_is_transformed_by_its_template(self, hook, tool, seam):
@@ -832,33 +829,11 @@ class TestTemplatedAfterHooks:
         ("hook", "tool"),
         [
             (gmail_draft_detail_after_hook, "GMAIL_GET_DRAFT"),
-            (gmail_fetch_by_id_after_hook, "GMAIL_FETCH_EMAIL_BY_ID"),
         ],
     )
     def test_error_payload_is_returned_untouched(self, hook, tool):
         raw = {"error": "Not found", "id": "x1"}
         assert hook(tool, "gmail", {"data": raw}) is raw
-
-
-class TestAttachmentAfterHook:
-    def test_summary_keeps_metadata_under_the_card_keys(self):
-        response = {
-            "data": {
-                "attachmentId": "att1",
-                "filename": "report.pdf",
-                "mimeType": "application/pdf",
-                "size": 1024,
-                "data": "base64",
-            },
-            "successful": True,
-        }
-        assert gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "gmail", response) == {
-            "attachmentId": "att1",
-            "filename": "report.pdf",
-            "mimeType": "application/pdf",
-            "size": 1024,
-            "message": "Attachment content available but not displayed to preserve context",
-        }
 
 
 class TestModifyLabelsProgress:

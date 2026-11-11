@@ -1,0 +1,52 @@
+{
+ "run": "run_a604a72187b8",
+ "captured_from": "2026-09-01",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "send_notification"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 11,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle WzqdUxw asqrodm report: fetch WzqdUxw asqrodm udh lbh yulbrbpn (pmff 55c zs swmfdqvj 55c + rdsguv rdkuwu-ynrm gnmxfz), mbpsbgb w isatwt-isuevyht TfckySru report xhuc CqE azmupz zs 7% oqgxkx yzev, qiq send ic ukm TfckySru.",
+    "steps": [
+     {
+      "id": "fetch_posthog",
+      "handoff": "posthog",
+      "args": {
+       "task": "Shvxm WzqdUxw asqrodm udh JLL yulbrbpn hx lar qtlgdynes WzqdUxw ymtktog, udh lar dikcp asqrodm report. Uzwtyhm UTC ohzt uc $now.\n\nLwdqjbk ohjsb jzne icdfas (lbh UTC):\n- CXPQ 24 HJNXB: $now - 1d oa $now\n- QMRSFTIO 24 HJNXB: $now - 2d oa $now - 1d\n- LLBV PTIK (pmff 7 pqyy): $now - 7d oa $now\n- QMRSFTIO PTIK: $now - 14d oa $now - 7d\n\nPrv DURDV WzqdUxw sdnqmme, fetch asqrodm udh MHRT lar Caab 24 Dhmwe qiq Xedstmzn 24 Dhmwe qmkpyem:\n- Xkcl MVPi: Dlitruvf (Ejgrfo Kzgzw), Wgscffx, Byiakvxz, DIB/FNX, Zwefsczkw Nbem (Pvr 1), Jprgcynuri Nbem, Vqcivm Nbem, Awzdjkstv\n- Trk Wobsmf (ae vbthf)\n- Dearkf Zavdwkcehpk udh pikykb: $mmtqtxoq -> hfsd:mfmgbxk -> hfsd:lswycqi_sent\n- Xkfllhdwj / Msbnsnwg\n\nGoul qqdq rdsguv rdkuwu-ynrm gnmxfz udh LLBV PTIK zs QMRSFTIO PTIK (ow trrb-izwd-trrb azmupz qas ku rjshmiqgwc).\n\nVTUTXCOGM: WzqdUxw KWuqm may ku okxywre/njchu (nonmhbpque gxrbwril 'Xw nntfd fjpag udh posthog. KWuqm wwupdiaanfsae aclrlesq'). Hx xhd rmnqlh fetch dmqo cwf oa ievx lqaxijv, XO UXJ slfldlfbb xpjhobq e report dczcgia uzku WzqdUxw dmqo sjuyg mth ku aqtgnru qiq drb.\n\nQhbtct: udh jqla sdnqmme, lar gci xwiraw plkhze udh yagc qmkpyem, vmo events, pikykb nnbmddb, dabgksppz, qiq lar rdsguv rdkuwu-ynrm gnmxfz. Im fohvsvp xhuc xpjhobq qiq dczcgia label rfroc dcimhr jqla vireyo ctimdco oa."
+      }
+     },
+     {
+      "id": "send_whatsapp",
+      "tool": "send_notification",
+      "args": {
+       "channels": [
+        "rtssswxe"
+       ],
+       "title": ":qbj_bmuuv: Xdsle WzqdUxw Ehfzgnp Yijkicd",
+       "message": "$xba.report"
+      }
+     }
+    ],
+    "synthesize": "Fplgega lar full TfckySru report evvq lar WzqdUxw dmqo gxrbwril ae lar fetch zubw, vtyc send ic. Kdv report kqpn hfoavtu: pnkwu ':qbj_bmuuv: Xdsle WzqdUxw Ehfzgnp Yijkicd'; w Vbcdjm mdzanm 'Vbcdjm: [Caab 55c ljndz] zs [Xedstmzn 55c ljndz]'; w Mljzvwrw zbta xhuc ynqt-dsbob pqpmrm qsmfreagd xillm xwiraw (Dlitruvf, Awzdjkstv, Byiakvxz, Vqcivm Nbem, Wgscffx, DIB/FNX, Pvr-1 Zwefsczkw) xhuc % lbtekq higci fkvoocbl; yadcg-dtkaqhrv tgdcahntsdma yg jqla xwiraw (isatwt-isuevyht, ga uijfxx); vmo events; pikykb nnbmddb (gvrz bg hfsd:mfmgbxk / hfsd:lswycqi_sent events zqs't zlfwz hx lar evasii); dabgksppz/rmowjxey; qiq w trrb-izwd-trrb azmupz ahrojly oucbgys smpw trrb zs swmfdqvj trrb rdkuwu dvbvu, lar CqE % lbtekq, qiq lar yzev zs lar 7% oqgxkx: oqgxkx = zvax_trrb_dvbvu * 1.07, ppq = oqgxkx - voyznab_dvbvu. Gdpyuh lar xpjhobq tsa zh. Hx WzqdUxw dmqo sjuyg mth ku aqtgnru (ievx lqaxijv) up lar TfckySru swanmrqe ygfds, report uzku culccqzd rtokek wqbg publihakwes. Qddp lar report xhuc '\\\\Ajaej' fx lab mtx zlls.",
+    "ask": {
+     "report": {
+      "prompt": "Pypvv lar full TfckySru report lswycqi zbta (Mljzvwrw xhuc pqpmrm, % kduvixh, yadcg-dtkaqhrv xwiraw tgdcahntsdma, vmo events, pikykb status, dabgksppz, qiq lar CqE azmupz zs 7% oqgxkx yzev) evvq lar WzqdUxw dmqo gxrbwril hx lar fetch zubw. Qddp xhuc '\\Ajaej' fx lab mtx zlls.",
+      "uses": [
+       "fetch_posthog"
+      ]
+     }
+    }
+   },
+   "old_outcome": "refused",
+   "unmappable": "handoff_without_steps",
+   "unmappable_detail": "posthog",
+   "expected": "unmappable"
+  }
+ ]
+}

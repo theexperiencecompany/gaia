@@ -19,8 +19,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from redis.exceptions import RedisError
 
 from app.constants.log_tags import LogTag
+from app.db.redis import redis_cache
 from app.models.trigger_config import TriggerOptionsQuery
 
 # Break the circular import (triggers -> handlers -> workflow.service -> workflow.trigger_service
@@ -87,6 +89,7 @@ from app.services.triggers.registry import (
     get_handler_by_name,
 )
 from app.utils.exceptions import TriggerRegistrationError
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Restore real module after breaking circular import for initial loading
@@ -195,10 +198,13 @@ class _ConcreteTriggerHandler(TriggerHandler):
     ) -> list[str]:
         return ["trigger_id_1"]
 
+    def __init__(self, workflows: list[Workflow] | None = None) -> None:
+        self.matched = workflows or []
+
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: dict[str, Any]
     ) -> list[Workflow]:
-        return []
+        return self.matched
 
 
 @pytest.mark.asyncio
@@ -394,8 +400,7 @@ class TestTriggerHandlerBase:
     @patch("app.services.triggers.base.WorkflowQueueService")
     async def test_process_event_queues_workflows(self, mock_queue_svc):
         workflow = _make_workflow()
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=[workflow])
+        handler = _ConcreteTriggerHandler([workflow])
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
 
         result = await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, {})
@@ -410,11 +415,10 @@ class TestTriggerHandlerBase:
     ) -> None:
         """The queued context carries the raw payload and the integration trigger stamp."""
         workflow = _make_workflow()
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=[workflow])
+        handler = _ConcreteTriggerHandler([workflow])
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
         mock_signal_context.return_value = ""
-        payload = {"start_time": "2026-01-01T10:00:00+00:00", "id": "evt_1"}
+        payload: dict[str, object] = {"start_time": "2026-01-01T10:00:00+00:00", "id": "evt_1"}
 
         await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, payload)
 
@@ -425,6 +429,7 @@ class TestTriggerHandlerBase:
                 "trigger_data": payload,
                 "trigger_type": TriggerType.INTEGRATION.value,
             },
+            defer_until=None,
         )
 
     @patch("app.services.triggers.base.get_signal_matching_context")
@@ -434,8 +439,7 @@ class TestTriggerHandlerBase:
     ) -> None:
         """Signal context is attached to every workflow but fetched once per user."""
         workflows = [_make_workflow(workflow_id="wf_1"), _make_workflow(workflow_id="wf_2")]
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=workflows)
+        handler = _ConcreteTriggerHandler(workflows)
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
         mock_signal_context.return_value = "todo: buy milk"
 
@@ -465,8 +469,7 @@ class TestTriggerHandlerBase:
     ) -> None:
         """A failing signal-context fetch still queues the workflow, minus the todos key."""
         workflow = _make_workflow()
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=[workflow])
+        handler = _ConcreteTriggerHandler([workflow])
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
         mock_signal_context.side_effect = Exception("mongo down")
 
@@ -482,8 +485,7 @@ class TestTriggerHandlerBase:
     async def test_process_event_skips_workflow_with_no_id(self, mock_queue_svc):
         workflow = _make_workflow()
         workflow.id = None
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=[workflow])
+        handler = _ConcreteTriggerHandler([workflow])
 
         result = await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, {})
         assert "Queued 0 workflows" in result["message"]
@@ -492,8 +494,7 @@ class TestTriggerHandlerBase:
     @patch("app.services.triggers.base.WorkflowQueueService")
     async def test_process_event_handles_queue_failure(self, mock_queue_svc):
         workflow = _make_workflow()
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=[workflow])
+        handler = _ConcreteTriggerHandler([workflow])
         mock_queue_svc.queue_workflow_execution = AsyncMock(side_effect=Exception("Queue failed"))
 
         result = await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, {})
@@ -2038,6 +2039,191 @@ class TestCalendarTriggerHandler:
     def test_singleton_instance_exists(self):
         assert calendar_trigger_handler is not None
         assert isinstance(calendar_trigger_handler, CalendarTriggerHandler)
+
+
+STARTING_SOON_EVENT = "GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER"
+
+
+def _starting_soon_payload(event_id: str, calendar_id: str) -> dict[str, Any]:
+    """Build a starting-soon payload as Composio delivers it, one per calendar."""
+    return {
+        "event_id": event_id,
+        "calendar_id": calendar_id,
+        "summary": "BA Upskill Program - Weekly Status Sync",
+        "start_time": "2026-11-02T11:00:00Z",
+        "start_timestamp": 1793617200.0,
+        "minutes_until_start": 8.5,
+        "countdown_window_minutes": 10,
+        "hangout_link": "https://meet.google.com/byy-owud-fbt",
+        "organizer_email": "organizer@example.com",
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("fake_redis")
+class TestCalendarStartingSoonFanOut:
+    """One meeting on several subscribed calendars reaches each workflow once.
+
+    Regression: a user with 7 calendars got the same reminder 3 times per meeting
+    (721 reminder and 722 briefing runs in 30 days) — one webhook per calendar trigger.
+    """
+
+    @staticmethod
+    async def _fire(
+        workflows: list[Workflow], payloads: list[dict[str, Any]]
+    ) -> tuple[AsyncMock, list[str], dict[str, Any]]:
+        """Dispatch each payload from its own calendar trigger; return the queue, results and wide event."""
+        queue = AsyncMock(return_value=True)
+        with (
+            patch(
+                "app.services.triggers.handlers.calendar.workflow_repository.find_active_by_composio_trigger",
+                AsyncMock(return_value=workflows),
+            ),
+            patch(
+                "app.services.triggers.base.WorkflowQueueService.queue_workflow_execution", queue
+            ),
+            patch(
+                "app.services.triggers.base.get_signal_matching_context",
+                AsyncMock(return_value=""),
+            ),
+            patch.object(
+                calendar_trigger_handler, "_queue_todo_dispatch", AsyncMock(return_value=False)
+            ),
+        ):
+            async with captured_wide_event() as event:
+                results = [
+                    (
+                        await calendar_trigger_handler.process_event(
+                            STARTING_SOON_EVENT, f"ti_calendar_{index}", USER_ID, payload
+                        )
+                    )["message"]
+                    for index, payload in enumerate(payloads)
+                ]
+        return queue, results, event
+
+    async def test_the_same_event_on_three_calendars_runs_the_workflow_once(self) -> None:
+        reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
+        payloads = [
+            _starting_soon_payload("evt_weekly_sync", calendar)
+            for calendar in ("primary", "team@group.calendar.google.com", "ba@example.com")
+        ]
+
+        queue, results, _ = await self._fire([reminder], payloads)
+
+        queue.assert_awaited_once()
+        assert queue.await_args.kwargs["context"]["trigger_data"]["event_id"] == "evt_weekly_sync"
+        assert results == ["Queued 1 workflows", "Queued 0 workflows", "Queued 0 workflows"]
+
+    async def test_distinct_events_and_distinct_workflows_each_still_run(self) -> None:
+        reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
+        briefing = _make_workflow(trigger_name="calendar_event_starting_soon")
+        briefing.id = "wf_briefing"
+
+        queue, _, _ = await self._fire(
+            [reminder, briefing],
+            [
+                _starting_soon_payload("evt_standup", "primary"),
+                _starting_soon_payload("evt_standup", "team@group.calendar.google.com"),
+                _starting_soon_payload("evt_one_on_one", "primary"),
+            ],
+        )
+
+        fired = sorted(
+            (call.args[0], call.kwargs["context"]["trigger_data"]["event_id"])
+            for call in queue.await_args_list
+        )
+        assert fired == [
+            ("wf_briefing", "evt_one_on_one"),
+            ("wf_briefing", "evt_standup"),
+            (WORKFLOW_ID, "evt_one_on_one"),
+            (WORKFLOW_ID, "evt_standup"),
+        ]
+
+    async def test_a_rescheduled_event_fires_again_for_its_new_start(self) -> None:
+        reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
+        moved = _starting_soon_payload("evt_weekly_sync", "primary")
+        moved["start_time"] = "2026-11-02T15:00:00Z"
+
+        queue, _, _ = await self._fire(
+            [reminder], [_starting_soon_payload("evt_weekly_sync", "primary"), moved]
+        )
+
+        assert queue.await_count == 2
+
+    async def test_a_payload_without_an_event_id_is_never_collapsed(self) -> None:
+        reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
+        anonymous = _starting_soon_payload("", "primary")
+
+        queue, _, _ = await self._fire([reminder], [anonymous, anonymous])
+
+        assert queue.await_count == 2
+
+    async def test_event_created_events_are_not_collapsed(self) -> None:
+        workflow = _make_workflow(trigger_name="calendar_event_created")
+        queue = AsyncMock(return_value=True)
+        with (
+            patch(
+                "app.services.triggers.handlers.calendar.workflow_repository.find_active_by_composio_trigger",
+                AsyncMock(return_value=[workflow]),
+            ),
+            patch(
+                "app.services.triggers.base.WorkflowQueueService.queue_workflow_execution", queue
+            ),
+            patch(
+                "app.services.triggers.base.get_signal_matching_context",
+                AsyncMock(return_value=""),
+            ),
+            patch.object(
+                calendar_trigger_handler, "_queue_todo_dispatch", AsyncMock(return_value=False)
+            ),
+        ):
+            for trigger_id in ("ti_a", "ti_b"):
+                await calendar_trigger_handler.process_event(
+                    "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
+                    trigger_id,
+                    USER_ID,
+                    _starting_soon_payload("evt_new", "primary"),
+                )
+
+        assert queue.await_count == 2
+
+    async def test_redis_down_fires_every_event_rather_than_dropping_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(redis_cache, "redis", None)
+        reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
+        payload = _starting_soon_payload("evt_weekly_sync", "primary")
+
+        queue, _, event = await self._fire([reminder], [payload, payload])
+
+        assert queue.await_count == 2
+        dedupe_warnings = [w["msg"] for w in event["warnings"] if "dedupe" in w["msg"]]
+        assert (
+            dedupe_warnings
+            == [f"{LogTag.TRIGGER} Redis unavailable — occurrence dedupe skipped"] * 2
+        )
+
+    async def test_a_failing_redis_write_fires_rather_than_dropping(
+        self, fake_redis: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(fake_redis, "set", AsyncMock(side_effect=RedisError("down")))
+        reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
+        payload = _starting_soon_payload("evt_weekly_sync", "primary")
+
+        queue, _, event = await self._fire([reminder], [payload, payload])
+
+        assert queue.await_count == 2
+        warning = next(w for w in event["warnings"] if "dedupe" in w["msg"])
+        assert warning["msg"] == f"{LogTag.TRIGGER} Redis write failed — occurrence dedupe skipped"
+        assert (warning["error"], warning["error_type"]) == ("down", "RedisError")
+
+    async def test_the_claim_expires_after_a_day(self, fake_redis: Any) -> None:
+        reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
+
+        await self._fire([reminder], [_starting_soon_payload("evt_weekly_sync", "primary")])
+
+        key = f"trigger_occurrence:{WORKFLOW_ID}:evt_weekly_sync:2026-11-02T11:00:00Z"
+        assert 23 * 60 * 60 < await fake_redis.ttl(key) <= 24 * 60 * 60
 
 
 # ===========================================================================

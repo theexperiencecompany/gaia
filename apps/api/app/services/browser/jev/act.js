@@ -27,11 +27,11 @@ function gaiaJevFocused(node) {
   const c=window.__jevFast, e=c?.nodes.get(node), active=c?.deepActive();
   return !!e && !!active && (active===e || (e.isContentEditable && e.contains(active)));
 }
-// What a field holds now: its value, or a rich editor's text.
-function gaiaJevValue(node) {
-  const e=window.__jevFast?.nodes.get(node);
-  if (!e) return null;
-  return 'value' in e ? String(e.value) : e.innerText;
+// What a field holds now: its value, a rich editor's text, or a one-box-per-character code's boxes joined.
+function gaiaJevValue(field) {
+  const nodes=window.__jevFast?.nodes, boxes=(field.segments || [field.node]).map(n=>nodes?.get(n));
+  if (!boxes.every(Boolean)) return null;
+  return boxes.map(e=>'value' in e ? String(e.value) : e.innerText).join('');
 }
 // Set a field whose value is a format, not keystrokes (date, time, month, week, range), as
 // its own value setter does, with the events a change fires; returns what it holds after.

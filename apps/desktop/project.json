@@ -128,7 +128,7 @@
         "cwd": "{projectRoot}"
       },
       "cache": true,
-      "inputs": ["default", "{projectRoot}/tsconfig.json", "^production"]
+      "inputs": ["typecheck", "^production", "{projectRoot}/tsconfig.json"]
     },
     "test": {
       "executor": "nx:run-commands",

@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.services.integrations.custom_crud import _build_oauth_result
-from app.services.mcp.mcp_client import DCRRegistrationError
+from app.services.mcp.mcp_errors import DCRRegistrationError
 
 INTEGRATION_ID = "89d43eae-d6b4-4bfa-aa9a-90b971af8c03"
 
@@ -23,7 +23,7 @@ INTEGRATION_ID = "89d43eae-d6b4-4bfa-aa9a-90b971af8c03"
 async def test_build_oauth_result_logs_dcr_rejection_as_warning_not_error() -> None:
     """An identified remote DCR rejection is surfaced to the user and warned, not errored."""
     mcp_client = MagicMock()
-    mcp_client.build_oauth_auth_url = AsyncMock(
+    build_url = AsyncMock(
         side_effect=DCRRegistrationError(
             "Dynamic Client Registration failed: Registration failed: 400 "
             '{"error":"invalid_request","error_description":"Invalid redirect_uri: '
@@ -31,7 +31,10 @@ async def test_build_oauth_result_logs_dcr_rejection_as_warning_not_error() -> N
         )
     )
 
-    with patch("app.services.integrations.custom_crud.log") as mock_log:
+    with (
+        patch("app.services.integrations.custom_crud.build_oauth_auth_url", build_url),
+        patch("app.services.integrations.custom_crud.log") as mock_log,
+    ):
         result = await _build_oauth_result(mcp_client, INTEGRATION_ID)
 
     # The failure is surfaced to the caller, not swallowed.
@@ -47,7 +50,8 @@ async def test_build_oauth_result_logs_dcr_rejection_as_warning_not_error() -> N
     assert kwargs["integration_id"] == INTEGRATION_ID
     assert kwargs["error_type"] == "DCRRegistrationError"
     # The callback redirect_uri and the post-auth redirect_path are passed through.
-    _, call_kwargs = mcp_client.build_oauth_auth_url.await_args
+    call_args, call_kwargs = build_url.await_args
+    assert call_args == (mcp_client.token_store,)
     assert call_kwargs["redirect_path"] == "/integrations"
     assert call_kwargs["redirect_uri"].endswith("/api/v1/mcp/oauth/callback")
 
@@ -56,9 +60,12 @@ async def test_build_oauth_result_logs_dcr_rejection_as_warning_not_error() -> N
 async def test_build_oauth_result_logs_bare_value_error_as_error() -> None:
     """A bare ValueError (e.g. integration-resolution failure) stays ERROR, not warn."""
     mcp_client = MagicMock()
-    mcp_client.build_oauth_auth_url = AsyncMock(side_effect=ValueError("Integration foo not found"))
+    build_url = AsyncMock(side_effect=ValueError("Integration foo not found"))
 
-    with patch("app.services.integrations.custom_crud.log") as mock_log:
+    with (
+        patch("app.services.integrations.custom_crud.build_oauth_auth_url", build_url),
+        patch("app.services.integrations.custom_crud.log") as mock_log,
+    ):
         result = await _build_oauth_result(mcp_client, INTEGRATION_ID)
 
     assert result["status"] == "failed"
@@ -77,9 +84,12 @@ async def test_build_oauth_result_logs_unexpected_failure_as_error() -> None:
     mcp_client = MagicMock()
     # A KeyError is not an expected external OAuth rejection; it signals a GAIA
     # bug that would silently block OAuth if downgraded to a warning.
-    mcp_client.build_oauth_auth_url = AsyncMock(side_effect=KeyError("missing_field"))
+    build_url = AsyncMock(side_effect=KeyError("missing_field"))
 
-    with patch("app.services.integrations.custom_crud.log") as mock_log:
+    with (
+        patch("app.services.integrations.custom_crud.build_oauth_auth_url", build_url),
+        patch("app.services.integrations.custom_crud.log") as mock_log,
+    ):
         result = await _build_oauth_result(mcp_client, INTEGRATION_ID)
 
     assert result["status"] == "failed"

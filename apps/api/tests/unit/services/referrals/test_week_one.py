@@ -11,7 +11,7 @@ from app.constants.referrals import ReferralNudge
 from app.models.chat_models import ConversationSource
 from app.models.payment_models import PlanDuration, PlanResponse, PlanTier
 from app.models.user_models import UserDocument
-from app.services.delivery.chat_channel import ChatChannel
+from app.services.delivery.chat_channel import ChatChannel, InApp, InAppReason
 from app.services.outbound_delivery import OutboundResult
 from app.services.referrals.codes import share_link
 from app.services.referrals.offer import ProPlans
@@ -20,7 +20,9 @@ from app.services.referrals.week_one import send_week_one_dms
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 NOW = datetime(2026, 10, 14, 10, 0, tzinfo=UTC)
 MODULE = "app.services.referrals.week_one"
-TELEGRAM = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-1")
+TELEGRAM = ChatChannel(
+    source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="priority"
+)
 
 
 def _plan(duration: PlanDuration, amount: int) -> PlanResponse:
@@ -29,9 +31,11 @@ def _plan(duration: PlanDuration, amount: int) -> PlanResponse:
         dodo_product_id=f"pdt_{duration.value}",
         name="Pro",
         plan_type=PlanTier.PRO,
+        description=None,
         amount=amount,
         currency="USD",
         duration=duration,
+        max_users=None,
         is_active=True,
         created_at=NOW,
         updated_at=NOW,
@@ -87,7 +91,7 @@ def seams() -> Iterator[Seams]:
             f"{MODULE}.usage_daily_repository.counts_since",
             AsyncMock(return_value=_active_days(4)),
         ) as activity,
-        patch(f"{MODULE}.resolve_chat_channel", AsyncMock(return_value=TELEGRAM)) as channel,
+        patch(f"{MODULE}.resolve_proactive_target", AsyncMock(return_value=TELEGRAM)) as channel,
         patch(f"{MODULE}.send_pitch", AsyncMock(side_effect=_deliver_now)) as pitch,
         patch(
             f"{MODULE}.publish_outbound_message",
@@ -175,8 +179,9 @@ async def test_outside_ten_in_the_users_morning_nobody_is_pitched(seams: Seams) 
     seams.activity.assert_not_awaited()
 
 
-async def test_a_user_with_no_chat_platform_gets_nothing(seams: Seams) -> None:
-    seams.channel.return_value = None
+@pytest.mark.parametrize("reason", ["no_chat_app", "active_in_app"])
+async def test_a_message_that_stays_in_the_app_is_no_dm(seams: Seams, reason: InAppReason) -> None:
+    seams.channel.return_value = InApp(reason=reason)
     assert await send_week_one_dms() == NONE_SENT
     seams.pitch.assert_not_awaited()
 

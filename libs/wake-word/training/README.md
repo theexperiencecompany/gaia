@@ -7,27 +7,27 @@ the frozen Google speech-embedding output and emits a wake probability.
 ## Quick start
 
 ```bash
-# 1. Install deps (uses uv, mise will run this)
+# 1. Install deps, the frozen mel + embedding models, and the Piper voices
 uv sync
+bash ../scripts/fetch-models.sh
+uv run python scripts/download_voices.py
 
 # 2. Generate synthetic training audio (~75k clips, ~1 hour on a laptop)
-uv run python -m src.synthesize \
-    --phrases configs/hey_gaia.yaml \
-    --output data/synthetic \
-    --n_positive 50000 \
-    --n_hard_negative 25000
+uv run python -m src.synthesize --n_positive 50000 --n_hard_negative 25000
 
-# 3. (optional) Download MUSAN noise + RIR datasets
-bash scripts/download_audio_corpora.sh data/
+# 3. Real human-speech negatives (LibriSpeech, streamed)
+uv run python -m src.fetch_real_negatives --n 5000
 
-# 4. Train. ~1 hour on a single GPU, ~6 hours on CPU
-uv run python -m src.train \
-    --config configs/hey_gaia.yaml \
-    --data data/synthetic \
-    --models ../models
+# 4. Pre-compute embedding windows for every clip
+uv run python -m src.featurize --workers 8
+
+# 5. Train and export. ~1 hour on a single GPU, ~6 hours on CPU
+uv run python -m src.train   # or: pnpm nx run wake-word:train
 ```
 
 Output: `../models/hey_gaia.onnx` (drops into the TS library).
+`bash scripts/train_and_deploy.sh` runs steps 4-5 for both architectures,
+validates them and deploys the winner into the apps.
 
 ## Why this works
 

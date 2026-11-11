@@ -7,10 +7,9 @@ queueing, search indexing, tracked-todo completion routing, response mapping,
 and the ProjectService guards.
 """
 
-from collections.abc import Coroutine
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from bson import ObjectId
@@ -19,7 +18,7 @@ from pydantic import ValidationError
 from pymongo.errors import BulkWriteError, DuplicateKeyError
 import pytest
 
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.constants.vfs import SYSTEM_USER_ID
 from app.models.todo_models import (
@@ -54,6 +53,7 @@ from app.services.todos.errors import (
     ExternalRefReopenedTwiceError,
     ExternalRefTakenError,
     SubTodoParentError,
+    TodoNotFoundError,
     TrackedLabelChangeError,
     TrackedTodoWorkflowError,
 )
@@ -71,6 +71,7 @@ from app.services.todos.todo_service import (
     get_all_projects,
     get_all_todos,
     get_todo,
+    require_project,
     update_project,
 )
 from app.services.triggers.subscription_service import SubscriptionError
@@ -108,6 +109,25 @@ def _no_analytics():
         patch("app.services.todos.todo_bulk_service.capture"),
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def todo_chats() -> Iterator[AsyncMock]:
+    """Record the deletes of deleted todos' chats instead of reaching Mongo for them."""
+    with patch(
+        "app.services.todos.todo_service.delete_todo_conversations", new=AsyncMock()
+    ) as deleted:
+        yield deleted
+
+
+@pytest.fixture(autouse=True)
+def retitled_chats() -> Iterator[AsyncMock]:
+    """Record the retitles of renamed todos' chats instead of reaching Mongo for them."""
+    with patch(
+        "app.services.todos.todo_service.conversation_repository.retitle_todo_chats",
+        new=AsyncMock(),
+    ) as retitled:
+        yield retitled
 
 
 @pytest.fixture(autouse=True)
@@ -368,77 +388,6 @@ class TestCreateTodo:
             created.id, created, FAKE_USER_ID
         )
 
-    async def test_create_todo_with_workflow_queues_generation(
-        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
-    ):
-        created = _make_todo_doc(todo_id=FAKE_TODO_ID, project_id=FAKE_INBOX_ID)
-        mock_todo_repo.create = AsyncMock(return_value=created)
-        result = await TodoService.create_todo_with_workflow(
-            TodoModel(title="Buy milk", description="2%"), FAKE_USER_ID
-        )
-        # Queued as a fire-and-forget background task, so assert the call, not the await.
-        mock_workflow_queue.queue_todo_workflow_generation.assert_called_once_with(
-            todo_id=FAKE_TODO_ID, user_id=FAKE_USER_ID, title="Buy milk", description="2%"
-        )
-        assert result.id == FAKE_TODO_ID
-
-    async def test_create_todo_with_workflow_spawns_a_named_task_scoped_to_the_todo(
-        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
-    ):
-        mock_todo_repo.create = AsyncMock(
-            return_value=_make_todo_doc(todo_id=FAKE_TODO_ID, project_id=FAKE_INBOX_ID)
-        )
-        with patch("app.services.todos.todo_service.spawn_logged_task") as spawn:
-            await TodoService.create_todo_with_workflow(TodoModel(title="Buy milk"), FAKE_USER_ID)
-
-        spawn.assert_called_once()
-        assert spawn.call_args.args[0] == "todo_workflow_generation"
-        assert spawn.call_args.kwargs == {
-            "user": {"id": FAKE_USER_ID},
-            "todo": {"id": FAKE_TODO_ID},
-        }
-        mock_workflow_queue.queue_todo_workflow_generation.assert_called_once_with(
-            todo_id=FAKE_TODO_ID, user_id=FAKE_USER_ID, title="Buy milk", description=""
-        )
-        spawn.call_args.args[1].close()
-
-    async def test_a_failed_generation_queue_still_returns_the_created_todo(
-        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
-    ):
-        mock_todo_repo.create = AsyncMock(
-            return_value=_make_todo_doc(todo_id=FAKE_TODO_ID, project_id=FAKE_INBOX_ID)
-        )
-
-        def refuse_to_spawn(_operation: str, coro: Coroutine[Any, Any, Any], **_: Any) -> None:
-            coro.close()
-            raise RuntimeError("loop closed")
-
-        with (
-            patch(
-                "app.services.todos.todo_service.spawn_logged_task",
-                side_effect=refuse_to_spawn,
-            ),
-            patch("app.services.todos.todo_service.log") as log,
-        ):
-            result = await TodoService.create_todo_with_workflow(
-                TodoModel(title="Buy milk"), FAKE_USER_ID
-            )
-
-        assert result.id == FAKE_TODO_ID
-        log.warning.assert_called_once_with(
-            "todo.workflow_queue_failed", title="Buy milk", error="loop closed"
-        )
-
-    async def test_create_todo_with_workflow_refuses_a_tracked_todo(
-        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
-    ):
-        with pytest.raises(TrackedTodoWorkflowError):
-            await TodoService.create_todo_with_workflow(
-                TodoModel(title="Nightly", labels=[GAIA_TRACKED_LABEL]), FAKE_USER_ID
-            )
-        mock_todo_repo.create.assert_not_awaited()
-        mock_workflow_queue.queue_todo_workflow_generation.assert_not_called()
-
     async def test_a_classic_todo_can_be_created_already_linked(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
     ):
@@ -666,8 +615,9 @@ class TestSubTodoCounts:
 class TestGetTodo:
     async def test_not_found_raises(self, mock_todo_repo, mock_project_repo):
         mock_todo_repo.get = AsyncMock(return_value=None)
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(TodoNotFoundError) as raised:
             await TodoService.get_todo(FAKE_TODO_ID, FAKE_USER_ID)
+        assert raised.value.todo_id == FAKE_TODO_ID
 
     async def test_returns_response(self, mock_todo_repo, mock_project_repo):
         mock_todo_repo.get = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
@@ -789,10 +739,11 @@ class TestUpdateTodo:
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
         mock_todo_repo.update = AsyncMock(return_value=None)
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(TodoNotFoundError) as raised:
             await TodoService.update_todo(
                 FAKE_TODO_ID, TodoUpdateRequest(title="new"), FAKE_USER_ID
             )
+        assert raised.value.todo_id == FAKE_TODO_ID
 
     async def test_a_workflow_link_goes_through_link_workflow(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_repo
@@ -824,6 +775,44 @@ class TestUpdateTodo:
 
         assert result.sub_todo_count == 2
         mock_todo_repo.count_open_sub_todos.assert_awaited_once_with(FAKE_USER_ID, [FAKE_TODO_ID])
+
+    async def test_a_new_title_retitles_the_todos_chat(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, retitled_chats
+    ):
+        """Regression: the chat kept the todo's first title, so its tab still named the old one."""
+        edited = _make_todo_doc(todo_id=FAKE_TODO_ID, title="Watch production")
+        mock_todo_repo.update = AsyncMock(return_value=edited)
+
+        await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(title="Watch production"), FAKE_USER_ID
+        )
+
+        retitled_chats.assert_awaited_once_with(FAKE_USER_ID, [FAKE_TODO_ID], "Watch production")
+
+    async def test_a_chat_that_cannot_be_retitled_fails_the_rename_before_it_is_saved(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, retitled_chats
+    ):
+        """Regression: the todo was saved first, so a failed retitle answered 500 for a saved rename and skipped its sync."""
+        mock_todo_repo.update = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+        retitled_chats.side_effect = RuntimeError("mongo is down")
+
+        with pytest.raises(RuntimeError, match="mongo is down"):
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(title="Watch production"), FAKE_USER_ID
+            )
+
+        mock_todo_repo.update.assert_not_awaited()
+
+    async def test_an_edit_that_keeps_the_title_leaves_the_chat_alone(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, retitled_chats
+    ):
+        mock_todo_repo.update = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+
+        await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(priority=Priority.HIGH), FAKE_USER_ID
+        )
+
+        retitled_chats.assert_not_awaited()
 
     async def test_a_tracked_todo_refuses_a_workflow_link(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
@@ -925,10 +914,11 @@ class TestUpdateTodo:
     async def test_a_workflow_link_to_a_missing_todo_is_not_found(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(TodoNotFoundError) as raised:
             await TodoService.update_todo(
                 FAKE_TODO_ID, TodoUpdateRequest(workflow_id="wf1"), FAKE_USER_ID
             )
+        assert raised.value.todo_id == FAKE_TODO_ID
 
     async def test_a_plain_todos_display_recurrence_is_stored_exactly_as_sent(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
@@ -1048,14 +1038,40 @@ class TestUpdateTodo:
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
         tracked = _make_todo_doc(todo_id=FAKE_TODO_ID, vfs_path="/users/u/todos/t")
-        mock_todo_repo.get = AsyncMock(return_value=tracked)
+
+        async def owners_todo(todo_id: str, *, user_id: str) -> TodoDocument | None:
+            return tracked if (todo_id, user_id) == (FAKE_TODO_ID, FAKE_USER_ID) else None
+
+        mock_todo_repo.get = AsyncMock(side_effect=owners_todo)
         mock_todo_repo.update = AsyncMock(return_value=tracked)
         with patch("app.services.tracked_todo_service.tracked_todo_service") as mock_tracked:
             mock_tracked.complete_tracked_todo = AsyncMock(return_value=True)
             await TodoService.update_todo(
                 FAKE_TODO_ID, TodoUpdateRequest(completed=True), FAKE_USER_ID
             )
-            mock_tracked.complete_tracked_todo.assert_awaited_once()
+            mock_tracked.complete_tracked_todo.assert_awaited_once_with(
+                FAKE_TODO_ID, FAKE_USER_ID, summary="Completed via UI"
+            )
+        # That service sets the completion itself, so nothing is left for this update to write.
+        mock_todo_repo.update.assert_not_awaited()
+
+    async def test_a_failed_tracked_completion_is_a_warning_naming_the_todo(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        tracked = _make_todo_doc(todo_id=FAKE_TODO_ID, vfs_path="/users/u/todos/t")
+        mock_todo_repo.get = AsyncMock(return_value=tracked)
+        mock_todo_repo.update = AsyncMock(return_value=tracked)
+        with (
+            patch("app.services.tracked_todo_service.tracked_todo_service") as mock_tracked,
+            patch("app.services.todos.todo_service.log") as log,
+        ):
+            mock_tracked.complete_tracked_todo = AsyncMock(side_effect=RuntimeError("vfs down"))
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(completed=True), FAKE_USER_ID
+            )
+        log.warning.assert_called_once_with(
+            "tracked_todo.ui_complete_failed", todo_id=FAKE_TODO_ID, error="vfs down"
+        )
 
 
 class TestDeleteTodo:
@@ -1063,8 +1079,18 @@ class TestDeleteTodo:
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
         mock_todo_repo.get = AsyncMock(return_value=None)
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(TodoNotFoundError) as raised:
             await TodoService.delete_todo(FAKE_TODO_ID, FAKE_USER_ID)
+        assert raised.value.todo_id == FAKE_TODO_ID
+
+    async def test_a_todo_gone_between_read_and_delete_is_not_found(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.get = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+        mock_todo_repo.delete = AsyncMock(return_value=False)
+        with pytest.raises(TodoNotFoundError) as raised:
+            await TodoService.delete_todo(FAKE_TODO_ID, FAKE_USER_ID)
+        assert raised.value.todo_id == FAKE_TODO_ID
 
     async def test_deletes(self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync):
         mock_todo_repo.get = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
@@ -1126,6 +1152,44 @@ class TestDeleteTodo:
             await TodoService.delete_todo(FAKE_TODO_ID, FAKE_USER_ID)
 
         teardown.assert_not_awaited()
+
+    async def test_the_todos_chat_goes_with_it(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, todo_chats
+    ):
+        """Its chat is reachable only from the todo, so once the todo goes it can never be opened again."""
+        mock_todo_repo.get = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+        mock_todo_repo.delete = AsyncMock(return_value=True)
+
+        await TodoService.delete_todo(FAKE_TODO_ID, FAKE_USER_ID)
+
+        todo_chats.assert_awaited_once_with(FAKE_USER_ID, [FAKE_TODO_ID])
+
+    async def test_a_chat_that_cannot_be_deleted_keeps_the_todo_and_fails_the_delete(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, todo_chats
+    ):
+        """Regression: a failed chat delete was only logged, orphaning the chat and the user's follow-ups in it."""
+        mock_todo_repo.get = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+        mock_todo_repo.delete = AsyncMock(return_value=True)
+        todo_chats.side_effect = RuntimeError("mongo is down")
+
+        with pytest.raises(RuntimeError, match="mongo is down"):
+            await TodoService.delete_todo(FAKE_TODO_ID, FAKE_USER_ID)
+
+        # Still there, so a retry deletes both.
+        mock_todo_repo.delete.assert_not_awaited()
+
+    async def test_a_bulk_delete_whose_chats_cannot_be_deleted_keeps_the_todos(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, todo_chats
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[_make_todo_doc(todo_id="a")])
+        mock_todo_repo.find_sub_todos = AsyncMock(return_value=[])
+        mock_todo_repo.bulk_delete = AsyncMock(return_value=1)
+        todo_chats.side_effect = RuntimeError("mongo is down")
+
+        with pytest.raises(RuntimeError, match="mongo is down"):
+            await TodoService.bulk_delete_todos(["a"], FAKE_USER_ID)
+
+        mock_todo_repo.bulk_delete.assert_not_awaited()
 
 
 class TestDeletingAParentDeletesItsSubTodos:
@@ -1227,6 +1291,19 @@ class TestBulkCompleteRunsTheTrackedLifecycle:
             "priority": Priority.HIGH,
         }
 
+    async def test_a_bulk_title_retitles_the_todos_chats_before_any_todo_is_written(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, retitled_chats
+    ):
+        mock_todo_repo.bulk_update = AsyncMock(return_value=2)
+        retitled_chats.side_effect = RuntimeError("mongo is down")
+        req = BulkUpdateRequest(todo_ids=["t", "u"], updates=TodoUpdateRequest(title="Renamed"))
+
+        with pytest.raises(RuntimeError, match="mongo is down"):
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        retitled_chats.assert_awaited_once_with(FAKE_USER_ID, ["t", "u"], "Renamed")
+        mock_todo_repo.bulk_update.assert_not_awaited()
+
     async def test_only_tracked_todos_means_no_plain_write(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
@@ -1310,6 +1387,18 @@ class TestBulkDeleteClosesTriggers:
         assert order == ["teardown", "delete"]
         teardown.assert_awaited_once_with("a", FAKE_USER_ID, reason="bulk_deleted")
         canvas.assert_awaited_once_with("a")
+
+    async def test_every_deleted_todos_chat_goes_with_it(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, todo_chats
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[_make_todo_doc(todo_id="a"), _make_todo_doc(todo_id="b")]
+        )
+        mock_todo_repo.bulk_delete = AsyncMock(return_value=2)
+
+        await TodoService.bulk_delete_todos(["a", "b"], FAKE_USER_ID)
+
+        todo_chats.assert_awaited_once_with(FAKE_USER_ID, ["a", "b"])
 
     async def test_a_canvas_index_that_cannot_be_dropped_does_not_stop_the_delete(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
@@ -1564,6 +1653,79 @@ class TestProjectService:
         mock_project_repo.delete.assert_awaited_once_with(FAKE_PROJECT_ID, user_id=FAKE_USER_ID)
 
 
+class TestEveryProjectLookupIsTheUsersOwn:
+    """Each project check reads this user's project by its id; any other read finds nothing."""
+
+    @pytest.fixture
+    def work(self, mock_project_repo) -> ProjectDocument:
+        work = _make_project_doc(project_id=FAKE_PROJECT_ID, name="Work")
+
+        async def owned(project_id: str, *, user_id: str) -> ProjectDocument | None:
+            return work if (project_id, user_id) == (FAKE_PROJECT_ID, FAKE_USER_ID) else None
+
+        mock_project_repo.get = AsyncMock(side_effect=owned)
+        return work
+
+    async def test_require_project_returns_the_users_project(self, mock_project_repo, work):
+        assert await require_project(FAKE_USER_ID, FAKE_PROJECT_ID) is work
+
+    async def test_require_project_refuses_another_users_project(self, mock_project_repo, work):
+        with pytest.raises(ValueError) as raised:
+            await require_project(UNKNOWN_USER_ID, FAKE_PROJECT_ID)
+
+        assert str(raised.value) == f"Project {FAKE_PROJECT_ID} not found"
+
+    async def test_a_todo_is_created_in_the_users_project(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, work
+    ):
+        mock_todo_repo.create = AsyncMock(return_value=_make_todo_doc(project_id=FAKE_PROJECT_ID))
+
+        await TodoService.create_todo(
+            TodoModel(title="Buy milk", project_id=FAKE_PROJECT_ID), FAKE_USER_ID
+        )
+
+        mock_todo_repo.create.assert_awaited_once()
+
+    async def test_a_todo_moves_into_the_users_project(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, work
+    ):
+        moved = _make_todo_doc(todo_id=FAKE_TODO_ID, project_id=FAKE_PROJECT_ID)
+        mock_todo_repo.update = AsyncMock(return_value=moved)
+
+        result = await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(project_id=FAKE_PROJECT_ID), FAKE_USER_ID
+        )
+
+        assert result.project_id == FAKE_PROJECT_ID
+
+    async def test_a_bulk_move_goes_into_the_users_project(
+        self, mock_todo_repo, mock_project_repo, mock_sync, work
+    ):
+        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+
+        result = await TodoService.bulk_move_todos(
+            BulkMoveRequest(todo_ids=["a"], project_id=FAKE_PROJECT_ID), FAKE_USER_ID
+        )
+
+        assert "Moved 1" in result.message
+
+    async def test_the_users_project_is_renamed(self, mock_todo_repo, mock_project_repo, work):
+        mock_project_repo.update = AsyncMock(
+            return_value=_make_project_doc(project_id=FAKE_PROJECT_ID, name="New")
+        )
+
+        result = await ProjectService.update_project(
+            FAKE_PROJECT_ID, UpdateProjectRequest(name="New"), FAKE_USER_ID
+        )
+
+        assert result.name == "New"
+
+    async def test_the_users_project_is_deleted(self, mock_todo_repo, mock_project_repo, work):
+        await ProjectService.delete_project(FAKE_PROJECT_ID, FAKE_USER_ID)
+
+        mock_project_repo.delete.assert_awaited_once_with(FAKE_PROJECT_ID, user_id=FAKE_USER_ID)
+
+
 # ===========================================================================
 # Compatibility wrappers
 # ===========================================================================
@@ -1743,13 +1905,16 @@ class TestBulkServiceDelete:
             await bulk_service_delete_todos(["a", "b"], FAKE_USER_ID)
         mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), TodosDeleted(count=2))
 
-    async def test_no_todos_raises_404(self, mock_bulk_repos):
+    async def test_no_matching_todo_is_reported_as_failed(self, mock_bulk_repos):
+        """Unknown ids come back named in failed for the agent to correct, not as an HTTP 404."""
         todo_repo, _ = mock_bulk_repos
         todo_repo.find_by_ids = AsyncMock(return_value=[])
         todo_repo.bulk_delete = AsyncMock(return_value=0)
-        with pytest.raises(HTTPException) as exc:
-            await bulk_service_delete_todos(["a"], FAKE_USER_ID)
-        assert exc.value.status_code == 404
+
+        result = await bulk_service_delete_todos(["a"], FAKE_USER_ID)
+
+        assert result.success == []
+        assert result.failed == ["a"]
 
     async def test_subscribed_todo_tears_down_before_delete(self, mock_bulk_repos):
         """Teardown must use the deleted doc's own id/user and the bulk-delete reason — once gone, a wrong id or reason leaks the trigger."""
@@ -1960,9 +2125,11 @@ class TestReopenOfATakenRef:
         created: list[TriggerSubscription] = []
 
         async def register(
-            **kwargs: object,
+            *, trigger_name: str, conditions: list[SubscriptionCondition], **rest: object
         ) -> tuple[TriggerSubscription, None, bool]:
-            subscription, outcome, created_flag = await _registered(**kwargs)
+            subscription, outcome, created_flag = await _registered(
+                trigger_name=trigger_name, conditions=conditions, **rest
+            )
             created.append(subscription)
             return subscription, outcome, created_flag
 
@@ -1998,6 +2165,107 @@ class TestReopenOfATakenRef:
             )
 
         assert raised.value is failure
+
+
+@pytest.fixture
+def reopen_seams() -> Iterator[SimpleNamespace]:
+    """Patch what a landed reopen does to a tracked todo: activity entry, search flag, sync."""
+    with (
+        patch("app.services.todos.todo_service.record_activity", new_callable=AsyncMock) as record,
+        patch(
+            "app.services.todos.todo_service.set_canvas_completed", new_callable=AsyncMock
+        ) as flag,
+        patch("app.services.todos.todo_service.schedule_gaia_tasks_sync") as sync,
+    ):
+        yield SimpleNamespace(record=record, flag=flag, sync=sync)
+
+
+def _tracked(todo_id: str, *, completed: bool) -> TodoDocument:
+    return _make_todo_doc(
+        todo_id=todo_id,
+        completed=completed,
+        labels=[GAIA_TRACKED_LABEL],
+        vfs_path=f"/workspace/gaia-tasks/{todo_id}",
+    )
+
+
+class TestAReopenedTrackedTodoIsOpenAgain:
+    """Completion logged the todo and hid its canvas from active search; a reopen undoes both."""
+
+    async def test_unticking_a_tracked_todo_logs_the_reopen_and_shows_its_canvas_again(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, reopen_seams
+    ):
+        done = _tracked(FAKE_TODO_ID, completed=True)
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[done])
+        mock_todo_repo.update = AsyncMock(return_value=_tracked(FAKE_TODO_ID, completed=False))
+
+        await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(completed=False), FAKE_USER_ID
+        )
+
+        reopen_seams.record.assert_awaited_once_with(
+            FAKE_TODO_ID, FAKE_USER_ID, TodoActivityEvent.REOPENED, "via UI"
+        )
+        reopen_seams.flag.assert_awaited_once_with(FAKE_TODO_ID, completed=False)
+        reopen_seams.sync.assert_called_once_with(FAKE_USER_ID)
+
+    async def test_a_bulk_reopen_settles_only_the_tracked_todos_it_reopened(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, reopen_seams
+    ):
+        done_tracked = _tracked("a", completed=True)
+        done_plain = _make_todo_doc(todo_id="b", completed=True)
+        open_tracked = _tracked("c", completed=False)
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[done_tracked, done_plain, open_tracked]
+        )
+        mock_todo_repo.bulk_update = AsyncMock(return_value=3)
+
+        await TodoService.bulk_update_todos(
+            BulkUpdateRequest(todo_ids=["a", "b", "c"], updates=TodoUpdateRequest(completed=False)),
+            FAKE_USER_ID,
+        )
+
+        reopen_seams.record.assert_awaited_once_with(
+            "a", FAKE_USER_ID, TodoActivityEvent.REOPENED, "via UI"
+        )
+        reopen_seams.flag.assert_awaited_once_with("a", completed=False)
+        reopen_seams.sync.assert_called_once_with(FAKE_USER_ID)
+
+    async def test_a_reopen_with_no_completed_tracked_todo_touches_no_tracked_state(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, reopen_seams
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[
+                _make_todo_doc(todo_id="b", completed=True),
+                _tracked("c", completed=False),
+            ]
+        )
+        mock_todo_repo.bulk_update = AsyncMock(return_value=2)
+
+        await TodoService.bulk_update_todos(
+            BulkUpdateRequest(todo_ids=["b", "c"], updates=TodoUpdateRequest(completed=False)),
+            FAKE_USER_ID,
+        )
+
+        reopen_seams.record.assert_not_awaited()
+        reopen_seams.flag.assert_not_awaited()
+        reopen_seams.sync.assert_not_called()
+
+    async def test_a_reopen_that_does_not_land_leaves_the_todo_as_completed(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, reopen_seams
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[_tracked(FAKE_TODO_ID, completed=True)]
+        )
+        mock_todo_repo.update = AsyncMock(side_effect=RuntimeError("mongo down"))
+
+        with pytest.raises(RuntimeError):
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(completed=False), FAKE_USER_ID
+            )
+
+        reopen_seams.record.assert_not_awaited()
+        reopen_seams.flag.assert_not_awaited()
 
 
 class TestReopenWatchesTheRefAgain:
@@ -2056,9 +2324,11 @@ class TestReopenWatchesTheRefAgain:
         created: list[TriggerSubscription] = []
 
         async def register(
-            **kwargs: object,
+            *, trigger_name: str, conditions: list[SubscriptionCondition], **rest: object
         ) -> tuple[TriggerSubscription, None, bool]:
-            subscription, outcome, created_flag = await _registered(**kwargs)
+            subscription, outcome, created_flag = await _registered(
+                trigger_name=trigger_name, conditions=conditions, **rest
+            )
             created.append(subscription)
             return subscription, outcome, created_flag
 
@@ -2193,3 +2463,24 @@ class TestReopenWatchesTheRefAgain:
         )
         mock_todo_repo.bulk_update.assert_not_awaited()
         register.assert_not_awaited()
+
+
+_REAL = "6ae10080d5575101b9f90861"
+# The id gpt-5.6-luna actually sent for _REAL in the ownership eval: the 8th
+# hex character copied from a sibling todo created a second later.
+_MISCOPIED = "6ae10081d5575101b9f90861"
+
+
+@pytest.mark.unit
+class TestBulkDeleteReportsWhatItDeleted:
+    """A bulk delete reports the ids it deleted and the ids that matched nothing, never a guess."""
+
+    async def test_an_id_that_matches_no_todo_is_failed_not_success(self, mock_bulk_repos):
+        todo_repo, _ = mock_bulk_repos
+        todo_repo.find_by_ids = AsyncMock(return_value=[_make_todo_doc(todo_id=_REAL)])
+        todo_repo.bulk_delete = AsyncMock(return_value=1)
+
+        result = await TodoService.bulk_delete_todos([_MISCOPIED, _REAL], FAKE_USER_ID)
+
+        assert result.success == [_REAL]
+        assert result.failed == [_MISCOPIED]

@@ -11,12 +11,16 @@ import asyncio
 import json
 import re as _re
 from types import SimpleNamespace
-from typing import cast
+from typing import TypedDict, cast
 from unittest.mock import AsyncMock, patch
 
-from langchain_core.language_models import BaseChatModel, LanguageModelLike
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain.agents.middleware.types import ToolCallRequest
+from langchain_core.language_models import BaseChatModel, LanguageModelInput, LanguageModelLike
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.runnables import RunnableLambda
+from langgraph.graph import StateGraph
 from langgraph.types import Command
 import pytest
 
@@ -37,6 +41,7 @@ from app.constants.summarization import (
     COMPACTION_FALLBACK_HEAD_CHARS,
     COMPACTION_FALLBACK_TAIL_CHARS,
     COMPACTION_SUMMARY_MAX_CHARS,
+    COMPACTION_SUMMARY_TIMEOUT_SECONDS,
     MIN_COMPACTION_SIZE,
 )
 from app.services.storage import JuiceFSUnavailable
@@ -64,7 +69,7 @@ class _StubLog:
         pass
 
 
-from tests.helpers import create_fake_llm
+from tests.helpers import create_fake_llm, tool_call_request
 
 WROTE = (
     "/mnt/jfs/users/u1/sessions/conv1/tool_outputs/x.json",
@@ -72,13 +77,11 @@ WROTE = (
 )
 
 
-def _request(tool_name: str = "search", *, messages: list | None = None) -> SimpleNamespace:
-    return SimpleNamespace(
-        tool_call={"name": tool_name, "id": "call_1", "args": {"q": "foo"}},
-        runtime=SimpleNamespace(
-            config={"configurable": {"user_id": "u1", "vfs_session_id": "conv1"}}
-        ),
-        state={"messages": messages or []},
+def _request() -> ToolCallRequest:
+    return tool_call_request(
+        {"name": "search", "id": "call_1", "args": {"q": "foo"}},
+        configurable={"user_id": "u1", "vfs_session_id": "conv1"},
+        state={"messages": []},
     )
 
 
@@ -135,6 +138,29 @@ class TestShouldCompact:
         ok, reason = _decide(mw, _tool_msg("tiny"), "search", 0.0)
         assert ok is True and reason == "always_persist_tool"
 
+    @pytest.mark.parametrize(
+        ("count", "expected"),
+        [(3, (False, "")), (4, (True, "record_limit (4 records)"))],
+        ids=["at_limit", "one_over"],
+    )
+    def test_a_record_limit_spills_only_past_its_count(
+        self, count: int, expected: tuple[bool, str]
+    ) -> None:
+        content = json.dumps({"data": [{"i": i} for i in range(count)]})
+
+        decision = should_compact_output(
+            content,
+            "t",
+            0.0,
+            max_output_chars=10_000,
+            compaction_threshold=1.0,
+            always_persist=False,
+            excluded=False,
+            max_records=3,
+        )
+
+        assert decision == expected
+
     def test_excluded_beats_always_persist(self) -> None:
         # excluded is checked first; a tool in both lists must NOT compact
         mw = WorkspaceCompactionMiddleware(
@@ -147,12 +173,16 @@ class TestShouldCompact:
 class TestContextUsage:
     def test_no_state_is_zero(self) -> None:
         mw = WorkspaceCompactionMiddleware()
-        assert mw._get_context_usage(SimpleNamespace(state=None)) == pytest.approx(0.0)
+        request = tool_call_request({"name": "search", "id": "call_1", "args": {}})
+        assert mw._get_context_usage(request) == pytest.approx(0.0)
 
     def test_usage_is_capped_at_one(self) -> None:
         mw = WorkspaceCompactionMiddleware(context_window=1000)
-        msgs = [SimpleNamespace(content="z" * 8000)]  # 8000 chars // 4 = 2000 tokens > window
-        usage = mw._get_context_usage(SimpleNamespace(state={"messages": msgs}))
+        msgs = [_tool_msg("z" * 8000)]  # 8000 chars // 4 = 2000 tokens > window
+        request = tool_call_request(
+            {"name": "search", "id": "call_1", "args": {}}, state={"messages": msgs}
+        )
+        usage = mw._get_context_usage(request)
         assert usage == pytest.approx(1.0)
 
 
@@ -226,7 +256,7 @@ class TestAwrapToolCall:
 
         assert isinstance(result, ToolMessage)
         assert len(result.content) < len(big) / 10
-        assert result.content.startswith(COMPACTION_TRUNCATED_MARKER)
+        assert result.text.startswith(COMPACTION_TRUNCATED_MARKER)
         assert "HEAD" in result.content and "TAIL" in result.content
         assert result.additional_kwargs["compacted"] is True
         assert result.additional_kwargs["compaction_strategy"] == "in_context_truncation"
@@ -252,6 +282,7 @@ class TestAwrapToolCall:
 
         budget = COMPACTION_FALLBACK_HEAD_CHARS + COMPACTION_FALLBACK_TAIL_CHARS
         # marker + elision note add a bounded, content-independent overhead
+        assert isinstance(result, ToolMessage)
         assert len(result.content) < budget + 500
 
     async def test_fallback_leaves_output_already_under_budget_alone(self) -> None:
@@ -292,6 +323,7 @@ class TestAwrapToolCall:
         ):
             result = await mw.awrap_tool_call(_request(), handler)
 
+        assert isinstance(result, ToolMessage)
         assert result.status == "error"
         assert result.additional_kwargs["compaction_strategy"] == "in_context_truncation"
 
@@ -311,12 +343,13 @@ class TestAwrapToolCall:
         ):
             result = await mw.awrap_tool_call(_request(), handler)
 
+        assert isinstance(result, ToolMessage)
         assert result.additional_kwargs["compaction_strategy"] == "in_context_truncation"
 
     async def test_media_blocks_still_skip_compaction_without_a_workspace(self) -> None:
         """Inline media is the payload; it must not be truncated by the fallback."""
         mw = WorkspaceCompactionMiddleware(max_output_chars=10)
-        blocks = [
+        blocks: list[str | dict[str, object]] = [
             {"type": "text", "text": "here is the screenshot"},
             {"type": "image", "source": {"type": "base64", "data": "A" * 100_000}},
         ]
@@ -357,9 +390,9 @@ class TestAwrapToolCall:
         """No workspace identity means no spill target — compact in context."""
         mw = WorkspaceCompactionMiddleware(max_output_chars=10)
         big = "x" * 200_000
-        request = SimpleNamespace(
-            tool_call={"name": "search", "id": "call_1", "args": {}},
-            runtime=SimpleNamespace(config={"configurable": {}}),  # no user_id
+        request = tool_call_request(
+            {"name": "search", "id": "call_1", "args": {}},
+            configurable={},  # no user_id
             state={"messages": []},
         )
 
@@ -373,7 +406,8 @@ class TestAwrapToolCall:
         ) as mock_write:
             result = await mw.awrap_tool_call(request, handler)
 
-        assert result.content.startswith(COMPACTION_TRUNCATED_MARKER)
+        assert isinstance(result, ToolMessage)
+        assert result.text.startswith(COMPACTION_TRUNCATED_MARKER)
         assert len(result.content) < len(big) / 10
         assert result.additional_kwargs["compaction_strategy"] == "in_context_truncation"
         mock_write.assert_not_awaited()
@@ -388,16 +422,39 @@ class TestSummary:
         summary = _summarize_output(json.dumps({"a": 1, "b": 2}), "fetch")
         assert "keys" in summary and "fetch" in summary
 
+    def test_an_enveloped_record_list_previews_its_first_three_records(self) -> None:
+        content = json.dumps({"ok": True, "data": [{"i": i} for i in range(5)]})
+
+        assert _summarize_output(content, "t") == (
+            '[t] Returned 5 records (alongside {"ok": true}). '
+            'Preview: [{"i": 0}, {"i": 1}, {"i": 2}]...'
+        )
+
+    def test_an_enveloped_record_preview_is_capped_at_200_chars(self) -> None:
+        records = [{"i": "x" * 100} for _ in range(3)]
+
+        summary = _summarize_output(json.dumps({"data": records}), "t")
+
+        preview = summary.split("Preview: ", 1)[1]
+        assert preview == json.dumps(records)[:200] + "..."
+
     def test_plain_text_is_truncated(self) -> None:
         summary = _summarize_output("z" * 2000, "bash")
         assert summary.endswith("...")
         assert len(summary) < 2000
 
 
-class _BrokenModel:
+class _BrokenModel(BaseChatModel):
     """Stands in for an unreachable summarizer endpoint."""
 
-    async def ainvoke(self, _messages: object) -> object:
+    @property
+    def _llm_type(self) -> str:
+        return "broken"
+
+    def _generate(self, *a, **k):
+        raise NotImplementedError
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **k):
         raise RuntimeError("endpoint down")
 
 
@@ -407,7 +464,7 @@ class _SlowModel:
     def __init__(self, delay: float) -> None:
         self.delay = delay
 
-    async def ainvoke(self, _messages: object) -> object:
+    async def ainvoke(self, _messages: object, config: object = None) -> object:
         await asyncio.sleep(self.delay)
         return AIMessage(content="too late")
 
@@ -428,31 +485,6 @@ class _RecordingDigestModel(BaseChatModel):
     async def _agenerate(self, messages, stop=None, run_manager=None, **k):
         _DIGEST_CAPTURE["messages"] = messages
         return ChatResult(generations=[ChatGeneration(message=AIMessage(content="  ok  "))])
-
-
-_DIGEST_SWAP: dict = {"done": False}
-
-
-class _SwapAfterInvokeModel(BaseChatModel):
-    """Let the first invoke complete, then swap in an unusable payload.
-
-    Exercises the narrowing branch where content is neither str nor list.
-    """
-
-    @property
-    def _llm_type(self) -> str:
-        return "swap"
-
-    def _generate(self, *a, **k):
-        raise NotImplementedError
-
-    async def _agenerate(self, messages, stop=None, run_manager=None, **k):
-        from types import SimpleNamespace
-
-        result = ChatResult(generations=[ChatGeneration(message=AIMessage(content="fine"))])
-        if not _DIGEST_SWAP["done"]:
-            result.generations[0].message = SimpleNamespace(content=12345)
-        return result
 
 
 class _OverCapDigestModel(BaseChatModel):
@@ -495,10 +527,10 @@ class TestLLMSummary:
         )
 
     @staticmethod
-    def _request_without_identity() -> SimpleNamespace:
-        return SimpleNamespace(
-            tool_call={"name": "search", "id": "call_1", "args": {}},
-            runtime=SimpleNamespace(config={"configurable": {}}),
+    def _request_without_identity() -> ToolCallRequest:
+        return tool_call_request(
+            {"name": "search", "id": "call_1", "args": {}},
+            configurable={},
             state={"messages": []},
         )
 
@@ -581,7 +613,7 @@ class TestLLMSummary:
             result = await mw.awrap_tool_call(self._request_without_identity(), handler)
 
         assert isinstance(result, ToolMessage)
-        assert result.content.startswith(COMPACTION_TRUNCATED_MARKER)
+        assert result.text.startswith(COMPACTION_TRUNCATED_MARKER)
         assert result.additional_kwargs["compaction_strategy"] == "in_context_truncation"
 
     async def test_empty_digest_falls_back(self) -> None:
@@ -751,6 +783,29 @@ class TestDigestComposition:
         )
         assert "a" * 500 in msg.content
 
+    def test_an_enveloped_record_list_keeps_its_envelope_fields_beside_the_digest(
+        self,
+    ) -> None:
+        content = json.dumps(
+            {"fetched_at": "2026-11-04T10:00:00Z", "truncated": True, "data": [{"i": 1}]}
+        )
+
+        msg = _summarized_compact_message(
+            summary="the digest",
+            tool_name="t",
+            tool_call_id="c",
+            reason="r",
+            status="success",
+            content_str=content,
+            spilled=("jsonl", "/w/t.jsonl"),
+            existing_additional_kwargs={},
+        )
+
+        assert msg.text.startswith(
+            "[t compacted: r] the digest\n\n"
+            '[Envelope fields: {"fetched_at": "2026-11-04T10:00:00Z", "truncated": true}]\n\n'
+        )
+
 
 class TestOffloadKwargsFields:
     def test_every_field_is_set_from_the_inputs(self) -> None:
@@ -834,7 +889,7 @@ class TestLLMSummarizeInternals:
             return SimpleNamespace(content=12345, junk="x")
 
         monkeypatch = pytest.MonkeyPatch()
-        monkeypatch.setattr(cm.asyncio, "wait_for", swapping_wait_for)
+        monkeypatch.setattr(asyncio, "wait_for", swapping_wait_for)
         monkeypatch.setattr(cm, "log", log)
         try:
             from tests.helpers import create_fake_llm
@@ -861,7 +916,7 @@ class TestLLMSummarizeInternals:
             return SimpleNamespace(no_content_attr=True)
 
         monkeypatch = pytest.MonkeyPatch()
-        monkeypatch.setattr(cm.asyncio, "wait_for", swapping_wait_for)
+        monkeypatch.setattr(asyncio, "wait_for", swapping_wait_for)
         monkeypatch.setattr(cm, "log", log)
         try:
             from tests.helpers import create_fake_llm
@@ -945,9 +1000,9 @@ class TestLLMSummarizeInternals:
             timeouts.append(timeout)
             return await real_wait(coro, timeout)
 
-        with patch.object(cm.asyncio, "wait_for", side_effect=spy_wait_for):
+        with patch.object(asyncio, "wait_for", side_effect=spy_wait_for):
             await cm._llm_summarize_output(_InstantDigestModel(), "small", "tool")
-        assert timeouts == [cm.COMPACTION_SUMMARY_TIMEOUT_SECONDS]
+        assert timeouts == [COMPACTION_SUMMARY_TIMEOUT_SECONDS]
 
 
 class TestDigestWarningPayloads:
@@ -1003,11 +1058,9 @@ class TestKwargPlumbing:
     async def test_spill_write_receives_identity_and_raw_content(self) -> None:
         mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=None)
         content = json.dumps([{"i": i} for i in range(500)])
-        request = SimpleNamespace(
-            tool_call={"name": "search", "id": "call_1", "args": {}},
-            runtime=SimpleNamespace(
-                config={"configurable": {"user_id": "u-identity", "vfs_session_id": "c-identity"}}
-            ),
+        request = tool_call_request(
+            {"name": "search", "id": "call_1", "args": {}},
+            configurable={"user_id": "u-identity", "vfs_session_id": "c-identity"},
             state={"messages": []},
         )
 
@@ -1104,11 +1157,9 @@ class TestCompactToolOutputBoundary:
             name="search",
             additional_kwargs={"custom": "keep"},
         )
-        request = SimpleNamespace(
-            tool_call={"name": "search", "id": "call_1", "args": {}},
-            runtime=SimpleNamespace(
-                config={"configurable": {"user_id": "u1", "vfs_session_id": "conv1"}}
-            ),
+        request = tool_call_request(
+            {"name": "search", "id": "call_1", "args": {}},
+            configurable={"user_id": "u1", "vfs_session_id": "conv1"},
             state={"messages": []},
         )
 
@@ -1232,11 +1283,9 @@ class TestTruncateTierKwargs:
 
         mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=_BrokenModel())
         content = json.dumps([{"i": i} for i in range(500)])
-        request = SimpleNamespace(
-            tool_call={"name": "run_query", "id": "call_9", "args": {}},
-            runtime=SimpleNamespace(
-                config={"configurable": {"user_id": "u1", "vfs_session_id": "conv1"}}
-            ),
+        request = tool_call_request(
+            {"name": "run_query", "id": "call_9", "args": {}},
+            configurable={"user_id": "u1", "vfs_session_id": "conv1"},
             state={"messages": []},
         )
 
@@ -1488,11 +1537,9 @@ class TestFullKwargsCapture:
         async def handler(_req):
             return ToolMessage(content=content, tool_call_id="call_1", name="search")
 
-        request = SimpleNamespace(
-            tool_call={"name": "search", "id": "call_1", "args": {}},
-            runtime=SimpleNamespace(
-                config={"configurable": {"user_id": "u1", "vfs_session_id": "c1"}}
-            ),
+        request = tool_call_request(
+            {"name": "search", "id": "call_1", "args": {}},
+            configurable={"user_id": "u1", "vfs_session_id": "c1"},
             state={"messages": []},
         )
 
@@ -1540,11 +1587,9 @@ class TestFullKwargsCapture:
         async def handler(_req):
             return ToolMessage(content=content, tool_call_id="call_1", name="search")
 
-        request = SimpleNamespace(
-            tool_call={"name": "search", "id": "call_1", "args": {}},
-            runtime=SimpleNamespace(
-                config={"configurable": {"user_id": "u1", "vfs_session_id": "c1"}}
-            ),
+        request = tool_call_request(
+            {"name": "search", "id": "call_1", "args": {}},
+            configurable={"user_id": "u1", "vfs_session_id": "c1"},
             state={"messages": []},
         )
 
@@ -1587,11 +1632,9 @@ class TestFullKwargsCapture:
         async def handler(_req):
             return ToolMessage(content=content, tool_call_id="call_1", name="search")
 
-        request = SimpleNamespace(
-            tool_call={"name": "search", "id": "call_1", "args": {}},
-            runtime=SimpleNamespace(
-                config={"configurable": {"user_id": "u1", "vfs_session_id": "c1"}}
-            ),
+        request = tool_call_request(
+            {"name": "search", "id": "call_1", "args": {}},
+            configurable={"user_id": "u1", "vfs_session_id": "c1"},
             state={"messages": []},
         )
 
@@ -1615,19 +1658,17 @@ class TestUnusablePayloadKwargs:
     """The narrowing branch must reject non-str/list content."""
 
     async def test_unusable_payload_kwargs_are_exact(self) -> None:
-        from types import SimpleNamespace
-
         from app.agents.middleware import compaction as cm
 
-        class _IntContent:
-            async def ainvoke(self, messages, **kwargs):
-                return SimpleNamespace(content=12345)
+        async def _int_content(_messages: LanguageModelInput) -> BaseMessage:
+            # model_construct skips validation so the reply can carry non-text content
+            return AIMessage.model_construct(content=12345)
 
         log = _StubLog()
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(cm, "log", log)
         try:
-            out = await cm._llm_summarize_output(_IntContent(), "content", "my_tool")
+            out = await cm._llm_summarize_output(RunnableLambda(_int_content), "content", "my_tool")
         finally:
             monkeypatch.undo()
 
@@ -1787,11 +1828,9 @@ class TestWritePathAndIdentityKwargs:
                 additional_kwargs={"pre": True},
             )
 
-        request = SimpleNamespace(
-            tool_call={"name": "search", "id": "call_1", "args": {}},
-            runtime=SimpleNamespace(
-                config={"configurable": {"user_id": "u1", "vfs_session_id": "c1"}}
-            ),
+        request = tool_call_request(
+            {"name": "search", "id": "call_1", "args": {}},
+            configurable={"user_id": "u1", "vfs_session_id": "c1"},
             state={"messages": []},
         )
 
@@ -1870,4 +1909,38 @@ class TestCommandReturningToolsAreCompacted:
             return Command(update=update)
 
         result = await mw.awrap_tool_call(_request(), handler)
+        assert isinstance(result, Command)
         assert result.update["messages"][0].content == big
+
+
+class _S(TypedDict):
+    done: bool
+
+
+class TestDigestNeverStreamsAsReply:
+    """Regression: the digest call ran inside the tool node with no silent flag.
+
+    LangGraph's messages stream carries every chat model run in a node, and the
+    executor/subagent/workflow drivers fold any non-silent chunk into the result.
+    """
+
+    async def test_digest_tokens_stream_silent(self) -> None:
+        async def tool_node(state: _S) -> _S:
+            llm = GenericFakeChatModel(messages=iter([AIMessage(content="DIGEST TEXT")]))
+            await cm._llm_summarize_output(llm, "x" * 10_000, "web")
+            return {"done": True}
+
+        builder = StateGraph(_S, input_schema=_S, output_schema=_S)
+        builder.add_node("tools", tool_node)
+        builder.set_entry_point("tools")
+        silent_flags = [
+            bool(metadata.get("silent"))
+            async for chunk, metadata in builder.compile().astream(
+                {"done": False}, stream_mode="messages"
+            )
+            if isinstance(chunk, AIMessageChunk)
+            and isinstance(metadata, dict)
+            and chunk.text.strip()
+        ]
+
+        assert silent_flags and all(silent_flags)

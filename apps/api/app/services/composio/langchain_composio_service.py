@@ -26,7 +26,6 @@ from app.constants.log_tags import LogTag
 from app.models.agent_config import RunMetadata
 from app.services.composio.account_scope import account_scope
 from app.services.composio.dead_account import (
-    ConnectedAccountGoneError,
     is_dead_account_error,
     message_mentions_dead_account,
 )
@@ -35,6 +34,7 @@ from app.services.integrations.integration_accounts import (
     primary_account,
 )
 from app.services.integrations.integration_expiry import expire_account
+from app.utils.errors import IntegrationNotConnectedError
 from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log, log_context
 
@@ -109,6 +109,55 @@ async def _expire_and_request_reconnect(
     )
 
 
+def _log_invocation_outcome(
+    tool: str, toolkit: str | None, user_id: str | None, result: object
+) -> None:
+    """Record a Composio call's outcome on the wide event; never fails the call."""
+    try:
+        succeeded: bool | None = None
+        err_preview: str | None = None
+        if isinstance(result, dict):
+            response: ToolExecutionResponse = t.cast(ToolExecutionResponse, result)
+            succeeded = response.get("successful")
+            if succeeded is False:
+                err_preview = str(response.get("error"))[:200]
+        log.set(
+            composio_tool_invocation={
+                "tool": tool,
+                "toolkit": toolkit,
+                "user_id": user_id,
+                "successful": succeeded,
+            }
+        )
+        # Composio also reports a dead account without raising. That
+        # string match is too loose to drive a state mutation, so this
+        # stays a log line — but it shares the raising path's markers.
+        if err_preview is not None:
+            if message_mentions_dead_account(err_preview):
+                log.warning(
+                    f"{LogTag.COMPOSIO} composio tool failed — likely a dead connected account",
+                    tool=tool,
+                    toolkit=toolkit,
+                    user_id=user_id,
+                    err_preview=err_preview,
+                )
+            else:
+                log.info(
+                    f"{LogTag.COMPOSIO} composio tool returned successful=False",
+                    tool=tool,
+                    toolkit=toolkit,
+                    user_id=user_id,
+                    err_preview=err_preview,
+                )
+    except Exception as obs_err:  # observability must not break tool
+        log.debug(
+            f"{LogTag.COMPOSIO} composio invocation log skipped for",
+            tool=tool,
+            error=str(obs_err),
+            error_type=type(obs_err).__name__,
+        )
+
+
 def _clean_reserved_keyword(keyword: str) -> str:
     return f"{keyword}_rs"
 
@@ -171,18 +220,32 @@ class ValidationFailure(t.TypedDict):
     data: None
 
 
+def _argument_failure(tool: object, tool_input: object) -> ValidationFailure | None:
+    """Parse a run's arguments before its body; the failure result when they are invalid.
+
+    Only the parse is checked here: a ValidationError the body raises after its
+    provider call propagates as the execution error it is.
+    """
+    if not (isinstance(tool, BaseStructuredTool) and isinstance(tool_input, dict)):
+        return None
+    try:
+        # The parse run performs before the body; langchain exposes no public twin.
+        tool._to_args_and_kwargs(dict(tool_input), None)
+    except pydantic.ValidationError as e:
+        return {"successful": False, "error": parse_pydantic_error(e), "data": None}
+    return None
+
+
 def _validation_failure_as_result(
     run: t.Callable[_P, _R],
 ) -> t.Callable[_P, _R | ValidationFailure]:
     """Wrap a tool's run so invalid arguments come back as a failure result, not a raise."""
 
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R | ValidationFailure:
-        try:
-            # Unmutated: this wraps run at class definition, before mutmut can switch a
-            # mutant in; replaying the edit shows TestInvalidArgumentsReturnAFailure fails.
-            return run(*args, **kwargs)  # pragma: no mutate
-        except pydantic.ValidationError as e:
-            return {"successful": False, "error": parse_pydantic_error(e), "data": None}
+        # Unmutated: this wraps run at class definition, before mutmut can switch a
+        # mutant in; run(self, tool_input, ...) always gets both positionally.
+        failure = _argument_failure(args[0], args[1])  # pragma: no mutate
+        return run(*args, **kwargs) if failure is None else failure  # pragma: no mutate
 
     return wrapper
 
@@ -328,56 +391,14 @@ class LangchainProvider(
                 if not is_dead_account_error(e):
                     raise
                 return self._handle_dead_connected_account(tool, toolkit, run_metadata, str(e))
-            except ConnectedAccountGoneError as e:
-                # Custom tools reach the provider through the proxy, which reports
-                # the same dead account as this error instead of a raised 404.
+            except IntegrationNotConnectedError as e:
+                # Nothing usable was connected: invoke_tool shows the connect card and
+                # blocks the integration for the run. A grant that died here is expired first.
+                if not e.grant_died:
+                    raise
                 return self._handle_dead_connected_account(tool, toolkit, run_metadata, str(e))
 
-            # Surface tool invocation outcome for observability.
-            try:
-                succeeded: bool | None = None
-                err_preview: str | None = None
-                if isinstance(result, dict):
-                    response: ToolExecutionResponse = t.cast(ToolExecutionResponse, result)
-                    succeeded = response.get("successful")
-                    if succeeded is False:
-                        err_preview = str(response.get("error"))[:200]
-                log.set(
-                    composio_tool_invocation={
-                        "tool": tool,
-                        "toolkit": toolkit,
-                        "user_id": user_id,
-                        "successful": succeeded,
-                    }
-                )
-                # Composio also reports a dead account without raising. That
-                # string match is too loose to drive a state mutation, so this
-                # stays a log line — but it shares the raising path's markers.
-                if err_preview is not None:
-                    if message_mentions_dead_account(err_preview):
-                        log.warning(
-                            f"{LogTag.COMPOSIO} composio tool failed — likely a dead connected account",
-                            tool=tool,
-                            toolkit=toolkit,
-                            user_id=user_id,
-                            err_preview=err_preview,
-                        )
-                    else:
-                        log.info(
-                            f"{LogTag.COMPOSIO} composio tool returned successful=False",
-                            tool=tool,
-                            toolkit=toolkit,
-                            user_id=user_id,
-                            err_preview=err_preview,
-                        )
-            except Exception as obs_err:  # observability must not break tool
-                log.debug(
-                    f"{LogTag.COMPOSIO} composio invocation log skipped for",
-                    tool=tool,
-                    error=str(obs_err),
-                    error_type=type(obs_err).__name__,
-                )
-
+            _log_invocation_outcome(tool, toolkit, user_id, result)
             return result
 
         parameters = get_signature_format_from_schema_params(
@@ -455,7 +476,6 @@ class LangchainProvider(
                     toolkit=getattr(getattr(tool, "toolkit", None), "slug", None),
                 ),
                 handle_tool_error=True,
-                handle_validation_error=True,
                 metadata=metadata,
             ),
         )

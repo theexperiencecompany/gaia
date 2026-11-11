@@ -12,13 +12,20 @@ __all__ = [
     "FeatureFlagEvaluated",
     "FeatureToggled",
     "FlagFallbackReason",
+    "InstructionsConflict",
+    "InstructionsScopeKind",
+    "InstructionsUpdated",
     "ProfileLinkCopied",
     "ProfileUpdated",
     "SettingsChatChannelPriorityUpdated",
     "SettingsDesktopPreferenceChanged",
     "SettingsNotificationsToggled",
     "SettingsPreferencesChanged",
+    "SettingsQuietHoursUpdated",
 ]
+
+#: Which kind of scope a set of standing instructions covers; never the integration's own id.
+InstructionsScopeKind = Literal["global", "integration"]
 
 FlagFallbackReason = Literal[
     "posthog_unconfigured", "evaluation_error", "flag_unevaluated", "killed", "user_choice"
@@ -33,6 +40,17 @@ class SettingsChatChannelPriorityUpdated(ServerEvent):
 
     first: Identifier
     count: int
+
+
+class SettingsQuietHoursUpdated(ServerEvent):
+    """A user changed their quiet hours: whether they are on and the local hours they span."""
+
+    event: ClassVar[str] = "settings:quiet_hours_updated"
+    budget_per_user_day: ClassVar[int] = 50
+
+    enabled: bool
+    start_hour: int
+    end_hour: int
 
 
 class SettingsNotificationsToggled(ServerEvent):
@@ -56,7 +74,6 @@ class SettingsPreferencesChanged(ServerEvent):
         "onboarding_preferences", "voice", "voice_star", "hil_approvals", "tool_approval"
     ]
     fields: list[Identifier] | None = None
-    has_custom_instructions: bool | None = None
     sent_with_gaia: bool | None = None
     voice_id: Identifier | None = None
     is_starred: bool | None = None
@@ -135,3 +152,25 @@ class FeatureFlagEvaluated(ServerEvent):
     enabled: bool | None = None
     variant: Identifier | None = None
     fallback_reason: FlagFallbackReason
+
+
+class InstructionsUpdated(ServerEvent):
+    """A set of standing instructions (global or one integration's) was saved or cleared."""
+
+    event: ClassVar[str] = "instructions:updated"
+    previous_names: ClassVar[tuple[str, ...]] = ("integration:instructions_updated",)
+    budget_per_user_day: ClassVar[int] = 30
+
+    scope_kind: InstructionsScopeKind
+    # Who wrote it: "user" in Settings, or "agent" for GAIA's instructions tools.
+    updated_by: Identifier
+    cleared: bool
+
+
+class InstructionsConflict(ServerEvent):
+    """A standing-instructions save was refused because another write landed first."""
+
+    event: ClassVar[str] = "instructions:conflict"
+    budget_per_user_day: ClassVar[int] = 20
+
+    scope_kind: InstructionsScopeKind

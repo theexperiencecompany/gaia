@@ -26,6 +26,8 @@ SUBAGENT_CACHE_TTL = ONE_HOUR_TTL
 # routing). Eventually consistent: a plan change takes effect within the TTL.
 SUBSCRIPTION_PLAN_CACHE_PREFIX = "subscription:"
 SUBSCRIPTION_PLAN_CACHE_TTL = FIVE_MINUTES_TTL
+# The day of month a subscription bills on: anchors the Pro allowance month. Same TTL.
+SUBSCRIPTION_BILLING_DAY_CACHE_PREFIX = "subscription_billing_day:"
 # The plan catalogue itself, keyed by whether inactive plans are included. Seeded
 # by scripts/payment_setup.py, which drops every key after writing.
 ACTIVE_PLANS_CACHE_KEY = "plans:active"
@@ -51,7 +53,7 @@ OAUTH_DISCOVERY_TTL = ONE_DAY_TTL
 MCP_TOOLS_CACHE_TTL = ONE_DAY_TTL
 USER_SKILLS_CACHE_TTL = TWELVE_HOUR_TTL
 SKILLS_TEXT_CACHE_TTL = TWELVE_HOUR_TTL
-INTEGRATION_INSTRUCTIONS_CACHE_TTL = ONE_DAY_TTL
+USER_INSTRUCTIONS_CACHE_TTL = ONE_DAY_TTL
 COMMUNITY_CACHE_TTL = FIVE_MINUTES_TTL
 FAVICON_CACHE_TTL = SIX_MONTH_TTL
 SEARCH_CACHE_TTL = ONE_DAY_TTL
@@ -99,13 +101,12 @@ USER_CACHE_PREFIX = "user"
 DEVICE_MANIFEST_CACHE_PREFIX = "device_manifest"
 # Redis SET NX EX gate that debounces UserRepository.touch_last_active.
 LAST_ACTIVE_GATE_PREFIX = "last_active_gate"
+# Redis hash per user: surface -> epoch seconds of the user's last inbound message there.
+USER_PRESENCE_PREFIX = "user_presence"
 
 # Cache key prefixes
 TEAM_CACHE_PREFIX = "team"
 CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"
-HANDOFF_METADATA_CACHE_PREFIX = "handoff_metadata"
-# Custom-MCP display name resolved for handoff (keyed by integration id).
-HANDOFF_NAME_CACHE_PREFIX = "handoff_name"
 SUBAGENT_CACHE_PREFIX = "subagent_info"
 OAUTH_STATE_PREFIX = "mcp_oauth_state"
 OAUTH_EXCLUDED_SCOPES_PREFIX = "mcp_oauth_excluded_scopes"
@@ -113,6 +114,13 @@ OAUTH_EXCLUDED_SCOPES_PREFIX = "mcp_oauth_excluded_scopes"
 # than the old ad-hoc dict; bump busts stale dict-shaped entries.
 OAUTH_DISCOVERY_PREFIX = "mcp_oauth_discovery_v2"
 OAUTH_STATUS_KEY = "OAUTH_STATUS"
+
+# Composio's toolkit catalog, shared by every admin; refreshed from Composio after the TTL.
+COMPOSIO_TOOLKIT_CATALOG_KEY = "composio:toolkit_catalog"
+COMPOSIO_TOOLKIT_CATALOG_TTL = SIX_HOUR_TTL
+MY_INTEGRATIONS_SNAPSHOT_KEY = "tools:user:{user_id}:my_snapshot"
+# Every user's integration-derived caches; a change to the integration catalog stales them all.
+ALL_USERS_TOOLS_CACHE_PATTERN = "tools:user:*"
 
 # Every cache derived from a user's integration set; ALL must be busted
 # together on any change or the views diverge (a stale OAUTH_STATUS once hid a
@@ -126,7 +134,7 @@ MCP_TOOLS_CACHE_KEY = "mcp:tools:all"
 USER_SKILLS_CACHE_KEY = "skills:user:{user_id}:agent:{agent_name}"
 # v2: the listing now merges in-memory builtin skills; bump busts stale empty entries.
 SKILLS_TEXT_CACHE_KEY = "skills:text:v2:{user_id}:{agent_name}"
-INTEGRATION_INSTRUCTIONS_CACHE_KEY = "integration_instructions:{user_id}"
+USER_INSTRUCTIONS_CACHE_KEY = "user_instructions:{user_id}"
 # Conversation-level artifact registry; long TTL with event-driven invalidation
 # on every upsert/remove — a chat turn reads it once instead of re-scanning the costly JuiceFS dir.
 CONV_ARTIFACTS_CACHE_PATTERN = "conv_artifacts:{user_id}:{conv_id}"
@@ -194,7 +202,18 @@ WORKFLOW_LIMIT_NOTICE_TTL = ONE_DAY_TTL
 BOT_UPGRADE_LINK_PREFIX = "bot:upgrade-link:"
 BOT_UPGRADE_LINK_TTL = ONE_HOUR_TTL
 
+# Every tool call one run made, in order, keyed by the run's stream id. Outlives
+# the longest run (a parked approval) so the trace and a playbook write read it whole.
+RUN_RECORD_PREFIX = "run_record:"
+RUN_RECORD_TTL = ONE_DAY_TTL * 2
+# The integrations a run already showed a connect card for; calls to them are refused.
+RUN_BLOCKED_INTEGRATIONS_PREFIX = "run_blocked_integrations:"
+
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
+# Set when an executor run ends asking the user to confirm; only then may the
+# next call_executor carry irreversible_approved (confirmation_gate.py).
+AWAITING_CONFIRMATION_PREFIX = "executor:awaiting_confirmation:"
+AWAITING_CONFIRMATION_TTL = ONE_HOUR_TTL
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
 # Keyed by holder: whatever holds the busy lock renews this while its process lives (a parked
 # run for as long as its park); a lock without it is a dead holder, reclaimable by anyone.
@@ -202,6 +221,9 @@ EXECUTOR_ALIVE_PREFIX = "executor:alive:"
 EXECUTOR_ALIVE_TTL = 60
 EXECUTOR_ALIVE_BEAT_SECONDS = 20
 EXECUTOR_ALIVE_TASK_NAME = "executor_alive_beat"
+# What a live holder has done so far (see executor_progress). Keyed by holder like the
+# alive key and renewed by the same beat, so it lives exactly as long as its run.
+EXECUTOR_PROGRESS_PREFIX = "executor:progress:"
 # A holder that has not proven it lives for this long could lapse before its next
 # renewal lands, so it stops rather than run beside whoever reclaims its lock.
 EXECUTOR_ALIVE_GIVE_UP_SECONDS = EXECUTOR_ALIVE_TTL - EXECUTOR_ALIVE_BEAT_SECONDS
@@ -248,15 +270,10 @@ ELEVENLABS_SHARED_VOICES_CACHE_KEY = "voice:elevenlabs_shared_voices"
 # seconds; on timeout the answer still reaches the user via the WebSocket push.
 VOICE_EXECUTOR_RESULT_TIMEOUT_S = 90.0
 
-# One-shot gate (SET NX) for the "priority compute used this month" in-app notice,
-# so a degraded pro user is told once per month, not once per turn.
-COST_BUDGET_NOTIFIED_KEY = "cost_budget_notified:{user_id}:{window}"
+# One-shot gate (SET NX) for the heads-up at PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION of
+# the month, so a pro user is told once per month, not once per request.
+COST_BUDGET_NEAR_NOTIFIED_KEY = "cost_budget_near_notified:{user_id}:{window}"
 
-# Keyed by user plus a hash of the answers it was written from, so a changed
-# Q1/Q2 answer reads a never-written key rather than a stale question. Two
-# hours covers a wizard someone walked away from before pressing completion.
-FIRST_QUESTION_CACHE_PREFIX = "onboarding:first_question:"
-FIRST_QUESTION_CACHE_TTL = 2 * ONE_HOUR_TTL
 #: Prefix of the tiered rate limiter's per-user counters: ``{prefix}:{user_id}:{feature}:{period}:{window}``.
 #: Named so a dev tool can clear one user's counters without knowing the rest of the key.
 RATE_LIMIT_KEY_PREFIX = "rate_limit"

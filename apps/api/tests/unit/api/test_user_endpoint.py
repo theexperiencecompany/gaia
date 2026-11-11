@@ -4,25 +4,34 @@ Tests the user endpoints with mocked service layer to verify
 routing, status codes, response bodies, auth, and validation.
 """
 
+import asyncio
 from collections.abc import Callable
+from http.cookies import SimpleCookie
 from typing import get_type_hints
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
+import pytest
 
 from app.api.v1.endpoints.user import get_me
+from app.config.settings import settings
+from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import (
     AuthenticatedUser,
     AuthenticatedUserResponse,
     OnboardingPreferences,
     OnboardingStatusResponse,
+    OnboardingSubdocument,
+    ProfilePictureUpload,
     UserDocument,
+    UserUpdate,
 )
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.auth import UserLoggedOut
-from shared.py.analytics.catalog.settings import ProfileUpdated
+from shared.py.analytics.catalog.settings import ProfileUpdated, SettingsQuietHoursUpdated
 from tests.conftest import FAKE_USER
+from tests.helpers import captured_wide_event
 
 USER_BASE = "/api/v1/user"
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
@@ -44,12 +53,127 @@ ONBOARDING_STATUS = OnboardingStatusResponse(
 
 
 # ---------------------------------------------------------------------------
+# /user/quiet-hours
+# ---------------------------------------------------------------------------
+
+
+class TestQuietHours:
+    """GET and PATCH /api/v1/user/quiet-hours."""
+
+    async def test_a_user_who_never_set_them_reads_the_default(self, client: AsyncClient):
+        with patch(
+            "app.services.user_service.user_repository.get",
+            AsyncMock(return_value=UserDocument(id=FAKE_USER_ID)),
+        ):
+            response = await client.get(f"{USER_BASE}/quiet-hours")
+
+        assert response.status_code == 200
+        assert response.json() == {"enabled": True, "start_hour": 22, "end_hour": 8}
+
+    async def test_a_user_reads_the_hours_they_saved_on_a_logged_read(self, client: AsyncClient):
+        saved = QuietHours(enabled=False, start_hour=1, end_hour=6)
+        with patch(
+            "app.services.user_service.user_repository.get",
+            AsyncMock(return_value=UserDocument(id=FAKE_USER_ID, quiet_hours=saved)),
+        ) as read:
+            async with captured_wide_event() as live:
+                response = await client.get(f"{USER_BASE}/quiet-hours")
+                event = dict(live)
+
+        assert response.status_code == 200
+        assert response.json() == {"enabled": False, "start_hour": 1, "end_hour": 6}
+        read.assert_awaited_once_with(FAKE_USER_ID)
+        assert (event["user"], event["operation"]) == ({"id": FAKE_USER_ID}, "read_quiet_hours")
+
+    async def test_saved_hours_are_stored_echoed_and_reported(self, client: AsyncClient):
+        body = {"enabled": True, "start_hour": 23, "end_hour": 7}
+        with (
+            patch(
+                "app.services.user_service.user_repository.set_quiet_hours",
+                AsyncMock(return_value=UserDocument(id=FAKE_USER_ID)),
+            ) as update,
+            patch("app.services.user_service.capture") as capture,
+        ):
+            async with captured_wide_event() as live:
+                response = await client.patch(f"{USER_BASE}/quiet-hours", json=body)
+                event = dict(live)
+
+        assert response.status_code == 200
+        assert response.json() == body
+        assert (event["user"], event["operation"]) == ({"id": FAKE_USER_ID}, "update_quiet_hours")
+        assert event["audit"] == [
+            {"msg": "quiet hours updated", "actor": FAKE_USER_ID, "quiet_hours": body}
+        ]
+        update.assert_awaited_once_with(
+            FAKE_USER_ID, QuietHours(enabled=True, start_hour=23, end_hour=7)
+        )
+        capture.assert_called_once_with(
+            UserId(FAKE_USER_ID),
+            SettingsQuietHoursUpdated(enabled=True, start_hour=23, end_hour=7),
+        )
+
+    async def test_hours_for_a_user_that_does_not_exist_are_a_404(self, client: AsyncClient):
+        body = {"enabled": True, "start_hour": 23, "end_hour": 7}
+        with (
+            patch(
+                "app.services.user_service.user_repository.set_quiet_hours",
+                AsyncMock(return_value=None),
+            ),
+            patch("app.services.user_service.capture") as capture,
+        ):
+            response = await client.patch(f"{USER_BASE}/quiet-hours", json=body)
+
+        assert response.status_code == 404
+        assert response.json()["message"] == "User not found"
+        capture.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {"enabled": True, "start_hour": 8, "end_hour": 8},
+            {"enabled": True, "start_hour": 24, "end_hour": 8},
+            {"enabled": True, "start_hour": 22, "end_hour": 8, "extra": 1},
+            {"enabled": True, "start_hour": 22},
+        ],
+        ids=["no-span", "off-the-clock", "unknown-field", "half-a-window"],
+    )
+    async def test_hours_that_are_not_a_window_are_refused(
+        self, client: AsyncClient, body: dict[str, object]
+    ):
+        with patch(
+            "app.services.user_service.user_repository.set_quiet_hours", AsyncMock()
+        ) as update:
+            response = await client.patch(f"{USER_BASE}/quiet-hours", json=body)
+
+        assert response.status_code == 422
+        update.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
 # GET /user/me
 # ---------------------------------------------------------------------------
 
 
 class TestGetMe:
     """GET /api/v1/user/me."""
+
+    @patch(
+        "app.api.v1.endpoints.user.get_user_onboarding_status",
+        new_callable=AsyncMock,
+    )
+    async def test_the_session_load_stores_the_browsers_timezone(
+        self, mock_onboarding: AsyncMock, client: AsyncClient
+    ):
+        mock_onboarding.return_value = ONBOARDING_STATUS
+        with patch(
+            "app.api.v1.dependencies.oauth_dependencies.user_repository.update", AsyncMock()
+        ) as update:
+            response = await client.get(f"{USER_BASE}/me", headers={"x-timezone": "Asia/Kolkata"})
+            await asyncio.sleep(0)
+
+        assert response.status_code == 200
+        assert response.json()["timezone"] == "Asia/Kolkata"
+        update.assert_awaited_once_with(FAKE_USER_ID, UserUpdate(timezone="Asia/Kolkata"))
 
     @patch(
         "app.api.v1.endpoints.user.get_user_onboarding_status",
@@ -116,7 +240,7 @@ class TestGetMe:
             dev_bypass=True,
         )
         with patch("app.api.v1.endpoints.user.log"):
-            response = await get_me(user=user)
+            response = await get_me(user=user, home_timezone="UTC")
         assert response.impersonated is True
         assert response.bot_authenticated is True
         assert response.dev_bypass is True
@@ -208,19 +332,23 @@ class TestUpdateMe:
             **FAKE_USER_UPDATE,
             "picture": "https://img.example.com/a.png",
         }
+        png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
         with patch("app.api.v1.endpoints.user.capture") as mock_capture:
-            response = await client.patch(
-                f"{USER_BASE}/me",
-                data={"name": "Updated User"},
-                files={
-                    "picture": (
-                        "avatar.png",
-                        b"\x89PNG\r\n\x1a\n" + b"\x00" * 100,
-                        "image/png",
-                    )
-                },
-            )
+            async with captured_wide_event() as event:
+                response = await client.patch(
+                    f"{USER_BASE}/me",
+                    data={"name": "Updated User"},
+                    files={"picture": ("avatar.png", png, "image/png")},
+                )
         assert response.status_code == 200
+        mock_update.assert_awaited_once_with(
+            user_id=FAKE_USER_ID,
+            name="Updated User",
+            picture=ProfilePictureUpload(data=png, content_type="image/png"),
+        )
+        assert event["audit"] == [
+            {"msg": "profile updated", "actor": FAKE_USER_ID, "changed_fields": ["name", "picture"]}
+        ]
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
             ProfileUpdated(changed_field_count=2, has_picture_upload=True),
@@ -355,13 +483,15 @@ class TestGetPublicHoloCard:
         mock_get.return_value = UserDocument(
             id="507f1f77bcf86cd799439011",
             name="Alice",
-            onboarding={
-                "house": "phoenix",
-                "personality_phrase": "creative",
-                "user_bio": "Hello",
-                "account_number": 42,
-                "member_since": "Jan 01, 2025",
-            },
+            onboarding=OnboardingSubdocument.model_validate(
+                {
+                    "house": "phoenix",
+                    "personality_phrase": "creative",
+                    "user_bio": "Hello",
+                    "account_number": 42,
+                    "member_since": "Jan 01, 2025",
+                }
+            ),
         )
         response = await client.get(f"{USER_BASE}/holo-card/507f1f77bcf86cd799439011")
         assert response.status_code == 200
@@ -381,7 +511,9 @@ class TestGetPublicHoloCard:
 
     @patch("app.api.v1.endpoints.user.user_repository.get", new_callable=AsyncMock)
     async def test_holo_card_no_house(self, mock_get: AsyncMock, client: AsyncClient):
-        mock_get.return_value = UserDocument(id="507f1f77bcf86cd799439011", onboarding={})
+        mock_get.return_value = UserDocument(
+            id="507f1f77bcf86cd799439011", onboarding=OnboardingSubdocument()
+        )
         response = await client.get(f"{USER_BASE}/holo-card/507f1f77bcf86cd799439011")
         assert response.status_code == 404
 
@@ -454,11 +586,38 @@ class TestUpdateHoloCardColors:
 class TestLogout:
     """POST /api/v1/user/logout."""
 
-    @patch("app.api.v1.endpoints.user.workos")
+    @pytest.mark.parametrize(("forwarded_proto", "secure"), [("http", ""), ("https", True)])
+    async def test_a_local_session_logout_clears_the_cookie_and_is_audited(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+        forwarded_proto: str,
+        secure: bool | str,
+    ):
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+        async with captured_wide_event() as live:
+            response = await client.post(
+                f"{USER_BASE}/logout", headers={"x-forwarded-proto": forwarded_proto}
+            )
+            event = dict(live)  # before the boundary stamps its own outcome on exit
+
+        assert response.status_code == 200
+        assert response.json() == {"logout_url": None}
+        cleared = SimpleCookie(response.headers["set-cookie"])["gaia_session"]
+        assert cleared.value == ""
+        assert (cleared["max-age"], cleared["path"], cleared["samesite"]) == ("0", "/", "lax")
+        assert (cleared["httponly"], cleared["secure"]) == (True, secure)
+        assert event["operation"] == "logout"
+        assert event["outcome"] == "success"
+        assert event["audit"] == [{"msg": "logged out", "actor": FAKE_USER_ID, "mode": "local"}]
+
+    @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_success(self, mock_workos: MagicMock, client: AsyncClient):
         session = MagicMock()
         session.get_logout_url.return_value = "https://auth.example.com/logout"
-        mock_workos.user_management.load_sealed_session.return_value = session
+        mock_workos.return_value.user_management.load_sealed_session.return_value = session
         client.cookies.set("wos_session", "sealed_token")
         with patch("app.api.v1.endpoints.user.capture") as mock_capture:
             response = await client.post(f"{USER_BASE}/logout")
@@ -466,7 +625,7 @@ class TestLogout:
         assert response.json()["logout_url"] == "https://auth.example.com/logout"
         mock_capture.assert_called_once_with(UserId("507f1f77bcf86cd799439011"), UserLoggedOut())
 
-    @patch("app.api.v1.endpoints.user.workos")
+    @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_track_failure_is_logged_not_fatal(
         self,
         mock_workos: MagicMock,
@@ -479,7 +638,7 @@ class TestLogout:
         posthog_provider(available=True, client=posthog_client)
         session = MagicMock()
         session.get_logout_url.return_value = "https://auth.example.com/logout"
-        mock_workos.user_management.load_sealed_session.return_value = session
+        mock_workos.return_value.user_management.load_sealed_session.return_value = session
         client.cookies.set("wos_session", "sealed_token")
         with patch("app.services.analytics_service.log") as mock_log:
             response = await client.post(f"{USER_BASE}/logout")
@@ -494,17 +653,17 @@ class TestLogout:
         response = await client.post(f"{USER_BASE}/logout")
         assert response.status_code == 401
 
-    @patch("app.api.v1.endpoints.user.workos")
+    @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_invalid_session(self, mock_workos: MagicMock, client: AsyncClient):
         # The HTTPException(401) is inside a bare except that re-raises as 500
-        mock_workos.user_management.load_sealed_session.return_value = None
+        mock_workos.return_value.user_management.load_sealed_session.return_value = None
         client.cookies.set("wos_session", "bad_token")
         response = await client.post(f"{USER_BASE}/logout")
         assert response.status_code == 500
 
-    @patch("app.api.v1.endpoints.user.workos")
+    @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_exception(self, mock_workos: MagicMock, client: AsyncClient):
-        mock_workos.user_management.load_sealed_session.side_effect = Exception("boom")
+        mock_workos.return_value.user_management.load_sealed_session.side_effect = Exception("boom")
         client.cookies.set("wos_session", "sealed_token")
         response = await client.post(f"{USER_BASE}/logout")
         assert response.status_code == 500

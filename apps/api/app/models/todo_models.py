@@ -6,10 +6,15 @@ from typing import Annotated, NamedTuple
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.general import MAX_PAGE_NUMBER
-from app.constants.todos import GAIA_TRACKED_LABEL, TODO_RECURRENCE_SHORTCUTS
+from app.constants.todos import (
+    GAIA_TRACKED_LABEL,
+    TODO_RECURRENCE_SHORTCUTS,
+    NoReplyPlan,
+    WaitingOn,
+)
 from app.db.repositories.base import UserScopedDocument
 from app.models.scheduler_models import DeactivationReason
-from app.models.trigger_subscription_models import TriggerSubscription
+from app.models.trigger_subscription_models import TriggerSubscription, TriggerSubscriptionView
 from app.models.workflow_models import WorkflowWithIntegrations
 from app.schemas.common import ResponseModel
 from app.utils.schedule import validate_recurring_schedule
@@ -43,7 +48,12 @@ class ExternalRefSource(StrEnum):
     @property
     def owns_report_form(self) -> bool:
         """Whether this kind's run guidance sets its final report's form, so it reaches the user as written."""
-        return self is ExternalRefSource.INBOX_DESK
+        return self in (ExternalRefSource.INBOX_DESK, ExternalRefSource.GMAIL_THREAD)
+
+    @property
+    def speaks_under_parent(self) -> bool:
+        """Whether a sub-todo of this kind still tells the user itself: a thread's news cannot wait for its parent."""
+        return self is ExternalRefSource.GMAIL_THREAD
 
 
 class ExternalRef(BaseModel):
@@ -55,6 +65,13 @@ class ExternalRef(BaseModel):
     id: str = Field(min_length=1)
     # The connected account the object lives in: a Gmail thread id means nothing outside its mailbox.
     account: str | None = None
+
+
+def default_notify_on_run(*, parent_todo_id: str | None, external_ref: ExternalRef | None) -> bool:
+    """Say whether a todo's runs reach the user when nobody chose: a sub-todo reports to its parent unless its kind speaks."""
+    return parent_todo_id is None or (
+        external_ref is not None and external_ref.source.speaks_under_parent
+    )
 
 
 class SubTask(ResponseModel):
@@ -193,7 +210,7 @@ class TodoResponse(TodoBase, ResponseModel):
         default_factory=list,
         description="Tool categories from linked workflow steps for icon display",
     )
-    trigger_subscriptions: list[TriggerSubscription] = Field(
+    trigger_subscriptions: list[TriggerSubscriptionView] = Field(
         default_factory=list,
         description="Read-only; subscriptions are written by trigger registration, not by clients",
     )
@@ -231,6 +248,14 @@ class TodoResponse(TodoBase, ResponseModel):
 
 
 # Project models
+@dataclass(frozen=True)
+class TrackedTodoCreation:
+    """What create_tracked_todo made: a new todo, or the completed one its ref had, reopened."""
+
+    todo: TodoResponse
+    reopened: bool
+
+
 class ProjectBase(BaseModel):
     """Base model for project fields"""
 
@@ -338,6 +363,12 @@ class TodoCanvasResponse(BaseModel):
 
     content: str
     activity: str
+
+
+class TodoConversationResponse(BaseModel):
+    """The tracked todo's own chat, where its runs execute; kept out of the chat list."""
+
+    conversation_id: str
 
 
 # Search
@@ -525,6 +556,13 @@ class TodoDocument(UserScopedDocument):
     notify_on_run: bool = True
     #: Why the system paused this tracked todo's runs; None while it runs normally.
     pause_reason: DeactivationReason | None = None
+    # A tracked todo's open state: what it waits for until scheduled_at (see open_state.py).
+    waiting_on: WaitingOn | None = None
+    question: str | None = None
+    if_no_reply: NoReplyPlan | None = None
+    default_action: str | None = None
+    reasks_used: int = 0
+    hold_checks: int = 0
     completed_at: datetime | None = None
     # Canvas, activity, observations and log bodies for tracked todos live on the document itself.
     canvas_content: str | None = None
@@ -541,6 +579,11 @@ class TodoDocument(UserScopedDocument):
     external_ref: ExternalRef | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    @property
+    def runs_once(self) -> bool:
+        """Whether nothing will wake this todo again: no recurrence and no watch."""
+        return not (self.recurrence or self.trigger_subscriptions)
 
 
 class TodoUpdate(BaseModel):
@@ -567,13 +610,18 @@ class TodoUpdate(BaseModel):
     parent_todo_id: str | None = None
     notify_on_run: bool | None = None
     pause_reason: DeactivationReason | None = None
+    waiting_on: WaitingOn | None = None
+    question: str | None = None
+    if_no_reply: NoReplyPlan | None = None
+    default_action: str | None = None
+    reasks_used: int | None = None
+    hold_checks: int | None = None
     completed_at: datetime | None = None
     canvas_content: str | None = None
     activity_content: str | None = None
     observations_content: str | None = None
     log_content: str | None = None
     source_conversation_id: str | None = None
-    trigger_subscriptions: list[TriggerSubscription] | None = None
 
 
 class ProjectDocument(UserScopedDocument):
@@ -638,6 +686,8 @@ class TodoRunContext(NamedTuple):
     """What a run reads beyond its own todo: its parent's rules, sub-todos, past lessons, account."""
 
     parent_rules: str = ""
+    # When the parent runs next, on the user's clock; "" for a todo with no scheduled parent.
+    parent_next_run: str = ""
     sub_todos: str = ""
     learnings: str = ""
     # The current name of the account the todo's outside object lives in; "" when it names none.

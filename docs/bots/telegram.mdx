@@ -1,75 +1,41 @@
 ---
-title: "Telegram Bot"
-description: "Self-host the GAIA Telegram bot: create a bot with BotFather, register commands, and run it against your GAIA API."
+title: "Telegram bot"
+description: "Create a Telegram bot with BotFather and run GAIA's Telegram bot from source against your local API."
 icon: "/images/icons/telegram.webp"
 ---
 
-# Telegram Bot Development
+The Telegram bot uses long polling: it asks Telegram for new messages, so it needs no webhook and no public URL.
 
-Run your own instance of the GAIA Telegram bot. The bot uses long polling, so no webhook or public URL is required.
+Do the [shared bot setup](/bots/overview#shared-setup) first. You also need a Telegram account.
 
-<Note>
-  Looking to use GAIA on Telegram as a user? See [Using GAIA on Telegram](/guides/telegram-bot).
-</Note>
+## 1. Create the bot
 
-## Prerequisites
+1. Open [@BotFather](https://t.me/botfather) in Telegram and send `/newbot`.
+2. Choose a **name** and a **username** for your bot.
+3. Copy the **bot token** BotFather gives you.
 
-- Node.js 18+ and pnpm
-- A Telegram account
-- GAIA API running (see [Self-Hosting Guide](/self-hosting/overview))
+## 2. Add the token
 
-## Step 1: Create a Telegram Bot
-
-1. Open Telegram and search for [@BotFather](https://t.me/botfather)
-2. Send `/newbot`
-3. Follow the prompts to choose a **name** and **username** for your bot
-4. Copy the **bot token** BotFather gives you
-
-## Step 2: Register Commands (Optional but Recommended)
-
-Send `/setcommands` to BotFather, select your bot, then paste:
-
-```
-start - Start the bot
-gaia - Chat with GAIA
-auth - Link your Telegram account
-todo - Manage todos
-workflow - Manage workflows
-conversations - View conversations
-new - Start a new conversation
-stop - Stop current response and start fresh
-status - Check bot status
-settings - View your GAIA settings
-help - Show help message
-unlink - Disconnect your account
-```
-
-This enables Telegram's command autocomplete for users.
-
-## Step 3: Configure Environment Variables
-
-Create a `.env` file in `apps/bots/telegram/`:
+In `apps/bots/.env`:
 
 ```bash
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-GAIA_API_URL=http://localhost:8000
-GAIA_BOT_API_KEY=your_secure_bot_api_key
 ```
 
-## Step 4: Start the Bot
+## 3. Start it
 
 ```bash
-# Development (hot reload)
 nx dev bot-telegram
-
-# Production
-nx build bot-telegram && nx start bot-telegram
 ```
+
+On startup the bot registers its command list with Telegram, so the `/` menu shows every command without any BotFather setup. If you change the commands, restarting the bot updates the menu. `pnpm --dir apps/bots/telegram set-commands` does the same without starting the bot.
+
+Message your bot in Telegram and send `/auth` to link it to your development user.
 
 ## Troubleshooting
 
-| Problem                           | Solution                                                                  |
-| --------------------------------- | -------------------------------------------------------------------------- |
-| Bot doesn't respond               | Check the bot token is correct and the process is running                 |
-| Commands not showing autocomplete | Run `/setcommands` with BotFather                                         |
-| Authentication fails              | Ensure `GAIA_BOT_API_KEY` matches the API config and the API is reachable |
+| Problem | Fix |
+| --- | --- |
+| The bot doesn't respond | Check that `TELEGRAM_BOT_TOKEN` is right and the process is running |
+| The `/` menu is out of date | Restart the bot, or run `set-commands` as above |
+| Linking fails | Check that `GAIA_BOT_API_KEY` is identical in `apps/bots/.env` and `apps/api/.env`, and that the API is running |

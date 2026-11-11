@@ -1,0 +1,47 @@
+---
+title: "Architecture"
+description: "How GAIA's processes, databases and AI agents fit together, and where to read more before changing them."
+icon: "sitemap"
+---
+
+This page is the overview. The complete map, with every authoritative file path, is [`ARCHITECTURE.md`](https://github.com/theexperiencecompany/gaia/blob/master/ARCHITECTURE.md) at the repository root. Read the relevant section there before changing agent code.
+
+## The processes
+
+| Process | Code | What it does |
+| --- | --- | --- |
+| API | `apps/api` (`app/main.py`) | REST and streaming endpoints, and runs the AI agents for each chat message |
+| ARQ worker | `apps/api` (`app/worker.py`) | Background jobs the API queues in Redis: reminders, scheduled workflows, emails, memory upkeep |
+| Web app | `apps/web` | The browser client. Desktop wraps the same build in Electron |
+| Mobile app | `apps/mobile` | The iOS and Android client |
+| Voice agent | `apps/voice-agent` | Voice conversations through LiveKit |
+| Bots | `apps/bots/*` | Discord, Slack, Telegram, WhatsApp and iMessage. Each turns platform messages into API calls |
+
+Every client, web, mobile, voice and the bots, talks to the same API. [Run GAIA locally](/developers/running-locally#the-databases) lists the databases behind it and what each one holds.
+
+## The agents
+
+A chat message is handled by three tiers of AI agents, built with [LangGraph](https://langchain-ai.github.io/langgraph/):
+
+1. **Comms agent.** The one you talk to. It has almost no tools of its own. It hands work to the executor and narrates progress, so the conversation stays responsive while long tasks run.
+2. **Executor agent.** The worker. It has the full tool set: files, shell, research, todos, memory, and the connected apps it activates when a task needs them.
+3. **Subagents.** Isolated workers for bulky or separate jobs, and one per custom MCP integration (MCP, the Model Context Protocol, is a standard way to plug external tools into an AI).
+
+| Area | Start in |
+| --- | --- |
+| Agent graphs | `apps/api/app/agents/core/graph_builder/build_graph.py` |
+| Handing work to the executor | `apps/api/app/agents/tools/executor_tool.py` |
+| Subagents | `apps/api/app/agents/core/subagents/` |
+| Connected apps (OAuth integrations) | `apps/api/app/config/oauth_config.py` |
+| Skills | `apps/api/app/agents/skills/` |
+| Memory | `apps/api/app/memory/` and `apps/api/app/agents/memory/` |
+| The shared bot framework | `libs/shared/ts/src/bots/` |
+| Voice | `apps/voice-agent/src/agent.py` |
+
+Section 17 of `ARCHITECTURE.md`, "Where do I change X?", answers the most common questions directly.
+
+## Next
+
+<Card title="Monorepo structure" icon="folder-tree" href="/developers/monorepo">
+  Each app's folders, the shared libraries and the Nx build.
+</Card>

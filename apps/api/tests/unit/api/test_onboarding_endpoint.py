@@ -3,7 +3,8 @@
 Tests cover:
 - POST /api/v1/onboarding           (complete onboarding)
 - GET  /api/v1/onboarding/status    (get onboarding status)
-- POST /api/v1/onboarding/phase     (update onboarding phase)
+- POST /api/v1/onboarding/phase     (report a wizard step)
+- PUT  /api/v1/onboarding/answers   (save the wizard's answers)
 - PATCH /api/v1/onboarding/preferences (update preferences)
 - GET  /api/v1/onboarding/personalization (get personalization data)
 """
@@ -27,10 +28,11 @@ from app.models.user_models import (
     AuthenticatedUser,
     OnboardingPreferences,
     OnboardingStatusResponse,
+    OnboardingSubdocument,
     UserDocument,
 )
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.onboarding import OnboardingCompleted, OnboardingPhaseCompleted
+from shared.py.analytics.catalog.onboarding import OnboardingCompleted, OnboardingStep
 from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
 
 BASE_URL = "/api/v1/onboarding"
@@ -54,6 +56,7 @@ def _noop_analytics():
 STATUS_URL = f"{BASE_URL}/status"
 PHASE_URL = f"{BASE_URL}/phase"
 PREFERENCES_URL = f"{BASE_URL}/preferences"
+ANSWERS_URL = f"{BASE_URL}/answers"
 PERSONALIZATION_URL = f"{BASE_URL}/personalization"
 
 # Patch targets
@@ -61,11 +64,11 @@ _COMPLETE_ONBOARDING = "app.api.v1.endpoints.onboarding.complete_onboarding"
 _GET_STATUS = "app.api.v1.endpoints.onboarding.get_user_onboarding_status"
 _REPO = "app.api.v1.endpoints.onboarding.user_repository"
 _GET_USER = _REPO + ".get"
-_SET_PHASE = _REPO + ".set_onboarding_phase"
 _COUNT_BEFORE = _REPO + ".count_created_before"
 _UPDATE_PREFERENCES = "app.api.v1.endpoints.onboarding.update_onboarding_preferences"
+_SAVE_ANSWERS = "app.api.v1.endpoints.onboarding.save_onboarding_answers"
+_RECORD_STEP = "app.api.v1.endpoints.onboarding.record_onboarding_step"
 _COMPOSIO_SERVICE = "app.api.v1.endpoints.onboarding.get_composio_service"
-_WEBSOCKET_MANAGER = "app.api.v1.endpoints.onboarding.websocket_manager"
 _REDIS_POOL_MANAGER = "app.utils.redis_utils.RedisPoolManager"
 _WF_FIND_BY_IDS = "app.api.v1.endpoints.onboarding.workflow_repository.find_by_ids"
 _TODO_LIST = "app.api.v1.endpoints.onboarding.todo_repository.list_onboarding_todos"
@@ -192,22 +195,6 @@ class TestOnboardingAnalytics:
         assert response.status_code == 200
         captured = [call.args[1] for call in mock_capture.call_args_list]
         assert not any(isinstance(event, OnboardingCompleted) for event in captured)
-
-    async def test_update_phase_captures_phase_completed(self, client: AsyncClient):
-        with (
-            patch(_SET_PHASE, new_callable=AsyncMock, return_value=True),
-            patch(
-                _WEBSOCKET_MANAGER + ".broadcast_to_user",
-                new_callable=AsyncMock,
-            ),
-            patch(ANALYTICS_PATCH) as mock_capture,
-        ):
-            response = await client.post(PHASE_URL, json={"phase": "getting_started"})
-
-        assert response.status_code == 200
-        mock_capture.assert_called_once_with(
-            UserId(FAKE_USER.user_id), OnboardingPhaseCompleted(phase="getting_started")
-        )
 
     async def test_complete_onboarding_missing_needs_returns_422(self, client: AsyncClient):
         response = await client.post(BASE_URL, json={"profession": "Developer"})
@@ -385,47 +372,106 @@ class TestGetOnboardingStatus:
 # ---------------------------------------------------------------------------
 
 
-class TestUpdateOnboardingPhase:
-    """Tests for the update onboarding phase endpoint."""
+class TestReportOnboardingStep:
+    """POST /onboarding/phase stamps a browser-only wizard step."""
 
-    async def test_update_phase_success(self, client: AsyncClient):
-        with (
-            patch(_SET_PHASE, new_callable=AsyncMock, return_value=True),
-            patch(
-                _WEBSOCKET_MANAGER + ".broadcast_to_user",
-                new_callable=AsyncMock,
-            ),
-        ):
-            response = await client.post(PHASE_URL, json={"phase": "getting_started"})
+    @pytest.mark.parametrize(
+        "step",
+        [
+            OnboardingStep.STARTED,
+            OnboardingStep.PAYWALL_REACHED,
+            OnboardingStep.PAID_REVEAL_SEEN,
+            OnboardingStep.FIRST_CHAT_OPENED,
+        ],
+    )
+    async def test_records_the_reported_step(self, client: AsyncClient, step: OnboardingStep):
+        with patch(_RECORD_STEP, new_callable=AsyncMock, return_value=True) as record:
+            response = await client.post(PHASE_URL, json={"phase": step.value})
 
         assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert data["phase"] == "getting_started"
+        assert response.json() == {"phase": step.value, "first_time": True}
+        record.assert_awaited_once_with(FAKE_USER_ID, step)
 
-    async def test_update_phase_user_not_found_returns_404(self, client: AsyncClient):
-        with patch(_SET_PHASE, new_callable=AsyncMock, return_value=False):
-            response = await client.post(PHASE_URL, json={"phase": "completed"})
-
-        assert response.status_code == 404
-
-    async def test_update_phase_invalid_phase_returns_422(self, client: AsyncClient):
-        response = await client.post(PHASE_URL, json={"phase": "nonexistent_phase"})
-        assert response.status_code == 422
-
-    async def test_update_phase_missing_body_returns_422(self, client: AsyncClient):
-        response = await client.post(PHASE_URL, json={})
-        assert response.status_code == 422
-
-    async def test_update_phase_service_error_returns_500(self, client: AsyncClient):
-        with patch(
-            _SET_PHASE,
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("DB error"),
+    async def test_the_wide_event_names_the_user_the_step_and_whether_it_was_new(
+        self, client: AsyncClient
+    ):
+        with (
+            patch(_RECORD_STEP, new_callable=AsyncMock, return_value=True),
+            patch("app.api.v1.endpoints.onboarding.log") as log,
         ):
-            response = await client.post(PHASE_URL, json={"phase": "completed"})
+            await client.post(PHASE_URL, json={"phase": "paywall_reached"})
 
-        assert response.status_code == 500
+        log.set.assert_called_once_with(
+            user={"id": FAKE_USER_ID},
+            onboarding={"operation": "report_step", "step": OnboardingStep.PAYWALL_REACHED},
+        )
+        log.set_ns.assert_called_once_with("onboarding", first_time=True)
+
+    async def test_repeat_report_says_it_was_not_the_first(self, client: AsyncClient):
+        with patch(_RECORD_STEP, new_callable=AsyncMock, return_value=False):
+            response = await client.post(PHASE_URL, json={"phase": "started"})
+
+        assert response.json()["first_time"] is False
+
+    async def test_server_owned_step_cannot_be_reported(self, client: AsyncClient):
+        """questions_answered is stamped by the answers save; a browser report would double-count it."""
+        with patch(_RECORD_STEP, new_callable=AsyncMock) as record:
+            response = await client.post(PHASE_URL, json={"phase": "questions_answered"})
+
+        assert response.status_code == 422
+        record.assert_not_awaited()
+
+    async def test_legacy_pipeline_phase_is_refused(self, client: AsyncClient):
+        response = await client.post(PHASE_URL, json={"phase": "getting_started"})
+        assert response.status_code == 422
+
+
+class TestSaveAnswers:
+    """PUT /onboarding/answers stores Q1/Q2 without touching the settings metric."""
+
+    async def test_saves_answers_and_never_reports_a_settings_change(self, client: AsyncClient):
+        with (
+            patch(
+                _SAVE_ANSWERS, new_callable=AsyncMock, return_value={"user_id": FAKE_USER_ID}
+            ) as save,
+            patch("app.api.v1.endpoints.onboarding.schedule_account_sync"),
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            response = await client.put(
+                ANSWERS_URL, json={"profession": "founder", "needs": ["inbox"]}
+            )
+
+        assert response.status_code == 200
+        user_id, answers = save.await_args.args
+        assert user_id == FAKE_USER_ID
+        assert [need.value for need in answers.needs] == ["inbox"]
+        assert not any(
+            isinstance(c.args[1], SettingsPreferencesChanged) for c in mock_capture.call_args_list
+        )
+
+    async def test_returns_the_stored_user_and_syncs_the_account(self, client: AsyncClient):
+        stored = {"user_id": FAKE_USER_ID, "onboarding": {"preferences": {"profession": "founder"}}}
+        with (
+            patch(_SAVE_ANSWERS, new_callable=AsyncMock, return_value=stored),
+            patch("app.api.v1.endpoints.onboarding.schedule_account_sync") as sync,
+            patch("app.api.v1.endpoints.onboarding.log") as log,
+        ):
+            response = await client.put(
+                ANSWERS_URL, json={"profession": "founder", "needs": ["inbox"]}
+            )
+
+        assert response.json() == {"success": True, "message": "Answers saved", "user": stored}
+        sync.assert_called_once_with(FAKE_USER_ID)
+        log.set.assert_called_once_with(
+            user={"id": FAKE_USER_ID}, onboarding={"operation": "save_answers"}
+        )
+
+    async def test_unanswered_q2_returns_422(self, client: AsyncClient):
+        with patch(_SAVE_ANSWERS, new_callable=AsyncMock) as save:
+            response = await client.put(ANSWERS_URL, json={"profession": "founder", "needs": []})
+
+        assert response.status_code == 422
+        save.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -448,11 +494,7 @@ class TestUpdatePreferences:
         ):
             response = await client.patch(
                 PREFERENCES_URL,
-                json={
-                    "profession": "Engineer",
-                    "response_style": "brief",
-                    "custom_instructions": "Be concise.",
-                },
+                json={"profession": "Engineer", "response_style": "brief"},
             )
 
         assert response.status_code == 200
@@ -479,16 +521,14 @@ class TestUpdatePreferences:
         ):
             response = await client.patch(
                 PREFERENCES_URL,
-                json={"profession": "Engineer", "custom_instructions": "Be concise."},
+                json={"profession": "Engineer", "response_style": "brief"},
             )
 
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
             SettingsPreferencesChanged(
-                setting="onboarding_preferences",
-                fields=["custom_instructions", "profession"],
-                has_custom_instructions=True,
+                setting="onboarding_preferences", fields=["profession", "response_style"]
             ),
         )
         assert "response_style" not in mock_capture.call_args.args[1].to_properties()
@@ -503,15 +543,6 @@ class TestUpdatePreferences:
             response = await client.patch(PREFERENCES_URL, json={})
 
         assert response.status_code == 200
-
-    async def test_update_preferences_custom_instructions_too_long_returns_422(
-        self, client: AsyncClient
-    ):
-        response = await client.patch(
-            PREFERENCES_URL,
-            json={"custom_instructions": "a" * 501},
-        )
-        assert response.status_code == 422
 
     async def test_update_preferences_other_need_too_long_returns_422(self, client: AsyncClient):
         response = await client.patch(
@@ -611,7 +642,7 @@ class TestGetPersonalization:
         user_doc = UserDocument(
             id="507f1f77bcf86cd799439011",
             name="New User",
-            onboarding={},
+            onboarding=OnboardingSubdocument(),
             created_at=None,
         )
         mock_composio = MagicMock()
@@ -633,7 +664,7 @@ class TestGetPersonalization:
         user_doc = UserDocument(
             id="507f1f77bcf86cd799439011",
             name=None,
-            onboarding={},
+            onboarding=OnboardingSubdocument(),
             created_at=datetime(2025, 1, 1, tzinfo=UTC),
         )
         mock_composio = MagicMock()
@@ -766,7 +797,7 @@ class TestGetPersonalizationPins:
         user_doc = UserDocument(
             id="507f1f77bcf86cd799439011",
             name="New User",
-            onboarding={},
+            onboarding=OnboardingSubdocument(),
             created_at=None,
         )
         mock_composio = MagicMock()
@@ -978,7 +1009,7 @@ class TestGetPersonalizationFullShape:
         user_doc = UserDocument(
             id="507f1f77bcf86cd799439011",
             name=None,
-            onboarding={},
+            onboarding=OnboardingSubdocument(),
             created_at=None,
         )
         mock_composio = MagicMock()
@@ -1002,7 +1033,7 @@ class TestGetPersonalizationFullShape:
         user_doc = UserDocument(
             id="507f1f77bcf86cd799439011",
             name="New User",
-            onboarding={},
+            onboarding=OnboardingSubdocument(),
             created_at=None,
         )
         mock_composio = MagicMock()

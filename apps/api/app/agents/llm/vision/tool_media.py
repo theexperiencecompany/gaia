@@ -11,21 +11,31 @@ the thread still works if the lane later changes to one that can see pixels.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, TypedDict, cast
 
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.vision.capability import model_can_view_images
 from app.agents.llm.vision.describe import describe_image
 from app.constants.log_tags import LogTag
 from app.constants.media import (
     MEDIA_DESCRIBE_FAILED,
     MEDIA_DESCRIPTIONS_KEY,
+    MEDIA_VISION_NOT_CONFIGURED,
     TOOL_MEDIA_DESCRIBE_PROMPT,
 )
-from app.utils.multimodal import extract_text_content, media_blocks
+from app.models.agent_models import AgentConfigurable, agent_configurable
+from app.utils.multimodal import InlineMediaBlock, extract_text_content, media_blocks
 from shared.py.wide_events import log
+
+
+class _MediaBlock(TypedDict):
+    """The keys describe_image reads off a media block."""
+
+    base64: str
+    mime_type: str
 
 
 async def describe_tool_media(
@@ -38,7 +48,7 @@ async def describe_tool_media(
     pixels directly, or descriptions already attached — matching
     compact_tool_output's keep-as-is contract.
     """
-    blocks = media_blocks(message.content)
+    blocks: list[_MediaBlock] = cast("list[_MediaBlock]", media_blocks(message.content))
     if not blocks:
         return None
     if message.additional_kwargs.get(MEDIA_DESCRIPTIONS_KEY):
@@ -51,18 +61,25 @@ async def describe_tool_media(
         tool_name=tool_name,
         context=extract_text_content(message.content) or "(none)",
     )
+    configurable: AgentConfigurable = agent_configurable(config)
     # Bounded by MAX_MEDIA_BLOCKS_PER_TOOL_RESULT at every producer.
-    described = await asyncio.gather(
-        *(
-            describe_image(
-                block["base64"],
-                block["mime_type"],
-                prompt=prompt,
-                label="tool_media_vision",
+    try:
+        described: list[str | None] = await asyncio.gather(
+            *(
+                describe_image(
+                    media.base64,
+                    media.mime_type,
+                    prompt=prompt,
+                    label="tool_media_vision",
+                    user_id=configurable.get("user_id"),
+                )
+                for media in (InlineMediaBlock.model_validate(block) for block in blocks)
             )
-            for block in blocks
         )
-    )
+    except LLMNotConfiguredError as e:
+        # The tool result still lands; the model is told plainly why it is blind.
+        log.warning(f"{LogTag.TOOL} No vision provider for tool media", error=str(e))
+        described = [MEDIA_VISION_NOT_CONFIGURED] * len(blocks)
     log.info(
         f"{LogTag.TOOL} Described tool media for a text-only lane",
         tool_media={

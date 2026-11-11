@@ -10,6 +10,7 @@ import {
   apiRowHasLiveApproval,
   isApprovalFlagStale,
 } from "@/features/chat/utils/approvalFlag";
+import { isUnlistedConversation } from "@/features/chat/utils/unlistedConversation";
 import type { RequestOrigin } from "@/lib/api/typed";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
@@ -114,10 +115,12 @@ const mapApiMessagesToStored = (
       pinned: message.pinned ?? false,
       selectedCalendarEvent: message.selectedCalendarEvent,
       selectedWorkflow: message.selectedWorkflow,
+      todoRunWake: message.todo_run_wake ?? null,
       replyToMessageId: message.replyToMessage?.id ?? null,
       replyToMessageData: message.replyToMessage ?? null,
       kind: message.kind ?? null,
       reacts_to_message_id: message.reacts_to_message_id ?? null,
+      stopped: message.stopped ?? null,
     } satisfies IMessage;
   });
 
@@ -139,6 +142,27 @@ const toTimestamp = (timestamp?: string): number => {
   const parsed = new Date(timestamp);
   return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
 };
+
+const toStoredConversation = (
+  conversation: SyncedConversation,
+  artifacts: IConversation["artifacts"],
+): IConversation => ({
+  id: conversation.conversation_id,
+  title: conversation.description || "Untitled conversation",
+  description: conversation.description ?? "",
+  starred: conversation.starred ?? false,
+  isSystemGenerated: conversation.is_system_generated ?? false,
+  systemPurpose: conversation.system_purpose ?? null,
+  isUnread: conversation.is_unread ?? false,
+  hasLiveApproval: apiRowHasLiveApproval(conversation),
+  todoId: conversation.todo_id ?? null,
+  source: conversation.source ?? undefined,
+  artifacts,
+  createdAt: new Date(conversation.createdAt ?? 0),
+  updatedAt: conversation.updatedAt
+    ? new Date(conversation.updatedAt)
+    : new Date(conversation.createdAt ?? 0),
+});
 
 const identifyStaleConversations = (
   localConversations: IConversation[],
@@ -221,6 +245,9 @@ const identifyDeletedConversations = (
     // Skip if conversation exists on remote
     if (remoteIds.has(local.id)) continue;
 
+    // A todo chat or bot DM is never in the remote list, by design: absent there is not deleted.
+    if (isUnlistedConversation(local)) continue;
+
     // Skip if conversation is currently being streamed
     if (isConversationStreamingNow(local.id)) continue;
 
@@ -298,14 +325,28 @@ export const batchSyncConversations = async (
       db.getAllConversations(),
     ]);
 
-    if (remoteConversations.length === 0) {
+    // An unlisted chat (todo chat, bot DM) is never in the list, so only asking about it by id
+    // shows a new message or its deletion. last_updated keeps the reply to what changed.
+    const unlistedChatItems = localConversations.flatMap(
+      (conv): ConversationSyncItem[] =>
+        isUnlistedConversation(conv)
+          ? [
+              {
+                conversation_id: conv.id,
+                last_updated: (conv.updatedAt || conv.createdAt).toISOString(),
+              },
+            ]
+          : [],
+    );
+
+    if (remoteConversations.length === 0 && unlistedChatItems.length === 0) {
       return;
     }
 
-    const staleItems = identifyStaleConversations(
-      localConversations,
-      remoteConversations,
-    );
+    const staleItems = [
+      ...identifyStaleConversations(localConversations, remoteConversations),
+      ...unlistedChatItems,
+    ];
 
     // Identify conversations that exist locally but were deleted on the server
     const deletedConversationIds = identifyDeletedConversations(
@@ -322,8 +363,12 @@ export const batchSyncConversations = async (
       return;
     }
 
-    const { conversations: freshConversations } =
+    const { conversations: freshConversations, missing } =
       await chatApi.batchSyncConversations(staleItems, origin);
+
+    if (missing.length > 0) {
+      await db.deleteConversationsAndMessagesBulk(missing);
+    }
 
     if (freshConversations.length === 0) {
       return;
@@ -341,21 +386,10 @@ export const batchSyncConversations = async (
         // Skip syncing if streaming or pending save (e.g., after abort)
         if (shouldBlockSyncForConversation(conversationId)) return;
 
-        const mappedConversation: IConversation = {
-          id: conversationId,
-          title: conversation.description || "Untitled conversation",
-          description: conversation.description ?? "",
-          starred: conversation.starred ?? false,
-          isSystemGenerated: conversation.is_system_generated ?? false,
-          systemPurpose: conversation.system_purpose ?? null,
-          isUnread: conversation.is_unread ?? false,
-          hasLiveApproval: apiRowHasLiveApproval(conversation),
+        const mappedConversation = toStoredConversation(
+          conversation,
           artifacts,
-          createdAt: new Date(conversation.createdAt ?? 0),
-          updatedAt: conversation.updatedAt
-            ? new Date(conversation.updatedAt)
-            : new Date(conversation.createdAt ?? 0),
-        };
+        );
 
         // Refresh the runtime lookup map from the server-authoritative registry.
         // Safe from clobbering a live turn: streaming conversations are filtered
@@ -399,23 +433,7 @@ export const applySyncedConversation = async (
 
   const messages = toClientMessages(conversation.messages);
   const artifacts = fromRegistryEntries(conversation.artifacts, conversationId);
-
-  // Map conversation to IndexedDB format
-  const mappedConversation: IConversation = {
-    id: conversationId,
-    title: conversation.description || "Untitled conversation",
-    description: conversation.description ?? "",
-    starred: conversation.starred ?? false,
-    isSystemGenerated: conversation.is_system_generated ?? false,
-    systemPurpose: conversation.system_purpose ?? null,
-    isUnread: conversation.is_unread ?? false,
-    hasLiveApproval: apiRowHasLiveApproval(conversation),
-    artifacts,
-    createdAt: new Date(conversation.createdAt ?? 0),
-    updatedAt: conversation.updatedAt
-      ? new Date(conversation.updatedAt)
-      : new Date(conversation.createdAt ?? 0),
-  };
+  const mappedConversation = toStoredConversation(conversation, artifacts);
 
   // Refresh the runtime lookup map from the server-authoritative registry. The
   // store stamps session_id onto each entry so artifact fetch URLs resolve.

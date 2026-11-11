@@ -11,7 +11,7 @@ import {
   listMCPResourceTemplates,
   readMCPResource,
 } from "@/features/chat/api/mcpProxyApi";
-import { useSendMessage } from "@/hooks/useSendMessage";
+import { sendMessage } from "@/features/chat/stream/sendMessage";
 import { getBrowserTimezone } from "@/lib/timezone";
 
 type DisplayMode = "inline" | "fullscreen";
@@ -43,11 +43,8 @@ export function MCPAppRenderer({ data }: Props) {
   const bridgeRef = useRef<AppBridge | null>(null);
 
   const dataRef = useRef(data);
-  const sendMessage = useSendMessage();
-  const sendMessageRef = useRef(sendMessage);
   useEffect(() => {
     dataRef.current = data;
-    sendMessageRef.current = sendMessage;
   });
 
   const sandboxUrl = useMemo(
@@ -125,7 +122,7 @@ export function MCPAppRenderer({ data }: Props) {
         )
         .join(" ")
         .trim();
-      if (text) await sendMessageRef.current(text);
+      if (text) await sendMessage(text);
       return {};
     };
 

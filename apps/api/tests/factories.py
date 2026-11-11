@@ -91,31 +91,37 @@ def make_composio_tool(
     output_parameters: dict | None = None,
 ) -> Tool:
     """Build the minimum Composio tool descriptor wrap_tool needs."""
-    return Tool(
-        slug=slug,
-        name=slug,
-        description="Fetch messages.",
-        # `title` is load-bearing: the wrapper builds a pydantic model class from
-        # each schema and uses it as the class name.
-        input_parameters={"type": "object", "title": "GmailFetchMessagesRequest", "properties": {}},
-        output_parameters=output_parameters
-        or {"type": "object", "title": "GmailFetchMessagesResponse", "properties": {}},
-        toolkit={"slug": "gmail", "name": "Gmail", "logo": ""},
-        tags=[],
-        scopes=[],
-        version="latest",
-        available_versions=["latest"],
-        # Mixed casing is the SDK's, not a typo: `displayName` is aliased while its
-        # siblings are not.
-        deprecated={
-            "available_versions": ["latest"],
-            "displayName": "Fetch messages",
-            "is_deprecated": False,
+    return Tool.model_validate(
+        {
+            "slug": slug,
+            "name": slug,
+            "description": "Fetch messages.",
+            # `title` is load-bearing: the wrapper builds a pydantic model class from
+            # each schema and uses it as the class name.
+            "input_parameters": {
+                "type": "object",
+                "title": "GmailFetchMessagesRequest",
+                "properties": {},
+            },
+            "output_parameters": output_parameters
+            or {"type": "object", "title": "GmailFetchMessagesResponse", "properties": {}},
             "toolkit": {"slug": "gmail", "name": "Gmail", "logo": ""},
+            "tags": [],
+            "scopes": [],
             "version": "latest",
-        },
-        is_deprecated=False,
-        no_auth=False,
+            "available_versions": ["latest"],
+            # Mixed casing is the SDK's, not a typo: `displayName` is aliased while its
+            # siblings are not.
+            "deprecated": {
+                "available_versions": ["latest"],
+                "displayName": "Fetch messages",
+                "is_deprecated": False,
+                "toolkit": {"slug": "gmail", "name": "Gmail", "logo": ""},
+                "version": "latest",
+            },
+            "is_deprecated": False,
+            "no_auth": False,
+        }
     )
 
 
@@ -206,9 +212,11 @@ def make_plan(duration: PlanDuration, amount: int, currency: str = "USD") -> Pla
         dodo_product_id=f"pdt_{duration.value}",
         name="Pro",
         plan_type=PlanTier.PRO,
+        description=None,
         amount=amount,
         currency=currency,
         duration=duration,
+        max_users=None,
         is_active=True,
         created_at=now,
         updated_at=now,

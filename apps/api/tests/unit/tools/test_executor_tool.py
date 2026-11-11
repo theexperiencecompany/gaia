@@ -19,25 +19,37 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 import pytest
 
+from app.agents.core.background.confirmation_gate import record_confirmation_asked
 from app.agents.core.background.executor_channel import ExecutorInbox
+from app.agents.core.background.executor_queue import release_lock_if_owned, try_acquire_lock
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.session import get_session, teardown_session
+from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.agents.tools import executor_tool
 from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
-from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag
+from app.constants.agents import (
+    IRREVERSIBLE_APPROVED_BRIEF,
+    IRREVERSIBLE_UNAPPROVED_BRIEF,
+    AgentTag,
+    TimeHorizon,
+)
 from app.constants.browser import BrowserSessionStatus
 from app.constants.cache import (
+    AWAITING_CONFIRMATION_PREFIX,
+    AWAITING_CONFIRMATION_TTL,
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
+    EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
     EXECUTOR_INBOX_PREFIX,
 )
 from app.constants.hil import EXECUTOR_INBOX_TTL
 from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
-from app.db.redis import redis_cache
+from app.db.redis import AsyncRedisCommands, redis_cache
 from app.db.repositories.playbooks import playbook_repository
 from app.models.agent_models import InboxEntry, RunningSubagent
+from app.models.ownership_models import ExecutorIntent
 from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, ToolStep
 from app.schemas.browser import BrowserResultSnapshot
 from app.schemas.browser_job import BrowserJobFinished, BrowserJobState, BrowserJobStatus
@@ -70,20 +82,27 @@ run_call_executor = tool_function(call_executor)
 run_cancel_executor = tool_function(cancel_executor)
 
 
+#: What call_executor_with sends for the intent fields a test does not care about.
+DEFAULT_TEST_INTENT = ExecutorIntent(
+    desired_outcome="the task is done", time_horizon=TimeHorizon.ONE_SHOT
+)
+
+
 async def call_executor_with(
     config: RunnableConfig,
     task: str,
     acceptance_criteria: list[str] | None = None,
     **kwargs: Any,
 ) -> str:
-    """Call call_executor with the now-required acceptance_criteria provided.
+    """Call call_executor with its required brief fields provided.
 
-    The tool schema requires acceptance_criteria (never omit); tests that don't
-    care about it pass a generic checklist so they exercise the dispatch path,
-    not the schema default.
+    Tests that don't care about them pass generic values so they exercise the
+    dispatch path, not the schema.
     """
     if acceptance_criteria is None:
         acceptance_criteria = []
+    kwargs.setdefault("desired_outcome", DEFAULT_TEST_INTENT.desired_outcome)
+    kwargs.setdefault("time_horizon", DEFAULT_TEST_INTENT.time_horizon)
     return await run_call_executor(
         config=config,
         task=task,
@@ -130,11 +149,12 @@ async def drain_background_tasks() -> None:
 @pytest.fixture(autouse=True)
 async def fake_redis(
     monkeypatch: pytest.MonkeyPatch,
-) -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
+) -> AsyncIterator[AsyncRedisCommands]:
     """Patch the module singleton's client so every layer below sees one real Redis."""
     client = fakeredis.aioredis.FakeRedis(decode_responses=True)
     monkeypatch.setattr(redis_cache, "redis", client)
-    yield client
+    # Typed as the app types its own client: redis-py's shared stubs make every await ambiguous.
+    yield cast(AsyncRedisCommands, client)
     await client.flushall()
     await client.connection_pool.disconnect()
 
@@ -171,7 +191,7 @@ def fast_redirect(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def release_lock_on_attempt(
     monkeypatch: pytest.MonkeyPatch,
-    fake_redis: fakeredis.aioredis.FakeRedis,
+    fake_redis: AsyncRedisCommands,
 ) -> Callable[[int], None]:
     """Free the busy lock on the N-th try_acquire_lock call.
 
@@ -181,7 +201,7 @@ def release_lock_on_attempt(
     deterministic by construction, replacing real-time releaser tasks.
     """
 
-    real_acquire = executor_tool.try_acquire_lock
+    real_acquire = try_acquire_lock
     state = {"attempt": 0, "release": -1}
 
     async def wrapped_acquire(lock_key: str, lock_value: str) -> bool:
@@ -203,7 +223,14 @@ def closed_approvals(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     """List which conversations had their approvals closed (the Mongo-backed HIL boundary)."""
     mock = AsyncMock(return_value=[])
     monkeypatch.setattr(executor_tool, "cancel_conversation_approvals", mock)
-    monkeypatch.setattr(executor_tool, "cancel_ledger_approvals", AsyncMock(return_value=[]))
+    return mock
+
+
+@pytest.fixture(autouse=True)
+def closed_ledger_approvals(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """List which conversations had their ledger approvals closed."""
+    mock = AsyncMock(return_value=[])
+    monkeypatch.setattr(executor_tool, "cancel_ledger_approvals", mock)
     return mock
 
 
@@ -217,16 +244,76 @@ def broadcast(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 # ── call_executor: dispatch ──────────────────────────────────────────
 
 
+class TestIrreversibleApprovalNeedsAnAsk:
+    """The approval flag counts only as the answer to a confirmation GAIA asked for."""
+
+    async def _dispatched_brief(
+        self,
+        spawned_runs: list[dict[str, Any]],
+        task: str = "delete all 3 todos",
+        *,
+        approved: bool = True,
+    ) -> str:
+        await call_executor_with(config=config_for(), task=task, irreversible_approved=approved)
+        await drain_background_tasks()
+        return str(spawned_runs[-1]["task"])
+
+    async def test_the_first_request_is_never_its_own_approval(
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        """Seen live on gpt-5.6-luna: comms set the flag on "delete all my todos" and they were gone."""
+        brief = await self._dispatched_brief(spawned_runs)
+
+        assert IRREVERSIBLE_UNAPPROVED_BRIEF in brief
+        assert IRREVERSIBLE_APPROVED_BRIEF not in brief
+
+    async def test_a_yes_to_gaia_s_question_is_approval_once(
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        await record_confirmation_asked(CONVERSATION_ID)
+
+        first = await self._dispatched_brief(spawned_runs)
+        await release_lock_if_owned(CONVERSATION_ID, "stream-1", spawned_runs[-1]["run"].task_id)
+        second = await self._dispatched_brief(spawned_runs)
+
+        assert IRREVERSIBLE_APPROVED_BRIEF in first
+        assert IRREVERSIBLE_UNAPPROVED_BRIEF in second
+
+    async def test_the_reply_after_a_question_spends_it_whatever_that_reply_asks(
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        await record_confirmation_asked(CONVERSATION_ID)
+
+        await self._dispatched_brief(spawned_runs, "book it for tuesday", approved=False)
+        await release_lock_if_owned(CONVERSATION_ID, "stream-1", spawned_runs[-1]["run"].task_id)
+        later = await self._dispatched_brief(spawned_runs)
+
+        assert IRREVERSIBLE_UNAPPROVED_BRIEF in later
+        assert IRREVERSIBLE_APPROVED_BRIEF not in later
+
+    async def test_an_unanswered_question_stops_counting_as_asked_after_its_ttl(
+        self, fake_redis: AsyncRedisCommands
+    ) -> None:
+        key = f"{AWAITING_CONFIRMATION_PREFIX}{CONVERSATION_ID}"
+
+        await record_confirmation_asked(CONVERSATION_ID)
+
+        assert await fake_redis.get(key) == "1"
+        assert await fake_redis.ttl(key) == AWAITING_CONFIRMATION_TTL
+
+
 class TestCallExecutorDispatch:
     async def test_spawns_executor_and_reports_its_task_id(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         response = await call_executor_with(config=config_for(), task="check my calendar")
         await drain_background_tasks()
 
         assert len(spawned_runs) == 1
         run = spawned_runs[0]["run"]
-        assert spawned_runs[0]["task"] == "check my calendar"
+        assert spawned_runs[0]["task"] == compose_executor_brief(
+            "check my calendar", [], intent=DEFAULT_TEST_INTENT
+        )
         assert run.task_id == task_id_from(response)
         assert run.stream_id == "stream-1"
         assert run.conversation_id == CONVERSATION_ID
@@ -237,7 +324,7 @@ class TestCallExecutorDispatch:
         assert session is not None and session.executor_spawned is True
 
     async def test_a_dispatch_with_no_stream_carries_an_empty_stream_id(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         """A run with no live client still gets a run identity."""
         await call_executor_with(config=config_for(stream_id=None), task="check my calendar")
@@ -246,7 +333,7 @@ class TestCallExecutorDispatch:
         assert spawned_runs[0]["run"].stream_id == ""
 
     async def test_holds_the_busy_lock_with_its_own_value_and_a_ttl(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         response = await call_executor_with(config=config_for(), task="x")
 
@@ -255,7 +342,7 @@ class TestCallExecutorDispatch:
         assert await fake_redis.ttl(LOCK_KEY) == EXECUTOR_BUSY_TTL
 
     async def test_background_task_is_kept_alive_then_released(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         # The registry is process-global — other test files in the same
         # worker may leave entries behind. Assert the DELTA, not an
@@ -270,7 +357,7 @@ class TestCallExecutorDispatch:
         assert background_tasks._background_tasks == baseline
 
     async def test_active_todo_binding_reaches_the_executor_without_mutating_comms_config(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         config = config_for()
         await call_executor_with(config=config, task="continue todo", active_todo_id="todo-9")
@@ -280,7 +367,7 @@ class TestCallExecutorDispatch:
         assert "active_todo_id" not in config["configurable"]
 
     async def test_without_active_todo_no_binding_is_injected(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         await call_executor_with(config=config_for(), task="generic")
         await drain_background_tasks()
@@ -288,7 +375,7 @@ class TestCallExecutorDispatch:
         assert "active_todo_id" not in spawned_runs[0]["configurable"]
 
     async def test_missing_thread_id_refuses_instead_of_running_unanchored(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         response = await call_executor_with(config=RunnableConfig(configurable={}), task="x")
 
@@ -297,14 +384,14 @@ class TestCallExecutorDispatch:
         assert await fake_redis.keys(f"{EXECUTOR_BUSY_PREFIX}*") == []
 
     async def test_each_conversation_has_its_own_lock(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         await call_executor_with(config=config_for(), task="a")
         other: RunnableConfig = {"configurable": {"thread_id": "conv-2", "stream_id": "stream-2"}}
 
         response = await call_executor_with(config=other, task="b")
 
-        assert response.startswith("Task accepted")
+        assert response.startswith("Handed to the executor")
         await drain_background_tasks()
         assert len(spawned_runs) == 2
         assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}conv-2") is not None
@@ -315,7 +402,7 @@ class TestCallExecutorDispatch:
 
 class TestCallExecutorLockContention:
     async def test_second_call_in_the_same_turn_is_rejected_not_queued(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         """Queuing a same-turn duplicate ran deep research twice for one message."""
         first = await call_executor_with(config=config_for(), task="research")
@@ -328,14 +415,14 @@ class TestCallExecutorLockContention:
             "That task is already running from this same message, not "
             "starting it again. The results are on the way."
         )
-        assert first.startswith("Task accepted")
-        assert await fake_redis.llen(INBOX_KEY) == 0
+        assert first.startswith("Handed to the executor")
+        assert await redis_cache.client.llen(INBOX_KEY) == 0
         assert await fake_redis.get(LOCK_KEY) == lock_before
         assert len(spawned_runs) == 1
 
     async def test_a_different_turn_is_handed_to_the_run_already_going(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         spawned_runs: list[dict[str, Any]],
         fast_redirect: None,
     ) -> None:
@@ -352,8 +439,8 @@ class TestCallExecutorLockContention:
 
         handed_over = (
             "It's been added to the work already in progress and will be "
-            "covered in the same answer. Confirm briefly in plain words — "
-            "never mention runs, task ids, queues, or waiting."
+            "covered in the same answer. Acknowledge it with a reaction or a few plain "
+            "words; never mention runs, task ids, queues, or waiting."
         )
         assert response == handed_over
         assert len(spawned_runs) == 1  # handed-over work must NOT start its own run
@@ -364,9 +451,8 @@ class TestCallExecutorLockContention:
         assert entries == [
             InboxEntry(
                 id=handed_id,
-                text=(
-                    "second\n\nDefinition of done (every item must be true before you "
-                    f"finish):\n- the draft is saved\n{DONE_EVIDENCE_RULE}"
+                text=compose_executor_brief(
+                    "second", ["the draft is saved"], intent=DEFAULT_TEST_INTENT
                 ),
                 tag=AgentTag.USER_INTERJECTION,
             )
@@ -375,7 +461,7 @@ class TestCallExecutorLockContention:
 
     async def test_the_handover_never_promises_a_separate_later_run(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         spawned_runs: list[dict[str, Any]],
         fast_redirect: None,
     ) -> None:
@@ -389,7 +475,7 @@ class TestCallExecutorLockContention:
             assert broken_promise not in response.lower()
 
     async def test_holder_without_a_stream_id_is_never_waited_on(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         """No stream id means no cancel can be observed — hand it over immediately."""
         await fake_redis.set(LOCK_KEY, ":held-task", ex=EXECUTOR_BUSY_TTL)
@@ -399,7 +485,23 @@ class TestCallExecutorLockContention:
 
         assert response.startswith("It's been added to the work already in progress")
         assert time.monotonic() - started < 0.1
-        assert await fake_redis.llen(INBOX_KEY) == 1
+        assert await redis_cache.client.llen(INBOX_KEY) == 1
+
+    @pytest.mark.regression
+    async def test_a_lock_whose_run_died_is_reclaimed_and_the_request_runs_live(
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        """A holder that died with its process never drains the inbox: handing a retry to it lost the retry for the lock's whole TTL."""
+        age = EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS + 5
+        await fake_redis.set(LOCK_KEY, "dead-stream:dead-task", ex=EXECUTOR_BUSY_TTL - age)
+
+        response = await call_executor_with(config=config_for("stream-2"), task="retry")
+        await drain_background_tasks()
+
+        assert response.startswith("Handed to the executor")
+        assert len(spawned_runs) == 1
+        assert await redis_cache.client.llen(INBOX_KEY) == 0
+        assert (await fake_redis.get(LOCK_KEY) or "").startswith("stream-2:")
 
 
 # ── call_executor: same-turn redirect ("stop X, do Y") ───────────────
@@ -408,7 +510,7 @@ class TestCallExecutorLockContention:
 class TestRedirectAcquire:
     async def test_redirect_runs_live_when_the_cancel_frees_the_lock(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         spawned_runs: list[dict[str, Any]],
         fast_redirect: None,
         release_lock_on_attempt: Callable[[int], None],
@@ -423,14 +525,14 @@ class TestRedirectAcquire:
         response = await call_executor_with(config=config_for("new-stream"), task="do Y")
         await drain_background_tasks()
 
-        assert response.startswith("Task accepted")
-        assert await fake_redis.llen(INBOX_KEY) == 0
+        assert response.startswith("Handed to the executor")
+        assert await redis_cache.client.llen(INBOX_KEY) == 0
         assert len(spawned_runs) == 1
         assert await fake_redis.get(LOCK_KEY) == f"new-stream:{task_id_from(response)}"
 
     async def test_lock_freed_without_a_cancel_signal_is_still_taken_live(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         spawned_runs: list[dict[str, Any]],
         fast_redirect: None,
         release_lock_on_attempt: Callable[[int], None],
@@ -445,12 +547,12 @@ class TestRedirectAcquire:
         response = await call_executor_with(config=config_for("new-stream"), task="do Y")
         await drain_background_tasks()
 
-        assert response.startswith("Task accepted")
+        assert response.startswith("Handed to the executor")
         assert len(spawned_runs) == 1
 
     async def test_gives_up_at_the_detect_window_when_no_cancel_is_in_flight(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         spawned_runs: list[dict[str, Any]],
         fast_redirect: None,
     ) -> None:
@@ -463,11 +565,11 @@ class TestRedirectAcquire:
 
         assert response.startswith("It's been added to the work already in progress")
         assert 0.1 <= elapsed < 0.4  # DETECT (0.1) reached, WAIT (0.5) not
-        assert await fake_redis.llen(INBOX_KEY) == 1
+        assert await redis_cache.client.llen(INBOX_KEY) == 1
 
     async def test_hands_over_after_the_full_wait_when_the_cancel_never_lands(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         spawned_runs: list[dict[str, Any]],
         fast_redirect: None,
     ) -> None:
@@ -480,12 +582,12 @@ class TestRedirectAcquire:
 
         assert response.startswith("It's been added to the work already in progress")
         assert elapsed >= 0.5  # waited the full budget because a cancel was seen
-        assert await fake_redis.llen(INBOX_KEY) == 1
+        assert await redis_cache.client.llen(INBOX_KEY) == 1
         assert spawned_runs == []
 
     async def test_cancel_and_call_in_one_turn_stream_into_the_same_turn(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         spawned_runs: list[dict[str, Any]],
         broadcast: AsyncMock,
     ) -> None:
@@ -500,7 +602,7 @@ class TestRedirectAcquire:
         await drain_background_tasks()
 
         assert cancel_response == "Cancelled: old-task."
-        assert call_response.startswith("Task accepted")
+        assert call_response.startswith("Handed to the executor")
         assert len(spawned_runs) == 1
         # Ran live in this turn, so nothing of "do Y instead" was handed over —
         # the only thing left for the executor is the stop notice.
@@ -513,7 +615,7 @@ class TestRedirectAcquire:
 class TestCallExecutorFailures:
     async def test_failure_after_acquiring_releases_this_dispatch_lock(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         spawned_runs: list[dict[str, Any]],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -530,7 +632,7 @@ class TestCallExecutorFailures:
 
     async def test_failure_in_the_handover_branch_never_frees_a_foreign_lock(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         spawned_runs: list[dict[str, Any]],
         fast_redirect: None,
         monkeypatch: pytest.MonkeyPatch,
@@ -584,7 +686,7 @@ class TestCancelExecutorStopsTheBrowser:
 
     async def test_a_stop_cancels_the_conversations_browser_job(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -598,7 +700,7 @@ class TestCancelExecutorStopsTheBrowser:
         assert response.endswith("Stopped the browser task.")
 
     async def test_a_stop_reaches_a_browser_job_whose_turn_already_ended(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
+        self, fake_redis: AsyncRedisCommands
     ) -> None:
         # The executor is long gone, so there is no busy lock and no live stream
         # to cancel — the job itself is the only thing that still stops the browser.
@@ -609,7 +711,7 @@ class TestCancelExecutorStopsTheBrowser:
         assert response == "Stopped the browser task."
 
     async def test_a_stop_from_the_dm_reaches_the_users_run_from_a_group(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+        self, fake_redis: AsyncRedisCommands, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(job_stop, "_abort_if_started", AsyncMock(return_value=False))
         await set_latest_job("telegram:user-1", "job-g")
@@ -632,7 +734,7 @@ class TestCancelExecutorStopsTheBrowser:
         assert await job_cancel_requested("job-g") is True
 
     async def test_a_stop_after_the_runs_own_end_says_its_result_stands(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+        self, fake_redis: AsyncRedisCommands, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The run recorded its ending first: the stop lost, and the agent is told its answer is told."""
         monkeypatch.setattr(job_stop, "_abort_if_started", AsyncMock(return_value=False))
@@ -662,7 +764,7 @@ class TestCancelExecutorStopsTheBrowser:
 
     async def test_a_targeted_cancel_leaves_the_browser_run_alone(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -676,7 +778,7 @@ class TestCancelExecutorStopsTheBrowser:
         assert await job_cancel_requested("job-1") is False
 
     async def test_a_stop_with_nothing_running_anywhere_still_reports_nothing(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
+        self, fake_redis: AsyncRedisCommands
     ) -> None:
         response = await run_cancel_executor(config=config_for(), task_ids=[])
 
@@ -688,7 +790,7 @@ class TestCancelExecutorStopsTheBrowser:
 
 class TestCancelExecutor:
     async def test_without_a_conversation_there_is_nothing_to_cancel(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
+        self, fake_redis: AsyncRedisCommands
     ) -> None:
         assert (
             await run_cancel_executor(config=RunnableConfig(configurable={}), task_ids=[])
@@ -696,7 +798,7 @@ class TestCancelExecutor:
         )
 
     async def test_reports_when_nothing_is_running_or_pending(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
+        self, fake_redis: AsyncRedisCommands
     ) -> None:
         response = await run_cancel_executor(config=config_for(), task_ids=[])
 
@@ -704,7 +806,7 @@ class TestCancelExecutor:
 
     async def test_empty_task_ids_cancels_the_run_and_the_whole_inbox(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -729,7 +831,7 @@ class TestCancelExecutor:
 
     async def test_cancelling_only_the_running_task(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -743,7 +845,7 @@ class TestCancelExecutor:
 
     async def test_cancelling_a_pending_entry_leaves_the_running_one_alone(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -761,7 +863,7 @@ class TestCancelExecutor:
         cancel_stream.assert_not_awaited()
 
     async def test_selective_cancel_removes_only_the_named_pending_entries(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, broadcast: AsyncMock
+        self, fake_redis: AsyncRedisCommands, broadcast: AsyncMock
     ) -> None:
         """Cancelling "the second thing I asked for" must not take the rest with it."""
         await inbox().append("q1", "keep this")
@@ -778,7 +880,7 @@ class TestCancelExecutor:
         assert await fake_redis.ttl(INBOX_KEY) == EXECUTOR_INBOX_TTL
 
     async def test_removing_the_last_pending_entry_drops_the_inbox_key(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, broadcast: AsyncMock
+        self, fake_redis: AsyncRedisCommands, broadcast: AsyncMock
     ) -> None:
         await inbox().append("q1", "only thing")
 
@@ -788,7 +890,7 @@ class TestCancelExecutor:
         assert await fake_redis.exists(INBOX_KEY) == 0
 
     async def test_pending_only_cancel_all_when_no_run_holds_the_lock(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, broadcast: AsyncMock
+        self, fake_redis: AsyncRedisCommands, broadcast: AsyncMock
     ) -> None:
         await inbox().append("q1", "pending work")
 
@@ -797,7 +899,7 @@ class TestCancelExecutor:
         assert response == "Cancelled: 1 pending task(s)."
 
     async def test_unmatched_task_ids_change_nothing(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, broadcast: AsyncMock
+        self, fake_redis: AsyncRedisCommands, broadcast: AsyncMock
     ) -> None:
         await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
         await inbox().append("q1", "pending work")
@@ -812,7 +914,7 @@ class TestCancelExecutor:
     @pytest.mark.parametrize("blank_stream_id", ["", "1"])
     async def test_placeholder_stream_ids_are_not_cancelled_as_streams(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
         blank_stream_id: str,
@@ -829,7 +931,7 @@ class TestCancelExecutor:
 
     async def test_legacy_lock_value_without_a_task_id(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -840,7 +942,7 @@ class TestCancelExecutor:
 
     async def test_a_failed_cancel_leaves_the_running_task_lock_intact(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -869,7 +971,7 @@ class TestCancelClosesHilApprovals:
 
     async def test_stopping_the_running_task_closes_its_pending_approvals(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         closed_approvals: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
@@ -883,8 +985,9 @@ class TestCancelClosesHilApprovals:
 
     async def test_stopping_the_running_task_closes_ledger_approvals_too(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
+        closed_ledger_approvals: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # Ledger PENDING rows outlive the run exactly like barrier records: a
@@ -894,13 +997,13 @@ class TestCancelClosesHilApprovals:
 
         await run_cancel_executor(config=config_for(), task_ids=[])
 
-        assert isinstance(executor_tool.cancel_ledger_approvals, AsyncMock)
-        executor_tool.cancel_ledger_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
+        closed_ledger_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
 
     async def test_a_userless_stop_still_closes_ledger_approvals_for_the_conversation(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
+        closed_ledger_approvals: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
@@ -910,12 +1013,11 @@ class TestCancelClosesHilApprovals:
 
         await run_cancel_executor(config=config, task_ids=[])
 
-        assert isinstance(executor_tool.cancel_ledger_approvals, AsyncMock)
-        executor_tool.cancel_ledger_approvals.assert_awaited_once_with(CONVERSATION_ID, "")
+        closed_ledger_approvals.assert_awaited_once_with(CONVERSATION_ID, "")
 
     async def test_sparing_the_running_task_leaves_its_approvals_alone(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         closed_approvals: AsyncMock,
     ) -> None:
@@ -930,7 +1032,7 @@ class TestCancelClosesHilApprovals:
 
     async def test_nothing_matched_closes_nothing(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         closed_approvals: AsyncMock,
     ) -> None:
@@ -942,7 +1044,7 @@ class TestCancelClosesHilApprovals:
 
     async def test_a_failure_closing_approvals_surfaces_and_keeps_the_lock(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         closed_approvals: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
@@ -971,7 +1073,7 @@ class TestCancelAnnouncesTheInterruption:
 
     async def test_a_redirect_reaches_the_next_run_with_the_stop(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -993,7 +1095,7 @@ class TestCancelAnnouncesTheInterruption:
 
     async def test_a_plain_stop_announces_the_interruption_without_a_redirect(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -1008,7 +1110,7 @@ class TestCancelAnnouncesTheInterruption:
         assert "What the user wants instead" not in entries[0].text
 
     async def test_cancelling_pending_work_alone_announces_nothing(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, broadcast: AsyncMock
+        self, fake_redis: AsyncRedisCommands, broadcast: AsyncMock
     ) -> None:
         """No run was stopped, so there is no interruption to report."""
         await inbox().append("q1", "drop this")
@@ -1042,7 +1144,7 @@ class TestCancelStopsSubagents:
 
     @pytest.mark.regression
     async def test_stop_everything_reaches_a_subagent_whose_executor_run_already_finished(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, broadcast: AsyncMock
+        self, fake_redis: AsyncRedisCommands, broadcast: AsyncMock
     ) -> None:
         stream_id = await self._running("s1", dispatched_by="finished-turn")
 
@@ -1054,7 +1156,7 @@ class TestCancelStopsSubagents:
 
     @pytest.mark.regression
     async def test_stopping_the_running_task_stops_only_the_subagents_it_dispatched(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, broadcast: AsyncMock
+        self, fake_redis: AsyncRedisCommands, broadcast: AsyncMock
     ) -> None:
         await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
         mine = await self._running("mine", dispatched_by="stream-1")
@@ -1067,7 +1169,7 @@ class TestCancelStopsSubagents:
         assert not await StreamManager.is_cancelled(theirs)
 
     async def test_cancelling_pending_work_leaves_running_subagents_alone(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, broadcast: AsyncMock
+        self, fake_redis: AsyncRedisCommands, broadcast: AsyncMock
     ) -> None:
         stream_id = await self._running("s1", dispatched_by="finished-turn")
         await inbox().append("q1", "drop this")
@@ -1079,7 +1181,7 @@ class TestCancelStopsSubagents:
 
     async def test_stop_everything_stops_both_a_browser_job_and_a_subagent(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -1106,14 +1208,14 @@ class TestMalformedInboxEntries:
 
     async def test_a_json_scalar_entry_does_not_abort_the_cancellation(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Json.loads("5") is an int; subscripting it raises a TypeError, which outside the decode guard aborted the cancel and destroyed the running task's lock."""
         monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
         await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
-        await fake_redis.rpush(INBOX_KEY, "5")
+        await redis_cache.client.rpush(INBOX_KEY, "5")
         await inbox().append("q1", "cancel me")
 
         response = await run_cancel_executor(config=config_for(), task_ids=["q1"])
@@ -1124,18 +1226,18 @@ class TestMalformedInboxEntries:
         assert await fake_redis.get(LOCK_KEY) == "stream-1:running-task"
         # The unreadable entry is left exactly where it is, not silently rewritten
         # away, while the readable one beside it was reached and removed.
-        assert (await fake_redis.lrange(INBOX_KEY, 0, -1))[0] == "5"
+        assert (await redis_cache.client.lrange(INBOX_KEY, 0, -1))[0] == "5"
         assert "q1" not in [entry.id for entry in await inbox().read()]
 
     async def test_an_entry_without_an_id_is_never_matched(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, broadcast: AsyncMock
+        self, fake_redis: AsyncRedisCommands, broadcast: AsyncMock
     ) -> None:
-        await fake_redis.rpush(INBOX_KEY, json.dumps({"text": "orphan"}))
+        await redis_cache.client.rpush(INBOX_KEY, json.dumps({"text": "orphan"}))
 
         response = await run_cancel_executor(config=config_for(), task_ids=["q1"])
 
         assert response == "None of the specified task_ids matched any running or pending tasks."
-        assert await fake_redis.llen(INBOX_KEY) == 1
+        assert await redis_cache.client.llen(INBOX_KEY) == 1
 
 
 # ── cancel broadcast ─────────────────────────────────────────────────
@@ -1144,7 +1246,7 @@ class TestMalformedInboxEntries:
 class TestCancelBroadcast:
     async def test_clients_are_told_about_an_agent_initiated_cancel(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -1164,7 +1266,7 @@ class TestCancelBroadcast:
 
     async def test_no_user_id_means_no_broadcast_attempt(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -1180,7 +1282,7 @@ class TestCancelBroadcast:
 
     async def test_a_broken_websocket_does_not_fail_the_cancellation(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -1212,7 +1314,7 @@ class TestDispatchThreadsTheTurnsIdentity:
     """
 
     async def test_the_bot_message_id_reaches_the_executor_run(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         await call_executor_with(
             config=config_for(bot_message_id="bmsg-7"), task="check my calendar"
@@ -1222,7 +1324,7 @@ class TestDispatchThreadsTheTurnsIdentity:
         assert spawned_runs[0]["run"].bot_message_id == "bmsg-7"
 
     async def test_a_turn_without_one_dispatches_with_none(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         """Only a HIL pause sets it; a plain live turn must dispatch cleanly rather than carrying a stale id from the configurable."""
         await call_executor_with(config=config_for(), task="check my calendar")
@@ -1231,7 +1333,7 @@ class TestDispatchThreadsTheTurnsIdentity:
         assert spawned_runs[0]["run"].bot_message_id is None
 
     async def test_the_users_own_wording_reaches_the_executor(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         """The executor's brief carries the verbatim request alongside comms' paraphrase, so a detail comms dropped is still recoverable downstream."""
         await call_executor_with(
@@ -1247,7 +1349,7 @@ class TestDispatchThreadsTheTurnsIdentity:
         assert "triage the inbox" in brief
 
     async def test_identifiers_survive_a_paraphrase_that_mangles_them(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         """Regression: a pasted billing table went to the executor with 3 of its 4 recipient addresses corrupted by the comms model's rewrite, and no verbatim copy to check against."""
         pasted = (
@@ -1305,7 +1407,7 @@ class TestStoppedReplayRecordReachesTheExecutor:
 
     async def test_the_fallback_note_reaches_the_brief_verbatim(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         spawned_runs: list[dict[str, Any]],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -1327,7 +1429,7 @@ class TestStoppedReplayRecordReachesTheExecutor:
 
     async def test_a_fire_without_a_stopped_replay_carries_no_record(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         spawned_runs: list[dict[str, Any]],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -1353,21 +1455,14 @@ class TestDispatchAcknowledgement:
     """
 
     async def test_the_acknowledgement_is_exact(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         response = await call_executor_with(config=config_for(), task="send the email")
         task_id = task_id_from(response)
 
         assert response == (
-            f"Task accepted (task_id: {task_id}). Nothing has run yet: this only means the "
-            "work has STARTED. Do not tell the user anything was sent, created, deleted, or "
-            "finished. Risky actions pause for the user's approval first and they see an "
-            "approval card; if that happens the work waits on them, not on you. Acknowledge "
-            "it, a reaction is enough, and say in words that the action is waiting for their "
-            "approval if one is pending. This guidance applies ONLY to this acknowledgment. The real result "
-            "arrives later as its own message and supersedes it completely: by then the gate "
-            "is settled, so report what happened and never ask again for an approval the "
-            "user has already given."
+            f"Handed to the executor (task_id: {task_id}). If a step needs the user's approval, "
+            "it has not run yet and their decision releases it or skips it."
         )
 
 
@@ -1381,7 +1476,7 @@ class TestAResultNarrationTurnStartsNoWork:
     """
 
     async def test_the_call_is_refused_and_nothing_is_spawned_or_locked(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         response = await call_executor_with(
             config=config_for(is_result_narration=True), task="try the booking again"
@@ -1407,7 +1502,7 @@ class TestSparedRunHearsNoInterruption:
 
     async def test_sparing_the_running_task_announces_no_interruption(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -1421,7 +1516,7 @@ class TestSparedRunHearsNoInterruption:
 
     async def test_cancelling_the_running_task_does_announce(
         self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
+        fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -1443,7 +1538,7 @@ class TestAWorkflowFiresReservationIsAdopted:
     """
 
     async def test_the_executor_takes_over_its_own_fires_claim(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         reservation = ":fire-1"
         await fake_redis.set(LOCK_KEY, reservation, ex=EXECUTOR_BUSY_TTL)
@@ -1459,7 +1554,7 @@ class TestAWorkflowFiresReservationIsAdopted:
         assert await fake_redis.get(LOCK_KEY) == f"stream-1:{task_id_from(response)}"
 
     async def test_a_stale_reservation_still_queues_behind_a_real_run(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         """The claim can lapse on TTL and be taken by a genuinely different run."""
         await fake_redis.set(LOCK_KEY, "other-stream:task-9", ex=EXECUTOR_BUSY_TTL)
@@ -1475,7 +1570,7 @@ class TestAWorkflowFiresReservationIsAdopted:
         assert await fake_redis.get(LOCK_KEY) == "other-stream:task-9"
 
     async def test_a_chat_turn_carries_no_reservation_and_still_queues(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         """Only a workflow fire reserves."""
         await fake_redis.set(LOCK_KEY, "other-stream:task-9", ex=EXECUTOR_BUSY_TTL)

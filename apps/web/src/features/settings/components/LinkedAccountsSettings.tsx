@@ -16,7 +16,9 @@ import {
   BOT_PLATFORM_LABELS,
 } from "@/config/botPlatforms";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { OpenPlatformChatButton } from "@/features/settings/components/OpenPlatformChatButton";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { api } from "@/lib/api/typed";
 import { toast } from "@/lib/toast";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -31,6 +33,8 @@ interface PlatformConfig {
   connectedDescription: string;
   premium?: boolean;
   requiresPhone?: boolean;
+  /** The linked account has a DM chat the web app can open. */
+  chat?: boolean;
 }
 
 const PLATFORMS: PlatformConfig[] = [
@@ -41,6 +45,7 @@ const PLATFORMS: PlatformConfig[] = [
     image: BOT_PLATFORM_ICONS.telegram,
     color: "#0088cc",
     connectedDescription: "Message your bot on Telegram to chat with GAIA",
+    chat: true,
   },
   {
     id: "whatsapp",
@@ -49,6 +54,7 @@ const PLATFORMS: PlatformConfig[] = [
     color: "#25D366",
     description: "Connect GAIA to WhatsApp (Beta)",
     connectedDescription: "Message GAIA on WhatsApp",
+    chat: true,
   },
   {
     id: "imessage",
@@ -59,6 +65,7 @@ const PLATFORMS: PlatformConfig[] = [
     connectedDescription: "Message GAIA from your iPhone or Mac",
     premium: true,
     requiresPhone: true,
+    chat: true,
   },
   {
     id: "slack",
@@ -95,6 +102,11 @@ export default function LinkedAccountsSettings() {
   // previous attempt's number into the session the user is now in.
   const connectAttemptRef = useRef(0);
   const { isPaid, isUnknown } = useIsPaid();
+  const billingEnabled = useDeployment().bills;
+  // Unknown status stays permissive: the backend enforces the gate, and
+  // blocking a paying customer is worse than a brief open window.
+  const isLockedBehindPro = (platform: PlatformConfig) =>
+    billingEnabled && !!platform.premium && !isUnknown && !isPaid;
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
 
   const clearPollTimer = () => {
@@ -126,10 +138,7 @@ export default function LinkedAccountsSettings() {
   };
 
   const startConnect = (platform: PlatformConfig) => {
-    // While subscription status is unknown, let the connect attempt proceed
-    // instead of paywalling — the backend enforces the gate server-side, so a
-    // brief permissive window is safe, but blocking a paying customer is not.
-    if (platform.premium && !isUnknown && !isPaid) {
+    if (isLockedBehindPro(platform)) {
       openUpgradeModal(undefined, {
         dismissible: true,
         source: "settings_linked_accounts",
@@ -270,7 +279,7 @@ export default function LinkedAccountsSettings() {
               }
             >
               <div className="flex items-center gap-3">
-                {platform.premium && !isUnknown && !isPaid && (
+                {isLockedBehindPro(platform) && (
                   <Chip size="sm" variant="flat" color="warning">
                     Pro
                   </Chip>
@@ -280,6 +289,9 @@ export default function LinkedAccountsSettings() {
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                     Connected
                   </span>
+                )}
+                {isConnected && platform.chat && (
+                  <OpenPlatformChatButton platform={platform.id} />
                 )}
                 <Button
                   variant="flat"

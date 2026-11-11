@@ -22,7 +22,7 @@ tests:
             exp_annotations:
               description: >-
                 Every stateful volume shares this one disk — Postgres data, Redis, RabbitMQ, Chroma, 30 days of Prometheus history, Loki logs and the cached embedding and voice models. Filling it takes down Postgres writes, RabbitMQ persistence and log ingestion at the same time. Prometheus retention and Loki are usually the largest reclaimable consumers.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-host-disk
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-host-disk
               __dashboardUid__: gaia-host
               __panelId__: '3'
 

@@ -6,16 +6,14 @@ handle. Collections are created on demand and cached, so the connection is defer
 a collection is actually used rather than paid at import time.
 """
 
-from typing import Any
-
-from motor.motor_asyncio import AsyncIOMotorCollection
+from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.mongodb import MongoDB
+from app.db.mongodb.mongodb import MongoDB, RawDocument
 from shared.py.wide_events import log
 
 # Cache for async (Motor) collections
-_collections_cache: dict[str, AsyncIOMotorCollection[dict[str, Any]]] = {}
+_collections_cache: dict[str, AsyncIOMotorCollection[RawDocument]] = {}
 _mongodb_instance: MongoDB | None = None
 
 
@@ -32,7 +30,7 @@ def _get_mongodb_instance() -> MongoDB:
     return _mongodb_instance
 
 
-def _get_collection(collection_name: str) -> AsyncIOMotorCollection[dict[str, Any]]:
+def _get_collection(collection_name: str) -> AsyncIOMotorCollection[RawDocument]:
     """Get async collection with lazy loading and caching."""
     if collection_name not in _collections_cache:
         log.info(
@@ -44,7 +42,7 @@ def _get_collection(collection_name: str) -> AsyncIOMotorCollection[dict[str, An
     return _collections_cache[collection_name]
 
 
-def get_async_collection(collection_name: str) -> AsyncIOMotorCollection[dict[str, Any]]:
+def get_async_collection(collection_name: str) -> AsyncIOMotorCollection[RawDocument]:
     """Resolve a Motor collection by its Mongo name — the only collection accessor.
 
     Repositories declare a collection_name and resolve their handle through
@@ -52,3 +50,8 @@ def get_async_collection(collection_name: str) -> AsyncIOMotorCollection[dict[st
     not this.
     """
     return _get_collection(collection_name)
+
+
+def get_async_database() -> AsyncIOMotorDatabase[RawDocument]:
+    """Return the Motor database handle, for server-level commands no repository owns."""
+    return _get_mongodb_instance().database
