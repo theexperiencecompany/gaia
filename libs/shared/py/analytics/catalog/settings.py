@@ -19,6 +19,8 @@ __all__ = [
     "ProfileLinkCopied",
     "ProfileUpdated",
     "SettingsBriefingScheduleUpdated",
+    "SettingsBriefsOffBlocked",
+    "SettingsBriefsOffResolved",
     "SettingsChatChannelPriorityUpdated",
     "SettingsDesktopPreferenceChanged",
     "SettingsNotificationsToggled",
@@ -77,6 +79,27 @@ class SettingsBriefingScheduleUpdated(ServerEvent):
 
     frequency: Identifier
     hour: int
+    via: BriefingScheduleChangedVia
+
+
+class SettingsBriefsOffBlocked(ServerEvent):
+    """Turning briefs off was refused because workflows still deliver their results to the brief."""
+
+    event: ClassVar[str] = "settings:briefs_off_blocked"
+    budget_per_user_day: ClassVar[int] = 20
+
+    workflow_count: int
+    via: BriefingScheduleChangedVia
+
+
+class SettingsBriefsOffResolved(ServerEvent):
+    """Briefs were turned off after the user moved every brief-delivery workflow elsewhere."""
+
+    event: ClassVar[str] = "settings:briefs_off_resolved"
+    budget_per_user_day: ClassVar[int] = 20
+
+    moved_to_now: int
+    moved_to_silent: int
     via: BriefingScheduleChangedVia
 
 

@@ -844,7 +844,9 @@ class TestBriefingScheduleEndpoints:
 
         assert response.status_code == 200
         assert response.json() == {"frequency": "weekdays", "hour": 7}
-        setter.assert_awaited_once_with(FAKE_USER_ID, wanted, via="settings")
+        setter.assert_awaited_once_with(
+            FAKE_USER_ID, wanted, via="settings", workflow_deliveries={}
+        )
         log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="update_briefing_schedule")
 
     @pytest.mark.parametrize(

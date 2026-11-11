@@ -6826,6 +6826,55 @@ export interface components {
          */
         BriefAction: "approve" | "reply" | "review" | "retry" | "read" | "attend";
         /**
+         * BriefDeliveryWorkflow
+         * @description A workflow whose results wait for the brief.
+         */
+        BriefDeliveryWorkflow: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BriefDeliveryWorkflowsConflict
+         * @description The 409 body when briefs cannot turn off: the workflows still delivering to the brief.
+         */
+        BriefDeliveryWorkflowsConflict: {
+            /**
+             * Code
+             * @description Machine-readable error code.
+             */
+            code?: string | null;
+            /**
+             * Errors
+             * @description Field-level failures; present only on 422.
+             */
+            errors?: components["schemas"]["ValidationIssue"][] | null;
+            /** Fix */
+            fix?: string | null;
+            /**
+             * Integration Id
+             * @description Integration an INTEGRATION_NOT_CONNECTED error asks to connect.
+             */
+            integration_id?: string | null;
+            /**
+             * Message
+             * @description Human-readable description of the failure.
+             */
+            message: string;
+            /**
+             * Toolkit
+             * @description Composio toolkit an INTEGRATION_NOT_CONNECTED error is about.
+             */
+            toolkit?: string | null;
+            /** Why */
+            why?: string | null;
+            /** Workflows */
+            workflows: components["schemas"]["BriefDeliveryWorkflow"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * BriefingEvent
          * @description One calendar event on the user's own clock, read from their calendar.
          */
@@ -6994,6 +7043,26 @@ export interface components {
              * @default 8
              */
             hour?: number;
+        };
+        /**
+         * BriefingScheduleUpdate
+         * @description A new briefing schedule; turning briefs off also says where brief-delivery workflows go.
+         */
+        BriefingScheduleUpdate: {
+            /** @default daily */
+            frequency?: components["schemas"]["BriefingFrequency"];
+            /**
+             * Hour
+             * @default 8
+             */
+            hour?: number;
+            /**
+             * Workflow Deliveries
+             * @description New delivery per workflow id, for workflows that deliver to the brief
+             */
+            workflow_deliveries?: {
+                [key: string]: "now" | "silent";
+            };
         };
         /**
          * BriefingSection
@@ -17440,12 +17509,15 @@ export type BotAuthStatusResponse = components['schemas']['BotAuthStatusResponse
 export type BotChatRequest = components['schemas']['BotChatRequest'];
 export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
 export type BriefAction = components['schemas']['BriefAction'];
+export type BriefDeliveryWorkflow = components['schemas']['BriefDeliveryWorkflow'];
+export type BriefDeliveryWorkflowsConflict = components['schemas']['BriefDeliveryWorkflowsConflict'];
 export type BriefingEvent = components['schemas']['BriefingEvent'];
 export type BriefingFrequency = components['schemas']['BriefingFrequency'];
 export type BriefingItem = components['schemas']['BriefingItem'];
 export type BriefingListResponse = components['schemas']['BriefingListResponse'];
 export type BriefingPayload = components['schemas']['BriefingPayload'];
 export type BriefingSchedule = components['schemas']['BriefingSchedule'];
+export type BriefingScheduleUpdate = components['schemas']['BriefingScheduleUpdate'];
 export type BriefingSection = components['schemas']['BriefingSection'];
 export type BriefingStat = components['schemas']['BriefingStat'];
 export type BriefingTallies = components['schemas']['BriefingTallies'];
@@ -26096,7 +26168,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["BriefingSchedule"];
+                "application/json": components["schemas"]["BriefingScheduleUpdate"];
             };
         };
         responses: {
@@ -26125,6 +26197,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BriefingSchedule"];
+                };
+            };
+            /** @description Briefs cannot turn off while workflows deliver to the brief */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefDeliveryWorkflowsConflict"];
                 };
             };
             /** @description Unprocessable Entity */
