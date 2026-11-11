@@ -528,6 +528,49 @@ def test_json_prints_nothing_but_json(
 # ----------------------------------------------------------------------- fault injection
 
 
+def test_compact_json_drops_passing_checks_and_keeps_the_red_findings(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`mise ci:status` is the actionable core, not a smaller copy of everything."""
+    wire(
+        FakeGh(
+            checks=[FAILED_CHECK, PASSED_CHECK],
+            artifacts=[{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}],
+            zip_blobs={None: verdict_zip(VERDICT)},
+        )
+    )
+    assert run_cli(monkeypatch, ["--json", "--compact", "--no-stack"]) == 1
+    report = json.loads(capsys.readouterr().out)
+
+    assert [check["name"] for check in report["failed"]] == [FAILED_CHECK["name"]]
+    assert report["verdicts"][0]["lane"] == "mutation-shard-3"
+    assert report["verdicts"][0]["findings"][0]["file"] == "app/api/v1/endpoints/bot.py"
+    assert report["fallback_tails"] == {}
+    assert report["counts"] == {
+        "passed": 1,
+        "failed": 1,
+        "pending": 0,
+        "skipped": 0,
+        "error": 0,
+        "timeout": 0,
+    }
+    for dropped in ("checks", "sources", "stack", "runner_health"):
+        assert dropped not in report, f"--compact kept {dropped}"
+    # Shards stay, filtered to their failing modules: that is the mutation answer.
+    assert report["shards"] == []
+    assert report["pr"]["number"] == 7
+
+
+def test_compact_only_applies_to_json(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(FakeGh(checks=[PASSED_CHECK]))
+    with pytest.raises(SystemExit) as excinfo:
+        run_cli(monkeypatch, ["--compact"])
+    assert excinfo.value.code == 2
+    assert "--compact only applies to --json" in capsys.readouterr().err
+
+
 def test_a_pending_check_is_not_a_failure(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

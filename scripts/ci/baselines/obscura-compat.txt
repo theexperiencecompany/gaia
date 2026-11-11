@@ -26,7 +26,11 @@ https://www.nytimes.com/
 # 2026-10-02: same document; MediaWiki's collapsed sidebar lists get `hidden` on the
 # container itself in Obscura (their 13 "show" toggles vanish) and table parts compute
 # display:block. 16 buttons vs 29-39 in Chrome, by Chrome's layout of the responsive header.
+# Matched on 2026-11-10/11 runs, gapped again in run 43009460678: it flips, keep it.
 https://en.wikipedia.org/wiki/Transformer_(deep_learning_architecture)
 # 2026-10-03: both engines get a 202 AWS WAF challenge, whose script reloads into a page
 # variant Amazon picks per load (Obscura 8-10 buttons; Chrome 8-20 across runs).
 https://www.amazon.com/
+# 2026-11-11: same 330 KB document as Chrome, Obscura shows 6 buttons vs 34 and 30 links
+# vs 89 (CI run 42999022318); the homepage passed on 2026-11-10 with the same engine.
+https://duckduckgo.com/

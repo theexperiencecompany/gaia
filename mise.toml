@@ -768,6 +768,10 @@ description = "Run CI quality gates locally (same lanes/versions as GitHub Actio
 run = "uv run --no-project python scripts/dev/gaia_verify.py"
 
 
+[tasks."ratchets"]
+description = "Run the touch-to-fix ratchets CI gates on (plr-complexity, mypy-tests) at CI's exact commands, without the rest of ci:local. plr also runs at commit; mypy-tests is ~7s warm, ~3.5min on the first run in a fresh worktree"
+run = "python3 tools/lints/check_plr_complexity.py && python3 tools/lints/check_mypy_tests.py"
+
 [tasks."pr:comments"]
 description = "Fetch PR review threads read-only: resolution state, IDs for resolve/reply, next-step syntax"
 run = "uv run python scripts/dev/pr_comments.py"
@@ -783,3 +787,15 @@ run = "uv run python scripts/dev/ci_remote.py"
 [tasks."ci:watch"]
 description = "Wait on a PR's CI: `mise ci:watch <PR|branch>` polls up to an hour and exits at the first red check, printing its failure. The only sanctioned way to wait on CI"
 run = "uv run python scripts/dev/ci_remote.py --watch --fail-fast --max-wait 3600"
+
+[tasks."ci:status"]
+description = "One normalized read of a PR's CI: red lanes, verdict findings, failing mutation modules and the last log lines. Use this instead of raw `gh pr checks` / `gh run view`"
+run = "uv run python scripts/dev/ci_remote.py --json --compact --no-stack"
+
+[tasks."mutation:one"]
+description = "Run ONE changed app module locally and print its surviving mutants with file:line, full diff and mapped tests: `mise mutation:one app/services/x.py`"
+run = "uv run python scripts/ci/mutation.py one"
+
+[tasks."mutation:survivors"]
+description = "Print every surviving mutant from a shard artifact (shard.verdict.json, record dir, or shard.log) with file:line, change, full diff and tests: `mise mutation:survivors <source>`"
+run = "uv run python scripts/ci/mutation.py survivors"
