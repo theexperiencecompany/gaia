@@ -4,7 +4,9 @@ import { EMAIL_CHANNEL_DESCRIPTION, NOTIFICATION_CHANNELS } from "@gaia/shared";
 import type { ChannelPlatform, ChannelPreferences } from "@gaia/shared/types";
 import { Button } from "@heroui/button";
 import { Switch } from "@heroui/switch";
+import { Link01Icon } from "@icons";
 import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { isBotPlatform } from "@/config/botPlatforms";
 import {
@@ -21,6 +23,11 @@ import { api } from "@/lib/api/typed";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 import type { PlatformLinks } from "@/types/platform";
+
+const PLATFORM_NAME_LIST = new Intl.ListFormat("en", {
+  style: "long",
+  type: "conjunction",
+});
 
 export default function NotificationSettings() {
   const [platformLinks, setPlatformLinks] = useState<PlatformLinks>({});
@@ -80,29 +87,35 @@ export default function NotificationSettings() {
   const linkedPlatforms = NOTIFICATION_PLATFORMS.filter(
     (platform) => !!platformLinks[platform]?.platformUserId,
   );
+  // Email reaches the user through their GAIA address; a bot platform only
+  // once it is linked, so unlinked ones fold into a single row below.
+  const switchableChannels = NOTIFICATION_CHANNELS.filter(
+    (channel) =>
+      !isBotPlatform(channel) || !!platformLinks[channel]?.platformUserId,
+  );
+  const unlinkedChannels = NOTIFICATION_CHANNELS.filter(
+    (channel) =>
+      isBotPlatform(channel) && !platformLinks[channel]?.platformUserId,
+  );
 
   return (
     <SettingsPage>
       <QuietHoursSettings />
       {!loading && <ChatChannelSettings linkedPlatforms={linkedPlatforms} />}
-      <SettingsSection description="Choose where to receive GAIA notifications.">
-        {NOTIFICATION_CHANNELS.map((channel) => {
+      <SettingsSection
+        title="Notification channels"
+        description="Choose where to receive GAIA notifications."
+      >
+        {switchableChannels.map((channel) => {
           const label = NOTIFICATION_CHANNEL_LABELS[channel];
-          // Only bot platforms need a linked account; email reaches the user
-          // through the address on their GAIA account.
-          const needsLink = isBotPlatform(channel);
-          const isAvailable =
-            !needsLink || !!platformLinks[channel]?.platformUserId;
           return (
             <SettingsRow
               key={channel}
               label={label}
               description={
-                !isAvailable
-                  ? "Connect in Linked Accounts to enable"
-                  : channel === "email"
-                    ? EMAIL_CHANNEL_DESCRIPTION
-                    : "Send notifications to this channel"
+                channel === "email"
+                  ? EMAIL_CHANNEL_DESCRIPTION
+                  : "Send notifications to this channel"
               }
               icon={
                 <Image
@@ -116,14 +129,9 @@ export default function NotificationSettings() {
             >
               <Switch
                 size="sm"
-                isSelected={
-                  isAvailable && !!channelPrefs && channelPrefs[channel]
-                }
+                isSelected={!!channelPrefs && channelPrefs[channel]}
                 isDisabled={
-                  !isAvailable ||
-                  loading ||
-                  !channelPrefs ||
-                  togglingPlatform === channel
+                  loading || !channelPrefs || togglingPlatform === channel
                 }
                 onValueChange={(enabled) => handleToggle(channel, enabled)}
                 aria-label={`Enable ${label} notifications`}
@@ -131,6 +139,28 @@ export default function NotificationSettings() {
             </SettingsRow>
           );
         })}
+        {!loading && unlinkedChannels.length > 0 && (
+          <SettingsRow
+            label={PLATFORM_NAME_LIST.format(
+              unlinkedChannels.map(
+                (channel) => NOTIFICATION_CHANNEL_LABELS[channel],
+              ),
+            )}
+            description="Link them to get notifications there too."
+            icon={
+              <div className="flex size-9 items-center justify-center rounded-xl bg-zinc-800">
+                <Link01Icon className="size-4 text-zinc-400" />
+              </div>
+            }
+          >
+            <Link
+              href="/settings/linked-accounts"
+              className="text-sm text-primary"
+            >
+              Linked Accounts
+            </Link>
+          </SettingsRow>
+        )}
       </SettingsSection>
     </SettingsPage>
   );
