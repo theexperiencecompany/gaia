@@ -685,6 +685,7 @@ class TestDailyBrief:
         assert line in world.post.await_args.kwargs["text"]
         assert line in world.notify.await_args.args[0].content.body
         assert world.capture.call_args.args[1].stamp_collected is True
+        world.stamped.assert_awaited_once_with(_USER)
 
     async def test_a_city_already_collected_is_not_announced_again(
         self, world: World, monkeypatch: pytest.MonkeyPatch
@@ -763,6 +764,13 @@ class TestDailyBrief:
             ("Approve the Priya reply", "you", "Send the reply once you approve")
         ]
         assert [(i.text, i.offer) for i in work.items] == [("Investor update", None)]
+        sent = world.capture.call_args.args[1]
+        assert (sent.lead_count, sent.needs_you_count, sent.updates_count, sent.gaia_did_count) == (
+            1,
+            0,
+            0,
+            1,
+        )
 
     async def test_a_selection_the_judge_breaks_twice_fails_and_sends_nothing(
         self, world: World

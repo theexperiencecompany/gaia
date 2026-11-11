@@ -210,6 +210,19 @@ class TestHilApprovalRepository:
 
         assert [r.approval_id for r in pending] == ["old", "new"]
 
+    async def test_pending_for_user_is_scoped_unexpired_and_oldest_first(self, repo):
+        now = datetime.now(UTC)
+        await repo.create_if_absent(_record("new"))
+        await repo.create_if_absent(_record("old", created_at=now - timedelta(minutes=5)))
+        await repo.create_if_absent(_record("other-user", user_id="u2"))
+        await repo.create_if_absent(_record("expired", expires_at=now - timedelta(minutes=1)))
+        await repo.create_if_absent(_record("done"))
+        await repo.mark_decided("done", "denied", feedback=None, scope="once", decided_by=None)
+
+        pending = await repo.list_pending_for_user("u1", now)
+
+        assert [r.approval_id for r in pending] == ["old", "new"]
+
 
 class TestAutoApprovalRecords:
     """An auto-approved action already ran: its record is a receipt, never a request."""
