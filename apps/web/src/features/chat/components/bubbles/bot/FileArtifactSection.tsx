@@ -1,13 +1,19 @@
 import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
-import { Download01Icon } from "@icons";
+import {
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownTrigger,
+} from "@heroui/dropdown";
+import { Download01Icon, MoreHorizontalIcon } from "@icons";
 import type React from "react";
 import { useCallback, useMemo } from "react";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import { FileCard } from "@/features/chat/components/files/FileCard";
 import { useFilePreview } from "@/features/chat/hooks/useFilePreview";
 import { getExtension } from "@/features/chat/utils/fileExtension";
-import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
+import { shareLinkMenuItems } from "@/features/short-links/components/shareLinkMenuItems";
+import { useShareLink } from "@/features/short-links/hooks/useShareLink";
 import { sessionArtifactTargetId } from "@/features/short-links/utils/sessionArtifactTargetId";
 import { useConversationArtifacts } from "@/stores/chatStore";
 import type { ArtifactData } from "@/types/features/toolDataTypes";
@@ -90,6 +96,10 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
     link.click();
     document.body.removeChild(link);
   }, [artifact.path, conversationId, filename]);
+  const share = useShareLink(
+    "session_artifact",
+    sessionArtifactTargetId(conversationId, artifact.path),
+  );
 
   return (
     <>
@@ -100,23 +110,34 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
         sizeBytes={artifact.size_bytes}
         onPress={preview.open}
         actions={
-          <>
-            <ShareLinkControls
-              targetType="session_artifact"
-              targetId={sessionArtifactTargetId(conversationId, artifact.path)}
-            />
-            <Tooltip content="Download" placement="bottom">
+          <Dropdown
+            placement="bottom-end"
+            onOpenChange={share.onMenuOpenChange}
+          >
+            <DropdownTrigger>
               <Button
                 isIconOnly
                 size="sm"
                 variant="light"
-                aria-label="Download"
-                onPress={handleDownload}
+                aria-label={`Actions for ${filename}`}
+                isLoading={share.pending !== null}
               >
-                <Download01Icon size={16} />
+                <MoreHorizontalIcon size={16} />
               </Button>
-            </Tooltip>
-          </>
+            </DropdownTrigger>
+            <DropdownMenu aria-label={`Actions for ${filename}`}>
+              {[
+                <DropdownItem
+                  key="download"
+                  startContent={<Download01Icon size={16} />}
+                  onPress={handleDownload}
+                >
+                  Download
+                </DropdownItem>,
+                ...shareLinkMenuItems(share),
+              ]}
+            </DropdownMenu>
+          </Dropdown>
         }
       />
     </>

@@ -2186,6 +2186,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/l/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Share State Route
+         * @description Say whether one of your artifacts is shared, with its live link. Never mints one.
+         */
+        get: operations["short_links_get_share_state_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/l/unshare": {
         parameters: {
             query?: never;
@@ -2198,7 +2218,7 @@ export interface paths {
         /**
          * Stop Sharing Route
          * @description Stop sharing one of your artifacts: its link goes dead immediately, and GAIA
-         *     attaches no new one until you share it again. Idempotent.
+         *     attaches no new one until you share it again. Idempotent; says whether a link died.
          */
         post: operations["short_links_stop_sharing_route"];
         delete?: never;
@@ -5264,6 +5284,9 @@ export interface paths {
         /**
          * Upload File Endpoint
          * @description Upload a file, persist metadata, and generate embeddings for images.
+         *
+         *     A client that cancelled while the file was being stored never learns its id, so
+         *     the stored file is deleted here instead of being left orphaned.
          */
         post: operations["file_upload_file_endpoint"];
         delete?: never;
@@ -14303,8 +14326,16 @@ export interface components {
             url: string;
         };
         /**
+         * ShortLinkShareState
+         * @description Whether one of the owner's artifacts is shared: its live heygaia.link, or None.
+         */
+        ShortLinkShareState: {
+            /** Url */
+            url: string | null;
+        };
+        /**
          * ShortLinkTargetRequest
-         * @description One of the owner's artifacts, to share (mint or fetch its link) or stop sharing.
+         * @description One of the owner's artifacts, to share (mint or fetch its link), read or stop sharing.
          */
         ShortLinkTargetRequest: {
             /** Target Id */
@@ -14701,6 +14732,14 @@ export interface components {
              * @description Notification title: short and human-readable, like a phone notification header (e.g. 'Drink water'). Shown directly to the user.
              */
             title: string;
+        };
+        /**
+         * StopSharingResult
+         * @description Whether stopping killed a live link; False when the artifact was not shared.
+         */
+        StopSharingResult: {
+            /** Revoked */
+            revoked: boolean;
         };
         /**
          * StoredIntegrationTool
@@ -17623,6 +17662,7 @@ export type SetToolOverrideRequest = components['schemas']['SetToolOverrideReque
 export type SetupStatusResponse = components['schemas']['SetupStatusResponse'];
 export type SetupWizardResponse = components['schemas']['SetupWizardResponse'];
 export type ShortLinkResponse = components['schemas']['ShortLinkResponse'];
+export type ShortLinkShareState = components['schemas']['ShortLinkShareState'];
 export type ShortLinkTargetRequest = components['schemas']['ShortLinkTargetRequest'];
 export type ShortLinkTargetType = components['schemas']['ShortLinkTargetType'];
 export type SignupRequest = components['schemas']['SignupRequest'];
@@ -17645,6 +17685,7 @@ export type StartPairingRequest = components['schemas']['StartPairingRequest'];
 export type StartPairingResponse = components['schemas']['StartPairingResponse'];
 export type StarVoiceRequest = components['schemas']['StarVoiceRequest'];
 export type StaticReminderPayload = components['schemas']['StaticReminderPayload'];
+export type StopSharingResult = components['schemas']['StopSharingResult'];
 export type StoredIntegrationTool = components['schemas']['StoredIntegrationTool'];
 export type SubscriptionAction = components['schemas']['SubscriptionAction'];
 export type SubscriptionCondition = components['schemas']['SubscriptionCondition'];
@@ -23722,6 +23763,56 @@ export interface operations {
             };
         };
     };
+    short_links_get_share_state_route: {
+        parameters: {
+            query: {
+                target_id: string;
+                target_type: components["schemas"]["ShortLinkTargetType"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortLinkShareState"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     short_links_stop_sharing_route: {
         parameters: {
             query?: never;
@@ -23754,11 +23845,13 @@ export interface operations {
                 };
             };
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["StopSharingResult"];
+                };
             };
             /** @description Unprocessable Entity */
             422: {

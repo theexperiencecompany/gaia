@@ -10,12 +10,17 @@ from fastapi import Request
 
 SHORT_LINK_ROUTE_PREFIX = "/l"
 SHORT_LINK_UNSHARE_PATH = "/unshare"
+SHORT_LINK_SHARE_STATE_PATH = "/state"
+
+# The owner's routes under the prefix; every other first segment is a slug.
+_OWNER_SEGMENTS = "|".join(
+    path.lstrip("/") for path in (SHORT_LINK_UNSHARE_PATH, SHORT_LINK_SHARE_STATE_PATH)
+)
 
 # Matched on the raw URL path, not the routed template, so a request refused
 # before its route runs (405, rate limit, auth) is masked too.
 _SHORT_LINK_SLUG = re.compile(
-    rf"^(/api/v1{SHORT_LINK_ROUTE_PREFIX}/)"
-    rf"(?!{SHORT_LINK_UNSHARE_PATH.lstrip('/')}(?:/|$))[^/]+"
+    rf"^(/api/v1{SHORT_LINK_ROUTE_PREFIX}/)(?!(?:{_OWNER_SEGMENTS})(?:/|$))[^/]+"
 )
 
 

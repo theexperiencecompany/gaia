@@ -75,10 +75,6 @@ export function useWorkflowSaveGate({
       return true;
     }
 
-    if (!formData.delivery) {
-      return true;
-    }
-
     if (
       formData.activeTab === "schedule" &&
       formData.trigger_config.type === "schedule" &&

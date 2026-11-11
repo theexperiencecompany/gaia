@@ -22,18 +22,25 @@ vi.mock("@/lib/toast", () => ({
   toast: { error: (message: string) => toastError(message) },
 }));
 
-const uploadFile = vi.fn(async (_file: File, _conversationId?: string) => ({
+const STORED = {
   fileId: "file-1",
   url: "https://cdn.example/file-1.png",
   filename: "table.png",
   description: "a table",
   message: "File uploaded successfully",
-}));
+};
+
+const uploadFile = vi.fn(
+  async (_file: File, _conversationId?: string, _signal?: AbortSignal) =>
+    STORED,
+);
+const deleteFile = vi.fn(async (_fileId: string) => undefined);
 
 vi.mock("@/features/chat/api/chatApi", () => ({
   chatApi: {
-    uploadFile: (file: File, conversationId?: string) =>
-      uploadFile(file, conversationId),
+    uploadFile: (file: File, conversationId?: string, signal?: AbortSignal) =>
+      uploadFile(file, conversationId, signal),
+    deleteFile: (fileId: string) => deleteFile(fileId),
   },
 }));
 
@@ -46,8 +53,9 @@ function png(): File {
 describe("useFileAttachments", () => {
   beforeEach(() => {
     uploadFile.mockClear();
+    deleteFile.mockClear();
     toastError.mockClear();
-    useComposerStore.setState({ uploadedFiles: [] });
+    useComposerStore.setState({ uploadedFiles: [], uploadedFileData: [] });
     // jsdom has no object-URL implementation; the hook only mints previews.
     vi.stubGlobal("URL", {
       ...URL,
@@ -68,7 +76,11 @@ describe("useFileAttachments", () => {
       await result.current.attachFiles([png()]);
     });
 
-    expect(uploadFile).toHaveBeenCalledWith(expect.any(File), "conv-123");
+    expect(uploadFile).toHaveBeenCalledWith(
+      expect.any(File),
+      "conv-123",
+      expect.any(AbortSignal),
+    );
   });
 
   it("omits the id on a new chat, where the server seeds it on the first turn", async () => {
@@ -79,7 +91,11 @@ describe("useFileAttachments", () => {
       await result.current.attachFiles([png()]);
     });
 
-    expect(uploadFile).toHaveBeenCalledWith(expect.any(File), undefined);
+    expect(uploadFile).toHaveBeenCalledWith(
+      expect.any(File),
+      undefined,
+      expect.any(AbortSignal),
+    );
   });
 
   it("attaches the files that fit when a pick exceeds the per-message limit", async () => {
@@ -162,5 +178,69 @@ describe("useFileAttachments", () => {
       false,
     );
     expect(result.current.loading.isLoading).toBe(false);
+  });
+
+  it("cancels the request when a chip is removed mid-upload, and stores nothing", async () => {
+    let sent: AbortSignal | undefined;
+    uploadFile.mockImplementationOnce(
+      (_file, _conversationId, signal) =>
+        new Promise((_resolve, reject) => {
+          sent = signal;
+          signal?.addEventListener("abort", () =>
+            reject(new DOMException("canceled", "AbortError")),
+          );
+        }),
+    );
+    const { result } = renderHook(() => useFileAttachments());
+
+    let attaching: Promise<void> = Promise.resolve();
+    act(() => {
+      attaching = result.current.attachFiles([png()]);
+    });
+    await waitFor(() =>
+      expect(useComposerStore.getState().uploadedFiles).toHaveLength(1),
+    );
+    const chipId = useComposerStore.getState().uploadedFiles[0].id;
+
+    await act(async () => {
+      result.current.removeAttachment(chipId);
+      await attaching;
+    });
+
+    expect(sent?.aborted).toBe(true);
+    expect(useComposerStore.getState().uploadedFiles).toEqual([]);
+    expect(useComposerStore.getState().uploadedFileData).toEqual([]);
+    expect(toastError).not.toHaveBeenCalled();
+    expect(deleteFile).not.toHaveBeenCalled();
+  });
+
+  it("deletes the stored file when the chip was removed after the server already had it", async () => {
+    let respond: () => void = () => undefined;
+    uploadFile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          respond = () => resolve(STORED);
+        }),
+    );
+    const { result } = renderHook(() => useFileAttachments());
+
+    let attaching: Promise<void> = Promise.resolve();
+    act(() => {
+      attaching = result.current.attachFiles([png()]);
+    });
+    await waitFor(() =>
+      expect(useComposerStore.getState().uploadedFiles).toHaveLength(1),
+    );
+    const chipId = useComposerStore.getState().uploadedFiles[0].id;
+
+    await act(async () => {
+      result.current.removeAttachment(chipId);
+      respond();
+      await attaching;
+    });
+
+    expect(deleteFile).toHaveBeenCalledWith("file-1");
+    expect(useComposerStore.getState().uploadedFiles).toEqual([]);
+    expect(useComposerStore.getState().uploadedFileData).toEqual([]);
   });
 });

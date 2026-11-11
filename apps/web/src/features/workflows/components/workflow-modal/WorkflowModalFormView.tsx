@@ -179,17 +179,7 @@ export default function WorkflowModalFormView({
                 isPreview={isPreview}
               />
 
-              <WorkflowDeliveryField
-                value={formData.delivery}
-                onChange={(delivery) =>
-                  setValue("delivery", delivery, {
-                    shouldDirty: true,
-                    shouldValidate: true,
-                  })
-                }
-                errorMessage={errors.delivery?.message}
-                isDisabled={isPreview}
-              />
+              <WorkflowDeliveryField control={control} isDisabled={isPreview} />
             </div>
           </fieldset>
         </div>
