@@ -12,7 +12,7 @@
     "smart assistant comparison",
     "AI assistant for work"
   ],
-  "intro": "Google Assistant is one of the most widely used virtual assistants in the world. It handles quick queries, controls smart home devices, sets timers, and performs simple tasks through voice commands. It benefits from Google's knowledge graph and deep integration with Android and Google services. But Google Assistant was designed for consumer convenience, not productivity depth. GAIA is built specifically for knowledge workers who need AI that manages email, automates workflows, and orchestrates their tools.",
+  "intro": "Google Assistant is one of the most widely used virtual assistants in the world. It handles quick queries, controls smart home devices, sets timers, and performs simple tasks through voice commands. It benefits from Google's knowledge graph and deep integration with Android and Google services. But it was designed for consumer convenience, not productivity depth. GAIA is built specifically for knowledge workers who need AI that manages email, automates workflows, and orchestrates their tools.",
   "rows": [
     {
       "feature": "Core approach",
@@ -85,7 +85,7 @@
     },
     {
       "question": "Can I use GAIA with Google services?",
-      "answer": "Yes. GAIA integrates with Gmail, Google Calendar, Google Docs, Google Sheets, Google Tasks, and Google Meet. It builds AI-powered automation on top of these services, which is something Google Assistant does not offer."
+      "answer": "Yes. GAIA integrates with Gmail and Google Calendar, Docs, Sheets, Tasks, and Meet. It builds AI-powered automation on top of these services, which is something Google Assistant does not offer."
     }
   ],
   "relatedPersonas": [

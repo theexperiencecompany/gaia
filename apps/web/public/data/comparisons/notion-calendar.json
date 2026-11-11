@@ -41,7 +41,7 @@
     {
       "feature": "Notion integration",
       "gaia": "Connects to Notion as one of deep integrations via MCP: read pages, create database entries, and link context to calendar events or tasks",
-      "competitor": "Deep native Notion integration: link calendar events to any Notion page or database, and display Notion database items directly on the calendar timeline"
+      "competitor": "Deep native Notion integration: link calendar events to any page or database, and display database items directly on the calendar timeline"
     },
     {
       "feature": "AI capabilities",
@@ -83,15 +83,15 @@
     "Built-in scheduling links provide a Calendly-like experience without a separate subscription",
     "Free to use for core calendar features, with no separate app subscription required"
   ],
-  "verdict": "Choose Notion Calendar if you already live inside Notion and want the fastest, most polished way to connect your calendar to your Notion pages and databases — it is a best-in-class calendar app for that specific workflow. Choose GAIA if you need an AI assistant that goes beyond scheduling: reading your email, creating tasks automatically, automating multi-step workflows across your tools, and maintaining a persistent memory of your work — all from a source-available platform you can self-host on your own infrastructure.",
+  "verdict": "Choose Notion Calendar if you already live inside Notion and want the fastest, most polished way to connect your calendar to your pages and databases — it is a best-in-class calendar app for that specific workflow. Choose GAIA if you need an AI assistant that goes beyond scheduling: reading your email, creating tasks automatically, automating multi-step workflows across your tools, and maintaining a persistent memory of your work — all from a source-available platform you can self-host on your own infrastructure.",
   "faqs": [
     {
       "question": "Can GAIA replace Notion Calendar for calendar management?",
-      "answer": "Yes, for most use cases. GAIA integrates with Google Calendar to create events using natural language, find available time slots, generate Google Meet links, and prepare briefing documents before meetings. What GAIA does not replicate is Notion Calendar's native Notion database timeline view and its polished keyboard-shortcut interface. If your primary need is a fast calendar UI tightly coupled to Notion pages, Notion Calendar excels at that. If you want a single system that also reads your email, creates tasks, and automates workflows, GAIA covers the calendar dimension while adding everything Notion Calendar lacks."
+      "answer": "Yes, for most use cases. GAIA integrates with Google Calendar to create events using natural language, find available time slots, generate Google Meet links, and prepare briefing documents before meetings. What GAIA does not replicate is Notion Calendar's native database timeline view and its polished keyboard-shortcut interface. If your primary need is a fast calendar UI tightly coupled to Notion pages, Notion Calendar excels at that. If you want a single system that also reads your email, creates tasks, and automates workflows, GAIA covers the calendar dimension while adding everything Notion Calendar lacks."
     },
     {
       "question": "Does Notion Calendar manage email or automate tasks?",
-      "answer": "Notion Calendar does not manage email — that is handled by the separate Notion Mail app, which currently supports only Gmail and has limited integration with Notion databases. Notion Calendar also has no autonomous task creation; tasks must be manually set up in Notion databases and linked to calendar events by the user. GAIA handles both automatically: it reads and triages your Gmail inbox, drafts replies, converts email threads into actionable tasks, and manages todos with priorities, deadlines, and projects."
+      "answer": "Notion Calendar does not manage email — that is handled by the separate Notion Mail app, which currently supports only Gmail and has limited integration with your databases. Notion Calendar also has no autonomous task creation; tasks must be manually set up in Notion databases and linked to calendar events by the user. GAIA handles both automatically: it reads and triages your Gmail inbox, drafts replies, converts email threads into actionable tasks, and manages todos with priorities, deadlines, and projects."
     },
     {
       "question": "Is GAIA a good alternative to Notion Calendar for Linux users?",

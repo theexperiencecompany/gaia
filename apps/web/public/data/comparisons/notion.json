@@ -36,7 +36,7 @@
     {
       "feature": "AI capabilities",
       "gaia": "Ambient AI that proactively summarises threads, prepares meeting briefs, writes drafts, detects priorities, and orchestrates cross-tool actions without prompting",
-      "competitor": "Notion AI (add-on) assists with writing, summarising, translating, and filling database fields within the Notion editor on demand"
+      "competitor": "Notion AI (add-on) assists with writing, summarising, translating, and filling database fields within the editor on demand"
     },
     {
       "feature": "Automation",
@@ -86,19 +86,19 @@
     "Powerful relational databases with custom properties, multiple views, and filters: ideal for structured knowledge management",
     "Established ecosystem of templates, integrations, and a large community for every use case from personal notes to company wikis"
   ],
-  "verdict": "Choose Notion if your primary need is a flexible workspace to write docs, build wikis, and organise structured knowledge with your team — Notion's editor and database system are genuinely best-in-class for that job. Choose GAIA if you want an AI assistant that works proactively across your email, calendar, and tools — creating content in Notion for you, automating repetitive cross-tool workflows, and maintaining a persistent understanding of your work without manual input. The most effective setup uses both: Notion as your knowledge base and GAIA as the AI layer that keeps it connected to everything happening in your digital life.",
+  "verdict": "Choose Notion if your primary need is a flexible workspace to write docs, build wikis, and organise structured knowledge with your team — its editor and database system are genuinely best-in-class for that job. Choose GAIA if you want an AI assistant that works proactively across your email, calendar, and tools — creating content in Notion for you, automating repetitive cross-tool workflows, and maintaining a persistent understanding of your work without manual input. The most effective setup uses both: Notion as your knowledge base and GAIA as the AI layer that keeps it connected to everything happening in your digital life.",
   "faqs": [
     {
       "question": "Does GAIA work with Notion?",
-      "answer": "Yes. GAIA integrates with Notion via MCP and can read and write pages, databases, and tasks in your Notion workspace using natural language. You can ask GAIA to create a Notion page from a meeting summary, update a database record, or surface content from your Notion wiki — all without opening Notion directly."
+      "answer": "Yes. GAIA integrates with Notion via MCP and can read and write pages, databases, and tasks in your Notion workspace using natural language. You can ask GAIA to create a Notion page from a meeting summary, update a database record, or surface content from your wiki — all without opening the app."
     },
     {
       "question": "Can GAIA replace Notion for note-taking and documentation?",
-      "answer": "GAIA's strength is orchestration and proactive action rather than rich document editing. For teams that depend on Notion's flexible block editor, relational databases, and wiki structure, GAIA works best as a complement — acting as the AI layer that populates and updates Notion content automatically rather than replacing the workspace itself."
+      "answer": "GAIA's strength is orchestration and proactive action rather than rich document editing. For teams that depend on Notion's flexible block editor, relational databases, and wiki structure, GAIA works best as a complement — acting as the AI layer that populates and updates that content automatically rather than replacing the workspace itself."
     },
     {
       "question": "How is GAIA different from Notion AI?",
-      "answer": "Notion AI is an in-editor assistant that helps you write, summarise, and edit content within Notion pages on demand. GAIA is a proactive agent that operates across your entire digital environment — reading your email, managing your calendar, triggering automations, and writing to Notion as one of many connected tools. Notion AI enhances what you do inside Notion; GAIA orchestrates what happens across everything, including Notion."
+      "answer": "Notion AI is an in-editor assistant that helps you write, summarise, and edit content within your pages on demand. GAIA is a proactive agent that operates across your entire digital environment — reading your email, managing your calendar, triggering automations, and writing to Notion as one of many connected tools. Notion AI enhances what you do inside Notion; GAIA orchestrates what happens across everything, including Notion."
     },
     {
       "question": "How does GAIA's pricing compare with Notion's for teams?",
