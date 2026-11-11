@@ -56,6 +56,7 @@ MAIL_WOKEN = TodoRun(
     todo_id="todo-1",
     trigger_type=TriggerType.INTEGRATION,
     message_class=ProactiveMessageClass.ROUTINE,
+    runs_once=False,
 )
 
 
