@@ -8,12 +8,13 @@ import pytest
 
 from app.models.payment_models import PlanDuration
 from app.models.referral_models import ReferralDocument, ReferredFriendStatus
-from app.services.referrals.gift import gift_code_for_checkout, pending_gift_referral
+from app.services.referrals.gift import CheckoutGift, gift_code_for_checkout, pending_gift_referral
 from tests.factories import make_pro_plans
 from tests.helpers import captured_wide_event
 
 NOW = datetime(2026, 10, 14, tzinfo=UTC)
 GIFT = "app.services.referrals.gift"
+FRIEND_ID = "65f0c0ffee00000000000f01"
 
 
 def _referral(
@@ -21,7 +22,7 @@ def _referral(
     gift_codes: dict[PlanDuration, str] | None = None,
 ) -> ReferralDocument:
     return ReferralDocument(
-        friend_user_id="friend-1",
+        friend_user_id=FRIEND_ID,
         referrer_user_id="referrer-1",
         code="aryan-k7f2",
         status=status,
@@ -47,10 +48,10 @@ class TestPendingGiftReferral:
                 f"{GIFT}.subscription_repository.has_any_for_user", AsyncMock(return_value=False)
             ) as has_any,
         ):
-            assert await pending_gift_referral("friend-1") is referral
+            assert await pending_gift_referral(FRIEND_ID) is referral
 
-        get.assert_awaited_once_with("friend-1")
-        has_any.assert_awaited_once_with("friend-1")
+        get.assert_awaited_once_with(FRIEND_ID)
+        has_any.assert_awaited_once_with(FRIEND_ID)
 
     @pytest.mark.parametrize(
         ("referral", "ever_subscribed"),
@@ -71,7 +72,17 @@ class TestPendingGiftReferral:
                 AsyncMock(return_value=ever_subscribed),
             ),
         ):
-            assert await pending_gift_referral("friend-1") is None
+            assert await pending_gift_referral(FRIEND_ID) is None
+
+    @pytest.mark.usefixtures("referrals_off")
+    async def test_with_referrals_off_a_joined_friend_is_owed_no_new_gift(self) -> None:
+        with (
+            patch(f"{GIFT}.referral_repository.get", AsyncMock(return_value=_referral())),
+            patch(
+                f"{GIFT}.subscription_repository.has_any_for_user", AsyncMock(return_value=False)
+            ),
+        ):
+            assert await pending_gift_referral(FRIEND_ID) is None
 
 
 class TestGiftCodeForCheckout:
@@ -88,16 +99,18 @@ class TestGiftCodeForCheckout:
                     client, referral, "pdt_monthly", make_pro_plans()
                 )
 
-        assert code == "GIFT-NEW"
+        assert code == CheckoutGift(
+            code="GIFT-NEW", duration=PlanDuration.MONTHLY, referrer_id="referrer-1"
+        )
         client.discounts.create.assert_called_once_with(
             amount=5000,
             type="percentage",
             subscription_cycles=2,
             usage_limit=1,
             restricted_to=["pdt_monthly"],
-            name="Referral gift friend-1 monthly",
+            name=f"Referral gift {FRIEND_ID} monthly",
         )
-        set_code.assert_awaited_once_with("friend-1", PlanDuration.MONTHLY, "GIFT-NEW")
+        set_code.assert_awaited_once_with(FRIEND_ID, PlanDuration.MONTHLY, "GIFT-NEW")
         client.discounts.delete.assert_not_called()
         assert event["referral"]["gift_minted"] == "monthly"
 
@@ -105,23 +118,23 @@ class TestGiftCodeForCheckout:
         client = _dodo()
         stored = _referral(gift_codes={PlanDuration.YEARLY: "GIFT-NEW"})
         with patch(f"{GIFT}.referral_repository.set_gift_code", AsyncMock(return_value=stored)):
-            assert (
-                await gift_code_for_checkout(client, _referral(), "pdt_yearly", make_pro_plans())
-                == "GIFT-NEW"
+            assert await gift_code_for_checkout(
+                client, _referral(), "pdt_yearly", make_pro_plans()
+            ) == CheckoutGift(
+                code="GIFT-NEW", duration=PlanDuration.YEARLY, referrer_id="referrer-1"
             )
 
         kwargs = client.discounts.create.call_args.kwargs
         assert (kwargs["amount"], kwargs["subscription_cycles"]) == (1111, 1)
-        assert kwargs["name"] == "Referral gift friend-1 yearly"
+        assert kwargs["name"] == f"Referral gift {FRIEND_ID} yearly"
 
     async def test_a_code_already_minted_for_the_cycle_is_reused(self) -> None:
         client = _dodo()
         referral = _referral(gift_codes={PlanDuration.MONTHLY: "GIFT-OLD"})
 
-        assert (
-            await gift_code_for_checkout(client, referral, "pdt_monthly", make_pro_plans())
-            == "GIFT-OLD"
-        )
+        assert await gift_code_for_checkout(
+            client, referral, "pdt_monthly", make_pro_plans()
+        ) == CheckoutGift(code="GIFT-OLD", duration=PlanDuration.MONTHLY, referrer_id="referrer-1")
         client.discounts.create.assert_not_called()
 
     async def test_a_product_off_the_pro_plans_gets_no_gift(self) -> None:
@@ -140,7 +153,9 @@ class TestGiftCodeForCheckout:
                 client, _referral(), "pdt_monthly", make_pro_plans()
             )
 
-        assert code == "GIFT-WINNER"
+        assert code == CheckoutGift(
+            code="GIFT-WINNER", duration=PlanDuration.MONTHLY, referrer_id="referrer-1"
+        )
         client.discounts.delete.assert_called_once_with("dsc_new")
 
     async def test_a_referral_gone_mid_mint_returns_nothing_and_leaves_no_live_code(
