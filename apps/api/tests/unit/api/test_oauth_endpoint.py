@@ -398,7 +398,7 @@ class TestWorkOSCallback:
         )
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
     @patch("app.api.v1.endpoints.oauth.redis_cache")
     async def test_the_invite_cookie_is_handed_to_signup_and_then_cleared(
         self,
@@ -408,8 +408,8 @@ class TestWorkOSCallback:
         client: AsyncClient,
     ):
         mock_redis.client.get = AsyncMock(return_value=None)
-        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response(
-            picture_url=PICTURE_URL
+        mock_workos.return_value.user_management.authenticate_with_code.return_value = (
+            _mock_auth_response(picture_url=PICTURE_URL)
         )
         mock_store.return_value = (MagicMock(), True)
 

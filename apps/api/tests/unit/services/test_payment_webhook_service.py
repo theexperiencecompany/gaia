@@ -643,6 +643,7 @@ class TestHandlePaymentSucceeded:
                 currency_charged="USD",
                 amount_usd_pre_tax=10.0,
             ),
+            dedupe=Dedupe(key="pay_001", occurred_at=datetime(2025, 1, 1, tzinfo=UTC)),
         )
 
     async def test_a_non_usd_settlement_sends_no_usd_amount_and_says_so(
