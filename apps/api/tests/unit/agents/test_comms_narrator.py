@@ -12,10 +12,13 @@ from contextlib import AbstractContextManager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import HumanMessage
+import pytest
 
+from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME
 from app.agents.core.background.comms_narrator import (
     narrate_executor_result,
     record_executor_cancellation,
+    record_executor_report,
 )
 from app.agents.core.graph_manager import GraphUnavailableError
 from app.agents.llm.lane import AgentRole
@@ -171,6 +174,26 @@ class TestNarrateExecutorResult:
             )
 
         dispatch.assert_not_awaited()
+
+
+class TestRecordExecutorReport:
+    @pytest.mark.parametrize(
+        ("msg_type", "tag"),
+        [("result", AgentTag.EXECUTOR_RESULT), ("error", AgentTag.EXECUTOR_ERROR)],
+    )
+    async def test_the_report_is_appended_to_the_comms_thread_as_the_executors(
+        self, msg_type: str, tag: AgentTag
+    ) -> None:
+        graph = _fake_comms_graph()
+        with _patch_graph(graph):
+            await record_executor_report(CONVERSATION_ID, RESULT_TEXT, msg_type)
+
+        call = graph.aupdate_state.await_args
+        assert call.args[0] == {"configurable": {"thread_id": CONVERSATION_ID}}
+        assert call.kwargs["as_node"] == "tools"
+        (message,) = call.args[1]["messages"]
+        assert message.content == wrap_agent_payload(tag, RESULT_TEXT)
+        assert message.name == BACKGROUND_EXECUTOR_NAME
 
 
 class TestRecordExecutorCancellation:
