@@ -1,6 +1,8 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Modal, ModalContent } from "@heroui/modal";
+import { Cancel01Icon } from "@icons";
 import { useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
 
@@ -77,13 +79,14 @@ interface LetterModalProps {
    * it is and lets the children animate on the modal's enter/exit variants.
    */
   presentation?: keyof typeof PRESENTATIONS;
-  /** The sheet itself; it brings its own surface and close control. */
+  /** The sheet itself; it brings its own surface. */
   children: ReactNode;
 }
 
 /**
- * A single sheet handed to the reader with no modal chrome. HeroUI owns focus
- * trap, Escape, outside press, scroll lock and focus restore.
+ * A single sheet handed to the reader, with one close button pinned to the
+ * screen's corner so a letter taller than the screen still has a way out.
+ * HeroUI owns focus trap, Escape, outside press, scroll lock and focus restore.
  */
 export function LetterModal({
   isOpen,
@@ -109,7 +112,19 @@ export function LetterModal({
           : SHEET_MOTION[reduceMotion ? "reduced" : "full"]
       }
     >
-      <ModalContent>{children}</ModalContent>
+      <ModalContent>
+        <Button
+          isIconOnly
+          radius="full"
+          variant="flat"
+          aria-label="Close"
+          onPress={onClose}
+          className="fixed top-3 right-3 z-50 bg-zinc-800 text-zinc-200 shadow-[0_6px_20px_-6px_rgba(0,0,0,0.6)] data-[hover=true]:bg-zinc-700"
+        >
+          <Cancel01Icon className="size-5" />
+        </Button>
+        {children}
+      </ModalContent>
     </Modal>
   );
 }

@@ -340,3 +340,19 @@ describe("the editor's save button and the gate", () => {
     ).toBe(false);
   });
 });
+
+describe("the create button before a delivery is chosen", () => {
+  it("stays enabled so submitting can point at the missing choice", () => {
+    const { result } = renderHook(() =>
+      useWorkflowSaveGate({
+        mode: "create",
+        existingWorkflow: null,
+        formData: { ...SCHEDULED_FORM, delivery: null },
+        selectedIntegrationSlugs: [],
+        missingTriggerIntegration: null,
+        isCreating: false,
+      }),
+    );
+    expect(result.current.isSaveDisabled()).toBe(false);
+  });
+});

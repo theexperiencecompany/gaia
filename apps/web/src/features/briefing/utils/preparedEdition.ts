@@ -42,6 +42,8 @@ export interface PreparedEdition {
   width: number;
   /** One bitmap per panel, top to bottom, already at display resolution. */
   panels: ImageBitmap[];
+  /** The whole sheet in one bitmap, shown once the letter lies open so no panel seam is left. */
+  sheet: ImageBitmap;
   /** Each panel's share of the sheet's height, top to bottom; the front ends at the edition's fold. */
   shares: number[];
   /** The front panel's paper colour as CSS rgb(), for the backs and edges of the folded sheet. */
@@ -94,7 +96,7 @@ function markedSheet(image: HTMLImageElement, paper: number[]): PaperSheet {
     width: (right - left) * width - 2 * inset,
     height: (bottom - top) * height - 2 * inset,
     rgb: [0, 0, 0],
-    desk: [0, 0, 0],
+    desk: null,
     tilt: 0,
   };
 }
@@ -134,27 +136,29 @@ async function decodeAndSlice(
   const starts = shares.map((_, index) =>
     shares.slice(0, index).reduce((sum, share) => sum + share, 0),
   );
-  const panels = await Promise.all(
-    shares.map((share, index) =>
-      createImageBitmap(
-        edition.source,
-        sheet.x,
-        sheet.y + starts[index] * sheet.height,
-        sheet.width,
-        share * sheet.height,
-        {
-          resizeWidth: panelWidth,
-          resizeHeight: Math.max(1, Math.round(panelWidth * aspect * share)),
-          resizeQuality: "high",
-        },
-      ),
-    ),
-  );
+  const cut = (start: number, share: number) =>
+    createImageBitmap(
+      edition.source,
+      sheet.x,
+      sheet.y + start * sheet.height,
+      sheet.width,
+      share * sheet.height,
+      {
+        resizeWidth: panelWidth,
+        resizeHeight: Math.max(1, Math.round(panelWidth * aspect * share)),
+        resizeQuality: "high",
+      },
+    );
+  const [whole, ...panels] = await Promise.all([
+    cut(0, 1),
+    ...shares.map((share, index) => cut(starts[index], share)),
+  ]);
   const frontRgb = frontPaper(panels[0]);
   return {
     aspect,
     width,
     panels,
+    sheet: whole,
     shares,
     paper: `rgb(${frontRgb.join(", ")})`,
     isDarkPaper: lightness(frontRgb) < DARK_PAPER_LIGHTNESS,

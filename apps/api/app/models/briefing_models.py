@@ -337,7 +337,7 @@ class BriefingView(BriefingModel):
     """A brief as the archive and its folded card show it: the stored brief plus its edition's names."""
 
     edition_name: str | None = Field(
-        description="The edition family's display name (e.g. Air Mail); None for the legacy edition."
+        description="Air Mail only: the family's name; None for every other family."
     )
     stamp_city_name: str | None = Field(description="Air Mail only: the stamp city's name.")
     needs_you_count: int = Field(

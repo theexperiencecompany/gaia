@@ -61,7 +61,7 @@ EXPECTED_STRIP = (
     "Open today&#39;s brief in GAIA</a></td></tr>"
     '<tr><td align="center" style="padding:20px 24px 28px 24px;">'
     f'<div style="font:400 11px/1.5 {_SANS};color:#a1a1aa;">'
-    "You&#39;re getting this because GAIA works your day. "
+    "You get this because daily briefs are on in GAIA. "
     f'<a href="{UNSUBSCRIBE_URL}" style="color:#a1a1aa;">Unsubscribe</a>.'
     "</div></td></tr></table>"
 )
@@ -217,8 +217,9 @@ class TestImageAndUpload:
         await host(make_payload(template_family="memo"))
 
         options = harness.image_calls[0]["options"]
-        assert (options.width, options.device_scale_factor) == (540, 3)
+        assert (options.width, options.device_scale_factor) == (636, 3)
         assert (options.clip_selector, options.trim_margin_px) == ("#root > article", 16)
+        assert (options.clip_bleed_px, options.omit_background) == (48, True)
 
     async def test_a_full_bleed_family_is_its_whole_page(self, harness: Harness) -> None:
         await host(make_payload(template_family="swiss"))
@@ -226,6 +227,7 @@ class TestImageAndUpload:
         options = harness.image_calls[0]["options"]
         assert (options.width, options.device_scale_factor) == (540, 3)
         assert (options.clip_selector, options.trim_margin_px) == ("#root > article", None)
+        assert (options.clip_bleed_px, options.omit_background) == (0, False)
 
     async def test_the_hosted_path_is_the_opaque_render_key_alone(self, harness: Harness) -> None:
         """The URL goes out in emails and on public brief links: no user id, kind or date."""
@@ -249,7 +251,7 @@ class TestImageAndUpload:
 
         assert await host(make_payload()) == HostedEditionImage(
             display_url=f"{base}/c_limit,f_auto,q_auto,w_1080/v1/briefing/editions/{RENDER_KEY}",
-            chat_url=f"{base}/c_limit,f_jpg,q_auto,w_1080/v1/briefing/editions/{RENDER_KEY}",
+            chat_url=f"{base}/b_rgb:23262a,c_limit,f_jpg,q_auto,w_1080/v1/briefing/editions/{RENDER_KEY}",
             fold=0.31,
         )
 
@@ -278,7 +280,7 @@ class TestDeliveryUrl:
         ("fetch_format", "transformation"),
         [
             (EditionDeliveryFormat.AUTO, "c_limit,f_auto,q_auto,w_1080"),
-            (EditionDeliveryFormat.JPG, "c_limit,f_jpg,q_auto,w_1080"),
+            (EditionDeliveryFormat.JPG, "b_rgb:23262a,c_limit,f_jpg,q_auto,w_1080"),
         ],
     )
     def test_the_url_caps_width_and_compresses_without_upscaling(
@@ -362,7 +364,19 @@ class TestTextStrip:
     """The message the model wrote is the email's text, so it reads with images off."""
 
     def test_strip_markup_is_exactly_this(self, harness: Harness) -> None:
-        assert edition_email._text_strip(MESSAGE, BRIEF_URL, UNSUBSCRIBE_URL) == EXPECTED_STRIP
+        assert (
+            edition_email._text_strip(
+                MESSAGE, BRIEF_URL, UNSUBSCRIBE_URL, edition_email._DAILY_WORDING
+            )
+            == EXPECTED_STRIP
+        )
+
+    def test_a_weekly_digest_says_weekly_digests_are_on(self, harness: Harness) -> None:
+        html = render(make_payload(template_family="weekly"))
+
+        assert "You get this because weekly digests are on in GAIA. <a" in html
+        assert "Open this week&#39;s digest in GAIA</a>" in html
+        assert "today&#39;s brief" not in html
 
     def test_the_message_is_escaped(self, harness: Harness) -> None:
         html = render(make_payload(message="Pay <Acme> & co"))

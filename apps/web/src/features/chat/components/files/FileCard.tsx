@@ -40,7 +40,7 @@ export interface FileCardProps {
   isUploading?: boolean;
   onPress?: () => void;
   onRemove?: () => void;
-  /** Secondary actions (download, share), shown on hover, focus and touch screens. */
+  /** One overflow menu trigger, shown on hover, focus and touch screens and while its menu is open. */
   actions?: ReactNode;
 }
 
@@ -135,7 +135,7 @@ export function FileCard({
       )}
 
       {actions && (
-        <div className="hidden shrink-0 items-center pr-1.5 group-hover/file:flex group-focus-within/file:flex pointer-coarse:flex">
+        <div className="hidden shrink-0 items-center pr-1.5 group-hover/file:flex group-focus-within/file:flex pointer-coarse:flex has-[[aria-expanded=true]]:flex">
           {actions}
         </div>
       )}
@@ -147,7 +147,6 @@ export function FileCard({
           variant="faded"
           radius="full"
           aria-label={`Remove ${name}`}
-          isDisabled={isUploading}
           onPress={onRemove}
           className="absolute -top-1.5 -right-1.5 z-10 h-6 w-6 min-w-0 opacity-0 transition-opacity group-hover/file:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
         >

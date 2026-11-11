@@ -11,6 +11,7 @@ import {
 } from "@icons";
 import { formatFileSize } from "@shared/utils";
 import { useCallback, useEffect, useState, type WheelEvent } from "react";
+import { usePanelDrawsClose } from "@/components/layout/sidebar/RightSidebarSlot";
 import {
   FileViewerBody,
   type ViewMode,
@@ -25,6 +26,7 @@ import { getExtension } from "@/features/chat/utils/fileExtension";
 import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
 import { sessionArtifactTargetId } from "@/features/short-links/utils/sessionArtifactTargetId";
 import { copyWithFeedback } from "@/lib/clipboard";
+import { cn } from "@/lib/utils";
 import { useCloseRightSidebar } from "@/stores/layoutStore";
 
 export interface FileViewerPanelProps {
@@ -50,6 +52,7 @@ export default function FileViewerPanel({
   const fileUrl = fileViewerSourceUrl(source);
   const [copied, setCopied] = useState(false);
   const closeSidebar = useCloseRightSidebar();
+  const drawsClose = usePanelDrawsClose();
 
   const isPreviewable = PREVIEWABLE_CONTENT_TYPES.has(contentType) || isImage;
 
@@ -118,7 +121,7 @@ export default function FileViewerPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-zinc-800">
-      <div className="flex h-12 shrink-0 items-center gap-2 bg-zinc-800 px-2">
+      <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-2 bg-zinc-800 px-2">
         {isPreviewable ? (
           <Tabs
             aria-label="View mode"
@@ -148,18 +151,26 @@ export default function FileViewerPanel({
           </Tabs>
         ) : null}
 
-        <p className="min-w-0 flex-1 truncate text-sm text-zinc-200">
+        <p
+          className={cn(
+            "min-w-0 truncate text-sm text-zinc-200",
+            // Under sm the tabs and actions fill the row, so the name gets its own line.
+            isPreviewable
+              ? "order-last w-full flex-none pb-2 sm:order-none sm:w-auto sm:flex-1 sm:pb-0"
+              : "flex-1",
+          )}
+        >
           {filename}
           <span className="text-zinc-500">{` · ${ext || "FILE"}${sizeLabel}`}</span>
         </p>
 
-        {copied ? (
-          <span className="text-xs text-emerald-400">Copied</span>
-        ) : null}
-
-        <div className="flex items-center gap-0.5">
+        <div className="ml-auto flex h-12 items-center gap-0.5">
+          {copied ? (
+            <span className="mr-1 text-xs text-emerald-400">Copied</span>
+          ) : null}
           {source.kind === "artifact" && (
             <ShareLinkControls
+              iconOnly
               targetType="session_artifact"
               targetId={sessionArtifactTargetId(
                 source.conversationId,
@@ -187,15 +198,17 @@ export default function FileViewerPanel({
           >
             <Download01Icon size={16} />
           </Button>
-          <Button
-            isIconOnly
-            size="sm"
-            variant="light"
-            onClick={closeSidebar}
-            aria-label="Close preview"
-          >
-            <Cancel01Icon size={16} />
-          </Button>
+          {drawsClose && (
+            <Button
+              isIconOnly
+              size="sm"
+              variant="light"
+              onClick={closeSidebar}
+              aria-label="Close preview"
+            >
+              <Cancel01Icon size={16} />
+            </Button>
+          )}
         </div>
       </div>
 

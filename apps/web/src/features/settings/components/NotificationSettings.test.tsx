@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import { EMAIL_CHANNEL_DESCRIPTION } from "@gaia/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import NotificationSettings from "@/features/settings/components/NotificationSettings";
@@ -117,5 +123,42 @@ describe("NotificationSettings", () => {
     renderSettings();
 
     expect(await screen.findByText(EMAIL_CHANNEL_DESCRIPTION)).toBeTruthy();
+  });
+
+  it("titles the channel list and folds unlinked platforms into one Linked Accounts row", async () => {
+    vi.mocked(NotificationsAPI.getChannelPreferences).mockResolvedValue({
+      telegram: true,
+      discord: true,
+      whatsapp: true,
+      slack: true,
+      imessage: true,
+      email: true,
+    });
+
+    renderSettings();
+
+    const section = await screen.findByRole("region", {
+      name: "Notification channels",
+    });
+    await within(section).findByRole("switch", {
+      name: "Enable Telegram notifications",
+    });
+    expect(
+      within(section).getByText("Discord, WhatsApp, Slack, and iMessage"),
+    ).toBeTruthy();
+    expect(
+      within(section)
+        .getByRole("link", { name: "Linked Accounts" })
+        .getAttribute("href"),
+    ).toBe("/settings/linked-accounts");
+    expect(
+      within(section).queryByText("Connect in Linked Accounts to enable"),
+    ).toBeNull();
+    expect(
+      within(section).queryByRole("switch", {
+        name: "Enable Slack notifications",
+      }),
+    ).toBeNull();
+    expect(within(section).getAllByRole("switch")).toHaveLength(2);
   });
 });
