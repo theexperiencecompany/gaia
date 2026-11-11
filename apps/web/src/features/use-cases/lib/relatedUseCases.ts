@@ -1,4 +1,5 @@
 import { FEATURED_USE_CASE_CATEGORY } from "@/features/use-cases/constants";
+import { itemsAfter } from "@/lib/circularNeighbours";
 
 /** How many related use cases a use-case page links. */
 export const RELATED_USE_CASES_LIMIT = 6;
@@ -30,10 +31,7 @@ export function relatedUseCases<T extends Placed>(
 ): T[] {
   const index = explore.findIndex((item) => item.slug === current.slug);
   const category = primaryCategory(explore[index]);
-  const after = [
-    ...explore.slice(index + 1),
-    ...explore.slice(0, Math.max(index, 0)),
-  ];
+  const after = itemsAfter(explore, index);
   const inCategory = (item: T) => item.categories?.includes(category) ?? false;
   return [
     ...after.filter(inCategory),

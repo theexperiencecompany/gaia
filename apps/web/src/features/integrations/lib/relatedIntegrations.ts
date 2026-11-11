@@ -1,14 +1,10 @@
 import type { CommunityIntegration } from "@/features/integrations/types";
+import { itemsAfter } from "@/lib/circularNeighbours";
 
 /** How many related integrations a marketplace page links. */
 export const RELATED_INTEGRATIONS_LIMIT = 6;
 
 type Placed = Pick<CommunityIntegration, "slug" | "category">;
-
-/** The items after the one at `index`, wrapping round to the start; all of them when `index` is -1. */
-function rotatedAfter<T>(items: readonly T[], index: number): T[] {
-  return [...items.slice(index + 1), ...items.slice(0, Math.max(index, 0))];
-}
 
 function categoryFirst<T extends Placed>(
   items: readonly T[],
@@ -36,9 +32,9 @@ export function relatedIntegrations<T extends Placed>(
   const nativeIndex = native.findIndex((item) => item.slug === current.slug);
   const pool =
     nativeIndex >= 0
-      ? categoryFirst(rotatedAfter(native, nativeIndex), current.category)
+      ? categoryFirst(itemsAfter(native, nativeIndex), current.category)
       : [
-          ...rotatedAfter(
+          ...itemsAfter(
             community,
             community.findIndex((item) => item.slug === current.slug),
           ).filter((item) => item.category === current.category),
