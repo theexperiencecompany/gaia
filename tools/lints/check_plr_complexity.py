@@ -29,6 +29,7 @@ from __future__ import annotations
 import ast
 from functools import cache
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -147,6 +148,18 @@ def _is_exempt(code: str, filename: str, row: int) -> bool:
     return row in _tool_decorated_def_lines(Path(filename).resolve())
 
 
+def _untracked_python() -> set[str]:
+    """Python files git does not track: prek stashes unstaged edits, not these, so no commit holds them."""
+    proc = subprocess.run(  # nosec B603 - fixed git argv, no shell
+        ["git", "ls-files", "--others", "--exclude-standard", "--", "*.py"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return set(proc.stdout.splitlines())
+
+
 def _current_violations() -> dict[tuple[str, str], int]:
     """Every (file, rule) violation in the repo right now, mapped to its line.
 
@@ -173,13 +186,17 @@ def _current_violations() -> dict[tuple[str, str], int]:
         print(proc.stderr, file=sys.stderr)
         raise SystemExit(f"{RULE}: ruff failed unexpectedly (exit {proc.returncode})")
     violations = json.loads(proc.stdout)
+    outside_commit = _untracked_python() if os.environ.get("PRE_COMMIT") else set()
     out: dict[tuple[str, str], int] = {}
     for v in violations:
         row = v["location"]["row"]
         if _is_exempt(v["code"], v["filename"], row):
             continue
         path = Path(v["filename"]).resolve().relative_to(REPO_ROOT).as_posix()
-        out.setdefault((path, v["code"]), row)
+        if path in outside_commit:
+            continue
+        key = (path, v["code"])
+        out.setdefault(key, v["location"]["row"])
     return out
 
 
