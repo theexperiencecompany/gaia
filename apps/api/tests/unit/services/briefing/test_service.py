@@ -709,6 +709,71 @@ class TestDailyBrief:
         assert "writing to" not in world.voice_prompt.call_args.kwargs["blocks"].reader
         assert "Delivered" not in _prompt(world)
 
+    async def test_the_composer_is_told_who_the_day_is_for_and_when(self, world: World) -> None:
+        world.recent.return_value = [
+            BriefingModel(
+                id="b",
+                user_id=_USER,
+                date="2026-10-13",
+                payload=BriefingPayload(
+                    kicker="K",
+                    date="2026-10-13",
+                    headline="h",
+                    lede="l",
+                    mood="packed",
+                    caption="c",
+                    message="Priya replied overnight.",
+                    template_family="swiss",
+                ),
+            )
+        ]
+
+        await daily.run_daily_briefing(_USER)
+
+        composed = world.composer.await_args.args[1]
+        assert "You're writing to Ada" not in composed
+        assert "Wednesday 14 October 2026, Asia/Kolkata." in composed
+        assert "Calendar today: 1 event(s), every one listed below." in composed
+        assert 'Recent briefs opened on: "Priya replied overnight."' in composed
+
+    async def test_a_user_with_no_name_or_timezone_is_composed_for_as_the_user_in_utc(
+        self, world: World
+    ) -> None:
+        world.user = UserDocument(id=_USER, email="delivered+dev@resend.dev")
+
+        await daily.run_daily_briefing(_USER)
+
+        composed = world.composer.await_args.args[1]
+        assert "composing the user's morning brief for 2026-10-14" in composed
+        assert "Wednesday 14 October 2026, UTC." in composed
+
+    async def test_a_winback_message_need_not_refer_to_the_lead(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seam(
+            monkeypatch,
+            world,
+            context,
+            "compute_winback_state",
+            AsyncMock(
+                return_value=context.WinbackState(
+                    unacknowledged=WINBACK_THRESHOLD, last_was_winback=False
+                )
+            ),
+        )
+        world.work = _brief_work()
+        world.composer.side_effect = _composed(
+            {"Done overnight": ["Investor update"]},
+            lead=("Approve the Priya reply", "Send the reply once you approve"),
+        )
+
+        world.agent.return_value = _wrote("The investor update went out.")
+
+        await daily.run_daily_briefing(_USER)
+
+        assert world.agent.await_count == 1
+        assert _stored_payload(world).message == "The investor update went out."
+
     async def test_an_empty_day_stays_in_app_and_spends_no_draw(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:

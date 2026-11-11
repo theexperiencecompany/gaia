@@ -28,6 +28,7 @@ from app.constants.memory import (
 )
 from app.override.langgraph_bigtool.utils import State
 from app.utils.multimodal import extract_text_content
+from shared.py.wide_events import log, wide_task
 from tests.helpers import WideEventRecorder
 
 NODE = "app.agents.core.nodes.memory_node"
@@ -477,10 +478,13 @@ class TestSystemGeneratedConversations:
             }
         }
 
-        with patch(f"{NODE}.spawn_background_task") as spawn:
-            await memory_node(state, config, MagicMock())
+        async with wide_task("memory_node_test"):
+            with patch(f"{NODE}.spawn_background_task") as spawn:
+                await memory_node(state, config, MagicMock())
+            skipped = log.get()["memory_ingest"]
 
         spawn.assert_not_called()
+        assert skipped == {"skipped": "silent_turn"}
 
     async def test_the_conversation_id_reaches_the_background_task(self) -> None:
         state = State(messages=[HumanMessage(content="my anniversary is October 19")])
