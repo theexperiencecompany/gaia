@@ -6,7 +6,7 @@
 #                   binary the obscura-bin build stage exported to
 #                   $RUNNER_TEMP/obscura, install the Caddy self-host ships (the
 #                   proxy a user's live view goes through) and the Fortress build
-#                   the gaia image pins (its opt-in Chromium, which only Fortress's
+#                   the gaia-fortress image pins (its opt-in Chromium, which only Fortress's
 #                   own identity test launches), and publish CHROMIUM_BIN /
 #                   OBSCURA_BIN / CADDY_BIN / FORTRESS_BIN to $GITHUB_ENV. Any one
 #                   missing fails: the browser slice never skips a scenario.
@@ -40,8 +40,9 @@ CADDY_VERSION=2.10.2
 CADDY_RELEASE_URL="${CADDY_RELEASE_URL:-https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_amd64.tar.gz}"
 CADDY_SHA512="${CADDY_SHA512:-747df7ee74de188485157a383633a1a963fd9233b71fbb4a69ddcbcc589ce4e2cc82dacf5dbbe136cb51d17e14c59daeb5d9bc92487610b0f3b93680b2646546}"
 
-# Fortress is pinned once, in the gaia image (apps/api/Dockerfile's FORTRESS_* ARGs):
-# CI installs the same release, checked against the same SHA-256, that production runs.
+# Fortress is pinned once, in apps/api/Dockerfile's fortress-dist stage (its FORTRESS_*
+# ARGs): CI installs the same release, checked against the same SHA-256, that the
+# gaia-fortress image ships.
 DOCKERFILE="$REPO_ROOT/apps/api/Dockerfile"
 
 dockerfile_arg() {

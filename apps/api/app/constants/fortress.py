@@ -9,7 +9,9 @@ settings (browser_host_settings), whose defaults are below.
 
 from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
 
-#: Where the gaia image installs Fortress's launcher, which sets up its persona and fonts.
+#: The image that ships Fortress: apps/api/Dockerfile's fortress target. The gaia image does not.
+FORTRESS_IMAGE = "ghcr.io/theexperiencecompany/gaia-fortress"
+#: Where that image installs Fortress's launcher, which sets up its persona and fonts.
 FORTRESS_IMAGE_BIN = "/opt/fortress/tilion"
 
 #: Pinning the timezone turns off the launcher's egress-geo matching: production sets its egress zone.

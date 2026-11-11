@@ -217,7 +217,7 @@ is the one local gate; locally, run test files with `mise test:one`, the
 real-infra tier with `mise test:python:real` and the browser stack with
 `mise test:python:browser`. The browser slice (`engines: true` in
 `test-slices.json`) needs Chromium and an Obscura build, and on Linux the
-Fortress release the gaia image pins (`FORTRESS_BIN`), which only Fortress's own
+Fortress release the gaia-fortress image pins (`FORTRESS_BIN`), which only Fortress's own
 identity test launches. In CI the engine
 slices run as their own job, `test-python-engines` (test-python's steps by YAML
 alias), which needs `obscura-bin`: that job builds Obscura through
