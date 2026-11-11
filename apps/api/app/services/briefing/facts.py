@@ -7,7 +7,7 @@ from app.constants.briefing import (
     GAIA_APP_NAME,
 )
 from app.models.brief_candidate_models import BriefCandidate
-from app.models.brief_composition_models import BriefBlock
+from app.models.brief_composition_models import BriefBlock, SectionBlock
 from app.models.briefing_models import (
     BRIEFING_ITEM_STATES,
     NEEDS_YOU_ITEM_KINDS,
@@ -63,8 +63,8 @@ class Facts:
     """The brief's sections and stats, the facts block the model voices, and what its slots render.
 
     deliverables maps a fact id to the todo whose deliverable it links (minted only when the
-    message links it); addresses maps a fact id to the app link it carries; must_mention are
-    the facts waiting on the user and today's events, which the message refers to.
+    message links it); addresses maps a fact id to the app link it carries; lead is the fact
+    the composition leads with, which the message refers to, or None.
     """
 
     sections: list[BriefingSection]
@@ -72,7 +72,7 @@ class Facts:
     values: SlotValues
     deliverables: dict[int, str]
     addresses: dict[int, str]
-    must_mention: frozenset[int]
+    lead: int | None
 
 
 def work_stats(work: context.TrackedWork) -> list[BriefingStat]:
@@ -205,16 +205,14 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
         ),
         deliverables=deliverables,
         addresses=addresses,
-        must_mention=frozenset(
-            [
-                fact_id
-                for sec, picked in zip(chosen.sections, chosen.picked, strict=True)
-                for it, (fact_id, _) in zip(sec.items, picked, strict=True)
-                if it.kind in NEEDS_YOU_ITEM_KINDS
-            ]
-            + sources.event_ids
-        ),
+        lead=_lead(chosen, sources.blocks),
     )
+
+
+def _lead(chosen: Chosen, blocks: list[BriefBlock]) -> int | None:
+    """Return the fact id of the item the composition leads with, or None without a lead."""
+    led = [b.section for b in blocks if isinstance(b, SectionBlock) and b.kind == "lead"]
+    return chosen.picked[led[0]][0][0] if led else None
 
 
 def _own_words(
@@ -249,12 +247,4 @@ def user_todos_note(open_count: int, open_titles: list[str]) -> str:
     return (
         f"The user's own open todos{first_few} are counted in [COUNTS]"
         "; never voice that list as clear or empty."
-    )
-
-
-def references(facts: Facts) -> str:
-    """List each fact the message must refer to, by id and title, in id order."""
-    return "\n".join(
-        f"- fact {fact_id}: {facts.values.facts[fact_id].title}"
-        for fact_id in sorted(facts.must_mention)
     )

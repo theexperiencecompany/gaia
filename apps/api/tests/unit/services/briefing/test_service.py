@@ -247,26 +247,38 @@ def _pool_items(prompt: str) -> list[_PoolItem]:
     ]
 
 
+def _group_state(items: list[dict[str, object]]) -> str:
+    """Name the state a group of placed items is in: its asks, its running work, else done."""
+    if all(i["action"] is not None for i in items):
+        return "needs_you"
+    return "in_progress" if all(i["outcome"] == "started" for i in items) else "done"
+
+
 def _composes_by_state(
     schema: type[BriefComposition], prompt: str, **_: object
 ) -> BriefComposition:
-    """Stand in for the composer: what asks under Needs you, then GAIA's work, then the apps', in order."""
+    """Stand in for the composer: what asks, then GAIA's work done, then running, then the apps'."""
     groups: dict[str, list[dict[str, object]]] = {
         "Needs you": [],
         "GAIA's work": [],
+        "Still running": [],
         "From your apps": [],
     }
     for item in _pool_items(prompt):
         if item.state == "calendar event":
             continue
-        heading = (
-            "Needs you" if item.asks else "GAIA's work" if item.app == "GAIA" else "From your apps"
-        )
-        groups[heading].append(item.placed())
+        placed = item.placed()
+        if item.asks:
+            heading = "Needs you"
+        elif placed.get("outcome") == "started":
+            heading = "Still running"
+        else:
+            heading = "GAIA's work" if item.app == "GAIA" else "From your apps"
+        groups[heading].append(placed)
     return schema.model_validate(
         {
             "blocks": [
-                {"kind": "items", "heading": heading, "items": items}
+                {"kind": "items", "state": _group_state(items), "heading": heading, "items": items}
                 for heading, items in groups.items()
                 if items
             ]
@@ -307,10 +319,11 @@ def _composed(
         if lead is not None:
             title, offer = lead
             blocks.append({"kind": "lead", "item": placed(by_title[title]), "offer": offer})
-        blocks += [
-            {"kind": "items", "heading": heading, "items": [placed(by_title[t]) for t in titles]}
-            for heading, titles in groups.items()
-        ]
+        for heading, titles in groups.items():
+            items = [placed(by_title[t]) for t in titles]
+            blocks.append(
+                {"kind": "items", "state": _group_state(items), "heading": heading, "items": items}
+            )
         return schema.model_validate({"blocks": blocks})
 
     return answer
@@ -903,6 +916,7 @@ class TestDailyBrief:
                 "blocks": [
                     {
                         "kind": "items",
+                        "state": "needs_you",
                         "heading": "Waiting",
                         "items": [
                             {
@@ -1251,20 +1265,17 @@ class TestTheWeeklyHoldsToItsFacts:
         assert "the lede types '9', a figure no fact carries" in retry
         assert world.checker.await_count == 1
 
-    async def test_a_message_that_skips_the_failed_run_or_the_week_ahead_is_sent_back(
+    async def test_a_recap_without_a_lead_need_not_name_the_failed_run_or_the_week_ahead(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _a_full_week(monkeypatch, world)
-        world.agent.side_effect = [
-            _weekly_voiced(message="Good week. [Send the deck](fact:<fact of Send the deck>)."),
-            _weekly_voiced(),
-        ]
+        world.agent.return_value = _weekly_voiced(
+            message="Good week. [Send the deck](fact:<fact of Send the deck>)."
+        )
 
         await weekly.run_weekly_digest(_USER)
 
-        retry = world.agent.await_args_list[1].kwargs["request"].message
-        assert "the message never refers to fact" in retry
-        assert "(CRM sync failed)" in retry and "(Pitch to Accel)" in retry
+        assert world.agent.await_count == 1
 
     async def test_a_recap_without_a_message_fails_and_sends_nothing(self, world: World) -> None:
         world.agent.return_value = _weekly_voiced(message="")
@@ -1544,43 +1555,52 @@ class TestTheProseHoldsToItsFacts:
         assert _stored_payload(world).headline == "One long signing today"
 
 
-class TestTheMessageCoversTheDay:
-    """The message refers, by a slot, to every fact waiting on the user and every event."""
+class TestTheMessageRefersToTheLead:
+    """The message refers to the lead through a slot; the rest of the day is the voice's call."""
 
-    async def test_a_message_that_skips_a_need_or_an_event_is_regenerated_with_them_named(
+    async def test_a_message_need_not_name_every_need_or_event(self, world: World) -> None:
+        """E2E: briefs failed for naming a need in plain words; the edition already shows them all."""
+        world.work = _brief_work()
+        world.agent.return_value = _wrote("The investor update went out.")
+
+        await daily.run_daily_briefing(_USER)
+
+        assert world.agent.await_count == 1
+        assert _stored_payload(world).message == "The investor update went out."
+
+    async def test_a_message_that_leaves_out_the_lead_is_regenerated_naming_only_the_lead(
         self, world: World
     ) -> None:
         world.work = _brief_work()
+        world.composer.side_effect = _composed(
+            {"Done overnight": ["Investor update"]},
+            lead=("Approve the Priya reply", "Send the reply once you approve"),
+        )
         world.agent.side_effect = [
             _wrote("The investor update went out."),
-            _wrote(_FACTS_SHOWN),
+            _wrote("[Priya's reply](fact:1) is first; the investor update went out."),
         ]
 
         await daily.run_daily_briefing(_USER)
 
         retry = world.agent.await_args_list[1].kwargs["request"].message
-        assert "the message never refers to fact 1 (Approve the Priya reply)" in retry
-        assert "the message never refers to fact 3 (Sequoia)" in retry
-        assert "fact 2 (Investor update)" not in retry
-        assert world.checker.await_count == 1
-        assert _stored_payload(world).message == "Approve the Priya reply\nInvestor update\nSequoia"
+        assert "the message never refers to the lead, fact 1 (Approve the Priya reply)" in retry
+        assert "Sequoia" not in retry.rsplit("## YOUR LAST BRIEF WAS REJECTED", 1)[1]
+        assert (
+            _stored_payload(world).message
+            == "Priya's reply is first; the investor update went out."
+        )
 
-    async def test_a_reference_by_phrase_or_by_time_covers_a_fact(self, world: World) -> None:
-        world.work = _brief_work()
-        world.agent.return_value = _wrote("[Priya's reply](fact:1) first, then [[fact:3.time]].")
-
-        await daily.run_daily_briefing(_USER)
-
-        assert world.agent.await_count == 1
-        assert _stored_payload(world).message == "Priya's reply first, then 11:00 AM."
-
-    async def test_a_message_that_skips_a_need_twice_fails_and_sends_nothing(
+    async def test_a_message_that_leaves_out_the_lead_on_every_attempt_fails(
         self, world: World
     ) -> None:
         world.work = _brief_work()
+        world.composer.side_effect = _composed(
+            {}, lead=("Approve the Priya reply", "Send the reply once you approve")
+        )
         world.agent.return_value = _wrote("[Sequoia](fact:3) at eleven.")
 
-        with pytest.raises(errors.BriefingGenerationError, match="never refers to fact 1"):
+        with pytest.raises(errors.BriefingGenerationError, match="never refers to the lead"):
             await daily.run_daily_briefing(_USER)
 
         world.checker.assert_not_awaited()
@@ -1994,6 +2014,7 @@ class TestTheFactsTheModelVoices:
             "[GAIA's work]\n"
             "- fact 4 | Note: Digest: first\n"
             "- fact 5 | Done: Deck | artifact holds ~0 chars\n"
+            "[Still running]\n"
             "- fact 6 | In progress: Research | artifact holds ~0 chars\n"
             "- fact 7 | In progress: Outreach | artifact holds ~0 chars\n"
             "The user's own todo list is empty.\n"
@@ -2802,21 +2823,6 @@ def _saying(text: str) -> SimpleNamespace:
     return SimpleNamespace(message=_fenced({**_VOICE, "message": f"{_FACTS_SHOWN} {text}"}))
 
 
-class TestTheVoiceIsToldWhatItMustReferTo:
-    async def test_the_prompt_ends_on_every_fact_the_message_must_refer_to(
-        self, world: World
-    ) -> None:
-        """E2E: the message named the failed run in words, never through its slot, twice."""
-        world.work = _brief_work()
-
-        await daily.run_daily_briefing(_USER)
-
-        tail = _prompt(world).rsplit("## BEFORE YOU ANSWER", 1)[1]
-        assert "- fact 1: Approve the Priya reply" in tail
-        assert "- fact 3: Sequoia" in tail
-        assert "Investor update" not in tail
-
-
 class TestTheVoiceQuotesItsFacts:
     async def test_a_figure_from_a_facts_own_words_may_be_typed_in_the_prose(
         self, world: World
@@ -2845,6 +2851,26 @@ class TestTheVoiceQuotesItsFacts:
         await daily.run_daily_briefing(_USER)
 
         assert _stored_payload(world).lede == "Confirm the 1x preference."
+        assert world.agent.await_count == 1
+
+    async def test_a_figure_from_what_was_done_since_the_last_brief_may_be_typed(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """E2E busy day: the message named a closed thread from the look-back and was refused."""
+        _seam(
+            monkeypatch,
+            world,
+            context,
+            "format_lookback_block",
+            AsyncMock(
+                return_value="Actually completed since then:\n- GAIA finished: Q3 board memo"
+            ),
+        )
+        world.agent.return_value = _voiced("A light morning", "The Q3 board memo went out.")
+
+        await daily.run_daily_briefing(_USER)
+
+        assert _stored_payload(world).lede == "The Q3 board memo went out."
         assert world.agent.await_count == 1
 
 

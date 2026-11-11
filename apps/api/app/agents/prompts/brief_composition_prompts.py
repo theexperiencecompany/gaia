@@ -42,12 +42,18 @@ What is noise:
   short sentence naming the act, at most {offer_max} characters ("Draft the reply to Priya"). No
   lead is better than a lead for its own sake. A person waiting, money overdue or something broken
   outranks a meeting; a routine meeting (a standup, a 1:1, a recurring sync) never leads.
-- items: a group of 1 to {items_per_block} items under a heading you write, at most {heading_max}
+- items: a group of 1 to {items_per_block} items, all in one state, under a heading you write,
+  at most {heading_max}
   characters. Group by what the user does or by what the items are about, never by app: "Waiting
   on your reply", "Before the board call", "Money", "Landed overnight". Sentence case, plain words,
   specific to today; never a label that fits any day ("Action required", "Updates", "Status",
   "Items"). Most important group first, most important item first within it.
-  Every heading is checked against the items under it, so each must be true of every one:
+  state is what every item of the group is: needs_you (each carries an action), done (each
+  finished: approved, landed, drafted, booked, sent, finished, changed) or in_progress (each
+  started and still running). Split items of different states into their own groups; code
+  checks every item against its group's state.
+  Every heading is checked against its group's state and the items under it, so each must be
+  true of every one:
   - What waits on the user (an action) and what got somewhere (an outcome) rarely share a heading;
     when they do, the heading must be neutral ("Before the board call", "Worth a look").
   - A done heading ("Done overnight", "Landed", "Finished for you") holds only finished, sent,
@@ -132,7 +138,7 @@ INV-31 Hooli 2000 · INV-32 Pied Piper 350
   {{"kind": "lead", "items": [{{"id": 2, "action": "reply", "title": "Northwind hero line",
     "detail": "Lena ships at noon and needs your pick"}}], "offer": "Send Lena the reply I drafted"}},
   {{"kind": "quote", "quote_id": "q1"}},
-  {{"kind": "items", "heading": "Due this week", "items": [
+  {{"kind": "items", "state": "needs_you", "heading": "Due this week", "items": [
     {{"id": 5, "action": "review", "title": "Webhook retries bug", "detail": null}}]}}
 ]}}
 Why: Lena is waiting and live at noon, so she leads, in her own words. Item 7 is the lead's offer.
@@ -144,7 +150,7 @@ g1 | "Finish the novel's first draft by spring" (from memory) | linked todos: 4 
 window, 1 open: Chapter 7; Chapter 8; Chapter 9 outline; Research trip notes; Chapter 9 draft
 {{"blocks": [
   {{"kind": "progress", "goal_id": "g1"}},
-  {{"kind": "items", "heading": "Ready when you are", "items": [
+  {{"kind": "items", "state": "needs_you", "heading": "Ready when you are", "items": [
     {{"id": 3, "action": "read", "title": "Query letter feedback", "detail": null}}]}},
   {{"kind": "note", "text": "Nothing needs you before [[fact:4]] at [[fact:4.time]]: a clear
     morning for the chapter nine draft."}}
@@ -163,7 +169,7 @@ at 9:30 AM · 11. [GAIA] in progress: Restock order for the linen line | outcome
   {{"kind": "chart", "series_ids": ["zendesk_tickets"], "chart": "line",
     "title": "Support tickets this week",
     "takeaway": "[[series:zendesk_tickets.latest]] today against a usual handful: the checkout errors are reaching customers."}},
-  {{"kind": "items", "heading": "Still moving", "items": [
+  {{"kind": "items", "state": "in_progress", "heading": "Still moving", "items": [
     {{"id": 11, "outcome": "started", "title": "Linen restock order", "detail": null}}]}}
 ]}}
 Why: the spike and its cause are one story, so the cause leads and the chart shows its size.

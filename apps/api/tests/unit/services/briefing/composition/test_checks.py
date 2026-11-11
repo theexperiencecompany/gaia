@@ -137,7 +137,12 @@ def _ask(item_id: int) -> dict[str, object]:
 
 
 def _items(*ids: int, heading: str = "Waiting on you") -> dict[str, object]:
-    return {"kind": "items", "heading": heading, "items": [_ask(i) for i in ids]}
+    return {
+        "kind": "items",
+        "state": "needs_you",
+        "heading": heading,
+        "items": [_ask(i) for i in ids],
+    }
 
 
 def _chart(
@@ -283,12 +288,84 @@ class TestThePageBudget:
         assert _problems(*charts) == ["3 charts; a brief holds at most 2"]
 
 
+class TestAGroupHoldsWhatItsStateSays:
+    """Live brief: started work stood under "Landed overnight" through every retry."""
+
+    @pytest.mark.parametrize(
+        ("state", "item", "problem"),
+        [
+            (
+                "done",
+                _placed(15, outcome="started", title="Board deck numbers"),
+                "block 1 (items), item 15 has outcome started, which a done group does not "
+                "hold; move it to an in_progress group",
+            ),
+            (
+                "in_progress",
+                _placed(3, outcome="sent", title="Board deck numbers"),
+                "block 1 (items), item 3 has outcome sent, which an in_progress group does not "
+                "hold; move it to a done group",
+            ),
+            (
+                "needs_you",
+                _placed(4, outcome="finished", title="Lisbon flights"),
+                "block 1 (items), item 4 has outcome finished, which a needs_you group does not "
+                "hold; move it to a done group",
+            ),
+            (
+                "done",
+                _placed(6, outcome="failed", title="Hiring loop"),
+                "block 1 (items), item 6 has outcome failed, which a done group does not hold; "
+                "a failed item needs the user: give it action retry in a needs_you group",
+            ),
+            (
+                "done",
+                _placed(5, action="review", title="Checkout bug"),
+                "block 1 (items), item 5 has action review, which a done group does not hold; "
+                "move it to a needs_you group",
+            ),
+        ],
+    )
+    def test_an_item_its_groups_state_does_not_hold_is_named_with_where_it_belongs(
+        self, state: str, item: dict[str, object], problem: str
+    ) -> None:
+        group = {"kind": "items", "state": state, "heading": "Overnight", "items": [item]}
+
+        assert problem in _problems(group)
+
+    @pytest.mark.parametrize(
+        ("state", "item"),
+        [
+            ("needs_you", _placed(1, action="reply", title="Acme invoice")),
+            ("done", _placed(2, outcome="booked", title="Offsite venues")),
+            ("in_progress", _placed(3, outcome="started", title="Board deck numbers")),
+        ],
+    )
+    def test_an_item_its_groups_state_holds_is_no_problem(
+        self, state: str, item: dict[str, object]
+    ) -> None:
+        group = {"kind": "items", "state": state, "heading": "Today", "items": [item]}
+
+        assert _problems(group) == []
+
+    def test_a_group_without_a_state_is_no_composition(self) -> None:
+        with pytest.raises(ValidationError):
+            ComposedItems.model_validate({"kind": "items", "heading": "Today", "items": [_ask(1)]})
+
+
 class TestEachBlockHasItsShape:
     def test_an_item_with_both_or_neither_of_action_and_outcome_is_refused(self) -> None:
         both = _placed(1, action="reply", outcome="sent", title="Acme invoice")
         neither = _placed(2, title="Offsite venues")
 
-        assert _problems({"kind": "items", "heading": "Mixed", "items": [both, neither]}) == [
+        group = {
+            "kind": "items",
+            "state": "needs_you",
+            "heading": "Mixed",
+            "items": [both, neither],
+        }
+
+        assert _problems(group) == [
             "block 1 (items), item 1: give exactly one of action (it needs the user) or outcome (it got somewhere)",
             "block 1 (items), item 2: give exactly one of action (it needs the user) or outcome (it got somewhere)",
         ]
@@ -299,24 +376,38 @@ class TestEachBlockHasItsShape:
         reported = _placed(16, outcome="finished", title="CRM sync")
 
         assert _problems(
-            {"kind": "items", "heading": "Worth a look", "items": [asked, reported]}
+            {"kind": "items", "state": "needs_you", "heading": "Worth a look", "items": [asked]},
+            {"kind": "items", "state": "done", "heading": "Done overnight", "items": [reported]},
         ) == [
             "block 1 (items), item 15: its line gives outcome started, so it is placed as that outcome",
-            "block 1 (items), item 16: its line gives action retry, so it is placed as that action",
+            "block 2 (items), item 16: its line gives action retry, so it is placed as that action",
         ]
         agrees = [_placed(15, outcome="started", title="Board deck numbers")]
-        assert _problems({"kind": "items", "heading": "Still running", "items": agrees}) == []
+        assert (
+            _problems(
+                {
+                    "kind": "items",
+                    "state": "in_progress",
+                    "heading": "Still running",
+                    "items": agrees,
+                }
+            )
+            == []
+        )
 
     def test_a_title_is_measured_as_the_brief_shows_it_with_its_slots_filled(self) -> None:
         long_title = _placed(14, action="reply", title="[[fact:14]]")
 
-        assert _problems({"kind": "items", "heading": "Waiting", "items": [long_title]}) == [
+        assert _problems(
+            {"kind": "items", "state": "needs_you", "heading": "Waiting", "items": [long_title]}
+        ) == [
             f"block 1 (items), item 14: a title of 63 characters, over {BRIEF_ITEM_TITLE_MAX_CHARS}"
         ]
 
     def test_an_item_the_composition_left_untitled_is_named(self) -> None:
         untitled: dict[str, object] = {
             "kind": "items",
+            "state": "needs_you",
             "heading": "Waiting",
             "items": [_placed(1, action="reply", title="  ")],
         }
@@ -347,9 +438,9 @@ class TestEachBlockHasItsShape:
         assert _problems(_items(1, heading=long)) == [
             f"block 1 (items): a heading of {BRIEF_HEADING_MAX_CHARS + 1} characters, over {BRIEF_HEADING_MAX_CHARS}"
         ]
-        assert _problems({"kind": "items", "heading": "", "items": [_ask(1)]}) == [
-            "block 1 (items): no heading"
-        ]
+        assert _problems(
+            {"kind": "items", "state": "needs_you", "heading": "", "items": [_ask(1)]}
+        ) == ["block 1 (items): no heading"]
 
     def test_a_block_missing_any_field_of_its_kind_is_no_composition(self) -> None:
         """Gemini flash-lite dropped title and kind; the schema the provider holds requires both."""
@@ -370,7 +461,9 @@ class TestTheSchemaAProviderHolds:
         assert schema["properties"]["blocks"]["maxItems"] == MAX_BRIEF_BLOCKS
         assert (group["minItems"], group["maxItems"]) == (1, MAX_ITEMS_PER_BLOCK)
         with pytest.raises(ValidationError):
-            ComposedItems.model_validate({"kind": "items", "heading": "Empty", "items": []})
+            ComposedItems.model_validate(
+                {"kind": "items", "state": "done", "heading": "Empty", "items": []}
+            )
         notes = [{"kind": "note", "text": "A note."}] * (MAX_BRIEF_BLOCKS + 1)
         with pytest.raises(ValidationError):
             BriefComposition.model_validate({"blocks": notes})

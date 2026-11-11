@@ -71,8 +71,12 @@ def _group(heading: str, *ids: int) -> BriefComposition:
                 "detail": None,
             }
         )
+    if all(i["action"] is not None for i in items):
+        state = "needs_you"
+    else:
+        state = "in_progress" if all(i["outcome"] == "started" for i in items) else "done"
     return BriefComposition.model_validate(
-        {"blocks": [{"kind": "items", "heading": heading, "items": items}]}
+        {"blocks": [{"kind": "items", "state": state, "heading": heading, "items": items}]}
     )
 
 
@@ -89,13 +93,13 @@ _FITTING = {
     "a moment of the day, over asks and running work": _group("Before today's calls", 6, 4),
     "two acts named, over one of them": _group("Replies and approvals", 6, 1),
 }
-# Each must be refused: an item under it does not satisfy it.
+# Each must be refused: a group code passed, every item in its state, under a heading untrue of it.
 _MISFITTING = {
-    "landed overnight, over a draft waiting on approval": _group("Landed overnight", 3, 1),
-    "done, over work only started": _group("Done", 2, 4),
-    "a done heading, over an ask and a sent item": _group("Finished for you", 3, 5),
-    "waiting on you, over finished work": _group("Waiting on you", 6, 3),
-    "still running, over a failed sync": _group("Still running", 4, 7),
+    "landed overnight, over a draft waiting on approval": _group("Landed overnight", 1),
+    "done, over work only started": _group("Done", 4),
+    "a done heading, over an ask": _group("Finished for you", 5),
+    "waiting on you, over finished work": _group("Waiting on you", 3, 9),
+    "still running, over a failed sync to retry": _group("Still running", 7),
 }
 
 
