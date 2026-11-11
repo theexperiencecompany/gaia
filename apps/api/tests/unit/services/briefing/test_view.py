@@ -57,4 +57,9 @@ def test_needs_you_counts_only_that_sections_listed_items() -> None:
     view = briefing_view(_brief(template_family="flightplan", sections=[needs_you, gaias_work]))
 
     assert view.needs_you_count == 2
-    assert view.edition_name == "The Blueprint"
+
+
+def test_only_air_mail_is_named_so_no_design_explorer_name_reaches_the_user() -> None:
+    view = briefing_view(_brief(template_family="flightplan"))
+
+    assert (view.edition_name, view.stamp_city_name) == (None, None)

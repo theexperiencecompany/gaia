@@ -2313,7 +2313,7 @@
                 "type": "null"
               }
             ],
-            "description": "The edition family's display name (e.g. Air Mail); None for the legacy edition.",
+            "description": "Air Mail only: the family's name; None for every other family.",
             "title": "Edition Name"
           },
           "edition_paper": {
