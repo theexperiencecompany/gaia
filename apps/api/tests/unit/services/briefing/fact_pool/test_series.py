@@ -17,6 +17,7 @@ from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.workflow_execution_models import RunMoment
 from app.services.briefing.fact_pool.calendar_series import calendar_series
 from app.services.briefing.fact_pool.mail_series import sorted_mail_series, thread_series
+from app.services.briefing.fact_pool.render import series_line
 from app.services.briefing.fact_pool.run_series import run_series
 from app.services.briefing.fact_pool.signal_series import signal_series
 from app.services.briefing.fact_pool.window import SeriesWindow
@@ -232,7 +233,9 @@ class TestSignalSeries:
             _signal("INV-9 Initech", amount=7, amount_unit=None),
         ]
 
-        invoices, payouts = sorted(signal_series(signals), key=lambda s: s.label)
+        unitless, invoices, payouts = sorted(
+            signal_series(signals), key=lambda s: (s.label, s.unit or "")
+        )
 
         assert (invoices.id, invoices.label, invoices.unit, invoices.app) == (
             "stripe_open_invoice_usd",
@@ -245,6 +248,18 @@ class TestSignalSeries:
             SeriesPoint(x="INV-2211 Globex", y=1250.5),
         ]
         assert (payouts.id, payouts.shape) == ("stripe_payout_usd", SeriesShape.CATEGORICAL)
+        assert (unitless.id, unitless.unit, unitless.points) == (
+            "stripe_open_invoice",
+            None,
+            [SeriesPoint(x="INV-9 Initech", y=7)],
+        )
+
+    def test_a_series_with_no_unit_is_told_without_one(self) -> None:
+        [series] = signal_series([_signal("INV-9 Initech", amount=7, amount_unit=None)])
+
+        assert series_line(series, date(2026, 10, 14)).startswith(
+            "stripe_open_invoice | open invoice (Stripe), categorical of 1 points | "
+        )
 
     @pytest.mark.parametrize("app", ["hubspot", "github", "notion"])
     def test_any_app_counts_the_same_way(self, app: str) -> None:

@@ -57,8 +57,9 @@ def series_line(series: DataSeries, today: date) -> str:
     else:
         laid = "by category: " + " · ".join(f"{p.x} {figure(p.y)}" for p in series.points)
     figures = ", ".join(f"{f.value} {text}" for f, text in series_figures(series).items())
+    unit = f", in {series.unit}" if series.unit else ""
     return (
-        f"{series.id} | {series.label}, in {series.unit} ({series.app}), {series.shape.value} "
+        f"{series.id} | {series.label}{unit} ({series.app}), {series.shape.value} "
         f"of {len(series.points)} points | {laid} | figures: {figures}"
     )
 

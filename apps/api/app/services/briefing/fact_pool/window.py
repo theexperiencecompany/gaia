@@ -78,7 +78,7 @@ class SeriesName:
 
     id: str
     label: str
-    unit: str
+    unit: str | None
     source: str
     app: str
 

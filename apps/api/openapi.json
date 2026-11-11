@@ -5987,10 +5987,17 @@
             "type": "string"
           },
           "unit": {
-            "description": "What one y counts: \"emails\", \"hours\", \"USD\"",
-            "minLength": 1,
-            "title": "Unit",
-            "type": "string"
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What one y counts: \"emails\", \"hours\", \"USD\"; None when the source gives none",
+            "title": "Unit"
           }
         },
         "required": [
