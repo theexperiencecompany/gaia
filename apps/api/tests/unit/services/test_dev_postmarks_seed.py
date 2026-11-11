@@ -241,6 +241,10 @@ async def test_the_weekly_recap_is_the_one_seeded_week_in_full(user, seeded) -> 
     assert (weekly.recipient_name, weekly.generated_at) == ("Ada", "7:58 AM")
     assert (weekly.tallies.done_by_you, weekly.tallies.done_by_gaia) == (14, 22)
     asks, work = weekly.sections
+    assert [(s.numeral, s.title) for s in weekly.sections] == [
+        (SECTION_NUMERALS[0], NEEDS_YOU_SECTION_TITLE),
+        (SECTION_NUMERALS[1], WORK_SECTION_TITLE),
+    ]
     assert [(i.text, i.kind) for i in asks.items] == [
         ("Confirm the offsite venue", "you"),
         ("Accept the new lease terms", "you"),
@@ -278,3 +282,11 @@ async def test_a_hosted_editions_fold_and_paper_are_stored_beside_its_url(user) 
     assert upsert.await_args.kwargs["edition"] == EditionRender(
         image_url="https://cdn.test/e.png", fold=0.4, paper=[0.1, 0.2, 0.9, 0.8]
     )
+
+
+async def test_every_daily_family_can_be_seeded_at_once(user, seeded) -> None:
+    families = len(set(DAILY_FAMILY_WEIGHTS) - {POSTAL_FAMILY})
+
+    await seed_dev_editions(user, families)
+
+    assert len(seeded.payloads()) == families + 1

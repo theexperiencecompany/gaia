@@ -456,7 +456,7 @@ class TestDevServiceLogic:
                 "get_by_email",
                 new_callable=AsyncMock,
                 return_value=user,
-            ),
+            ) as mock_get_by_email,
             patch.object(user_repository, "complete_onboarding", mock_complete),
             patch.object(
                 dev_service.TodoService, "create_todo", new_callable=AsyncMock
@@ -480,6 +480,7 @@ class TestDevServiceLogic:
                 )
             )
 
+        mock_get_by_email.assert_awaited_once_with(DEV_EMAIL)
         assert mock_todo.await_count == 3
         assert [c.args[0].title for c in mock_todo.await_args_list] == [
             "Sample todo 1",
