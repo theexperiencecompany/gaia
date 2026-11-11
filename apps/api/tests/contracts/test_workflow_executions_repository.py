@@ -216,3 +216,34 @@ class TestListSince:
         )
 
         assert [e.execution_id for e in found] == [other.execution_id]
+
+
+class TestListRunMomentsSince:
+    async def test_returns_every_run_since_the_cutoff_as_its_start_and_status(self, repo):
+        user_id, since = _uid("u"), datetime(2026, 10, 14, 6, 0, tzinfo=UTC)
+        left_out = _uid("wf")
+        await repo.create(_execution(user_id=user_id, started_at=since, status="failed"))
+        await repo.create(
+            _execution(user_id=user_id, started_at=since + timedelta(hours=1), status="success")
+        )
+        await repo.create(_execution(user_id=user_id, started_at=since - timedelta(seconds=1)))
+        await repo.create(_execution(user_id=user_id, started_at=since, workflow_id=left_out))
+        await repo.create(_execution(started_at=since))
+
+        moments = await repo.list_run_moments_since(user_id, since, exclude_workflow_ids=[left_out])
+
+        assert sorted((m.started_at, m.status) for m in moments) == [
+            (since, "failed"),
+            (since + timedelta(hours=1), "success"),
+        ]
+
+    async def test_is_not_capped_at_the_list_limit(self, repo):
+        user_id, since = _uid("u"), datetime(2026, 10, 14, 6, 0, tzinfo=UTC)
+        for minute in range(120):
+            await repo.create(
+                _execution(user_id=user_id, started_at=since + timedelta(minutes=minute))
+            )
+
+        moments = await repo.list_run_moments_since(user_id, since, exclude_workflow_ids=[])
+
+        assert len(moments) == 120
