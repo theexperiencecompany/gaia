@@ -60,7 +60,8 @@ The founder's fixture filled every slot with plausible demo content, so the
 templates print fixture text or invent figures for a real brief. Each edit below
 makes a template read the real value, or print nothing. None touches layout, CSS
 or a skin axis, except where an entry says it is a founder-approved layout change
-(6) or a real code cannot be drawn any smaller (8).
+(6), a real code cannot be drawn any smaller (8), or the founder-approved type
+(10 to 12).
 
 1. **Untimed items.** Real overnight work carries no clock time. `clock()` in
    tpl-brand.js and tpl-postal.js returns an empty string for a missing time
@@ -134,7 +135,29 @@ or a skin axis, except where an entry says it is a founder-approved layout chang
    and exhibition's heads, librarycard's, menu's, memo's, almanac's, flightplan's,
    instrument's and metromap's faces. The invoice keeps only its Heros figures, so a
    row is never set in two families. Memo keeps the Courier option's 18px. Swiss
-   keeps both its faces, which are different approved faces.
+   keeps both its faces, which are different approved faces. Librarycard's date
+   stamps are set in Special Elite with the rest of their row, not Courier.
+11. **The type rules hold in every family (2026-11-11).** A row is one family, a
+   section has one label, and a heading is never lighter than its items. Air
+   Mail's times, tags and P.S. leave the typewriter face for the letter's serif
+   (the P.S. figures are bold instead of larger), and its "To" is upright, as
+   Cutive has no italic. Exhibition's tags take the row's sans, upright, and the
+   "Programme for the day" label over the first section is gone. The weekly's day
+   and numeral labels take the row's sans. Playfair's section count is set in the
+   heading's italic. Swiss's times take the row face, so an Aeonik skin never
+   mixes faces in a row. Broadsheet drops the kicker above each section heading
+   and keeps its rule as the section's top border. Librarycard's and the
+   receipt's section headings are bold, and the Instrument's lamps are 700, the
+   weight of its headings. Librarycard's signature asks for Pinyon Script's one
+   weight, so it is not synthesised bold.
+12. **Layout fixes the new faces exposed (2026-11-11).** Swiss's weekday and its
+   "No N" are in flow in their column, so a long weekday no longer overprints
+   the number (the page grows instead). The receipt's ruled lines are cut to whole
+   characters, so no partial "=" shows at the edge. Almanac's dateline and plate
+   caption are balanced, and "No. N" never breaks across a line in the almanac,
+   the memo and the weekly's footer. Librarycard's record avoids a one-word last
+   line. Broadsheet's lead keeps its item's capital ("At 11:00 a.m., Sequoia
+   partner meeting", not "sequoia").
 
 The painting that `broadsheet`, `exhibition` and `almanac` hang is drawn from the
 user's artwork shuffle bag, over the Met Open Access works whose image fits that

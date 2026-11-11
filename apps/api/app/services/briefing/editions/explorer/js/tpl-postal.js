@@ -228,7 +228,7 @@ ${star(cx - 47.5)}${star(cx + 47.5)}`;
 .t-postal .pm { position: absolute; top: 66px; left: 8px; width: 250px; height: 107px; transform: rotate(-3deg); color: var(--mark); mix-blend-mode: multiply; }
 .t-postal .pm svg { display: block; width: 100%; height: 100%; }
 .t-postal .addr { position: absolute; left: 150px; right: 24px; top: 276px; z-index: 3; line-height: 1.5; }
-.t-postal .addr .lab { position: absolute; right: 100%; margin-right: 14px; top: 7px; font-size: 15px; font-style: italic; opacity: .8; }
+.t-postal .addr .lab { position: absolute; right: 100%; margin-right: 14px; top: 7px; font-size: 15px; opacity: .8; }
 .t-postal .addr .to { font-size: 25px; line-height: 1.2; text-wrap: balance; }
 .t-postal .addr .re { font-size: 18px; }
 .t-postal .addr .meta { font-size: 15px; }
@@ -253,7 +253,7 @@ ${star(cx - 47.5)}${star(cx + 47.5)}`;
 .t-postal .li .tg { display: block; margin-top: 2px; font-size: 14px; letter-spacing: 0; color: #8a836c; }
 .t-postal .ps { display: grid; grid-template-columns: 84px 1fr; column-gap: 12px; margin-top: 36px; font-size: 17px; line-height: 1.55; text-wrap: pretty; }
 .t-postal .ps .w { font-size: 15px; padding-top: 2px; }
-.t-postal .ps b { font-family: 'Cutive', serif; font-weight: normal; font-size: 19px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.t-postal .ps b { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .t-postal .sign { margin-top: 22px; font-size: 18px; font-style: italic; }
 .t-postal .sig { display: inline-block; margin-top: 4px; font: italic 500 36px/1 'Source Serif 4', serif; color: #233f7d; transform: rotate(-4deg); }
 .t-postal .lfoot { margin-top: 26px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,.18); display: flex; justify-content: space-between; font-size: 13px; letter-spacing: .06em; color: #5f594d; }
@@ -263,14 +263,14 @@ ${star(cx - 47.5)}${star(cx + 47.5)}`;
       const needs = c.decisions.slice(0, 3);
       const city = skin.city;
       const rng = rngFor(ed);
-      const li = (w, wCls, text, note, tag) => `<div class="li" data-role="body"><span class="w tw${wCls ? " " + wCls : ""}">${esc(w)}</span><span>${esc(text)}${note ? ` <span class="nt">— ${esc(note)}</span>` : ""}${tag ? `<span class="tg tw">${esc(tag)}</span>` : ""}</span></div>`;
+      const li = (w, wCls, text, note, tag) => `<div class="li" data-role="body"><span class="w${wCls ? " " + wCls : ""}">${esc(w)}</span><span>${esc(text)}${note ? ` <span class="nt">— ${esc(note)}</span>` : ""}${tag ? `<span class="tg">${esc(tag)}</span>` : ""}</span></div>`;
       const blocks = [];
       if (needs.length) blocks.push(`<div class="blk"><h3 class="blabel red">Waiting on your reply</h3>${needs.map((d) => li(d.verb, "verb", d.label, d.note)).join("")}</div>`);
       if (c.today.length) blocks.push(`<div class="blk"><h3 class="blabel">Your day</h3>${c.today.map((e) => li(e.time || "EOD", "", e.label, e.note)).join("")}</div>`);
       if (c.overnight.length) blocks.push(`<div class="blk"><h3 class="blabel">Done while you slept</h3>${c.overnight.map((e) => li(clock(e.t24), "", e.label, e.note)).join("")}</div>`);
       if (c.running.length) blocks.push(`<div class="blk"><h3 class="blabel">Still in progress</h3>${c.running.map((e) => li(clock(e.t24), "", e.label, e.note)).join("")}</div>`);
       const s = c.stats;
-      const ps = s ? `<p class="ps" data-role="body"><span class="w tw">P.S.</span><span>Yesterday we closed <b>${s.done}</b> things${s.you && s.gaia ? ` (you ${s.you}, me ${s.gaia})` : ""}${s.mail ? ` and handled <b>${s.mail}</b> emails` : ""}.${s.focus ? ` You have <b>${esc(s.focus)}</b> of focus ahead.` : ""}</span></p>` : "";
+      const ps = s ? `<p class="ps" data-role="body"><span class="w">P.S.</span><span>Yesterday we closed <b>${s.done}</b> things${s.you && s.gaia ? ` (you ${s.you}, me ${s.gaia})` : ""}${s.mail ? ` and handled <b>${s.mail}</b> emails` : ""}.${s.focus ? ` You have <b>${esc(s.focus)}</b> of focus ahead.` : ""}</span></p>` : "";
       return `<article class="t-postal" style="--env:${skin.paper.env}; --envInk:${skin.paper.ink}; --tint:${skin.paper.tint}; --mark:${skin.ink.mark}; --defin:${skin.ink.defin}; --ribbon:${skin.ink.ribbon}">
 <div class="env">${paper(rng)}<div class="face tw">
   <div class="ret"><img src="${ed.assets.TEC_MARK}" alt="The Experience Company"><span>GAIA Post<br>The Experience Company</span></div>

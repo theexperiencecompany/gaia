@@ -21,6 +21,7 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
+import unicodedata
 
 from fontTools import subset
 from fontTools.pens.boundsPen import BoundsPen
@@ -310,7 +311,7 @@ FACES: tuple[Face, ...] = (
         gf_variable(
             "literata",
             "Literata[opsz,wght].ttf",
-            ((400, ROMAN), (400, ITALIC), (700, ITALIC)),
+            ((400, ROMAN), (400, ITALIC)),
             {"opsz": 18},
         ),
         {"OFL-Literata": ofl("literata")},
@@ -327,7 +328,7 @@ FACES: tuple[Face, ...] = (
         gf_variable(
             "newsreader",
             "Newsreader[opsz,wght].ttf",
-            ((400, ROMAN), (700, ROMAN), (500, ITALIC), (700, ITALIC)),
+            ((700, ROMAN), (500, ITALIC)),
             {"opsz": 36},
         ),
         {"OFL-Newsreader": ofl("newsreader")},
@@ -349,6 +350,10 @@ TEXT = (
 )
 FEATURES = ["kern", "liga", "clig", "calt", "ccmp", "locl", "mark", "mkmk", "tnum", "lnum"]
 FEATURES += ["pnum", "onum", "case", "smcp", "c2sc", "frac", "sups"]
+
+
+# GDEF glyph classes.
+BASE_CLASS, MARK_CLASS = 1, 3
 
 
 def fetch(url: str, cache: Path) -> Path:
@@ -380,6 +385,19 @@ def fix_vertical_metrics(font: TTFont) -> None:
         setattr(os2, attr, round(pen.bounds[3]))
 
 
+def unmark_spacing_glyphs(font: TTFont) -> None:
+    """Class spacing characters as base glyphs: Overpass marks its middle dot, which then draws with no advance."""
+    if "GDEF" not in font or font["GDEF"].table.GlyphClassDef is None:
+        return
+    classes = font["GDEF"].table.GlyphClassDef.classDefs
+    for codepoint, glyph in font.getBestCmap().items():
+        if classes.get(glyph) == MARK_CLASS and unicodedata.category(chr(codepoint)) not in (
+            "Mn",
+            "Me",
+        ):
+            classes[glyph] = BASE_CLASS
+
+
 def build_cut(cut: Cut, cache: Path) -> tuple[bytes, str]:
     """Return the cut's subset WOFF2 bytes and its source's version string."""
     font = TTFont(fetch(cut.url, cache))
@@ -399,6 +417,7 @@ def build_cut(cut: Cut, cache: Path) -> tuple[bytes, str]:
     subsetter.populate(unicodes=sorted(TEXT))
     subsetter.subset(font)
     fix_vertical_metrics(font)
+    unmark_spacing_glyphs(font)
     buffer = io.BytesIO()
     font.flavor = "woff2"
     # Keep the source's head.modified: a rebuild reproduces the same bytes.

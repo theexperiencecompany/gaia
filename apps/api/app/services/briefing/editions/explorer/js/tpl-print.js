@@ -100,7 +100,7 @@
         const split = [s.you ? `you ${s.you}` : "", s.gaia ? `GAIA ${s.gaia}` : ""].filter(Boolean).join(", ");
         sections.push(`<section><h3>By the numbers</h3><div class="num">${s.done ? `<div>Done yesterday<i></i>${s.done}${split ? ` (${split})` : ""}</div>` : ""}${s.mail ? `<div>Emails handled<i></i>${s.mail}</div>` : ""}${s.focus ? `<div>Focus time today<i></i>${esc(s.focus)}</div>` : ""}</div></section>`);
       }
-      const head = `<span>TO:</span><span>${ed.recipient ? esc(ed.recipient.first) : "You"}</span><span>FROM:</span><span>GAIA</span><span>DATE:</span><span>${esc(ed.dateLong)}</span><span>RE:</span><span>Your ${esc(ed.weekday)} -- Edition No. ${ed.editionNo}</span>`;
+      const head = `<span>TO:</span><span>${ed.recipient ? esc(ed.recipient.first) : "You"}</span><span>FROM:</span><span>GAIA</span><span>DATE:</span><span>${esc(ed.dateLong)}</span><span>RE:</span><span>Your ${esc(ed.weekday)} -- Edition No.&nbsp;${ed.editionNo}</span>`;
       const clip = `<svg class="clip" viewBox="0 0 26 74" aria-hidden="true"><path d="M8 66 V12 a5 5 0 0 1 10 0 V58 a8 8 0 0 1 -16 0 V18" fill="none" stroke="#8d939b" stroke-width="2.4" stroke-linecap="round"/><path d="M8 66 V12 a5 5 0 0 1 10 0" fill="none" stroke="#e9edf1" stroke-width=".8" stroke-linecap="round" transform="translate(-.6 -.4)"/></svg>`;
       return `<article class="t-memo" style="--desk:${skin.desk.desk}; --deskB:${skin.desk.deskB}; --paper:${skin.paper.paper}; --rule:${skin.paper.rule}; --face:${skin.face.stack}; --size:${skin.face.size}; --ink:${skin.stamp.ink}">
 ${inkMask("mm-ink")}
@@ -161,7 +161,7 @@ ${inkMask("mm-ink")}
 .t-almanac .eyebrow { font-size: 16px; color: var(--rub); }
 .t-almanac h1 { font-weight: 400; font-variant-caps: small-caps; font-size: 44px; line-height: 1.05; letter-spacing: .02em; margin-top: 10px; }
 .t-almanac .sub { font-style: italic; font-size: 19px; margin-top: 10px; }
-.t-almanac .for { font-size: 17px; margin-top: 10px; }
+.t-almanac .for { font-size: 17px; margin-top: 10px; text-wrap: balance; }
 .t-almanac .fleu { display: block; width: 30px; height: 18px; margin: 20px auto; fill: var(--rub); }
 .t-almanac .deck { font-style: italic; font-size: 23px; line-height: 1.38; text-align: center; padding: 0 8px; }
 .t-almanac section { margin-top: 44px; }
@@ -179,7 +179,7 @@ ${inkMask("mm-ink")}
 .t-almanac figure { margin: 34px auto 0; width: 300px; }
 .t-almanac .frame { padding: 6px; border: 3px double #2a241a; }
 .t-almanac .frame img { display: block; width: 100%; height: 200px; object-fit: cover; filter: grayscale(1) contrast(1.35) brightness(.98) sepia(.2); }
-.t-almanac figcaption { text-align: center; font-size: 15px; margin-top: 8px; line-height: 1.4; }
+.t-almanac figcaption { text-align: center; font-size: 15px; margin-top: 8px; line-height: 1.4; text-wrap: balance; }
 .t-almanac .reck { margin-top: 30px; text-align: center; font-size: 17px; line-height: 1.5; font-style: italic; text-wrap: balance; }
 .t-almanac .reck .sc { font-style: normal; }
 `,
@@ -199,7 +199,7 @@ ${inkMask("mm-ink")}
       const plate = skin.plate.id === "engraving" ? `<figure><div class="frame"><img src="${a.src}" alt="${esc(a.title)}, ${esc(a.artist)}"></div><figcaption><span class="sc">Plate I. — ${esc(a.title)}</span><br><i>${esc(a.artist)}, ${a.year}, ${esc(a.medium)}</i></figcaption></figure>` : "";
       return `<article class="t-almanac" style="--paper:${skin.paper.paper}; --hair:${skin.paper.hair}; --fox:${skin.paper.fox}; --rub:${skin.rubric.rub}; --face:${skin.face.stack}">
 ${grain("al-g", 0.7)}<i class="spot" style="top:12%; left:8%; width:9px; height:7px"></i><i class="spot" style="top:58%; right:6%; width:12px; height:10px"></i><i class="spot" style="bottom:9%; left:20%; width:6px; height:6px"></i>
-<div class="c"><div class="eyebrow sc">The Almanac</div><h1>The ${esc(ed.weekday)} Brief</h1><p class="sub">Being a faithful account of the day's business</p><p class="for sc">for the ${ord(ed.day)} day of ${esc(ed.month)}, anno ${ed.year} — No. ${ed.editionNo}</p></div>
+<div class="c"><div class="eyebrow sc">The Almanac</div><h1>The ${esc(ed.weekday)} Brief</h1><p class="sub">Being a faithful account of the day's business</p><p class="for sc">for the ${ord(ed.day)} day of ${esc(ed.month)}, anno ${ed.year} — No.&nbsp;${ed.editionNo}</p></div>
 ${fleuron}
 <p class="deck">${esc(ed.deck)}</p>
 ${EXPLORER.fold(secs).join("")}

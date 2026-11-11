@@ -59,7 +59,7 @@
 .t-librarycard .deck { margin-top: 12px; font-size: 19px; line-height: 1.4; font-weight: 700; }
 .t-librarycard .cols { display: grid; grid-template-columns: 86px 1fr 92px; margin-top: 16px; padding-bottom: 4px; border-bottom: 1px solid #211d17; font-size: 14px; letter-spacing: 0; }
 .t-librarycard .cols span:last-child { text-align: right; }
-.t-librarycard .sl { font-size: 15px; letter-spacing: 0; color: #4a4338; padding: 12px 0 4px; border-bottom: 1px solid var(--rule); }
+.t-librarycard .sl { font-size: 15px; font-weight: 700; letter-spacing: 0; color: #4a4338; padding: 12px 0 4px; border-bottom: 1px solid var(--rule); }
 .t-librarycard .row { position: relative; display: grid; grid-template-columns: 86px 1fr 92px; align-items: start; padding: 9px 0; border-bottom: 1px solid var(--rule); }
 .t-librarycard .row::before { content: ""; position: absolute; left: 80px; top: 0; bottom: 0; border-left: 1px solid #c45a4b; }
 .t-librarycard .row .it { padding-left: 8px; text-wrap: pretty; }
@@ -70,8 +70,8 @@
 .t-librarycard .verb { font-weight: 700; margin-right: 6px; }
 .t-librarycard .sign { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 42px; font-size: 15px; }
 .t-librarycard .sign span:first-child { flex: 1; border-top: 1px solid #211d17; padding-top: 4px; margin-right: 18px; }
-.t-librarycard .sign i { font: italic 600 22px/1 'Pinyon Script', cursive; display: block; margin-bottom: -2px; transform: translateY(-26px); height: 0; color: #2a3a7a; }
-.t-librarycard .rec { margin-top: 16px; font-size: 15px; line-height: 1.5; }
+.t-librarycard .sign i { font: italic 400 22px/1 'Pinyon Script', cursive; display: block; margin-bottom: -2px; transform: translateY(-26px); height: 0; color: #2a3a7a; }
+.t-librarycard .rec { margin-top: 16px; font-size: 15px; line-height: 1.5; text-wrap: pretty; }
 .t-librarycard .pocket { position: relative; z-index: 2; margin: -96px -8px 0; height: 118px; background: linear-gradient(180deg, rgba(255,255,255,.18), transparent 30%), var(--pocket);
   clip-path: polygon(0 18px, 34% 18px, 40% 0, 60% 0, 66% 18px, 100% 18px, 100% 100%, 0 100%); box-shadow: 0 -2px 4px rgba(0,0,0,.18); text-align: center; padding-top: 46px; color: #3b3021; }
 .t-librarycard .pocket::before { content: ""; position: absolute; left: 10px; right: 10px; top: 28px; bottom: 10px; border: 1.5px dashed rgba(59,48,33,.45); border-top: 0; }

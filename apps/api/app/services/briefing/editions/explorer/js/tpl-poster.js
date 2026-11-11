@@ -42,9 +42,9 @@
 .t-swiss .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: soft-light; opacity: .35; z-index: -1; }
 .t-swiss .fold { position: absolute; left: 0; right: 0; top: 50%; height: 2px; background: linear-gradient(180deg, rgba(0,0,0,.08), rgba(255,255,255,.18)); pointer-events: none; }
 .t-swiss .crop { position: absolute; width: 14px; height: 14px; border: 0 solid var(--soft); opacity: .7; }
-.t-swiss .day { position: relative; }
-.t-swiss .day span { position: absolute; top: 0; left: 18px; writing-mode: vertical-rl; transform: rotate(180deg); font-family: var(--face); font-weight: 700; line-height: .78; letter-spacing: -.035em; color: var(--day); white-space: nowrap; }
-.t-swiss .day b { position: absolute; bottom: 0; left: 18px; writing-mode: vertical-rl; transform: rotate(180deg); font-family: var(--face); font-weight: 700; font-size: 64px; line-height: .78; letter-spacing: -.03em; color: var(--day); font-variant-numeric: tabular-nums; }
+.t-swiss .day { display: flex; flex-direction: column; justify-content: space-between; gap: 24px; padding-left: 18px; }
+.t-swiss .day span { writing-mode: vertical-rl; transform: rotate(180deg); font-family: var(--face); font-weight: 700; line-height: .78; letter-spacing: -.035em; color: var(--day); white-space: nowrap; }
+.t-swiss .day b { writing-mode: vertical-rl; transform: rotate(180deg); font-family: var(--face); font-weight: 700; font-size: 64px; line-height: .78; letter-spacing: -.03em; color: var(--day); font-variant-numeric: tabular-nums; }
 .t-swiss .top { display: flex; gap: 16px; font-size: 15px; font-weight: 700; letter-spacing: 0; }
 .t-swiss .deck { font-size: 25px; line-height: 1.22; font-weight: 500; letter-spacing: -.01em; margin-top: 14px; padding-bottom: 18px; border-bottom: 6px solid var(--ink); text-wrap: balance; }
 .t-swiss section { margin-top: 40px; }
@@ -52,7 +52,7 @@
 .t-swiss h2 small { font-size: 21px; font-weight: 400; color: var(--soft); font-variant-numeric: tabular-nums; }
 .t-swiss h2 i { width: 16px; height: 16px; background: var(--mark); align-self: center; }
 .t-swiss .row { display: grid; grid-template-columns: 84px 1fr; padding: 10px 0; border-bottom: 1px solid var(--hair); align-items: baseline; }
-.t-swiss .t { font-family: var(--face); font-size: 24px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1; }
+.t-swiss .t { font-size: 24px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1; }
 .t-swiss .t.sm { font-size: 17px; color: var(--soft); font-weight: 500; letter-spacing: 0; }
 .t-swiss .v { text-wrap: pretty; }
 .t-swiss .v b { font-weight: 700; }

@@ -111,7 +111,6 @@ ${EXPLORER.fold(secs).join("")}
     css: `
 .t-exhibition { position: relative; box-sizing: border-box; width: 540px; background: var(--wall); color: var(--ink); font: 400 17px/1.45 'TeX Gyre Heros', sans-serif; padding-bottom: 34px; }
 .t-exhibition * { box-sizing: border-box; margin: 0; padding: 0; }
-.t-exhibition .mono { font-family: 'TeX Gyre Heros', sans-serif; }
 .t-exhibition .art { position: relative; height: 360px; overflow: hidden; border-bottom: 4px solid #8a6a2a; }
 .t-exhibition .art img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: var(--pos); transform: scale(1.12); filter: saturate(1.05) contrast(1.04); }
 .t-exhibition .art::after { content: ""; position: absolute; inset: 0; background: ${WEAVE}; mix-blend-mode: multiply; }
@@ -123,7 +122,6 @@ ${EXPLORER.fold(secs).join("")}
 .t-exhibition .label { position: relative; margin: -14px 0 0 auto; width: 300px; background: #fbfaf6; color: #1b1a17; padding: 12px 14px; font-size: 14px; line-height: 1.5; box-shadow: 0 6px 12px -6px rgba(0,0,0,.35); }
 .t-exhibition .label b { display: block; font-size: 15px; }
 .t-exhibition .deck { font: italic 400 24px/1.35 var(--head); margin-top: 22px; text-wrap: balance; }
-.t-exhibition h2 { font-size: 15px; font-weight: 700; letter-spacing: 0; margin-top: 30px; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
 .t-exhibition h3 { font: italic 400 25px/1.2 var(--head); margin: 38px 0 10px; }
 .t-exhibition .w { display: grid; grid-template-columns: 96px 1fr; padding: 8px 0; line-height: 1.5; }
 .t-exhibition .w > span:last-child { text-wrap: pretty; }
@@ -131,13 +129,13 @@ ${EXPLORER.fold(secs).join("")}
 .t-exhibition .w .k2.acc { color: var(--acc); font-weight: 700; }
 .t-exhibition .w b { font-weight: 700; }
 .t-exhibition .w .n { display: block; font-size: 15px; color: var(--soft); }
-.t-exhibition .w .tag { display: block; font: italic 15px/1.4 var(--head); color: var(--soft); margin-top: 2px; }
+.t-exhibition .w .tag { display: block; font-size: 15px; line-height: 1.4; color: var(--soft); margin-top: 2px; }
 .t-exhibition .foot { margin-top: 26px; padding-top: 12px; border-top: 1px solid var(--ink); font-size: 15px; line-height: 1.6; }
 `,
     render(ed, skin) {
       const c = ed.content;
       const needs = c.decisions.slice(0, 3);
-      const w = (k, acc, label, note, tag) => `<div class="w" data-role="body"><span class="k2 mono${acc ? " acc" : ""}">${esc(k)}${tag ? `<span class="tag">${esc(tag.toLowerCase())}</span>` : ""}</span><span>${esc(label)}${note ? `<span class="n">${esc(note)}</span>` : ""}</span></div>`;
+      const w = (k, acc, label, note, tag) => `<div class="w" data-role="body"><span class="k2${acc ? " acc" : ""}">${esc(k)}${tag ? `<span class="tag">${esc(tag.toLowerCase())}</span>` : ""}</span><span>${esc(label)}${note ? `<span class="n">${esc(note)}</span>` : ""}</span></div>`;
       const parts = [];
       if (needs.length) parts.push(`<h3>Awaiting your decision</h3>${needs.map((d) => w(d.verb, true, d.label, d.note)).join("")}`);
       if (c.today.length) parts.push(`<h3>Today</h3>${c.today.map((e) => w(e.time || "EOD", false, e.label, e.note, e.tag)).join("")}`);
@@ -149,10 +147,10 @@ ${EXPLORER.fold(secs).join("")}
 <div class="art"><img src="${a.src}" alt="${esc(a.title)}, ${esc(a.artist)}, ${a.year}">${grain("ex-g", 1.1)}</div>
 <div class="plate"><div class="k">One day only · ${esc(ed.dateLong)}</div><h1 style="font-size:${Math.min(104, Math.floor(480 / (ed.weekday.length * 0.82)))}px">The<br>${esc(ed.weekday)}<br>Brief</h1></div>
 <div class="body" data-fold>
-  <div class="label mono"><b>${esc(a.artist)}</b>${esc(a.title)}, ${a.year}<br>${esc(a.medium)} · Edition No ${ed.editionNo}</div>
+  <div class="label"><b>${esc(a.artist)}</b>${esc(a.title)}, ${a.year}<br>${esc(a.medium)} · Edition No ${ed.editionNo}</div>
   <p class="deck">${esc(ed.deck)}</p>
-  ${parts.length ? `<h2>Programme for the day</h2>${parts.join("")}` : ""}
-  ${s ? `<p class="foot mono">Yesterday ${s.done} done${s.you && s.gaia ? ` (you ${s.you} / GAIA ${s.gaia})` : ""}${s.mail || s.focus ? `<br>${[s.mail ? `${s.mail} emails handled` : "", s.focus ? `${esc(s.focus)} of focus today` : ""].filter(Boolean).join(" · ")}` : ""}<br>Brief generated ${esc(ed.time)}</p>` : ""}
+  ${parts.join("")}
+  ${s ? `<p class="foot">Yesterday ${s.done} done${s.you && s.gaia ? ` (you ${s.you} / GAIA ${s.gaia})` : ""}${s.mail || s.focus ? `<br>${[s.mail ? `${s.mail} emails handled` : "", s.focus ? `${esc(s.focus)} of focus today` : ""].filter(Boolean).join(" · ")}` : ""}<br>Brief generated ${esc(ed.time)}</p>` : ""}
 </div></article>`;
     },
   });
@@ -210,8 +208,8 @@ ${EXPLORER.fold(secs).join("")}
 .t-weekly .li > span:last-child { text-wrap: pretty; }
 .t-weekly .list.ruled .li { border-bottom: 1px solid var(--hair); }
 .t-weekly .li.one { grid-template-columns: 1fr; }
-.t-weekly .li .num { font: 400 19px/1.3 'Newsreader', serif; }
-.t-weekly .li .day { font: italic 700 17px/1.5 'Newsreader', serif; font-variant-numeric: lining-nums tabular-nums; }
+.t-weekly .li .num { font-weight: 700; font-variant-numeric: lining-nums tabular-nums; }
+.t-weekly .li .day { font-weight: 700; font-variant-numeric: lining-nums tabular-nums; }
 .t-weekly .li b { color: var(--accText); }
 .t-weekly .li .n { display: block; font-size: 15px; color: var(--soft); }
 .t-weekly .figs { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 18px; margin-top: 12px; }
@@ -265,7 +263,7 @@ ${grain("wk-g", 0.85)}
 <div class="mast"><h1>The Week</h1><div class="no"><b>No ${weekNo}</b>${esc(range)}</div></div>
 <p class="deck">${esc(ed.deck)}</p>
 ${EXPLORER.fold(secs).join("")}
-<p class="foot">Weekly review · compiled by GAIA ${esc(ed.dateLong)} · week No ${weekNo} · from daily edition No ${ed.editionNo}</p>
+<p class="foot">Weekly review · compiled by GAIA ${esc(ed.dateLong)} · week No&nbsp;${weekNo} · from daily edition No&nbsp;${ed.editionNo}</p>
 </article>`;
     },
   });

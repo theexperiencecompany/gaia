@@ -281,25 +281,11 @@
    "size_adjust": null
   },
   {
-   "family": "Literata",
-   "file": "literata-700i.woff2",
-   "weight": 700,
-   "style": "italic",
-   "size_adjust": null
-  },
-  {
    "family": "Cutive",
    "file": "cutive-400.woff2",
    "weight": 400,
    "style": "normal",
    "size_adjust": 83
-  },
-  {
-   "family": "Newsreader",
-   "file": "newsreader-400.woff2",
-   "weight": 400,
-   "style": "normal",
-   "size_adjust": null
   },
   {
    "family": "Newsreader",
@@ -312,13 +298,6 @@
    "family": "Newsreader",
    "file": "newsreader-500i.woff2",
    "weight": 500,
-   "style": "italic",
-   "size_adjust": null
-  },
-  {
-   "family": "Newsreader",
-   "file": "newsreader-700i.woff2",
-   "weight": 700,
    "style": "italic",
    "size_adjust": null
   },
@@ -708,31 +687,11 @@
    }
   },
   {
-   "file": "literata-700i.woff2",
-   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/literata/Literata-Italic[opsz,wght].ttf",
-   "sha256": "d483dfaeba9cbf4ce71d32a52ee65df82f7e35b15fff8d1011cdb242d1fcd465",
-   "version": "Version 3.103;gftools[0.9.29]",
-   "pins": {
-    "opsz": 18,
-    "wght": 700
-   }
-  },
-  {
    "file": "cutive-400.woff2",
    "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/cutive/Cutive-Regular.ttf",
    "sha256": "8f0eb3280328c0051bbe725ce9d68c9117484b769cf68dbacec4343ae92ee031",
    "version": "Version 1.110; ttfautohint (v1.8.4.7-5d5b)",
    "pins": {
-    "wght": 400
-   }
-  },
-  {
-   "file": "newsreader-400.woff2",
-   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/newsreader/Newsreader[opsz,wght].ttf",
-   "sha256": "8a08d13f8a6c0d51be379a60af84f945f65369a67e509ee3c3bdcc421254d7c1",
-   "version": "Version 1.003",
-   "pins": {
-    "opsz": 36,
     "wght": 400
    }
   },
@@ -754,16 +713,6 @@
    "pins": {
     "opsz": 36,
     "wght": 500
-   }
-  },
-  {
-   "file": "newsreader-700i.woff2",
-   "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/newsreader/Newsreader-Italic[opsz,wght].ttf",
-   "sha256": "796668611f80b64d5adf182fde3b6f29ed83b4e7cbec7b96937e84ac01364792",
-   "version": "Version 1.003",
-   "pins": {
-    "opsz": 36,
-    "wght": 700
    }
   },
   {
