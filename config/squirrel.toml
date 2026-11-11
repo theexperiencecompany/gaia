@@ -1,14 +1,14 @@
 # squirrelscan's config for the SEO lane: `scripts/ci/smoke-web.sh squirrel`.
 #
-# Every rule category runs. Each rule's finding count ratchets against
-# scripts/ci/baselines/squirrel-build.txt (the PR gate) or squirrel-live.txt
-# (post-deploy) rather than having to be zero, so a baseline is the list of what
-# is still to fix. The title and description windows
+# Every rule category but Agent Experience runs. Each finding (page, check and
+# item) is held to scripts/ci/baselines/squirrel-build.txt (the PR gate) or
+# squirrel-live.txt (the full crawl) rather than having to be zero, so a baseline
+# is the list of what is still to fix. The title and description windows
 # are appended at run time from apps/web/src/config/seoSnippet.json, the one
-# source of those numbers (scripts/ci/lib/squirrel.py config). Two narrow false
-# positives are dropped in scripts/ci/lib/squirrel.py, not here, because squirrel
-# can only disable a rule as a whole: crawl/sitemap-valid on /feed.xml and
-# url/lowercase on the pt-BR locale prefix.
+# source of those numbers (scripts/ci/lib/squirrel.py config). Findings that are
+# wrong only on some pages (CJK word counts, wiki-link text, short hub pages, the
+# pt-BR prefix) are dropped in scripts/ci/lib/squirrel.py's IGNORED, not here,
+# because squirrel can only disable a rule as a whole.
 
 [project]
 name = "gaia"
@@ -26,9 +26,11 @@ incremental = false
 enable = ["*"]
 # Response time measures how loaded the machine serving the crawl is, not the
 # site: on one build it flagged 0 of 100 pages on one run and 7 on the next.
-disable = ["perf/ttfb"]
+# Agent Experience (ax/*) is not a standard this site is held to.
+disable = ["perf/ttfb", "ax/*"]
 
-# Other sites' uptime is not this site's regression.
+# Off for the PR gate, whose proxy reaches no other host; the full crawl of the
+# live site turns them on (--external-links), so a link that went dead alerts.
 [external_links]
 enabled = false
 
