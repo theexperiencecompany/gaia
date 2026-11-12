@@ -25,7 +25,6 @@ interface PricingCardPriceInput {
   price: number;
   originalPrice: number | undefined;
   durationIsMonth: boolean;
-  currency: string;
   gift: GiftPrice | null;
 }
 
@@ -53,7 +52,6 @@ export function usePricingCardPrice({
   price,
   originalPrice,
   durationIsMonth,
-  currency,
   gift,
 }: PricingCardPriceInput): PricingCardPrice {
   // Only an offer that names a percentage can restate the prices; the
@@ -61,17 +59,12 @@ export function usePricingCardPrice({
   const discountPercent = useUpgradeModalStore(
     (s) => s.offer?.discountPercent ?? null,
   );
-  const list = getPriceDisplay(price, originalPrice, durationIsMonth, currency);
+  const list = getPriceDisplay(price, originalPrice, durationIsMonth);
   const cycleGift = durationIsMonth ? gift?.monthly : gift?.yearly;
   if (cycleGift && price > 0)
     return {
       list,
-      offer: getPriceDisplay(
-        cycleGift.minor,
-        originalPrice,
-        durationIsMonth,
-        currency,
-      ),
+      offer: getPriceDisplay(cycleGift.minor, originalPrice, durationIsMonth),
       note: cycleGift.note,
     };
   return {
@@ -83,7 +76,6 @@ export function usePricingCardPrice({
             getOfferPrice(price, discountPercent),
             originalPrice,
             durationIsMonth,
-            currency,
           )
         : null,
   };

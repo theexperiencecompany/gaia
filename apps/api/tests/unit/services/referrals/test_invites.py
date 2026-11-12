@@ -55,6 +55,7 @@ from app.utils.notification.unsubscribe import (
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.referrals import ReferralInviteSent
 from tests.factories import make_pro_plans
+from tests.helpers import referrals_off_for
 
 INVITES = "app.services.referrals.invites"
 NOW = datetime(2026, 10, 14, 15, 45, 37, 123456, tzinfo=UTC)
@@ -215,11 +216,10 @@ class TestEachAddressIsJudgedOnItsOwn:
         }
         seams.claim.assert_not_awaited()
 
-    @pytest.mark.usefixtures("referrals_off")
-    async def test_with_referrals_off_nothing_is_sent_and_no_code_is_minted(
+    async def test_with_referrals_off_for_the_sender_nothing_is_sent_and_no_code_is_minted(
         self, seams: Seams
     ) -> None:
-        with pytest.raises(AppError) as refused:
+        with referrals_off_for(SENDER.id), pytest.raises(AppError) as refused:
             await send_invites(SENDER.id, _request("priya@example.com"))
 
         assert (refused.value.status_code, refused.value.code) == (403, REFERRALS_DISABLED)

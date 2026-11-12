@@ -331,13 +331,13 @@ class DodoPaymentService:
         )
 
     def _checkout_params(
-        self, request: CheckoutRequest, code: str | None, *, gift: bool
+        self, request: CheckoutRequest, gift: CheckoutGift | None
     ) -> CheckoutSessionCreateParams:
         customer: NewCustomerParam = {"email": request.email, "name": request.name}
         flags: _CheckoutFeatureFlags = {
             # Renders the promo-code input; locked when the referral gift is
             # applied, since codes never stack and the gift already won.
-            "allow_discount_code": not gift,
+            "allow_discount_code": gift is None,
             # Allow customers to change their billing address country
             "allow_customer_editing_country": True,
             # Wallets, email, billing and card on one page, no Continue to Payment step
@@ -356,6 +356,7 @@ class DodoPaymentService:
                 # Use product's stored price; override trial if needed
             },
         }
+        code = request.discount_code if gift is None else gift.code
         if code:
             params["discount_code"] = code
         if settings.deployment.dev_tools:
@@ -368,13 +369,12 @@ class DodoPaymentService:
         return params
 
     async def _create_session(
-        self, request: CheckoutRequest, code: str | None, *, gift: bool
+        self, request: CheckoutRequest, gift: CheckoutGift | None
     ) -> CheckoutSessionResponse:
         # The Dodo SDK's client is synchronous — run it off the event loop so a
         # slow HTTP round-trip doesn't stall other requests.
         return await asyncio.to_thread(
-            self.client.checkout_sessions.create,
-            **self._checkout_params(request, code, gift=gift),
+            self.client.checkout_sessions.create, **self._checkout_params(request, gift)
         )
 
     async def _open_checkout(
@@ -390,7 +390,7 @@ class DodoPaymentService:
         """
         if referral is not None and gift is not None:
             try:
-                return await self._create_session(request, gift.code, gift=True), gift
+                return await self._create_session(request, gift), gift
             except APIStatusError as e:
                 if not is_refusal(e):
                     raise
@@ -403,7 +403,7 @@ class DodoPaymentService:
                 renewed = await renew_gift_code(
                     self.client, referral, gift, await self.get_pro_plans()
                 )
-                return await self._create_session(request, renewed.code, gift=True), renewed
+                return await self._create_session(request, renewed), renewed
             except APIError as e:
                 if isinstance(e, APIStatusError) and not is_refusal(e):
                     raise
@@ -417,7 +417,7 @@ class DodoPaymentService:
                     UserId(request.user_id),
                     ReferralGiftMintFailed(reason=gift_mint_failure_reason(e)),
                 )
-        return await self._create_session(request, request.discount_code, gift=False), None
+        return await self._create_session(request, None), None
 
     async def _referral_gift(
         self, referral: ReferralDocument, request: CheckoutRequest

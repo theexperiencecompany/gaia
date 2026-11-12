@@ -37,7 +37,5 @@ async def find_discount(client: DodoPayments, code: str) -> Discount | None:
     if cached is not None:
         return cached.discount
     found = await _scan_for(client, code)
-    await redis_cache.set(
-        key, DiscountByCode(discount=found), ttl=DISCOUNT_BY_CODE_CACHE_TTL, model=DiscountByCode
-    )
+    await redis_cache.set(key, DiscountByCode(discount=found), ttl=DISCOUNT_BY_CODE_CACHE_TTL)
     return found
