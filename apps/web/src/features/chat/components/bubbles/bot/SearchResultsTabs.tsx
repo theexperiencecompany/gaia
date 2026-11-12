@@ -1,4 +1,4 @@
-import { Button, Popover, Skeleton } from "@heroui/react";
+import { Popover, Skeleton } from "@heroui/react";
 import { CircleArrowRight02Icon, NewsIcon } from "@icons";
 import * as m from "motion/react-m";
 import Image from "next/image";
@@ -126,10 +126,10 @@ function ImageResults({ images }: ImageResultsProps) {
         />
       ))}
       {validImages.length > MAX_VISIBLE && (
-        <Button
+        <GaiaButton
           onPress={cycleNext}
           className="relative z-10 flex h-32 w-32 shrink-0 flex-col items-center justify-center gap-1.5 rounded-2xl bg-zinc-800/80 text-zinc-300 shadow-sm backdrop-blur-sm transition-colors hover:bg-zinc-700/80 hover:text-white"
-          variant="tertiary"
+          variant="default-soft"
           style={{
             rotate: displayImages.length % 2 === 0 ? "8deg" : "-8deg",
           }}
@@ -140,7 +140,7 @@ function ImageResults({ images }: ImageResultsProps) {
             height={16}
             className="opacity-70"
           />
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );
@@ -207,7 +207,7 @@ function SourcesButton({ web }: SourcesButtonProps) {
   return (
     <div className="flex justify-start">
       <Popover>
-        <GaiaButton shape="pill" variant="tertiary" size="sm">
+        <GaiaButton shape="pill" variant="default-soft" size="sm">
           <div className="flex -space-x-3">
             {web.slice(0, 4).map((result) => {
               const host = safeUrl(result.url)?.hostname;

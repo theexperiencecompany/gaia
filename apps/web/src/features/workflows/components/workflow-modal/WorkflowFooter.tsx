@@ -1,5 +1,6 @@
 import { Button, Kbd, Tooltip } from "@heroui/react";
 import { PlayIcon, Share01Icon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 /** What the current edit session offers for auxiliary actions. */
 interface WorkflowFooterWorkflow {
@@ -65,14 +66,14 @@ export default function WorkflowFooter({
 
         {isExisting && !isPublic && onPublish && (
           <Tooltip>
-            <Button
-              variant="tertiary"
+            <GaiaButton
+              variant="default-soft"
               onPress={onPublish}
               className="active:scale-[0.97] transition-transform duration-150"
             >
               <Share01Icon className="h-4 w-4" />
               Publish
-            </Button>
+            </GaiaButton>
             <Tooltip.Content placement="top">
               Share to the marketplace
             </Tooltip.Content>

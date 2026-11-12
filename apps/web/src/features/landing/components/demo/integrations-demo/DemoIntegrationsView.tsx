@@ -341,10 +341,10 @@ export default function DemoIntegrationsView({
                 </div>
               </div>
               <div className="flex shrink-0 gap-3">
-                <Button variant="tertiary" size="sm">
+                <GaiaButton variant="default-soft" size="sm">
                   Browse Marketplace
                   <ArrowRight02Icon className="h-4 w-4" />
-                </Button>
+                </GaiaButton>
                 <Button size="sm" variant="primary">
                   <ZapIcon className="h-4 w-4" />
                   Create Custom

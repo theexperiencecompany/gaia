@@ -50,7 +50,7 @@ export default function SelectedWorkflowIndicator({
           <Button
             isIconOnly
             size="sm"
-            variant="tertiary"
+            variant="ghost"
             onPress={onRemove}
             className="text-zinc-400 hover:text-zinc-200"
           >

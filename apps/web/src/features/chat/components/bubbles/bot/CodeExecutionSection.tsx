@@ -5,6 +5,11 @@ import { useState } from "react";
 
 import { ChatCodeBlock } from "@/features/chat/components/code-block/ChatCodeBlock";
 import { copyWithFeedback } from "@/lib/clipboard";
+import {
+  ACCORDION_INDICATOR,
+  ACCORDION_ROOT_SHADOW,
+  ACCORDION_TRIGGER,
+} from "@/lib/heroui/accordionParity";
 import type { CodeData } from "@/types/features/toolDataTypes";
 import CodeExecutionOutput from "./CodeExecutionOutput";
 
@@ -54,17 +59,18 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
       <Accordion
         allowsMultipleExpanded
         defaultExpandedKeys={["output", "charts"]}
-        className="w-full"
-        variant="surface"
+        className={`w-full ${ACCORDION_ROOT_SHADOW}`}
       >
         <Accordion.Item id="code">
           <Accordion.Heading>
-            <Accordion.Trigger className={TRIGGER_CLASS}>
+            <Accordion.Trigger
+              className={`${ACCORDION_TRIGGER} ${TRIGGER_CLASS}`}
+            >
               Executed Code
-              <Accordion.Indicator />
+              <Accordion.Indicator className={ACCORDION_INDICATOR} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className="pt-0">
+          <Accordion.Panel className="pt-0 pb-2">
             <div className="w-full max-w-[30vw] overflow-hidden rounded-[15px] rounded-b-[20px]">
               <ChatCodeBlock className={`language-${code_data.language}`}>
                 {code_data.code}
@@ -76,12 +82,14 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
         {/* Output Section */}
         <Accordion.Item id="output">
           <Accordion.Heading>
-            <Accordion.Trigger className={TRIGGER_CLASS}>
+            <Accordion.Trigger
+              className={`${ACCORDION_TRIGGER} ${TRIGGER_CLASS}`}
+            >
               Output
-              <Accordion.Indicator />
+              <Accordion.Indicator className={ACCORDION_INDICATOR} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className="pt-0">
+          <Accordion.Panel className="pt-0 pb-2">
             <CodeExecutionOutput
               output={code_data.output}
               status={code_data.status}
@@ -96,12 +104,14 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
         {code_data.charts && code_data.charts.length > 0 ? (
           <Accordion.Item id="charts">
             <Accordion.Heading>
-              <Accordion.Trigger className={TRIGGER_CLASS}>
+              <Accordion.Trigger
+                className={`${ACCORDION_TRIGGER} ${TRIGGER_CLASS}`}
+              >
                 Charts
-                <Accordion.Indicator />
+                <Accordion.Indicator className={ACCORDION_INDICATOR} />
               </Accordion.Trigger>
             </Accordion.Heading>
-            <Accordion.Panel className="pt-0">
+            <Accordion.Panel className="pt-0 pb-2">
               <ChartDisplay charts={code_data.charts} />
             </Accordion.Panel>
           </Accordion.Item>

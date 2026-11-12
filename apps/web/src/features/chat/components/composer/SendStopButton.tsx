@@ -93,7 +93,11 @@ export default function SendStopButton({
     }
   };
 
-  const { contentColor } = getButtonStyle(showStop, hasContent, isUploading);
+  const { bg, contentColor } = getButtonStyle(
+    showStop,
+    hasContent,
+    isUploading,
+  );
 
   // Queue widens into a labelled pill; stop/send stay icon-only square buttons.
   const stopCursor = showStop ? "cursor-pointer" : "";
@@ -103,6 +107,7 @@ export default function SendStopButton({
 
   return (
     <GaiaButton
+      variant={bg === "primary" ? "primary" : "default-solid"}
       shape="pill"
       isIconOnly={!showQueue}
       aria-label={MODE_ARIA_LABEL[mode]}

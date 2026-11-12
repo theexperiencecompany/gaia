@@ -1,4 +1,4 @@
-import { Button, Spinner, Tabs } from "@heroui/react";
+import { Spinner, Tabs } from "@heroui/react";
 import {
   Cancel01Icon,
   ChartIcon,
@@ -9,6 +9,7 @@ import {
 import Image from "next/image";
 import type React from "react";
 import { useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   type ChartConfig,
   ChartContainer,
@@ -19,6 +20,13 @@ import {
   loadRecharts,
   type RechartsModule,
 } from "@/components/ui/chart-loader";
+import {
+  TABS_INDICATOR,
+  TABS_LIST_LIGHT,
+  TABS_ROOT,
+  TABS_SELECTED,
+  TABS_TAB,
+} from "@/lib/heroui/tabsParity";
 
 interface ChartData {
   id: string;
@@ -96,13 +104,13 @@ const InteractiveChart: React.FC<{ chart: ChartData }> = ({ chart }) => {
       return (
         <div className="flex h-64 w-full flex-col items-center justify-center gap-2 rounded-lg bg-zinc-900">
           <p className="text-xs text-zinc-500">Chart failed to load.</p>
-          <Button
+          <GaiaButton
             size="sm"
-            variant="tertiary"
+            variant="default-soft"
             onPress={() => setLoadAttempt((attempt) => attempt + 1)}
           >
             Retry
-          </Button>
+          </GaiaButton>
         </div>
       );
     }
@@ -364,11 +372,14 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
               onSelectionChange={(key) =>
                 setViewMode(key as "static" | "dynamic")
               }
-              className="mb-3 w-full"
+              className={`mb-3 w-full ${TABS_ROOT}`}
               aria-label="Chart view options"
             >
-              <Tabs.List className="w-full">
-                <Tabs.Tab id="static">
+              <Tabs.List className={`${TABS_LIST_LIGHT} w-full`}>
+                <Tabs.Tab
+                  id="static"
+                  className={`${TABS_TAB} ${TABS_SELECTED}`}
+                >
                   <div className="flex items-center gap-2">
                     <Image02Icon className="h-5 w-5" />
                     Static
@@ -376,9 +387,12 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
                       {staticCharts.length}
                     </div>
                   </div>
-                  <Tabs.Indicator />
+                  <Tabs.Indicator className={TABS_INDICATOR} />
                 </Tabs.Tab>
-                <Tabs.Tab id="dynamic">
+                <Tabs.Tab
+                  id="dynamic"
+                  className={`${TABS_TAB} ${TABS_SELECTED}`}
+                >
                   <div className="flex items-center gap-2">
                     <ChartIcon className="h-5 w-5" />
                     Dynamic
@@ -386,11 +400,9 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
                       {dynamicCharts.length}
                     </div>
                   </div>
-                  <Tabs.Indicator />
+                  <Tabs.Indicator className={TABS_INDICATOR} />
                 </Tabs.Tab>
               </Tabs.List>
-              <Tabs.Panel id="static">{null}</Tabs.Panel>
-              <Tabs.Panel id="dynamic">{null}</Tabs.Panel>
             </Tabs>
 
             <div className="space-y-2">

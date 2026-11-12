@@ -9,6 +9,10 @@ import type {
   ToolCallEntry,
 } from "@/config/registries/toolRegistry";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import {
+  ACCORDION_PANEL_COMPACT,
+  ACCORDION_TRIGGER_BASE,
+} from "@/lib/heroui/accordionParity";
 import { type ApprovalOutcome, StepRow, SubagentRow } from "./SubagentRow";
 import { deriveTimelineItemKeys } from "./TextBubble/useSubagentSynthesis";
 
@@ -164,7 +168,6 @@ export default function UnifiedToolThread({
   return (
     <div className="w-fit max-w-140">
       <Accordion
-        variant="default"
         expandedKeys={isExpanded ? ["tools"] : []}
         onExpandedChange={(keys) => {
           setIsExpanded(keys.has("tools"));
@@ -173,7 +176,9 @@ export default function UnifiedToolThread({
       >
         <AccordionItem key="tools" id="tools">
           <Accordion.Heading>
-            <Accordion.Trigger className="cursor-pointer py-0">
+            <Accordion.Trigger
+              className={`cursor-pointer py-0 ${ACCORDION_TRIGGER_BASE}`}
+            >
               <div className="flex items-center hover:text-white text-zinc-500">
                 {totalToolCount > 1 && <StackedIcons icons={uniqueIcons} />}
                 <span
@@ -193,7 +198,7 @@ export default function UnifiedToolThread({
               </div>
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel>
+          <Accordion.Panel className={ACCORDION_PANEL_COMPACT}>
             <div className="py-2">
               {timeline.map((item, idx) => {
                 const isLast = idx === timeline.length - 1;

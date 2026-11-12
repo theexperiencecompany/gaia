@@ -28,7 +28,7 @@ const GoogleDocsSection: React.FC<GoogleDocsSectionProps> = ({
             target="_blank"
             rel="noopener noreferrer"
             key={document.id}
-            variant="tertiary"
+            variant="default-soft"
             className="max-w-60 min-w-60 justify-start py-7"
           >
             <Image

@@ -3,6 +3,7 @@
 import { Button, ListBox, Select } from "@heroui/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { type Key, useCallback, useEffect, useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { authApi } from "@/features/auth/api/authApi";
 import {
   patchCurrentUser,
@@ -21,7 +22,6 @@ import {
   getTimezoneList,
   normalizeTimezone,
 } from "@/utils/timezoneUtils";
-
 import type { ModalAction } from "./SettingsMenu";
 
 const responseStyleOptions = [
@@ -136,15 +136,15 @@ function IdentitySettingsSection({
         stacked
       >
         <div className="flex items-center gap-2">
-          <Button
+          <GaiaButton
             size="sm"
-            variant="tertiary"
+            variant="default-soft"
             onPress={handleAutoDetectTimezone}
             isDisabled={isUpdating}
             className="border-zinc-700 bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700/50"
           >
             Auto Detect
-          </Button>
+          </GaiaButton>
           <Select
             placeholder="Select your timezone"
             selectedKey={preferences.timezone || "UTC"}

@@ -3,6 +3,7 @@
 import { Button } from "@heroui/react";
 import { ArrowLeft02Icon, ArrowRight02Icon } from "@icons";
 import * as m from "motion/react-m";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { MOTION_FADE_UP } from "@/features/onboarding/constants/motion";
 
 interface WizardFooterProps {
@@ -36,9 +37,9 @@ export function WizardFooter({
         )}
         <div className="flex items-center gap-2">
           {onSkip && (
-            <Button variant="tertiary" onPress={onSkip}>
+            <GaiaButton variant="default-soft" onPress={onSkip}>
               Skip for now
-            </Button>
+            </GaiaButton>
           )}
           <Button variant="primary" onPress={onContinue}>
             Continue

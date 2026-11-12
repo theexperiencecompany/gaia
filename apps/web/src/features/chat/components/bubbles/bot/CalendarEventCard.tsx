@@ -25,6 +25,7 @@ export const EventCard = ({
   label,
   children,
   variant = "display",
+  buttonColor = "primary",
   completedLabel = "Completed",
   icon: Icon,
   onAction,
@@ -71,6 +72,7 @@ export const EventCard = ({
 
       {hasAction && (
         <Button
+          variant={buttonColor === "danger" ? "danger" : "primary"}
           size="sm"
           isDisabled={status === "completed"}
           isPending={status === "loading"}

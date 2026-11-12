@@ -2,6 +2,14 @@ import { Tabs } from "@heroui/react";
 import dynamic from "next/dynamic";
 import type React from "react";
 import type { CSSProperties } from "react";
+import {
+  TABS_INDICATOR_UNDERLINED,
+  TABS_LIST_LIGHT,
+  TABS_PANEL,
+  TABS_ROOT,
+  TABS_SELECTED,
+  TABS_TAB,
+} from "@/lib/heroui/tabsParity";
 
 // Dynamic imports for Mermaid-related components
 const FlowchartPreview = dynamic(() => import("./FlowchartPreview"), {
@@ -50,25 +58,31 @@ const MermaidTabs: React.FC<MermaidTabsProps> = ({
 }) => {
   return (
     <Tabs
-      className="px-3"
+      className={TABS_ROOT}
       disabledKeys={isLoading ? ["editor"] : []}
       selectedKey={activeTab}
       onSelectionChange={(key) => onTabChange(String(key))}
     >
-      <Tabs.List aria-label="Diagram">
-        <Tabs.Tab id="preview" className="font-sans">
+      <Tabs.List aria-label="Diagram" className={`ms-3 ${TABS_LIST_LIGHT}`}>
+        <Tabs.Tab
+          id="preview"
+          className={`font-sans ${TABS_TAB} ${TABS_SELECTED} p-0!`}
+        >
           Flowchart
-          <Tabs.Indicator />
+          <Tabs.Indicator className={TABS_INDICATOR_UNDERLINED} />
         </Tabs.Tab>
-        <Tabs.Tab id="code" className="font-sans">
+        <Tabs.Tab
+          id="code"
+          className={`font-sans ${TABS_TAB} ${TABS_SELECTED}`}
+        >
           Code
-          <Tabs.Indicator />
+          <Tabs.Indicator className={TABS_INDICATOR_UNDERLINED} />
         </Tabs.Tab>
       </Tabs.List>
-      <Tabs.Panel id="preview" className="p-0">
+      <Tabs.Panel id="preview" className={TABS_PANEL}>
         <FlowchartPreview>{children}</FlowchartPreview>
       </Tabs.Panel>
-      <Tabs.Panel id="code">
+      <Tabs.Panel id="code" className={TABS_PANEL}>
         <MermaidCode syntaxHighlighterProps={syntaxHighlighterProps}>
           {children}
         </MermaidCode>

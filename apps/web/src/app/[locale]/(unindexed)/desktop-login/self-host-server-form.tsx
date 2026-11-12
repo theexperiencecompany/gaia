@@ -4,6 +4,7 @@ import { Button, Description, Input, Label, TextField } from "@heroui/react";
 import { CloudIcon } from "@icons";
 import { type FormEvent, useState } from "react";
 import { FormError } from "@/components/shared/FormError";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { getElectronAPI } from "@/lib/electron/api";
 
 interface SelfHostServerFormProps {
@@ -76,14 +77,14 @@ export function SelfHostServerForm({
       </form>
 
       {currentOrigin && (
-        <Button
-          variant="tertiary"
+        <GaiaButton
+          variant="default-soft"
           isDisabled={isConnecting}
           onPress={() => getElectronAPI()?.switchToGaiaCloud()}
         >
           <CloudIcon height={17} />
           Use GAIA Cloud
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );

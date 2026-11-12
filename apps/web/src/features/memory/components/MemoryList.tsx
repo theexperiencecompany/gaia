@@ -10,6 +10,7 @@ import {
 } from "@icons";
 import { useCallback, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { AddMemoryModal } from "@/features/memory/components/AddMemoryModal";
 import { EditMemoryModal } from "@/features/memory/components/EditMemoryModal";
@@ -164,28 +165,28 @@ export function MemoryList({ onChanged }: MemoryListProps) {
           <span className="text-xs text-zinc-500">
             Page {page} of {totalPages}
           </span>
-          <Button
+          <GaiaButton
             isIconOnly
             size="sm"
-            variant="tertiary"
+            variant="default-soft"
             className="rounded-xl"
             aria-label="Previous page"
             isDisabled={page <= 1}
             onPress={() => list.setPage(page - 1)}
           >
             <ArrowLeft01Icon className="size-4" />
-          </Button>
-          <Button
+          </GaiaButton>
+          <GaiaButton
             isIconOnly
             size="sm"
-            variant="tertiary"
+            variant="default-soft"
             className="rounded-xl"
             aria-label="Next page"
             isDisabled={page >= totalPages}
             onPress={() => list.setPage(page + 1)}
           >
             <ArrowRight01Icon className="size-4" />
-          </Button>
+          </GaiaButton>
         </div>
       )}
 

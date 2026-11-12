@@ -7,6 +7,7 @@ import {
   integrationConnectionState,
 } from "@shared/utils";
 import type React from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { InstanceSetupNotice } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -197,10 +198,10 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
                   ))}
               </div>
 
-              <Button
+              <GaiaButton
                 fullWidth
                 size="sm"
-                variant="tertiary"
+                variant="default-soft"
                 className="mt-2 text-xs text-zinc-400"
                 onPress={() => {
                   router.push("/integrations");
@@ -209,7 +210,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
               >
                 <Add01Icon width={15} height={15} />
                 Connect more integrations
-              </Button>
+              </GaiaButton>
             </Accordion.Body>
           </Accordion.Panel>
         </Accordion.Item>

@@ -15,6 +15,7 @@ import {
 import { PlusSignIcon } from "@icons";
 import type { AddOptions } from "@shared/bridge-core/config-builders";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 // Folder access is a one-switch toggle on the card (the built-in filesystem
 // server); this modal is only for the user's own MCP servers.
@@ -88,10 +89,10 @@ export function AddServerModal({ onAdd, isBusy }: AddServerModalProps) {
 
   return (
     <>
-      <Button size="sm" variant="tertiary" onPress={open}>
+      <GaiaButton size="sm" variant="default-soft" onPress={open}>
         <PlusSignIcon className="size-4" />
         Add server
-      </Button>
+      </GaiaButton>
       <Modal isOpen={isOpen} onOpenChange={setOpen}>
         <Modal.Backdrop>
           <Modal.Container placement="center">

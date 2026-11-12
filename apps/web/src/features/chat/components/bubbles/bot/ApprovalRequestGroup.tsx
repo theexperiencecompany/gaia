@@ -8,6 +8,7 @@ import type {
   ApprovalStatus,
 } from "@shared/chat";
 import { useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useMarkApprovalDecided } from "@/features/chat/hooks/useMarkApprovalDecided";
 import {
@@ -131,17 +132,17 @@ export default function ApprovalRequestGroup({
           >
             Approve all
           </Button>
-          <Button
-            variant="tertiary"
+          <GaiaButton
+            variant="default-soft"
             size="sm"
             isDisabled={batchSubmitting !== null}
             onPress={() => decideAll("deny")}
           >
             Decline all
-          </Button>
+          </GaiaButton>
           {pending.length >= 3 && (
             <Button
-              variant="secondary"
+              variant="outline"
               size="sm"
               isDisabled={batchSubmitting !== null}
               onPress={() => setSheetOpen(true)}

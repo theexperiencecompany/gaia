@@ -280,7 +280,7 @@ export default function UseCaseSection({
               shape="pill"
               isIconOnly
               size="sm"
-              variant="tertiary"
+              variant="default-soft"
               onPress={() => setShowUseCases(false)}
               className="text-zinc-300"
             >

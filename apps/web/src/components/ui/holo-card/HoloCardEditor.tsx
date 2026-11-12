@@ -34,10 +34,10 @@ function random(): number {
   return crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
 }
 
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { Dices, TwitterIcon } from "@/components/shared/icons";
 import { holoCardApi } from "@/features/onboarding/api/holoCardApi";
 import { toast } from "@/lib/toast";
-
 import { HoloCard } from "./HoloCard";
 import type { HoloCardDisplayData } from "./types";
 import { mergeIncomingCard } from "./utils";
@@ -216,9 +216,9 @@ const EditorToolbar = ({
     <Tooltip>
       <Tooltip.Trigger>
         <Dropdown>
-          <Button isIconOnly variant="tertiary" aria-label="Share">
+          <GaiaButton isIconOnly variant="default-soft" aria-label="Share">
             <Share08Icon size={20} />
-          </Button>
+          </GaiaButton>
           <Dropdown.Popover placement="top">
             <Dropdown.Menu aria-label="Share options">
               <Dropdown.Item id="twitter" textValue="Twitter">
@@ -260,9 +260,13 @@ const EditorToolbar = ({
           isOpen={isColorPickerOpen}
           onOpenChange={onColorPickerOpenChange}
         >
-          <Button isIconOnly variant="tertiary" aria-label="Color Picker">
+          <GaiaButton
+            isIconOnly
+            variant="default-soft"
+            aria-label="Color Picker"
+          >
             <ColorSwatch color={color} />
-          </Button>
+          </GaiaButton>
           <Popover.Content placement="top" className="w-auto bg-zinc-800 p-4">
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
@@ -319,26 +323,26 @@ const EditorToolbar = ({
     </Tooltip>
 
     <Tooltip>
-      <Button
+      <GaiaButton
         isIconOnly
-        variant="tertiary"
+        variant="default-soft"
         onPress={onRandomize}
         aria-label="Randomize"
       >
         <Dices size={20} />
-      </Button>
+      </GaiaButton>
       <Tooltip.Content placement="top">Randomize colors</Tooltip.Content>
     </Tooltip>
 
     <Tooltip>
-      <Button
+      <GaiaButton
         isIconOnly
-        variant="tertiary"
+        variant="default-soft"
         onPress={onDownload}
         aria-label="Download"
       >
         <Download01Icon size={20} />
-      </Button>
+      </GaiaButton>
       <Tooltip.Content placement="top">Download your card</Tooltip.Content>
     </Tooltip>
   </ButtonGroup>

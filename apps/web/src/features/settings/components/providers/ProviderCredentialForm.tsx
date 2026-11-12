@@ -213,8 +213,8 @@ function ProviderFormActions({
         </Button>
       )}
       {testable && (
-        <Button
-          variant="tertiary"
+        <GaiaButton
+          variant="default-soft"
           size="sm"
           isPending={isTesting}
           isDisabled={isSaving}
@@ -223,7 +223,7 @@ function ProviderFormActions({
           }}
         >
           Test
-        </Button>
+        </GaiaButton>
       )}
       <GaiaButton
         variant="accent-soft"

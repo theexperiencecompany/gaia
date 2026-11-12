@@ -7,6 +7,19 @@ import {
 } from "@icons";
 import { useState } from "react";
 import { safeUrl } from "@/features/chat/utils/safeUrl";
+import {
+  ACCORDION_INDICATOR,
+  ACCORDION_PANEL_COMPACT,
+  ACCORDION_TRIGGER_COMPACT,
+} from "@/lib/heroui/accordionParity";
+import {
+  TABS_INDICATOR_PRIMARY,
+  TABS_LIST_LIGHT,
+  TABS_PANEL,
+  TABS_ROOT,
+  TABS_SELECTED_PRIMARY,
+  TABS_TAB,
+} from "@/lib/heroui/tabsParity";
 import type {
   DeepResearchResults,
   EnhancedWebResult,
@@ -35,53 +48,72 @@ export default function DeepResearchResultsTabs({
           className="w-screen max-w-(--breakpoint-sm) px-0"
         >
           <Accordion.Heading>
-            <Accordion.Trigger aria-label="Deep Research Results">
+            <Accordion.Trigger
+              aria-label="Deep Research Results"
+              className={ACCORDION_TRIGGER_COMPACT}
+            >
               <div className="h-full w-fit rounded-lg bg-white/10 p-1 px-3 text-sm font-medium transition-colors hover:bg-white/20">
                 {isExpanded
                   ? "Hide Deep research Results"
                   : "Show Deep research Results"}
               </div>
+              <Accordion.Indicator className={ACCORDION_INDICATOR} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel>
-            <Tabs variant="secondary" className="p-0">
-              <Tabs.List aria-label="Deep Research Results">
+          <Accordion.Panel className={ACCORDION_PANEL_COMPACT}>
+            <Tabs className={`p-0 ${TABS_ROOT}`}>
+              <Tabs.List
+                aria-label="Deep Research Results"
+                className={TABS_LIST_LIGHT}
+              >
                 {enhanced_results && enhanced_results.length > 0 && (
-                  <Tabs.Tab id="enhanced">
+                  <Tabs.Tab
+                    id="enhanced"
+                    className={`${TABS_TAB} ${TABS_SELECTED_PRIMARY}`}
+                  >
                     <div className="flex items-center space-x-2">
                       {/* <DocumentTextIcon className="h-4 w-4" /> */}
                       <span>Enhanced Results</span>
                     </div>
+                    <Tabs.Indicator className={TABS_INDICATOR_PRIMARY} />
                   </Tabs.Tab>
                 )}
 
                 {original_search && (
-                  <Tabs.Tab id="original">
+                  <Tabs.Tab
+                    id="original"
+                    className={`${TABS_TAB} ${TABS_SELECTED_PRIMARY}`}
+                  >
                     <div className="flex items-center space-x-2">
                       <SearchIcon className="h-4 w-4" />
                       <span>Original Search</span>
                     </div>
+                    <Tabs.Indicator className={TABS_INDICATOR_PRIMARY} />
                   </Tabs.Tab>
                 )}
 
                 {metadata && (
-                  <Tabs.Tab id="metadata">
+                  <Tabs.Tab
+                    id="metadata"
+                    className={`${TABS_TAB} ${TABS_SELECTED_PRIMARY}`}
+                  >
                     <div className="flex items-center space-x-2">
                       <InternetIcon />
                       <span>Search Info</span>
                     </div>
+                    <Tabs.Indicator className={TABS_INDICATOR_PRIMARY} />
                   </Tabs.Tab>
                 )}
               </Tabs.List>
 
               {enhanced_results && enhanced_results.length > 0 && (
-                <Tabs.Panel id="enhanced">
+                <Tabs.Panel id="enhanced" className={TABS_PANEL}>
                   <EnhancedWebResults results={enhanced_results} />
                 </Tabs.Panel>
               )}
 
               {original_search && (
-                <Tabs.Panel id="original">
+                <Tabs.Panel id="original" className={TABS_PANEL}>
                   {original_search && (
                     <SearchResultsTabs search_results={original_search} />
                   )}
@@ -89,7 +121,7 @@ export default function DeepResearchResultsTabs({
               )}
 
               {metadata && (
-                <Tabs.Panel id="metadata">
+                <Tabs.Panel id="metadata" className={TABS_PANEL}>
                   <SearchMetadata metadata={metadata} />
                 </Tabs.Panel>
               )}
