@@ -38,11 +38,6 @@ _AGENT_OUTPUT = "agent_output"
 _EXTRACT_SYSTEM = "You are an expert at extracting data from the markdown of a webpage."
 _COMPACTION_SYSTEM = "You are summarizing an agent run for prompt compaction."
 _KEY_TERMS_PROMPT = "Extract 3-5 key search terms from this goal"
-#: Payloads a tier hands the next one that a model re-voices: a run's result, never a context slot.
-_RESULT_PAYLOAD = re.compile(
-    r"<(?P<tag>executor_result|executor_error|browser_[a-z_]+)(?:\s[^>]*)?>\n?(?P<body>.*?)\n?</(?P=tag)>",
-    re.DOTALL,
-)
 _INTERACTIVE_LINE = re.compile(
     r"^(?P<indent>\t*)\*?(?:\|[^\[\n]*)?\[(?P<index>\d+)\]<(?P<tag>[\w-]+)(?P<attrs>[^>]*)/?>"
 )
@@ -313,9 +308,7 @@ class FakeModels:
 
     def _agent_tier(self, body: dict[str, Any]) -> Response:
         parsed = _directives.parse_request(body)
-        response = self._result_echo(parsed.messages)
-        if response is None:
-            response = _directives.resolve_response(parsed.messages, parsed.available_tools)
+        response = _directives.resolve_response(parsed.messages, parsed.available_tools)
         self.calls.append(ModelCall("agent_tier", None))
         if isinstance(response, _directives.ToolCallResponse):
             self.tool_calls.append(response.name)
@@ -329,20 +322,6 @@ class FakeModels:
                 parsed.model, response, _wire.prompt_tokens(parsed.messages)
             )
         )
-
-    def _result_echo(self, messages: list[dict[str, Any]]) -> Any:
-        """Re-voice a result handed to this tier after its script, word for word."""
-        scripted = _directives._script_message_index(messages)
-        for index in range(len(messages) - 1, -1, -1):
-            message = messages[index]
-            if message.get("role") != "user":
-                continue
-            if scripted is not None and index <= scripted:
-                return None
-            found = _RESULT_PAYLOAD.search(_directives.message_text(message))
-            if found is not None:
-                return _directives.SayResponse(found.group("body").strip())
-        return None
 
     # --- the Browser-Use agent ---------------------------------------------
 

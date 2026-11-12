@@ -119,8 +119,6 @@ def _fallback_details(args: Mapping[str, object]) -> list[ApprovalDetail]:
     """Show short scalar and list arguments under humanised names, for tools with no entry."""
     details: list[ApprovalDetail] = []
     for key, raw in args.items():
-        if len(details) >= HIL_DESCRIPTION_MAX_DETAILS:
-            break
         items = _items(raw)
         if items:
             details.append(ApprovalDetail(label=_humanise_key(key), value=_join(items)))

@@ -165,6 +165,7 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/bot/redeem-link-code",
         "/api/v1/bot/reset-session",
         "/api/v1/bot/settings/platform/platform_user_id",
+        "/api/v1/bot/stop",
         "/api/v1/bot/transcribe",
         "/api/v1/bot/unlink",
         "/api/v1/browser/live/code/decision",

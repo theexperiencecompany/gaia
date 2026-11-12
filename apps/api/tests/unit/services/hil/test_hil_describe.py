@@ -4,7 +4,7 @@ from app.constants.hil_descriptions import (
     HIL_DESCRIPTION_MAX_DETAILS,
     HIL_DESCRIPTION_PREVIEW_CHARS,
 )
-from app.models.hil_models import ApprovalDetail
+from app.models.hil_models import ApprovalDescription, ApprovalDetail
 from app.services.hil.describe import describe_call
 from app.utils.general_utils import ELLIPSIS
 
@@ -64,10 +64,35 @@ class TestCuratedTool:
 
         assert details[0].value == "p0@x.com, p1@x.com, p2@x.com, p3@x.com and 3 more"
 
+    def test_a_list_exactly_at_the_cap_is_shown_whole(self) -> None:
+        to = [f"p{i}@x.com" for i in range(4)]
+        details = describe_call("GMAIL_SEND_EMAIL", {"extra_recipients": to}, None).details
+
+        assert details[0].value == "p0@x.com, p1@x.com, p2@x.com, p3@x.com"
+
+    def test_content_split_across_keys_reads_as_one_message(self) -> None:
+        details = describe_call(
+            "GMAIL_REPLY_TO_THREAD", {"message_body": "Thanks,", "body": "see you"}, "Gmail"
+        ).details
+
+        assert details == [ApprovalDetail(label="Message", value='"Thanks, see you"')]
+
 
 class TestFallback:
+    def test_blank_and_nested_values_show_nothing(self) -> None:
+        details = describe_call(
+            "NOTION_ARCHIVE_PAGE",
+            {"note": "  ", "tags": ["q3", "  ", {"x": 1}, ["y"]], "owner": None},
+            "Notion",
+        ).details
+
+        assert details == [ApprovalDetail(label="Tags", value="q3")]
+
     def test_an_unmapped_tool_is_named_in_words_with_its_integration(self) -> None:
         assert headline("GMAIL_DELETE_LABEL", {}, "Gmail") == "Delete label in Gmail"
+
+    def test_hyphens_in_an_unmapped_slug_read_as_spaces(self) -> None:
+        assert headline("GMAIL_LIST-ALL_LABELS", {}, "Gmail") == "List all labels in Gmail"
 
     def test_short_scalars_and_lists_become_humanised_details(self) -> None:
         details = describe_call(
@@ -98,6 +123,24 @@ class TestFallback:
 
 class TestBrowserTaskSummary:
     """browser_task gets a bespoke summary: the LLM's task argument, not the tool name, so the card reads as what will happen."""
+
+    def test_a_missing_task_describes_a_generic_start(self) -> None:
+        assert describe_call("browser_task", {}, None) == ApprovalDescription(
+            action="Start a browser task",
+            headline="Start a browser task",
+            confirm="start it",
+            details=[],
+        )
+
+    def test_a_task_is_shown_whole_as_its_own_detail(self) -> None:
+        assert describe_call("browser_task", {"task": "Book a flight. Then a hotel."}, None) == (
+            ApprovalDescription(
+                action="Start a browser task",
+                headline=f"Start a browser task{SEPARATOR}Book a flight",
+                confirm="start it",
+                details=[ApprovalDetail(label="Task", value="Book a flight. Then a hotel.")],
+            )
+        )
 
     def test_a_missing_task_argument_falls_back_to_a_generic_line(self) -> None:
         assert headline("browser_task", {}, None) == "Start a browser task"

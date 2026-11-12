@@ -1,7 +1,7 @@
 """POST /conversations/{id}/stop: the web Stop cancels the turn and every kind of work the conversation runs."""
 
 from collections.abc import Iterator
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from httpx import AsyncClient
 import pytest
@@ -108,6 +108,24 @@ class TestStopConversation:
 
         events = [c.args[1] for c in captured.call_args_list]
         assert [type(event) for event in events] == [ChatWorkStopped]
+
+    async def test_the_stop_is_recorded_on_the_wide_event(
+        self, client: AsyncClient, no_approvals: AsyncMock
+    ) -> None:
+        await stream_manager.start_stream(TURN, CONVERSATION, FAKE_USER.user_id)
+
+        with patch("app.api.v1.endpoints.conversations.log") as conversation_log:
+            await client.post(STOP_URL)
+
+        assert conversation_log.set.call_args_list == [
+            call(
+                user={"id": FAKE_USER.user_id},
+                conversation={"operation": "stop", "id": CONVERSATION},
+            )
+        ]
+        conversation_log.set_ns.assert_called_once_with(
+            "conversation", stopped_streams=1, stopped_work=False
+        )
 
     async def test_stopping_an_idle_conversation_is_an_empty_summary(
         self, client: AsyncClient, no_approvals: AsyncMock, fake_redis

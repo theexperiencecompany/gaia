@@ -200,6 +200,7 @@ class TestStopSession:
         mock_get_user: AsyncMock,
         mock_stop: AsyncMock,
         mock_reset: AsyncMock,
+        bot_log: MagicMock,
         client: AsyncClient,
     ):
         mock_get_user.return_value = UserDocument(id=USER_ID)
@@ -211,15 +212,36 @@ class TestStopSession:
 
         response = await client.post(
             f"{BOT_BASE}/stop",
-            json={"platform": "telegram", "platform_user_id": "u1", "is_dm": True},
+            json={"platform": "telegram", "platform_user_id": "u1", "channel_id": "ch1"},
         )
 
         assert response.status_code == 200
         assert response.json()["conversation_id"] == "conv-1"
         assert response.json()["work"]["executor_task_id"] == "t1"
-        assert mock_stop.await_args.args[:3] == ("telegram", "u1", None)
-        assert mock_stop.await_args.kwargs == {"is_dm": True}
+        # The caller resolves like every bot route: the platform account's linked user.
+        mock_get_user.assert_awaited_once_with("telegram", "u1")
+        platform, platform_user_id, channel_id, user = mock_stop.await_args.args
+        assert (platform, platform_user_id, channel_id) == ("telegram", "u1", "ch1")
+        assert (user.user_id, user.auth_provider) == (USER_ID, "bot:telegram")
+        assert mock_stop.await_args.kwargs == {"is_dm": False}
         mock_reset.assert_not_awaited()
+        assert bot_log.set.call_args_list == [
+            call(operation="stop_session", platform="telegram"),
+            call(user={"id": USER_ID}),
+            call(bot={"conversation_id": "conv-1"}, outcome="success", stopped_work=True),
+        ]
+
+    @patch("app.api.v1.endpoints.bot.stop_bot_session", new_callable=AsyncMock)
+    async def test_stop_without_the_bot_key_is_refused_and_stops_nothing(
+        self, mock_stop: AsyncMock, client: AsyncClient
+    ):
+        response = await client.post(
+            f"{BOT_BASE}/stop", json={"platform": "discord", "platform_user_id": "u1"}
+        )
+
+        assert response.status_code == 401
+        assert response.json()["code"] == "BOT_API_KEY_INVALID"
+        mock_stop.assert_not_awaited()
 
     @patch(
         "app.utils.auth_utils.user_repository.get_by_platform_id",

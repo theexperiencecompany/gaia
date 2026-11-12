@@ -40,21 +40,28 @@ async def seed_live_work(conversation_id: str) -> None:
         ex=EXECUTOR_BUSY_TTL,
     )
     await ExecutorInbox(conversation_id).append("queued-task", "and then this")
-    assert await RunningSubagents(conversation_id).claim(
-        RunningSubagent(
-            subagent_id="s1",
-            subagent_thread_id=f"spawn_{conversation_id}_s1",
-            integration_id="ticker",
-            agent_name="ticker_agent",
-            task_summary="tick",
-            started_at="2026-09-25T00:00:00Z",
-            stream_id=SUBAGENT_STREAM,
-            dispatched_by="an-earlier-turn",
-        )
-    )
+    await claim_subagent(conversation_id, "s1", dispatched_by="an-earlier-turn")
     await set_latest_job(conversation_id, BROWSER_JOB)
     await put_job_state(
         make_browser_job_state(
             BROWSER_JOB, status=BrowserJobStatus.RUNNING, conversation_id=conversation_id
         )
     )
+
+
+async def claim_subagent(conversation_id: str, subagent_id: str, *, dispatched_by: str) -> str:
+    """Register a running subagent the dispatched_by stream started; return its stream id."""
+    stream_id = f"subagent_{subagent_id}"
+    assert await RunningSubagents(conversation_id).claim(
+        RunningSubagent(
+            subagent_id=subagent_id,
+            subagent_thread_id=f"spawn_{conversation_id}_{subagent_id}",
+            integration_id="ticker",
+            agent_name="ticker_agent",
+            task_summary="tick",
+            started_at="2026-09-25T00:00:00Z",
+            stream_id=stream_id,
+            dispatched_by=dispatched_by,
+        )
+    )
+    return stream_id

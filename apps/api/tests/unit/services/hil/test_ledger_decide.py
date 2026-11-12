@@ -1246,7 +1246,7 @@ class TestRevokeSettlesSessionFrame:
             teardown_session,
         )
         from app.services.hil import ledger_decide
-        from app.services.hil.bridge import GatedApproval, _pending_entry, _publish_entry
+        from app.services.hil.bridge import GatedApproval, _entry, _pending_data, _publish_entry
         from app.services.hil.utils import GatedCall
 
         stream_id = "stream-settle-test"
@@ -1264,20 +1264,22 @@ class TestRevokeSettlesSessionFrame:
             ):
                 await _publish_entry(
                     stream_id,
-                    await _pending_entry(
-                        GatedApproval(
-                            approval_id="ap_abc",
-                            stream_id=stream_id,
-                            user_id=USER_ID,
-                            conversation_id="conv-1",
-                            tool_call=GatedCall(
-                                name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}
+                    _entry(
+                        await _pending_data(
+                            GatedApproval(
+                                approval_id="ap_abc",
+                                stream_id=stream_id,
+                                user_id=USER_ID,
+                                conversation_id="conv-1",
+                                tool_call=GatedCall(
+                                    name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}
+                                ),
+                                description=describe_call("GMAIL_SEND_EMAIL", {"to": "b@x"}, None),
+                                integration_name=None,
                             ),
-                            description=describe_call("GMAIL_SEND_EMAIL", {"to": "b@x"}, None),
-                            integration_name=None,
-                        ),
-                        auto_reason=None,
-                        asked_at=datetime.now(UTC),
+                            auto_reason=None,
+                            asked_at=datetime.now(UTC),
+                        )
                     ),
                 )
             row = _row(proposing_run_id=stream_id, state=LedgerState.REVOKED)
@@ -1708,6 +1710,13 @@ class TestPublishLedgerDecision:
                 },
             },
         )
+
+    async def test_the_settled_card_names_the_account_the_call_acted_as(
+        self, seams: LedgerSeams
+    ) -> None:
+        await publish_ledger_decision(_doc(account="work@x"), LedgerState.APPROVED)
+
+        assert seams.publish_entry.await_args.args[1].data.summary == "Send an email (as work@x)"
 
     async def test_fresh_feedback_wins_over_the_stored_words(self, seams: LedgerSeams) -> None:
         await publish_ledger_decision(_doc(feedback="old"), LedgerState.DENIED, feedback="new")

@@ -8960,6 +8960,7 @@
         "title": "InviteResponse",
         "type": "object"
       },
+      "JsonValue": {},
       "LabEventResponse": {
         "description": "Accepted; the payload itself is never echoed back.",
         "properties": {
@@ -13219,7 +13220,9 @@
             "type": "string"
           },
           "args_preview": {
-            "additionalProperties": true,
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
             "title": "Args Preview",
             "type": "object"
           },
@@ -16606,7 +16609,9 @@
             "type": "string"
           },
           "args_preview": {
-            "additionalProperties": true,
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
             "title": "Args Preview",
             "type": "object"
           },

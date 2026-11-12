@@ -415,12 +415,14 @@ class TestGetPendingApprovals:
                 new=AsyncMock(return_value=rows),
             ) as listed,
             patch("app.services.hil.bridge.asks_every_time", new=AsyncMock(return_value=False)),
+            patch("app.api.v1.endpoints.approvals.log") as log,
         ):
             resp = await client.get(
                 f"{APPROVALS_BASE}/pending", params={"conversation_id": "conv-1"}
             )
 
         assert resp.status_code == 200
+        log.set.assert_called_once_with(user={"id": USER_ID}, hil={"operation": "list_pending"})
         listed.assert_awaited_once_with("conv-1")
         cards = resp.json()["approvals"]
         assert [c["approval_id"] for c in cards] == ["ap_old", "ap_new"]

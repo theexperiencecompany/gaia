@@ -52,7 +52,7 @@ disagree.
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue
 
 from app.models.hil_models import ApprovalDescription
 
@@ -117,7 +117,7 @@ class _ApprovalCardData(BaseModel):
     summary: str
     description: ApprovalDescription
     # The gated call's own arguments — arbitrary LLM-authored JSON, no fixed schema.
-    args_preview: dict[str, Any]
+    args_preview: dict[str, JsonValue]
     feedback: str | None
     auto_reason: str | None
     # When the user was asked; clients compute the age at render time.

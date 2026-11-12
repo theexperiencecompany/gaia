@@ -45,6 +45,7 @@ from app.services.hil.conversational import (
     list_pending_for_reply,
     resolve_pending_from_message,
 )
+from app.services.hil.describe import describe_call
 from app.services.hil.errors import (
     ApprovalRequestForbiddenError,
     ApprovalRequestNotFoundError,
@@ -757,6 +758,40 @@ class TestLedgerRows:
         assert "1. Send email ap_1" in text and "2. Send email ap_2" in text
         assert "'first yes, second no'" in text
         assert "draft the quarterly deck email" in text
+
+    async def test_a_decided_row_is_reported_as_the_account_it_acted_as(
+        self, ledger: dict[str, AsyncMock]
+    ) -> None:
+        row = _ledger_row("ap_1").model_copy(
+            update={"args": {"to": "bob@example.com"}, "account": "work@example.com"}
+        )
+        ledger["list_open"].return_value = [row]
+        ledger["llm"].return_value = DecisionResult(action="approve")
+
+        outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+
+        assert outcome is not None
+        assert outcome.decided == (
+            describe_call("send_email", {"to": "bob@example.com"}, None, "work@example.com"),
+        )
+
+    async def test_a_decided_batch_reports_every_row_it_decided(
+        self, ledger: dict[str, AsyncMock]
+    ) -> None:
+        ledger["list_open"].return_value = [_ledger_row("ap_1"), _ledger_row("ap_2")]
+        ledger["llm"].return_value = BatchDecisionResult(
+            unrelated=False,
+            decisions=[
+                BatchItemDecision(index=1, action="approve"),
+                BatchItemDecision(index=2, action="deny"),
+            ],
+        )
+
+        outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "1 yes, 2 no")
+
+        assert outcome is not None
+        description = describe_call("send_email", {}, None)
+        assert outcome.decided == (description, description)
 
     async def test_moving_on_from_a_batch_of_rows_leaves_them_all_pending(
         self, ledger: dict[str, AsyncMock]

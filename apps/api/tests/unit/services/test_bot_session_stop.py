@@ -10,7 +10,8 @@ from app.db.repositories.bot_sessions import bot_session_repository
 from app.models.bot_models import BotSessionDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.work_cancel_models import WorkCancelled
-from app.services import bot_session_stop, conversation_stop_service
+from app.services import conversation_stop_service
+from app.services.bot_service import BotService
 from app.services.bot_session_stop import reset_bot_session, stop_bot_session
 from app.services.browser.job_stop import RequesterChat
 from shared.py.analytics.catalog.chat import ChatWorkStopped
@@ -125,13 +126,32 @@ class TestReset:
     ) -> None:
         """/new leaves the old conversation; work left running there keeps reporting into it."""
         reset = AsyncMock(return_value="conv-new")
-        monkeypatch.setattr(bot_session_stop.BotService, "reset_session", reset)
+        monkeypatch.setattr(BotService, "reset_session", reset)
 
         new_id = await reset_bot_session("slack", "user123", "channel789", USER)
 
         assert new_id == "conv-new"
+        dm_session.get_by_session_key.assert_awaited_once_with("slack:user123:channel789")
         cancelled.assert_awaited_once_with("conv-dm", USER.user_id, None)
         reset.assert_awaited_once_with("slack", "user123", "channel789", USER, is_dm=False)
+
+    async def test_new_in_a_dm_stops_the_users_runs_from_any_group(
+        self,
+        dm_session: _Sessions,
+        cancelled: AsyncMock,
+        captured: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        reset = AsyncMock(return_value="conv-new")
+        monkeypatch.setattr(BotService, "reset_session", reset)
+
+        await reset_bot_session("discord", "user123", "dm-chan", USER, is_dm=True)
+
+        dm_session.get_by_session_key.assert_awaited_once_with("discord:user123:user123")
+        cancelled.assert_awaited_once_with(
+            "conv-dm", USER.user_id, RequesterChat(USER.user_id, ConversationSource.DISCORD)
+        )
+        reset.assert_awaited_once_with("discord", "user123", "dm-chan", USER, is_dm=True)
 
     async def test_new_is_its_own_action_and_emits_no_work_stopped(
         self,
@@ -141,9 +161,7 @@ class TestReset:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """One action, one event: /new is counted by bot:session_reset, never as a Stop too."""
-        monkeypatch.setattr(
-            bot_session_stop.BotService, "reset_session", AsyncMock(return_value="conv-new")
-        )
+        monkeypatch.setattr(BotService, "reset_session", AsyncMock(return_value="conv-new"))
 
         await reset_bot_session("slack", "user123", "channel789", USER)
 
