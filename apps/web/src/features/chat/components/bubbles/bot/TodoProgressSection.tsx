@@ -162,7 +162,7 @@ function SingleSourceCard({
         <span className="text-xs font-medium text-zinc-400">
           {getSourceLabel(source)}
         </span>
-        <Chip size="sm" variant="tertiary" className="bg-zinc-700/60">
+        <Chip size="sm" variant="soft" className="bg-zinc-700/60">
           <Chip.Label className="text-xs text-zinc-400">
             {completedCount}/{todos.length}
           </Chip.Label>
@@ -236,7 +236,7 @@ function MultiSourceAccordion({
                     </ProgressBar>
                     <Chip
                       size="sm"
-                      variant="tertiary"
+                      variant="soft"
                       className="bg-zinc-700/60 shrink-0"
                     >
                       <Chip.Label className="text-xs text-zinc-500">

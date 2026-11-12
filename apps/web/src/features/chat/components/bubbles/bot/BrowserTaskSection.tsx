@@ -109,7 +109,7 @@ function StepsAccordion({
               <span className="shrink-0 text-sm font-medium text-zinc-300">
                 Steps
               </span>
-              <Chip size="sm" variant="tertiary" className="h-5 bg-zinc-700">
+              <Chip size="sm" variant="soft" className="h-5 bg-zinc-700">
                 <Chip.Label className="px-1.5 text-xs text-zinc-300">
                   {steps.length}
                 </Chip.Label>

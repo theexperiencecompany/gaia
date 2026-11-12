@@ -33,7 +33,7 @@ export default function EmailSentCard({ emailSentData }: EmailSentCardProps) {
           <CheckmarkCircle02Icon className="h-5 w-5 text-green-400" />
           <span className="text-sm font-medium text-green-400">Email Sent</span>
         </div>
-        <Chip size="sm" variant="tertiary" color="success" className="text-xs">
+        <Chip size="sm" variant="soft" color="success" className="text-xs">
           {formatTime(emailSentData.timestamp)}
         </Chip>
       </div>

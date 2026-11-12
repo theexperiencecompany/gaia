@@ -168,7 +168,7 @@ function TabStrip({
         <Button
           isIconOnly
           size="sm"
-          variant="tertiary"
+          variant="ghost"
           className="text-zinc-400"
           aria-label="Close browser panel"
           onPress={onClose}

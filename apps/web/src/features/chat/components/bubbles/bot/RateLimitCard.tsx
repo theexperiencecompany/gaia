@@ -46,7 +46,7 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
 
         <Chip
           size="sm"
-          variant="tertiary"
+          variant="soft"
           color={isUpgradeRequired ? "warning" : "danger"}
           className={`shrink-0 text-xs font-semibold ${isUpgradeRequired ? "bg-warning/15" : "bg-red-500/15"}`}
         >

@@ -10,9 +10,7 @@ interface SearchbarInputProps {
   onSearchbarTextChange: (text: string) => void;
   handleFormSubmit: (e?: React.FormEvent<HTMLFormElement>) => void;
   handleKeyDown: React.KeyboardEventHandler<HTMLInputElement>;
-  currentHeight: number;
   hasMessages: boolean;
-  onHeightChange: (height: number) => void;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   onSlashCommandSelect?: (toolName: string, toolCategory: string) => void;
   onIntegrationClick?: (integrationId: string) => void;
@@ -30,8 +28,6 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
       onSearchbarTextChange,
       handleFormSubmit,
       handleKeyDown,
-      currentHeight,
-      onHeightChange,
       inputRef,
       hasMessages: _hasMessages,
       onSlashCommandSelect,
@@ -76,14 +72,8 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
           const cursorPosition = inputRef.current.selectionStart || 0;
           updateSlashCommandDetection(text, cursorPosition);
         }
-        onHeightChange(e.target.offsetHeight);
       },
-      [
-        onSearchbarTextChange,
-        updateSlashCommandDetection,
-        inputRef,
-        onHeightChange,
-      ],
+      [onSearchbarTextChange, updateSlashCommandDetection, inputRef],
     );
 
     const handleKeyDownWithSlashCommands: React.KeyboardEventHandler<HTMLTextAreaElement> =
@@ -119,7 +109,7 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
           <TextArea
             ref={inputRef}
             autoFocus
-            className={`max-h-[17rem] min-h-9 field-sizing-content px-3 font-light shadow-none focus-visible:border-0! focus-visible:border-transparent! ${currentHeight > 24 ? "self-end" : "self-center"}`}
+            className="field-sizing-content max-h-84 min-h-12 w-full resize-none rounded-[14px] bg-transparent px-3 py-3 text-base leading-6 font-light shadow-none placeholder:text-foreground-500 focus:ring-0"
             rows={1}
             placeholder="What can I do for you today? (Type '/' for tools)"
             value={searchbarText}

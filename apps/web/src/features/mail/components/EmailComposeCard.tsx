@@ -103,7 +103,7 @@ function ComposeHeader({
   return (
     <Button
       fullWidth
-      variant="tertiary"
+      variant="ghost"
       onPress={onToggle}
       aria-expanded={!isCollapsed}
       className="h-auto justify-between px-6 pt-4 pb-3"
@@ -114,7 +114,7 @@ function ComposeHeader({
           {isDraft ? "Email Draft" : "Compose Email"}
         </span>
         {hasThread && (
-          <Chip size="sm" variant="tertiary" color="accent">
+          <Chip size="sm" variant="soft" color="accent">
             Reply
           </Chip>
         )}
@@ -141,7 +141,7 @@ function EmailBodyPreview({
     <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto pb-5 text-sm leading-relaxed text-zinc-200">
       {!isLocked && (
         <div className="absolute top-0 right-0 z-2 flex w-full justify-end">
-          <Button variant="tertiary" size="sm" isIconOnly onPress={onEdit}>
+          <Button variant="ghost" size="sm" isIconOnly onPress={onEdit}>
             <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
           </Button>
         </div>
@@ -165,7 +165,7 @@ function AttachmentsRow({
         <Chip
           key={`${attachment.name}-${attachment.mimetype}`}
           size="sm"
-          variant="tertiary"
+          variant="soft"
           className="max-w-full text-xs text-zinc-200"
         >
           <AttachmentIcon className="h-3.5 w-3.5 text-zinc-400" />
@@ -217,7 +217,7 @@ function ComposeFields({
         </div>
 
         {!isLocked && (
-          <Button variant="tertiary" size="sm" isIconOnly onPress={onEdit}>
+          <Button variant="ghost" size="sm" isIconOnly onPress={onEdit}>
             <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
           </Button>
         )}
@@ -335,7 +335,7 @@ function EditEmailModal({
               {/* Action Buttons */}
               <div className="mt-4 flex justify-end gap-2">
                 <Button
-                  variant="tertiary"
+                  variant="ghost"
                   size="sm"
                   onPress={onClose}
                   className="h-7 px-2 text-xs text-gray-300"
@@ -429,7 +429,7 @@ function RecipientSelectionModal({
                     <Chip
                       key={email}
                       size="sm"
-                      variant="tertiary"
+                      variant="soft"
                       color={selectedSet.has(email) ? "accent" : "default"}
                       className="cursor-pointer text-xs"
                       onClick={() => handleSuggestionToggle(email)}
@@ -474,7 +474,7 @@ function RecipientSelectionModal({
 
               {/* Action Buttons */}
               <div className="mt-4 flex justify-end gap-2">
-                <Button variant="tertiary" size="sm" onPress={onClose}>
+                <Button variant="ghost" size="sm" onPress={onClose}>
                   Cancel
                 </Button>
                 <Button size="sm" onPress={onConfirm} variant="primary">

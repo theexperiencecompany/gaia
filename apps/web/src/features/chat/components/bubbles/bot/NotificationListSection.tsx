@@ -142,7 +142,7 @@ export default function NotificationListSection({
                   <Chip
                     className="bg-zinc-700 text-zinc-300"
                     size="sm"
-                    variant="tertiary"
+                    variant="soft"
                   >
                     {localNotifications.length}
                   </Chip>
@@ -151,7 +151,7 @@ export default function NotificationListSection({
                   <Chip
                     className="bg-blue-900/30 text-blue-400"
                     size="sm"
-                    variant="tertiary"
+                    variant="soft"
                   >
                     {unreadNotifications.length} unread
                   </Chip>

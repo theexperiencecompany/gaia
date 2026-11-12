@@ -101,7 +101,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
           {post.link_flair_text && (
             <Chip
               size="sm"
-              variant="tertiary"
+              variant="soft"
               className="flex-shrink-0 bg-blue-900/30 text-xs text-blue-300"
             >
               {post.link_flair_text}

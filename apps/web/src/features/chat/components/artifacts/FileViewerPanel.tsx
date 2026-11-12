@@ -376,7 +376,7 @@ export default function FileViewerPanel({
           <Button
             isIconOnly
             size="sm"
-            variant="tertiary"
+            variant="ghost"
             onPress={handleCopy}
             aria-label="Copy file"
             isDisabled={content === null}
@@ -386,7 +386,7 @@ export default function FileViewerPanel({
           <Button
             isIconOnly
             size="sm"
-            variant="tertiary"
+            variant="ghost"
             onPress={handleDownload}
             aria-label="Download file"
             isDisabled={!isImage && !isPdf && content === null}
@@ -396,7 +396,7 @@ export default function FileViewerPanel({
           <Button
             isIconOnly
             size="sm"
-            variant="tertiary"
+            variant="ghost"
             onPress={closeSidebar}
             aria-label="Close preview"
           >

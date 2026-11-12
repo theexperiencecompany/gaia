@@ -198,7 +198,7 @@ export function HandoffDecision({
         I&rsquo;m done
       </Button>
       <Button
-        variant="tertiary"
+        variant="ghost"
         className="shrink-0 px-3 text-zinc-500"
         onPress={() => decide("cancel")}
       >

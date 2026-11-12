@@ -165,7 +165,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
                 <div className="mb-1 flex items-center gap-2.5">
                   <Chip
                     size="sm"
-                    variant="tertiary"
+                    variant="soft"
                     color={config.color}
                     className="text-xs"
                   >
@@ -194,7 +194,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
               <Button
                 isIconOnly
                 size="sm"
-                variant="tertiary"
+                variant="ghost"
                 className="text-zinc-300 group-hover:text-white"
                 onPress={handleDownload}
                 aria-label="Download artifact"

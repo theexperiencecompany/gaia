@@ -111,7 +111,7 @@ export default function EmailThreadCard({
                         <div className="flex w-full flex-row items-center justify-between">
                           <div className="flex flex-row items-center gap-2">
                             <div className="w-15">
-                              <Chip variant="tertiary" size="sm">
+                              <Chip variant="soft" size="sm">
                                 From
                               </Chip>
                             </div>
@@ -128,7 +128,7 @@ export default function EmailThreadCard({
                         </div>
                         <div className="flex flex-row items-center gap-2">
                           <div className="w-15">
-                            <Chip variant="tertiary" size="sm">
+                            <Chip variant="soft" size="sm">
                               Subject
                             </Chip>
                           </div>
