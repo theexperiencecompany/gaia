@@ -52,9 +52,9 @@ from app.db.repositories.conversation_entries import (
     parked,
     still_waiting,
     store_errors,
+    stored_entries_matching,
     stored_message,
     stored_row,
-    unmigrated,
 )
 from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import (
@@ -86,7 +86,7 @@ from app.utils.errors import (
     ConversationNotFoundError,
     ConversationStoreError,
 )
-from shared.py.wide_events import spawn_logged_task
+from shared.py.wide_events import log, spawn_logged_task
 
 _JITTER = random.SystemRandom()
 _BOT_SOURCE_VALUES: list[str] = [s.value for s in BOT_CONVERSATION_SOURCES]
@@ -685,9 +685,18 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return None if row is None else row.todo_id
 
     async def create(self, doc: ConversationDocument) -> ConversationDocument:
-        """Insert the conversation's head at an empty log, then append any messages it carries."""
+        """Insert the conversation's head at an empty log, then append any messages it carries.
+
+        A delete that died after removing the head leaves its entries behind; a head
+        recreated under the same id clears them first, so its log starts clean.
+        """
         head = doc.model_dump(exclude={"id", "messages"}, exclude_none=True)
         head[LOG_HEAD_FIELD] = 0
+        key = {"user_id": doc.user_id, "conversation_id": doc.conversation_id}
+        with store_errors("create"):  # pragma: no mutate — error label only
+            if not await self._raw_collection().count_documents(key, limit=1):
+                await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(key)
+        # Outside store_errors: try_create reads a DuplicateKeyError as a lost creation race.
         await self._raw_collection().insert_one(head)
         if doc.messages:
             await self.append_messages(
@@ -1007,30 +1016,37 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """Entries matching match across the user's conversations, outboxes first, then the collection.
 
         excluding names the heads whose entries never count; limit bounds the collection
-        read for callers that need only whether one exists. Refuses a user with a
-        conversation the migration has not caught up with, rather than missing its messages.
+        read for callers that need only whether one exists. Only entries under a live head
+        count. A conversation the migration has not caught up with is left out and logged,
+        so one such chat never blocks the user's other reads.
         """
         with store_errors("entry search"):  # pragma: no mutate — error label only
-            if await self._count({"user_id": user_id, **UNMIGRATED_HEADS}):
-                raise unmigrated(f"user {user_id}")
+            behind = await self._distinct(
+                "conversation_id", {"user_id": user_id, **UNMIGRATED_HEADS}
+            )
             pending = await (
                 self._raw_collection()
                 .aggregate(outbox_entries_matching(user_id, match, excluding=excluding))
                 .to_list(length=None)
             )
-            skipped = (
-                await self._distinct("conversation_id", {"user_id": user_id, **excluding})
-                if excluding
-                else []
+            stored = stored_entries_matching(
+                user_id,
+                match,
+                excluding=excluding,
+                heads_collection=self._raw_collection().name,
+                limit=limit,
             )
-            cursor = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).find(
-                {"user_id": user_id, **match, "conversation_id": {"$nin": skipped}}
+            rows = await (
+                self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
+                .aggregate(stored)
+                .to_list(length=None)
             )
-            # pragma: no mutate start — limit only bounds a read whose callers ask whether one exists
-            if limit:
-                cursor = cursor.limit(limit)
-            # pragma: no mutate end
-            rows = await cursor.to_list(length=None)
+        if behind:
+            log.warning(
+                "[conversations] cross-conversation read left out unmigrated conversations",
+                user_id=user_id,
+                conversation_ids=behind,
+            )
         found: dict[tuple[str, int], StoredRow] = {}
         for row in map(stored_row, [*pending, *rows]):
             found.setdefault((row.conversation_id, row.entry.seq), row)

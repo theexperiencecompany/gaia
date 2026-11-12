@@ -77,6 +77,7 @@ _APPEND_HEAD_FIELDS: dict[str, object] = {
     _EMBEDDED_FIELD: 1,
 }
 _EXISTING_FIELDS: dict[str, object] = {"_id": 0, "id": 1, "seq": 1}
+_HEAD_OF_ENTRY = "_head"
 #: Each outbox entry of a head, one document apiece.
 _OUTBOX_AS_ENTRIES: list[dict[str, object]] = [
     {"$project": {"_id": 0, "entry": {"$objectToArray": f"${OUTBOX_FIELD}"}}},
@@ -177,14 +178,54 @@ def head_with_existing(
     ]
 
 
+def _counted_heads(excluding: Mapping[str, object] | None) -> dict[str, object]:
+    """Match the heads whose entries a cross-conversation read counts: migrated, and not excluded."""
+    return {"$nor": [UNMIGRATED_HEADS, *([dict(excluding)] if excluding else [])]}
+
+
 def outbox_entries_matching(
     user_id: str, match: Mapping[str, object], *, excluding: Mapping[str, object] | None
 ) -> list[dict[str, object]]:
-    """Read the user's outbox entries that match, skipping the heads excluding names."""
-    heads: dict[str, object] = {"user_id": user_id, OUTBOX_FIELD: {"$exists": True, "$ne": {}}}
-    if excluding:
-        heads["$nor"] = [dict(excluding)]
+    """Read the user's outbox entries that match, from the heads a cross-conversation read counts."""
+    heads: dict[str, object] = {
+        "user_id": user_id,
+        OUTBOX_FIELD: {"$exists": True, "$ne": {}},
+        **_counted_heads(excluding),
+    }
     return [{"$match": heads}, *_OUTBOX_AS_ENTRIES, {"$match": dict(match)}]
+
+
+def stored_entries_matching(
+    user_id: str,
+    match: Mapping[str, object],
+    *,
+    excluding: Mapping[str, object] | None,
+    heads_collection: str,
+    limit: int,
+) -> list[dict[str, object]]:
+    """Read the user's stored entries that match and whose head is live and counted.
+
+    An entry with no head is a deleted conversation's leftover: it is never read.
+    """
+    pipeline: list[dict[str, object]] = [
+        {"$match": {"user_id": user_id, **match}},
+        {
+            "$lookup": {
+                "from": heads_collection,
+                "localField": "conversation_id",
+                "foreignField": "conversation_id",
+                "pipeline": [
+                    {"$match": {"user_id": user_id, **_counted_heads(excluding)}},
+                    {"$project": {"_id": 1}},
+                    {"$limit": 1},
+                ],
+                "as": _HEAD_OF_ENTRY,
+            }
+        },
+        {"$match": {f"{_HEAD_OF_ENTRY}.0": {"$exists": True}}},
+        {"$project": {_HEAD_OF_ENTRY: 0}},
+    ]
+    return [*pipeline, {"$limit": limit}] if limit else pipeline
 
 
 def unmigrated(subject: str) -> UnmigratedConversationError:

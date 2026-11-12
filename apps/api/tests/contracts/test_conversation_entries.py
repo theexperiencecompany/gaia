@@ -428,7 +428,7 @@ async def test_cross_conversation_reads_see_flushed_and_outbox_entries(
     }
 
 
-async def test_search_skips_a_todos_chat_and_cross_reads_refuse_unmigrated_data(
+async def test_search_skips_a_todos_chat_and_an_unmigrated_chat_never_blocks_the_others(
     repo: ConversationRepository, held: _HeldFlushes, raw_collection: Any
 ) -> None:
     uid = f"u-{uuid.uuid4().hex}"
@@ -443,11 +443,19 @@ async def test_search_skips_a_todos_chat_and_cross_reads_refuse_unmigrated_data(
     ]
 
     await raw_collection.insert_one(
-        {"conversation_id": "old", "user_id": uid, "messages": [{"type": "user", "response": "x"}]}
+        {
+            "conversation_id": "old",
+            "user_id": uid,
+            "messages": [{"type": "user", "response": "needle", "message_id": "o1"}],
+        }
     )
-    with pytest.raises(UnmigratedConversationError) as refused:
-        await repo.has_sent_message(uid)
-    assert refused.value.message == f"user {uid} {_REFUSAL}"
+    await repo.append(described, user_id=uid, entries=[_message("d1", "needle")])
+    await held.run_all()
+    found = await repo.search(uid, pattern="needle")
+    assert [(h.conversation_id, h.message.message_id) for h in found.messages] == [
+        (described, "d1")
+    ]
+    assert await repo.has_sent_message(uid) is True
 
 
 _REFUSAL = (
@@ -786,3 +794,48 @@ async def test_recent_conversations_are_the_newest_limit_with_their_messages(
 
     assert [doc.conversation_id for doc in recent] == [newest, middle]
     assert [m.message_id for m in recent[0].messages] == ["m1"]
+
+
+async def _orphaned(
+    repo: ConversationRepository, held: _HeldFlushes, raw_collection: Any, uid: str
+) -> str:
+    """Leave the state a delete that died between its two writes leaves: entries with no head."""
+    cid = await _chat(repo, uid)
+    old = MessageModel(type="bot", response="deleted secret", message_id="old-1", pinned=True)
+    await repo.append(cid, user_id=uid, entries=[_message("old-0", "deleted secret"), old])
+    await held.run_all()
+    await raw_collection.delete_one({"conversation_id": cid, "user_id": uid})
+    return cid
+
+
+async def test_a_bot_chat_recreated_after_a_half_finished_delete_starts_clean_and_keeps_saving(
+    repo: ConversationRepository, held: _HeldFlushes, raw_collection: Any
+) -> None:
+    uid = f"u-{uuid.uuid4().hex}"
+    cid = await _orphaned(repo, held, raw_collection, uid)
+    doc = ConversationDocument.model_validate(
+        {"user_id": uid, "conversation_id": cid, "createdAt": datetime.now(UTC).isoformat()}
+    )
+
+    await repo.create(doc)
+    await repo.append(cid, user_id=uid, entries=[_message("new-1", "fresh")])
+    await repo.append(cid, user_id=uid, entries=[_message("new-2", "fresher")])
+    await held.run_all()
+
+    assert await _ids(repo, doc) == [(1, "new-1"), (2, "new-2")]
+    assert await _outbox(raw_collection, doc) == {}
+
+
+async def test_a_deleted_conversations_leftover_entries_never_reach_search_or_pins(
+    repo: ConversationRepository, held: _HeldFlushes, raw_collection: Any
+) -> None:
+    uid = f"u-{uuid.uuid4().hex}"
+    await _orphaned(repo, held, raw_collection, uid)
+    live = await _chat(repo, uid)
+    await repo.append(live, user_id=uid, entries=[_message("live-1", "kept secret")])
+    await held.run_all()
+
+    found = await repo.search(uid, pattern="secret")
+    assert [(h.conversation_id, h.message.message_id) for h in found.messages] == [(live, "live-1")]
+    assert await repo.list_pinned_messages(uid) == []
+    assert await repo.find_owner_of_message(uid, "old-1") is None
