@@ -9,10 +9,11 @@ desk unbucketed, and the desk's prompt classifies it alone.
 import asyncio
 
 from app.constants.desk_buckets import DeskBucket
-from app.constants.trigger_gates import GateReason
+from app.constants.hil import JevFailure
 from app.db.repositories.todos import todo_repository
 from app.models.composio_schemas.gmail import GmailMessageView
 from app.models.todo_models import ExternalRefSource
+from app.services.hil.jev_client import jev_failure
 from app.services.mail.email_verdict import ThreadFacts, email_verdict
 from app.services.mail.thread_participation import user_wrote_in_thread
 from app.services.triggers.gmail_signals import (
@@ -20,7 +21,6 @@ from app.services.triggers.gmail_signals import (
     fetched_message_payload,
     gmail_gate_view,
 )
-from app.services.triggers.trigger_gate import jev_failure_reason
 from shared.py.wide_events import log
 
 
@@ -37,8 +37,8 @@ async def _ask_bucket(user_id: str, view: GmailMessageView) -> DeskBucket | None
         )
     except Exception as e:
         # The one degradation a bucket has: the desk's own prompt judges the email.
-        reason = jev_failure_reason(e)
-        if reason is not GateReason.JEV_UNCONFIGURED:
+        reason = jev_failure(e)
+        if reason is not JevFailure.UNCONFIGURED:
             log.warning(
                 "desk_bucket.jev_failed",
                 reason=reason.value,
