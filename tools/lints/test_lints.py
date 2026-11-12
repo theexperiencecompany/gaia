@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from unittest.mock import patch
 
 import comment_slop
+import comms_graph_owner
 import docstring_slop
 import no_service_classes
 import pytest
@@ -315,6 +316,99 @@ def test_raw_redis_cache_client_import_is_not_flagged(tmp_path: Path) -> None:
     src = "from app.db.redis import redis_cache\n"
     path = _write(tmp_path, "app/services/brand_new_service.py", src)
     assert repository_boundaries.check([path]) == []
+
+
+# --------------------------------------------------------------------------- #
+# comms-graph-owner
+# --------------------------------------------------------------------------- #
+
+_COMMS_LOOKUP = (
+    "from app.constants.graphs import GraphName\n"
+    "async def run(config):\n"
+    "    graph = await GraphManager.get_graph(GraphName.COMMS)\n"
+    "    await graph.aupdate_state(config, {})\n"
+)
+
+
+def _fence(paths: list[Path], allowlist: frozenset[str] = frozenset()) -> list[str]:
+    with patch.object(comms_graph_owner, "ALLOWLIST", allowlist):
+        return [f"{v.path.name}:{v.line} {v.detail}" for v in comms_graph_owner.check(paths)]
+
+
+def test_new_module_naming_the_comms_graph_is_flagged(tmp_path: Path) -> None:
+    path = _write(tmp_path, "app/services/new_writer.py", _COMMS_LOOKUP)
+    assert _fence([path]) == [
+        "new_writer.py:3 names the comms graph (GraphName.COMMS)",
+        "new_writer.py:4 calls .aupdate_state() in a module that holds the comms graph",
+    ]
+
+
+def test_comms_graph_looked_up_by_string_is_flagged(tmp_path: Path) -> None:
+    src = 'async def run():\n    return await providers.aget("comms_agent")\n'
+    path = _write(tmp_path, "app/services/new_writer.py", src)
+    assert _fence([path]) == ['new_writer.py:2 looks up the comms graph by name ("comms_agent")']
+
+
+def test_aliased_comms_wrapper_call_is_flagged(tmp_path: Path) -> None:
+    src = (
+        "from app.agents.core.agent import call_agent_silent as run_silently\n"
+        "async def go(request):\n"
+        "    return await run_silently(request)\n"
+    )
+    path = _write(tmp_path, "app/workers/tasks/new_task.py", src)
+    assert _fence([path]) == [
+        "new_task.py:3 calls call_agent_silent, which runs or writes the comms thread"
+    ]
+
+
+def test_allowlisted_module_is_clean(tmp_path: Path) -> None:
+    path = _write(tmp_path, "app/services/chat/stream.py", _COMMS_LOOKUP)
+    assert _fence([path], frozenset({"services/chat/stream.py"})) == []
+
+
+def test_module_dropped_from_the_allowlist_that_still_writes_is_flagged(tmp_path: Path) -> None:
+    path = _write(tmp_path, "app/services/chat/stream.py", _COMMS_LOOKUP)
+    assert len(_fence([path])) == 2
+
+
+def test_allowlist_entry_whose_file_stopped_writing_is_removable(tmp_path: Path) -> None:
+    path = _write(tmp_path, "app/services/chat/stream.py", "X = 1\n")
+    found = _fence([path], frozenset({"services/chat/stream.py"}))
+    assert len(found) == 1
+    assert "'services/chat/stream.py' no longer runs or writes the comms thread" in found[0]
+
+
+def test_allowlist_entry_whose_file_is_gone_is_removable(tmp_path: Path) -> None:
+    path = _write(tmp_path, "app/services/other.py", "X = 1\n")
+    found = _fence([path], frozenset({"services/chat/stream.py"}))
+    assert len(found) == 1
+    assert "'services/chat/stream.py' names a file that no longer exists" in found[0]
+
+
+def test_executor_thread_code_is_not_flagged(tmp_path: Path) -> None:
+    src = (
+        "from app.constants.graphs import GraphName\n"
+        "async def resume(config):\n"
+        "    graph = await GraphManager.get_graph(GraphName.EXECUTOR)\n"
+        "    await graph.aget_state(config)\n"
+        "    await graph.aupdate_state(config, {})\n"
+        "    async for _ in graph.astream({}, config):\n"
+        "        pass\n"
+    )
+    path = _write(tmp_path, "app/agents/core/subagents/new_runner.py", src)
+    assert _fence([path]) == []
+
+
+def test_graph_builder_and_step_own_the_comms_graph(tmp_path: Path) -> None:
+    builder = _write(tmp_path, "app/agents/core/graph_builder/build_graph.py", _COMMS_LOOKUP)
+    step = _write(tmp_path, "app/services/conversation/step.py", _COMMS_LOOKUP)
+    assert _fence([builder, step]) == []
+
+
+def test_comms_graph_rule_skips_tests(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write(tmp_path, "tests/unit/test_writer.py", _COMMS_LOOKUP)
+    assert lint_runner.main([str(tmp_path)]) == 0
+    assert "comms-graph-owner" not in capsys.readouterr().err
 
 
 # --------------------------------------------------------------------------- #
