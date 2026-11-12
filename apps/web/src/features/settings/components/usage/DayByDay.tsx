@@ -1,10 +1,12 @@
 "use client";
 
-import { Button, Tabs } from "@heroui/react";
+import { Tabs } from "@heroui/react";
 import { ShuffleIcon } from "@icons";
 import type { UsageActivity } from "@shared/types";
 import { formatCompactNumber, formatDateUTC } from "@shared/utils";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { shapeVariants } from "@/components/shared/shape";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { useRecharts } from "@/components/ui/chart-loader";
 import { cn } from "@/lib/utils";
@@ -187,7 +189,8 @@ function TokenScaleLine({ tokens }: { tokens: number }) {
         .
       </p>
       {lines.length > 1 && (
-        <Button
+        <GaiaButton
+          shape="pill"
           isIconOnly
           size="sm"
           variant="ghost"
@@ -196,7 +199,7 @@ function TokenScaleLine({ tokens }: { tokens: number }) {
           onPress={next}
         >
           <ShuffleIcon size={13} />
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );
@@ -333,7 +336,7 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
         <Tabs
           selectedKey={metric}
           onSelectionChange={(k) => setMetric(k as Metric)}
-          className="shrink-0"
+          className={shapeVariants({ shape: "pill", className: "shrink-0" })}
         >
           <Tabs.List aria-label="Metric" className={USAGE_TAB_CLASSES.list}>
             <Tabs.Tab id="actions" className={USAGE_TAB_CLASSES.tab}>
@@ -359,7 +362,7 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
         <Tabs
           selectedKey={range}
           onSelectionChange={(k) => setRange(k as RangeKey)}
-          className="shrink-0"
+          className={shapeVariants({ shape: "pill", className: "shrink-0" })}
         >
           <Tabs.List aria-label="Range" className={USAGE_TAB_CLASSES.list}>
             {RANGES.map((r) => (

@@ -15,6 +15,7 @@ import {
   useState,
 } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { shapeVariants } from "@/components/shared/shape";
 import { cn } from "@/lib/utils";
 import { shareActivityCard } from "./shareActivityCard";
 import { buildTweetText, openTweetIntent } from "./shareTweet";
@@ -246,14 +247,15 @@ export function ActivityBadge({
                     -day streak
                   </span>
                 </div>
-                <Button
+                <GaiaButton
+                  shape="pill"
                   className="mt-7 font-medium"
                   onPress={() => void shareActivity(activity)}
                   variant="primary"
                 >
                   <Share08Icon size={16} />
                   Share
-                </Button>
+                </GaiaButton>
               </Modal.Body>
             </Modal.Dialog>
           </Modal.Container>
@@ -327,7 +329,14 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
             actions
           </p>
           {activity.streak > 0 && (
-            <Chip size="sm" variant="soft" className="h-6 bg-orange-500/15">
+            <Chip
+              size="sm"
+              variant="soft"
+              className={shapeVariants({
+                shape: "pill",
+                className: "h-6 bg-orange-500/15",
+              })}
+            >
               <Fire02Icon size={13} />
               <Chip.Label className="flex items-center gap-1 px-2 text-xs font-medium text-orange-400">
                 {activity.streak}-day streak

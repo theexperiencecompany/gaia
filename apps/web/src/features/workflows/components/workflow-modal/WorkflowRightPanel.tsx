@@ -1,6 +1,6 @@
 import { Tabs } from "@heroui/react";
 import { Clock04Icon } from "@icons";
-
+import { shapeVariants } from "@/components/shared/shape";
 import type { Workflow } from "../../api/workflowApi";
 import WorkflowExecutionHistory from "../WorkflowExecutionHistory";
 import WorkflowStepsPanel from "./WorkflowStepsPanel";
@@ -39,7 +39,10 @@ export default function WorkflowRightPanel({
     <div className={STEPS_CARD_SURFACE}>
       <Tabs
         defaultSelectedKey="steps"
-        className="flex w-full shrink-0 flex-col"
+        className={shapeVariants({
+          shape: "pill",
+          className: "flex w-full shrink-0 flex-col",
+        })}
       >
         <Tabs.List
           aria-label="Workflow info tabs"

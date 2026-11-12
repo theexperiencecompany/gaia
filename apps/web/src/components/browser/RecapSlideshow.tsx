@@ -90,6 +90,7 @@ export function RecapSlideshow({
         </button>
         {!atStart && (
           <GaiaButton
+            shape="pill"
             variant="default-solid"
             isIconOnly
             size="sm"
@@ -102,6 +103,7 @@ export function RecapSlideshow({
         )}
         {!atEnd && (
           <GaiaButton
+            shape="pill"
             variant="default-solid"
             isIconOnly
             size="sm"

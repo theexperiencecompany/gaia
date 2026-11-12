@@ -13,6 +13,7 @@ import { Button } from "@heroui/react";
 import { ArrowDown01Icon, Cancel01Icon, Wrench01Icon } from "@icons";
 import * as m from "motion/react-m";
 import { useEffect, useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
@@ -46,16 +47,17 @@ function DismissButton({
   onDismiss: () => void;
 }) {
   return (
-    <Button
+    <GaiaButton
+      shape="pill"
       isIconOnly
       size="sm"
       variant="ghost"
       aria-label={label}
       onPress={onDismiss}
-      className="shrink-0 rounded-full text-zinc-500"
+      className="shrink-0 text-zinc-500"
     >
       <Cancel01Icon size={14} />
-    </Button>
+    </GaiaButton>
   );
 }
 

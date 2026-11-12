@@ -10,6 +10,8 @@ import {
 import { useRoomContext } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import * as React from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { shapeVariants } from "@/components/shared/shape";
 import {
   type UseAgentControlBarProps,
   useAgentControlBar,
@@ -130,7 +132,7 @@ export function AgentControlBar({
     >
       {/* One floating pill holds every control — iOS-call style. */}
       <div className="flex items-center gap-1.5 rounded-full bg-zinc-900/80 p-1.5 shadow-lg backdrop-blur-md">
-        <ButtonGroup>
+        <ButtonGroup className={shapeVariants({ shape: "pill" })}>
           <Button
             isIconOnly
             aria-label={micLive ? "Mute microphone" : "Unmute microphone"}
@@ -175,7 +177,8 @@ export function AgentControlBar({
         </ButtonGroup>
 
         {visibleControls.leave && (
-          <Button
+          <GaiaButton
+            shape="pill"
             isIconOnly
             aria-label="End voice session"
             onPress={onLeave}
@@ -183,7 +186,7 @@ export function AgentControlBar({
             className="h-12 w-14 bg-red-500/15 transition-colors hover:bg-red-500/20 active:bg-red-500/25"
           >
             <CallEnd04Icon className="h-6 w-6 text-red-400" />
-          </Button>
+          </GaiaButton>
         )}
       </div>
     </div>

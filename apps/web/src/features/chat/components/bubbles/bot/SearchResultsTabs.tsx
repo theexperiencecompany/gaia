@@ -3,6 +3,7 @@ import { CircleArrowRight02Icon, NewsIcon } from "@icons";
 import * as m from "motion/react-m";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { safeUrl } from "@/features/chat/utils/safeUrl";
 import { useImageDialog } from "@/stores/uiStore";
 import type {
@@ -206,7 +207,7 @@ function SourcesButton({ web }: SourcesButtonProps) {
   return (
     <div className="flex justify-start">
       <Popover>
-        <Button variant="tertiary" size="sm">
+        <GaiaButton shape="pill" variant="tertiary" size="sm">
           <div className="flex -space-x-3">
             {web.slice(0, 4).map((result) => {
               const host = safeUrl(result.url)?.hostname;
@@ -233,7 +234,7 @@ function SourcesButton({ web }: SourcesButtonProps) {
             })}
           </div>
           <span className="font-medium text-zinc-300">Search Results</span>
-        </Button>
+        </GaiaButton>
         <Popover.Content
           placement="top"
           className="bg-transparent p-0! shadow-none"

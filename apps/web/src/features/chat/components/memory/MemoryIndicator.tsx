@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { AiBrain01Icon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 interface MemoryResult {
   id: string;
@@ -75,7 +75,8 @@ export default function MemoryIndicator({
   if (!displayText) return null;
 
   return (
-    <Button
+    <GaiaButton
+      shape="pill"
       size="sm"
       variant="tertiary"
       className="w-fit text-gray-500"
@@ -83,6 +84,6 @@ export default function MemoryIndicator({
     >
       <AiBrain01Icon className="h-4 w-4" />
       {displayText}
-    </Button>
+    </GaiaButton>
   );
 }

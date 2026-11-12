@@ -1,18 +1,13 @@
-import {
-  Accordion,
-  Button,
-  Chip,
-  InputGroup,
-  ScrollShadow,
-} from "@heroui/react";
+import { Accordion, Chip, InputGroup, ScrollShadow } from "@heroui/react";
 import { Cancel01Icon, GridIcon, SearchIcon, Tick02Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { shapeVariants } from "@/components/shared/shape";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-
 import { dummyIntegrations } from "./constants";
 
 // Dummy Integrations Card Component
@@ -556,7 +551,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
           {openedViaButton && (
             <div className="flex items-center gap-2 p-3">
               <div className="flex-1">
-                <InputGroup>
+                <InputGroup className={shapeVariants({ shape: "pill" })}>
                   <InputGroup.Prefix>
                     <SearchIcon size={16} />
                   </InputGroup.Prefix>
@@ -569,7 +564,8 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
                   />
                 </InputGroup>
               </div>
-              <Button
+              <GaiaButton
+                shape="pill"
                 onPress={onClose}
                 isIconOnly
                 size="sm"
@@ -577,7 +573,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
                 aria-label="Close button dummy composer"
               >
                 <Cancel01Icon size={14} />
-              </Button>
+              </GaiaButton>
             </div>
           )}
 
