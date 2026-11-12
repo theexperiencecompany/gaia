@@ -30,6 +30,7 @@ import {
   type RichMessage,
   type RichMessageTarget,
   richMessageToMarkdown,
+  type SentBubble,
   type SentMessage,
 } from "@gaia/shared/bots";
 import type { PlatformEmulation } from "./emulation";
@@ -281,13 +282,13 @@ export class HarnessAdapter extends BaseBotAdapter {
     this.transcript.record({ type: "typing", state: "start" });
 
     const bubbles: Bubble[] = [];
-    let current: Bubble | null = null;
+    /** The bubble standing in for a real adapter's "Thinking..." placeholder, opened on first use. */
+    let placeholder: Bubble | null = null;
 
-    /** Records a fresh bubble and makes it current. */
+    /** Records a fresh bubble. */
     const openBubble = (text: string, isError?: boolean): Bubble => {
       const bubble: Bubble = { id: `m${this.nextMessageId++}`, text };
       bubbles.push(bubble);
-      current = bubble;
       this.transcript.record({
         type: "send",
         messageId: bubble.id,
@@ -298,62 +299,71 @@ export class HarnessAdapter extends BaseBotAdapter {
       return bubble;
     };
 
-    /** Updates the current bubble in place, or opens one if none exists. */
-    const writeCurrent = (text: string, isError?: boolean): void => {
-      if (!current) {
-        openBubble(text, isError);
-        return;
-      }
-      // No in-place edit support (WhatsApp): an "edit" is a new message.
+    /** Edits a bubble in place; without edit support (WhatsApp) an "edit" is a new message. */
+    const editBubble = (
+      bubble: Bubble,
+      text: string,
+      isError?: boolean,
+    ): void => {
       if (!this.emulation.supportsEdit) {
         openBubble(text, isError);
         return;
       }
-      current.text = text;
+      bubble.text = text;
       this.transcript.record({
         type: "edit",
-        messageId: current.id,
+        messageId: bubble.id,
         text,
         length: text.length,
         ...(isError ? { isError } : {}),
       });
     };
 
-    const editMessage = (text: string): Promise<void> => {
-      writeCurrent(text);
+    /** Writes the placeholder bubble, opening it on first use. */
+    const writePlaceholder = (text: string, isError?: boolean): void => {
+      if (placeholder) {
+        editBubble(placeholder, text, isError);
+        return;
+      }
+      placeholder = openBubble(text, isError);
+    };
+
+    const deleteBubble = (bubble: Bubble): Promise<void> => {
+      this.transcript.record({ type: "delete", messageId: bubble.id });
       return Promise.resolve();
     };
 
-    const sendNewMessage = (
-      text: string,
-    ): Promise<(t: string) => Promise<void>> => {
+    const editMessage = (text: string): Promise<void> => {
+      writePlaceholder(text);
+      return Promise.resolve();
+    };
+
+    const sendNewMessage = (text: string): Promise<SentBubble> => {
       const bubble = openBubble(text);
-      return Promise.resolve((updated: string) => {
-        // Edit the bubble this send opened (respecting edit support).
-        if (this.emulation.supportsEdit) {
-          bubble.text = updated;
-          this.transcript.record({
-            type: "edit",
-            messageId: bubble.id,
-            text: updated,
-            length: updated.length,
-          });
-        } else {
-          openBubble(updated);
-        }
-        return Promise.resolve();
+      return Promise.resolve({
+        edit: (updated: string) => {
+          editBubble(bubble, updated);
+          return Promise.resolve();
+        },
+        ...(this.emulation.supportsDelete
+          ? { delete: () => deleteBubble(bubble) }
+          : {}),
       });
     };
+
+    /** A live platform's adapter deletes its placeholder for a turn that said nothing. */
+    const clearPlaceholder = (): Promise<void> =>
+      placeholder ? deleteBubble(placeholder) : Promise.resolve();
 
     const onAuthError = (authUrl: string): Promise<void> => {
       // Every real adapter renders buildAuthLinkMessage through the platform
       // converter before delivering it; do the same so the transcript matches.
-      writeCurrent(this.emulation.render(buildAuthLinkMessage(authUrl)));
+      writePlaceholder(this.emulation.render(buildAuthLinkMessage(authUrl)));
       return Promise.resolve();
     };
 
     const onGenericError = (formattedError: string): Promise<void> => {
-      writeCurrent(formattedError, true);
+      writePlaceholder(formattedError, true);
       return Promise.resolve();
     };
 
@@ -377,6 +387,7 @@ export class HarnessAdapter extends BaseBotAdapter {
       await this.analyticsFor(userId),
       (emoji: string) =>
         this.reactToMessage(channelId, inboundMessageId, emoji),
+      this.emulation.supportsDelete ? clearPlaceholder : undefined,
     );
 
     this.transcript.record({ type: "typing", state: "stop" });

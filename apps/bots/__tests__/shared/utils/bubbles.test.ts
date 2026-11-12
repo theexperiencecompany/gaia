@@ -1,18 +1,17 @@
 /**
- * Bubble segmentation for bot delivery.
- *
- * The model owns the splits via `<NEW_MESSAGE_BREAK>` (see Bubbles in
- * the comms prompt): a reply with no sentinel ships as ONE bubble, and
- * nothing here invents blank-line splits. Blank lines are line breaks inside
- * a bubble, never boundaries.
- *
- * The web app splits on the sentinel alone and is deliberately untouched — this
- * is bot delivery only.
+ * The messages a bot sends for one finished reply: the model's bubbles, each
+ * cut to the platform's limit. A reply with no sentinel is ONE bubble; blank
+ * lines are line breaks inside it, never boundaries.
  */
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { segmentIntoBubbles } from "@gaia/shared/bots";
+import {
+  deliverableBubbles,
+  PLATFORM_LIMITS,
+  PLATFORM_MARKDOWN,
+  type PlatformName,
+} from "@gaia/shared/bots";
 import { describe, expect, it } from "vitest";
 
 const BREAK = "<NEW_MESSAGE_BREAK>";
@@ -22,100 +21,57 @@ const PROD_REPLY = readFileSync(
   "utf8",
 );
 
-describe("segmentIntoBubbles", () => {
+const bubblesOf = (text: string, platform: PlatformName = "telegram") =>
+  deliverableBubbles(text, platform, PLATFORM_MARKDOWN[platform]);
+
+describe("deliverableBubbles", () => {
   it("does not split on blank lines: no sentinel means one bubble", () => {
-    const bubbles = segmentIntoBubbles(
+    const text =
       "First paragraph, long enough to stand on its own as a bubble.\n\n" +
-        "Second paragraph, also long enough to stand on its own here.",
-    );
+      "Second paragraph, also long enough to stand on its own here.";
 
-    expect(bubbles).toEqual([
-      "First paragraph, long enough to stand on its own as a bubble.\n\n" +
-        "Second paragraph, also long enough to stand on its own here.",
-    ]);
+    expect(bubblesOf(text)).toEqual([[text]]);
   });
 
-  it("splits on the sentinel only, never further inside a segment", () => {
-    const bubbles = segmentIntoBubbles(
-      "Short intro that is long enough to survive on its own." +
-        BREAK +
-        "Second message paragraph one, long enough to stand alone.\n\n" +
-        "Second message paragraph two, long enough to stand alone.",
-    );
-
-    expect(bubbles).toEqual([
-      "Short intro that is long enough to survive on its own.",
-      "Second message paragraph one, long enough to stand alone.\n\n" +
-        "Second message paragraph two, long enough to stand alone.",
-    ]);
-  });
-
-  it("keeps a blank-line-separated list whole without a sentinel", () => {
-    const bubbles = segmentIntoBubbles(
-      "- buy resend pro and set up the domain records\n\n" +
-        "- email the churned subscribers with the new pricing\n\n" +
-        "- email everyone who signed up and never paid us",
-    );
-
-    expect(bubbles).toHaveLength(1);
-    expect(
-      bubbles[0].split("\n").filter((l) => l.startsWith("-")),
-    ).toHaveLength(3);
-  });
-
-  it("a sentinel inside a fenced code block does not split", () => {
-    const bubbles = segmentIntoBubbles(
-      "Run this migration on staging first:\n\n" +
-        "```python\n" +
-        `print('one')${BREAK}print('two')\n` +
-        "```\n\n" +
-        "Then redeploy the worker so it picks the new schema up.",
-    );
-
-    expect(bubbles).toHaveLength(1);
-    expect(bubbles[0]).not.toContain(BREAK);
-    expect(bubbles[0]).toContain("print('one')\nprint('two')");
-  });
-
-  it("keeps tables and headings whole without a sentinel", () => {
+  it("keeps a blank-line-separated list, a table and a heading whole", () => {
     const table =
       "| item | cost |\n|---|---|\n| resend | $20 |\n| domain | $12 |";
-    const bubbles = segmentIntoBubbles(
-      `## What this costs monthly\n\n${table}`,
-    );
+    const text = `## What this costs monthly\n\n${table}\n\n- one\n\n- two`;
 
-    expect(bubbles).toHaveLength(1);
-    expect(bubbles[0]).toContain("| resend |");
-    expect(bubbles[0]).toContain("## What this costs");
+    expect(bubblesOf(text)).toEqual([[text]]);
   });
 
-  it("drops a trailing partial sentinel instead of shipping it", () => {
-    expect(segmentIntoBubbles("here are your numbers<NEW_MESSAGE_B")).toEqual([
-      "here are your numbers",
-    ]);
+  it("keeps the model's short bubbles and a link-only bubble apart", () => {
+    expect(
+      bubblesOf(`ok.${BREAK}https://github.com/x/y${BREAK}See the readme.`),
+    ).toEqual([["ok."], ["https://github.com/x/y"], ["See the readme."]]);
   });
 
-  it("merges a fragment too small to be its own message", () => {
-    const bubbles = segmentIntoBubbles(
-      `ok.${BREAK}Here is the actual answer, which is long enough.`,
-    );
+  it.each<PlatformName>(["discord", "slack", "telegram"])(
+    "cuts a bubble longer than %s allows into several messages of that bubble",
+    (platform) => {
+      const long = "A sentence of a long plan that ends cleanly. ".repeat(200);
+      const [intro, chunks] = bubblesOf(`Intro.${BREAK}${long}`, platform);
 
-    expect(bubbles).toHaveLength(1);
-    expect(bubbles[0]).toContain("ok.");
-  });
-
-  it("returns nothing for empty or sentinel-only text", () => {
-    expect(segmentIntoBubbles("")).toEqual([]);
-    expect(segmentIntoBubbles(`  ${BREAK}${BREAK} `)).toEqual([]);
-  });
+      expect(intro).toEqual(["Intro."]);
+      expect(chunks?.length).toBeGreaterThan(1);
+      for (const chunk of chunks ?? []) {
+        expect(PLATFORM_MARKDOWN[platform](chunk).length).toBeLessThanOrEqual(
+          PLATFORM_LIMITS[platform],
+        );
+      }
+    },
+  );
 
   it("ships a sentinel-free production reply as one bubble, word for word", () => {
     // Its only sentinels are a doubled token at the very end, an empty segment
     // that drops out; a forgotten token is fixed in the prompt, not here.
-    const bubbles = segmentIntoBubbles(PROD_REPLY);
+    const bubbles = bubblesOf(PROD_REPLY);
 
     expect(bubbles).toHaveLength(1);
     const words = (s: string) => s.split(/\s+/).filter(Boolean);
-    expect(words(bubbles[0])).toEqual(words(PROD_REPLY.replaceAll(BREAK, " ")));
+    expect(words((bubbles[0] ?? []).join(" "))).toEqual(
+      words(PROD_REPLY.replaceAll(BREAK, " ")),
+    );
   });
 });

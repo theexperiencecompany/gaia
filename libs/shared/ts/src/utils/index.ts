@@ -62,17 +62,18 @@ export {
   NEW_MESSAGE_BREAK_TOKEN,
   NEW_MESSAGE_BREAK_TOKEN_LENGTH,
 } from "./messageBreakUtils";
+export type { StreamingBubbles } from "./messageBubbles";
+export {
+  splitMessageByBreaks,
+  splitStreamingBubbles,
+} from "./messageBubbles";
 export type {
   OpenUIActionEventLike,
   OpenUIActionHandlers,
 } from "./openui-actions";
 export { dispatchOpenUIAction } from "./openui-actions";
 export type { ContentSegment, OpenUILibraryLike } from "./openui-parser";
-export {
-  normalizeOpenUICode,
-  parseOpenUISegments,
-  splitMessageByBreaks,
-} from "./openui-parser";
+export { normalizeOpenUICode, parseOpenUISegments } from "./openui-parser";
 export type { OpenUISample } from "./openui-samples";
 export { OPENUI_SAMPLES } from "./openui-samples";
 export {

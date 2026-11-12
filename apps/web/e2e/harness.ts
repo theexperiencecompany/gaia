@@ -210,6 +210,21 @@ export function listBubbles(page: Page): Promise<BubbleSnapshot[]> {
   );
 }
 
+/** The text bubbles of each bot message, in DOM order: what one reply split into. */
+export function botBubbleParts(page: Page): Promise<string[][]> {
+  return page.evaluate(() =>
+    [
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-slot="message-scroller-item"] .chatbubblebot_parent',
+      ),
+    ].map((message) =>
+      [...message.querySelectorAll<HTMLElement>(".imessage-bubble")].map(
+        (bubble) => bubble.innerText.trim(),
+      ),
+    ),
+  );
+}
+
 /** The reaction badge GAIA left on a user bubble ("" when it has none). */
 export async function bubbleReactions(
   page: Page,

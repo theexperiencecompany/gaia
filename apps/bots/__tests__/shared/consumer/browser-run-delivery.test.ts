@@ -45,8 +45,6 @@ function msgFor(payload: unknown) {
   };
 }
 
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
 async function startAndCaptureHandler(
   deliver: (id: string, text: string) => Promise<void>,
   deliverFile: (
@@ -70,9 +68,16 @@ async function startAndCaptureHandler(
   return last[1] as Handler;
 }
 
+/** Hands the consumer one envelope and waits until it is settled: bubbles pause between sends. */
 async function deliverMessage(handle: Handler, msg: unknown): Promise<void> {
+  const settled =
+    channel.ack.mock.calls.length + channel.nack.mock.calls.length;
   handle(msg);
-  await flush();
+  await vi.waitFor(() =>
+    expect(channel.ack.mock.calls.length + channel.nack.mock.calls.length).toBe(
+      settled + 1,
+    ),
+  );
 }
 
 const AT = "2026-01-01T00:00:00Z";

@@ -129,6 +129,7 @@ vi.mock("@gaia/shared/bots", async () => {
 
 import {
   handleStreamingChat,
+  type NewMessageSender,
   type ReactionOutcome,
   richMessageToMarkdown,
 } from "@gaia/shared/bots";
@@ -722,16 +723,12 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
     expect(allCalls).toContain("Something went wrong on the backend");
   });
 
-  it("sendNewMessage callback sends a new message via sendText and returns an edit function", async () => {
-    let capturedSendNew:
-      | ((text: string) => Promise<(t: string) => Promise<void>>)
-      | undefined;
+  it("sendNewMessage callback sends a new message via sendText and returns a handle that cannot unsend", async () => {
+    let capturedSendNew: NewMessageSender | undefined;
 
     vi.mocked(handleStreamingChat).mockImplementation(
       async (_gaia, _ctx, _editMsg, sendNewMessage) => {
-        capturedSendNew = sendNewMessage as (
-          text: string,
-        ) => Promise<(t: string) => Promise<void>>;
+        capturedSendNew = sendNewMessage;
       },
     );
 
@@ -742,12 +739,14 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
     vi.clearAllMocks();
     mockSendText.mockResolvedValue({ messages: [{ id: "wa-msg-new" }] });
 
-    const editFn = await capturedSendNew!("New continuation message");
+    const sent = await capturedSendNew!("New continuation message");
 
     expect(mockSendText).toHaveBeenCalledWith(
       expect.objectContaining({ body: "New continuation message" }),
     );
-    expect(typeof editFn).toBe("function");
+    expect(typeof sent.edit).toBe("function");
+    // WhatsApp has no unsend API, which is why it never streams.
+    expect(sent.delete).toBeUndefined();
   });
 
   it("when handleStreamingChat throws, sends 'An error occurred. Please try again.' as a new message", async () => {

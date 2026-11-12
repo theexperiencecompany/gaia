@@ -594,7 +594,7 @@ export class TelegramAdapter extends BaseBotAdapter {
     if (!chatId) return;
 
     const loading = await ctx.reply("Thinking...");
-    let currentMessageId = loading.message_id;
+    const placeholderId = loading.message_id;
     const removePlaceholder = async (): Promise<void> => {
       try {
         await ctx.api.deleteMessage(chatId, loading.message_id);
@@ -637,14 +637,14 @@ export class TelegramAdapter extends BaseBotAdapter {
         async (text: string) => {
           await this.editHtml(
             (t, opts) =>
-              ctx.api.editMessageText(chatId, currentMessageId, t, opts),
+              ctx.api.editMessageText(chatId, placeholderId, t, opts),
             text,
             (e) =>
               this.adapterLogger.error(
                 "edit_message_text_failed",
                 {
                   channel_hash: hashLogIdentifier(chatId),
-                  message_id: currentMessageId,
+                  message_id: placeholderId,
                 },
                 e,
               ),
@@ -655,22 +655,31 @@ export class TelegramAdapter extends BaseBotAdapter {
             (t, opts) => ctx.reply(t, opts),
             text,
           );
-          currentMessageId = newMessage.message_id;
-          return async (updatedText: string) => {
-            await this.editHtml(
-              (t, opts) =>
-                ctx.api.editMessageText(chatId, newMessage.message_id, t, opts),
-              updatedText,
-              (e) =>
-                this.adapterLogger.error(
-                  "edit_message_text_failed",
-                  {
-                    channel_hash: hashLogIdentifier(chatId),
-                    message_id: newMessage.message_id,
-                  },
-                  e,
-                ),
-            );
+          return {
+            edit: async (updatedText: string) => {
+              await this.editHtml(
+                (t, opts) =>
+                  ctx.api.editMessageText(
+                    chatId,
+                    newMessage.message_id,
+                    t,
+                    opts,
+                  ),
+                updatedText,
+                (e) =>
+                  this.adapterLogger.error(
+                    "edit_message_text_failed",
+                    {
+                      channel_hash: hashLogIdentifier(chatId),
+                      message_id: newMessage.message_id,
+                    },
+                    e,
+                  ),
+              );
+            },
+            delete: async () => {
+              await ctx.api.deleteMessage(chatId, newMessage.message_id);
+            },
           };
         },
         async (authUrl: string) => {
@@ -691,13 +700,13 @@ export class TelegramAdapter extends BaseBotAdapter {
               );
               await ctx.api.editMessageText(
                 chatId,
-                currentMessageId,
+                placeholderId,
                 "I sent you a DM with the authentication link.",
               );
             } else {
               await this.editHtml(
                 (t, opts) =>
-                  ctx.api.editMessageText(chatId, currentMessageId, t, opts),
+                  ctx.api.editMessageText(chatId, placeholderId, t, opts),
                 authHtml,
                 (e) =>
                   this.adapterLogger.error(
@@ -724,7 +733,7 @@ export class TelegramAdapter extends BaseBotAdapter {
               const fallback = this.botUsername
                 ? `I couldn't send you a DM. Your privacy settings may be blocking bot messages.\n\nPlease message me directly at @${this.botUsername} and use /auth to link your account.`
                 : `I couldn't send you a DM. Your privacy settings may be blocking bot messages.\n\nPlease message me directly and use /auth to link your account.`;
-              await ctx.api.editMessageText(chatId, currentMessageId, fallback);
+              await ctx.api.editMessageText(chatId, placeholderId, fallback);
             } catch (fallbackErr) {
               this.adapterLogger.error(
                 "auth_fallback_message_failed",
@@ -742,14 +751,14 @@ export class TelegramAdapter extends BaseBotAdapter {
           try {
             await this.editHtml(
               (t, opts) =>
-                ctx.api.editMessageText(chatId, currentMessageId, t, opts),
+                ctx.api.editMessageText(chatId, placeholderId, t, opts),
               errMsg,
               (e) =>
                 this.adapterLogger.error(
                   "edit_message_text_failed",
                   {
                     channel_hash: hashLogIdentifier(chatId),
-                    message_id: currentMessageId,
+                    message_id: placeholderId,
                   },
                   e,
                 ),
