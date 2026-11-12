@@ -56,7 +56,6 @@ from app.services.chat.stream import (
     _StreamState,
     run_chat_stream_background,
 )
-from app.utils.errors import ConversationNotFoundError
 from app.utils.stream_publishers import ExtractedToolData
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
@@ -320,7 +319,13 @@ async def _saved_bot_reply(user: AuthenticatedUser, body: MessageRequestWithHist
     mock_update = AsyncMock()
     conversation_id = overrides.pop("conversation_id", "conv_123")
     reply = BotReply(**{"complete_message": "ok", "bot_message_id": "bmsg_1", **overrides})
-    with patch("app.services.chat.persistence.update_messages", new=mock_update):
+    with (
+        patch("app.services.chat.persistence.update_messages", new=mock_update),
+        patch(
+            "app.services.chat.persistence.conversation_repository.fill_message",
+            new=AsyncMock(return_value=False),
+        ),
+    ):
         await save_bot_reply(body, user, conversation_id, reply)
     assert mock_update.call_args.kwargs == {"user": user}
     request_arg = mock_update.call_args.args[0]
@@ -362,21 +367,21 @@ class TestSaveReturnsTheSeq:
         ):
             assert await save_user_message(basic_body, test_user, "conv_x", "umsg_1") == 7
 
-    async def test_an_opened_reply_gone_from_its_conversation_is_refused_by_name(
+    async def test_an_opened_reply_is_filled_in_place_and_appends_nothing(
         self, test_user, basic_body
     ):
-        reply = BotReply(complete_message="ok", bot_message_id="bmsg_1", opened=True)
+        reply = BotReply(complete_message="ok", bot_message_id="bmsg_1")
+        appended = AsyncMock()
         with (
             patch(
                 "app.services.chat.persistence.conversation_repository.fill_message",
-                new=AsyncMock(return_value=False),
+                new=AsyncMock(return_value=True),
             ),
-            pytest.raises(ConversationNotFoundError) as gone,
+            patch("app.services.chat.persistence.update_messages", new=appended),
         ):
-            await save_bot_reply(basic_body, test_user, "conv_123", reply)
+            assert await save_bot_reply(basic_body, test_user, "conv_123", reply) is None
 
-        assert gone.value.message == "the opened reply bmsg_1 is gone from its conversation"
-        assert gone.value.meta == {"conversation_id": "conv_123"}
+        appended.assert_not_awaited()
 
 
 class TestSaveBotReply:

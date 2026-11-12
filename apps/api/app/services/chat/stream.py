@@ -1081,7 +1081,6 @@ async def _persist_turn(
                 complete_message="",
                 bot_message_id=state.bot_message_id,
                 error=TURN_REPLY_NOT_SAVED,
-                opened=state.reply_opened,
             ),
         )
     state.saved = True
@@ -1130,7 +1129,6 @@ async def _save_reply(
             kind=state.message_kind,
             reacts_to_message_id=state.reacts_to_message_id,
             stopped=state.is_cancelled,
-            opened=state.reply_opened,
         ),
     )
     if state.message_kind is MessageKind.EMOJI_ACK:
