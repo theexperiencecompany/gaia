@@ -10,7 +10,6 @@
  */
 import type { Readable } from "node:stream";
 import type { ReactionBy } from "../../api/generated";
-import type { ApprovalRequestData } from "../../chat";
 import { NEW_MESSAGE_BREAK_TOKEN } from "../../utils/messageBreakUtils";
 import type { ChatRequest } from "../types";
 import { getHttpStatus } from "../utils/logger";
@@ -20,7 +19,6 @@ import {
 } from "../utils/reaction-outcome";
 import { wideLog } from "../utils/wide-events";
 import type {
-  ApprovalUpdateHandler,
   ChatStreamClient,
   MessageBoundary,
   MessageBoundaryHandler,
@@ -29,7 +27,6 @@ import type {
 
 export type { ReactionHandler } from "../utils/reaction-outcome";
 export type {
-  ApprovalUpdateHandler,
   ChatStreamClient,
   MessageBoundaryHandler,
   NoticeHandler,
@@ -61,7 +58,6 @@ export async function streamChat(
   onDone: (fullText: string, conversationId: string) => void | Promise<void>,
   onError: (error: Error) => void | Promise<void>,
   endpoint: string,
-  onApprovalUpdate?: ApprovalUpdateHandler,
   onMessageBoundary?: MessageBoundaryHandler,
   onNotice?: NoticeHandler,
   onReaction?: ReactionHandler,
@@ -80,7 +76,6 @@ export async function streamChat(
         onError,
         attempt > 0,
         endpoint,
-        onApprovalUpdate,
         onMessageBoundary,
         onNotice,
         onReaction,
@@ -131,7 +126,6 @@ interface SseFrame {
   keepalive?: boolean;
   error?: string;
   session_token?: string;
-  approval?: ApprovalRequestData;
   notice?: { text: string };
   text?: string;
   message_boundary?: MessageBoundary;
@@ -163,7 +157,6 @@ async function streamChatOnce(
   onError: (error: Error) => void | Promise<void>,
   retried: boolean,
   endpoint: string,
-  onApprovalUpdate?: ApprovalUpdateHandler,
   onMessageBoundary?: MessageBoundaryHandler,
   onNotice?: NoticeHandler,
   onReaction?: ReactionHandler,
@@ -302,9 +295,6 @@ async function streamChatOnce(
       const applyFrameUpdate = async (frame: SseFrame): Promise<void> => {
         if (frame.session_token) {
           deps.storeSessionToken(ctx, frame.session_token);
-        }
-        if (frame.approval) {
-          await onApprovalUpdate?.(frame.approval);
         }
         if (frame.notice) {
           await onNotice?.(frame.notice.text);
@@ -495,7 +485,6 @@ async function streamChatOnce(
         onError,
         true,
         endpoint,
-        onApprovalUpdate,
         onMessageBoundary,
         // Dropped here until now: a stale session token cost the retried
         // attempt every rate-limit notice it produced.

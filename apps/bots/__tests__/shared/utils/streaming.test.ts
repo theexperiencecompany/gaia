@@ -6,7 +6,6 @@
  * is the `GaiaClient` stream source and the platform send/edit callbacks, which
  * stand in for the platform SDK exactly as each adapter wires them.
  */
-import type { ApprovalRequestData } from "@gaia/shared";
 import {
   BUBBLE_PAUSE_MS,
   type GaiaClient,
@@ -50,11 +49,7 @@ type StreamStep =
 const DISCARDED = { boundary: { discarded: true } } as const;
 const KEPT = { boundary: { discarded: false } } as const;
 
-function streamingGaia(
-  chunks: StreamStep[],
-  approvalAfter?: number,
-  approval?: Partial<ApprovalRequestData>,
-): GaiaClient {
+function streamingGaia(chunks: StreamStep[]): GaiaClient {
   return {
     chatStream: async (
       _request: unknown,
@@ -78,7 +73,7 @@ function streamingGaia(
         full = full ? `${full}${BREAK}${pendingText}` : pendingText;
         pendingText = "";
       };
-      for (const [i, step] of chunks.entries()) {
+      for (const step of chunks) {
         if (typeof step !== "string") {
           if ("fail" in step) {
             await onError(new Error(step.fail));
@@ -102,20 +97,6 @@ function streamingGaia(
         }
         pendingText += step;
         await onChunk(step);
-        if (approvalAfter === i && onApproval) {
-          await onApproval({
-            approval_id: "a1",
-            tool_call_id: "t1",
-            gated_tool_name: "delete_everything",
-            integration_name: null,
-            summary: "Delete the production database",
-            args_preview: {},
-            status: "pending",
-            feedback: null,
-            timeout_seconds: 3600,
-            ...approval,
-          } as ApprovalRequestData);
-        }
       }
       keepPendingText();
       await onDone(full, "conv-test");
@@ -170,14 +151,10 @@ async function deliver(
   chunks: StreamStep[],
   {
     editable = true,
-    approvalAfter,
-    approval,
     failEdit,
     failStream,
   }: {
     editable?: boolean;
-    approvalAfter?: number;
-    approval?: Partial<ApprovalRequestData>;
     /** Throws on the Nth edit (0-based), emulating a platform rejection. */
     failEdit?: { at: number; error: unknown };
     /** The transport error to fail the whole stream with, instead of streaming. */
@@ -250,9 +227,7 @@ async function deliver(
   };
 
   await handleStreamingChat(
-    failStream === undefined
-      ? streamingGaia(chunks, approvalAfter, approval)
-      : failingGaia(failStream),
+    failStream === undefined ? streamingGaia(chunks) : failingGaia(failStream),
     {
       message: "drive the streamer",
       platform,
@@ -406,37 +381,6 @@ describe("handleStreamingChat delivery", () => {
       expect(delivered).not.toContain("(truncated)");
       expect(words(delivered)).toBe(words(first) + words(second));
     });
-  });
-
-  it("does not overwrite an out-of-band approval prompt", async () => {
-    // The approval prompt posts via the adapter's `sendNewMessage`, moving that
-    // adapter's live-edit cursor onto the prompt on editing platforms; if the
-    // streamer kept editing "the current message" it'd overwrite the question.
-    const { bubbles } = await deliver(
-      "telegram",
-      ["Checking that first. ", "Now the rest of the answer."],
-      { approvalAfter: 0 },
-    );
-
-    const prompt = bubbles.find((b) => b.includes("Approval needed"));
-    expect(prompt).toBeDefined();
-    expect(prompt).toContain("Delete the production database");
-    // Whatever streamed after the prompt must land in its own message.
-    expect(bubbles.at(-1)).toContain("Now the rest of the answer");
-    expect(bubbles.at(-1)).not.toContain("Approval needed");
-  });
-
-  it("shows how long ago the approval was asked", async () => {
-    // Ledger-backed approvals carry age_seconds; the prompt should surface it
-    // so a user answering hours later knows the request is stale.
-    const { bubbles } = await deliver("telegram", ["Checking that first. "], {
-      approvalAfter: 0,
-      approval: { age_seconds: 3700 },
-    });
-
-    const prompt = bubbles.find((b) => b.includes("Approval needed"));
-    expect(prompt).toBeDefined();
-    expect(prompt).toContain("asked 1h ago");
   });
 
   it("never shows a break token, whole or partially received", async () => {

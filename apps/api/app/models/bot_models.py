@@ -323,6 +323,7 @@ class BotWebStreamPayload(BaseModel):
     response: str | None = None
     error: str | None = None
     reaction: ReactionPayload | None = None
+    reply_complete: bool | None = None
     conversation_description: JsonValue = None
     user_message_id: JsonValue = None
     bot_message_id: JsonValue = None

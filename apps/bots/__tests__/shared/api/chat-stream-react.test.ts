@@ -52,7 +52,6 @@ async function drive(sseBody: string, onReaction?: ReactionHandler) {
     "/api/v1/bot/chat-stream",
     vi.fn(),
     vi.fn(),
-    vi.fn(),
     onReaction,
   );
   return { onChunk, onDone, onError };

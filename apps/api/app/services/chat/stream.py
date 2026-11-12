@@ -57,6 +57,7 @@ from app.models.stream_events import (
     ConversationInitializedFrame,
     ErrorFrame,
     MainResponseCompleteFrame,
+    ReplyCompleteFrame,
     ReplyPlacedFrame,
 )
 from app.models.user_models import AuthenticatedUser
@@ -402,6 +403,12 @@ async def _run_chat_stream(
 
         # Saved before the executor wait: a reload during the wait shows the comms ack.
         await _persist_turn(stream_id, body, user, conversation_id, state)
+        # A bot ends its turn here, so the user's next message is not held behind
+        # background work whose result reaches it through the outbound queue.
+        if is_bot_platform(source):
+            await stream_manager.publish_chunk(
+                stream_id, format_sse_data(ReplyCompleteFrame(reply_complete=True).model_dump())
+            )
         await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
         # A stop pressed during the executor wait arrives after the consume
         # loop's check: re-read it here or the turn closes as completed.

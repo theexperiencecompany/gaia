@@ -76,6 +76,14 @@ class TestBotStreamControlFrame:
         assert data is None
         assert stop is True
 
+    def test_a_finished_reply_ends_the_bot_turn_before_the_executor_does(self):
+        """The bot's per-user queue holds the next message until done; background work must not."""
+        chunk = 'id: 9\ndata: {"reply_complete": true}\n\n'
+        frame, data, stop = _bot_stream_control_frame(chunk, "conv-7")
+        assert frame == 'data: {"done": true, "conversation_id": "conv-7"}\n\n'
+        assert data is None
+        assert stop is True
+
     def test_valid_json_payload_is_parsed_and_returned_as_data(self):
         chunk = 'data: {"response": "x", "unread_key": 1}\n\n'
         frame, data, stop = _bot_stream_control_frame(chunk, "conv-1")
@@ -183,7 +191,8 @@ class TestBotStreamPayloadFrame:
         )
         assert stop is False
 
-    async def test_approval_card_becomes_an_approval_frame(self):
+    async def test_an_approval_card_is_not_forwarded_on_the_stream(self):
+        """A bot gets its approval prompt through the outbound queue (hil/notify), exactly once."""
         data = {
             "tool_data": {
                 "tool_name": "approval_request",
@@ -191,10 +200,9 @@ class TestBotStreamPayloadFrame:
             }
         }
         frame, stop = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate(data), "user-1"
+            BotWebStreamPayload.model_validate(data), AsyncMock()
         )
-        payload = json.loads(frame[len("data: ") : -2])
-        assert payload == {"approval": {"tool": "send_email", "id": "req-1"}}
+        assert frame is None
         assert stop is False
 
     async def test_message_boundary_is_forwarded_verbatim(self):

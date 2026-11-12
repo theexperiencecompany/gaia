@@ -24,7 +24,6 @@ import { getErrorReason, getHttpStatus } from "../utils/logger";
 import { isOwnApiUrl } from "../utils/own-api";
 import { wideLog } from "../utils/wide-events";
 import {
-  type ApprovalUpdateHandler,
   type MessageBoundaryHandler,
   type NoticeHandler,
   type ReactionHandler,
@@ -196,7 +195,6 @@ export class GaiaClient {
     onChunk: (text: string) => void | Promise<void>,
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
     onError: (error: Error) => void | Promise<void>,
-    onApprovalUpdate?: ApprovalUpdateHandler,
     onMessageBoundary?: MessageBoundaryHandler,
     onNotice?: NoticeHandler,
     onReaction?: ReactionHandler,
@@ -213,7 +211,6 @@ export class GaiaClient {
       onDone,
       onError,
       "/api/v1/bot/chat-stream",
-      onApprovalUpdate,
       onMessageBoundary,
       onNotice,
       onReaction,
