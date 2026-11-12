@@ -765,7 +765,11 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return None if row is None else row.todo_id
 
     async def create(self, doc: ConversationDocument) -> ConversationDocument:
-        """Insert the conversation's head at an empty log; messages are appended separately."""
+        """Insert the conversation's head at an empty log; raises ValueError if doc carries messages."""
+        if doc.messages:
+            raise ValueError(
+                "create() writes only the head; append the messages with append_messages()"
+            )
         head = doc.model_dump(exclude={"id", "messages"}, exclude_none=True)
         head[LOG_HEAD_FIELD] = 0
         await self._raw_collection().insert_one(head)
