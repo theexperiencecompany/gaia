@@ -59,10 +59,7 @@ def github() -> Iterator[FakeGitHub]:
 @pytest.fixture
 def api(github: FakeGitHub, monkeypatch: pytest.MonkeyPatch) -> FakeGitHub:
     """Point an in-process lib/github.py client at the fake GitHub, never at a real token."""
-    monkeypatch.delenv("GH_TOKEN", raising=False)
-    for key, value in github.env().items():
-        if key.startswith("GITHUB_"):
-            monkeypatch.setenv(key, value)
+    github.point_client(monkeypatch)
     return github
 
 

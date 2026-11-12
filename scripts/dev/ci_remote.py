@@ -23,6 +23,7 @@ read with the check runs, and a red one is listed under its red job rather than
 explained twice.
 
 `--watch` polls until checks go terminal (bounded), printing transitions;
+a GitHub outage that outlasts lib/github.py's retries skips that poll, not the watch.
 `--fail-fast` stops it at the first red check and prints that failure.
 `mise ci:watch` is `--watch --fail-fast --max-wait 3600`.
 `--stack` prints the gh stack alone, one line per PR.
@@ -41,8 +42,9 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from http import HTTPStatus
 import io
 import json
 import os
@@ -55,6 +57,7 @@ from typing import TypedDict
 import zipfile
 
 sys.path.insert(0, str(__file__.rsplit("/", 1)[0]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ci"))
 from gaia_gh import (
     classify_failure,
     current_branch,
@@ -63,6 +66,7 @@ from gaia_gh import (
     parse_repo,
     resolve_pr,
 )
+from lib.github import GitHub, GitHubError
 
 SCHEMA_VERSION = 2
 MAX_CHECK_PAGES = 6  # 100/page -> up to 600 check runs; plenty for any PR
@@ -77,6 +81,8 @@ DETAIL_PREVIEW_LINES = 3
 SHOWN_LINE_CHARS = 220
 MAX_CHECK_PAGE_SIZE = 100
 FAILING = ("failed", "error", "timeout")
+# Exit 1 like gaia_gh.classify_failure's auth bucket; any other permanent API error is exit 2.
+AUTH_FAILURES = frozenset({HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN})
 # The one required check: ci.yml's aggregate over every gated job.
 GATE_CHECK = "quality-gate"
 # The app slug a commit status is filed under once it is read as a check.
@@ -205,11 +211,12 @@ class StackRow(TypedDict):
 
 @dataclass(frozen=True)
 class Repo:
-    """Where to ask, and how long to wait — the triple every fetch needs."""
+    """Where to ask, how long a `gh` subprocess may take, and the client every API read goes through."""
 
     owner: str
     name: str
     timeout_s: int
+    github: GitHub = field(compare=False, repr=False)
     # An artifact id names one immutable upload (a job's mid-run re-upload gets
     # a new id), so `--watch` downloads each verdict once, not on every poll.
     artifacts: dict[int, bytes] = field(default_factory=dict, compare=False, repr=False)
@@ -239,20 +246,6 @@ class Options:
     timeout_s: int
 
 
-def gh_bytes(args: list[str], timeout_s: int) -> tuple[int, bytes, str]:
-    """`gh` with undecoded stdout — artifact zips and ANSI-laden job logs.
-
-    gaia_gh.gh decodes as text, which mangles a zip; this is the binary twin.
-    """
-    try:
-        proc = subprocess.run(["gh", *args], capture_output=True, timeout=timeout_s, check=False)
-    except subprocess.TimeoutExpired:
-        return 124, b"", f"gh timed out after {timeout_s}s"
-    except FileNotFoundError:
-        return 127, b"", "gh CLI not found on PATH"
-    return proc.returncode, proc.stdout, proc.stderr.decode("utf-8", "replace")
-
-
 def slug(text: str) -> str:
     return SLUG_RE.sub("-", text.lower()).strip("-")
 
@@ -277,20 +270,8 @@ query($owner:String!,$name:String!,$number:Int!){
     reviewThreads(first:100){ totalCount nodes{ isResolved } }
   } } }
 """
-    payload = json.dumps(
-        {"query": query, "variables": {"owner": repo.owner, "name": repo.name, "number": pr_number}}
-    )
-    rc, out, err = gh(["api", "graphql", "--input", "-"], repo.timeout_s, stdin_text=payload)
-    if rc != 0:
-        eprint(f"ci:remote: POST /graphql (pull request state) failed:\n{err.strip()[:400]}")
-        sys.exit(classify_failure(err, rc))
-    data = json.loads(out)
-    if "errors" in data:
-        eprint(
-            f"ci:remote: GraphQL errors (pull request state): {json.dumps(data['errors'])[:300]}"
-        )
-        sys.exit(2)
-    return data["data"]["repository"]["pullRequest"]
+    variables = {"owner": repo.owner, "name": repo.name, "number": pr_number}
+    return repo.github.graphql(query, variables)["repository"]["pullRequest"]
 
 
 def fetch_pages(repo: Repo, path: str, key: str, query: str = "") -> tuple[list[dict], bool]:
@@ -299,11 +280,7 @@ def fetch_pages(repo: Repo, path: str, key: str, query: str = "") -> tuple[list[
     endpoint = repo.api(path)
     for page in range(1, MAX_CHECK_PAGES + 1):
         url = f"{endpoint}?{query}per_page={MAX_CHECK_PAGE_SIZE}&page={page}"
-        rc, out, err = gh(["api", url], repo.timeout_s)
-        if rc != 0:
-            eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
-            sys.exit(classify_failure(err, rc))
-        batch = json.loads(out).get(key, [])
+        batch = repo.github.get(url).get(key, [])
         items.extend(batch)
         if len(batch) < MAX_CHECK_PAGE_SIZE:
             return items, False
@@ -411,14 +388,9 @@ def fetch_run_verdicts(repo: Repo, run_id: int) -> list[Verdict]:
     Artifacts are downloadable while the run is still in progress — unlike job
     logs, which only materialise once the whole run completes.
     """
-    endpoint = repo.api(f"actions/runs/{run_id}/artifacts")
-    rc, out, err = gh(["api", f"{endpoint}?per_page=100"], repo.timeout_s)
-    if rc != 0:
-        eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
-        sys.exit(classify_failure(err, rc))
     wanted = [
         a
-        for a in json.loads(out).get("artifacts", [])
+        for a in run_artifacts(repo, run_id)
         if a.get("name", "").startswith(VERDICT_PREFIX) and not a.get("expired")
     ]
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL_FETCHES) as pool:
@@ -437,6 +409,12 @@ def fetch_run_verdicts(repo: Repo, run_id: int) -> list[Verdict]:
     return verdicts
 
 
+def run_artifacts(repo: Repo, run_id: int) -> list[dict]:
+    return repo.github.get(repo.api(f"actions/runs/{run_id}/artifacts?per_page=100")).get(
+        "artifacts", []
+    )
+
+
 def cached_artifact(repo: Repo, artifact_id: int) -> bytes:
     if artifact_id not in repo.artifacts:
         repo.artifacts[artifact_id] = fetch_artifact(repo, artifact_id)
@@ -444,12 +422,7 @@ def cached_artifact(repo: Repo, artifact_id: int) -> bytes:
 
 
 def fetch_artifact(repo: Repo, artifact_id: int) -> bytes:
-    endpoint = repo.api(f"actions/artifacts/{artifact_id}/zip")
-    rc, blob, err = gh_bytes(["api", endpoint], repo.timeout_s)
-    if rc != 0:
-        eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
-        sys.exit(classify_failure(err, rc))
-    return blob
+    return repo.github.get_bytes(repo.api(f"actions/artifacts/{artifact_id}/zip"))
 
 
 def matrix_index(check_name: str) -> int | None:
@@ -551,14 +524,9 @@ def fetch_run_shards(repo: Repo, run_id: int) -> list[Shard]:
     change to go read) or mutmut dying with nothing to show — two failures
     that need opposite reactions and read identically in a job log.
     """
-    endpoint = repo.api(f"actions/runs/{run_id}/artifacts")
-    rc, out, err = gh(["api", f"{endpoint}?per_page=100"], repo.timeout_s)
-    if rc != 0:
-        eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
-        sys.exit(classify_failure(err, rc))
     found = [
         a
-        for a in json.loads(out).get("artifacts", [])
+        for a in run_artifacts(repo, run_id)
         if a.get("name", "").startswith(MUTATION_LOG_PREFIX) and not a.get("expired")
     ]
     # `gh run rerun --failed` uploads a SECOND `mutation-log-2` into the same
@@ -722,14 +690,12 @@ def failure_tail(lines: list[str], limit: int = FALLBACK_TAIL_LINES) -> list[str
 
 def fetch_job_tail(repo: Repo, job_id: int) -> list[str]:
     endpoint = repo.api(f"actions/jobs/{job_id}/logs")
-    rc, blob, err = gh_bytes(["api", "--allow-escape-sequences", endpoint], repo.timeout_s)
-    if rc != 0 and "unknown flag" in err.lower():  # older gh has no such flag
-        rc, blob, err = gh_bytes(["api", endpoint], repo.timeout_s)
-    if rc != 0:
-        if "404" in err or "not found" in err.lower():
+    try:
+        blob = repo.github.get_bytes(endpoint)
+    except GitHubError as err:
+        if err.status == HTTPStatus.NOT_FOUND:
             return [f"(no log yet: GET {endpoint} -> 404; logs appear once the run completes)"]
-        eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
-        sys.exit(classify_failure(err, rc))
+        raise
     return failure_tail(clean_log(blob.decode("utf-8", "replace")))
 
 
@@ -871,16 +837,8 @@ def fetch_stack_states(repo: Repo, numbers: list[int]) -> dict[int, dict]:
     query = (
         f"query($owner:String!,$name:String!){{repository(owner:$owner,name:$name){{{aliases}}}}}"
     )
-    payload = json.dumps({"query": query, "variables": {"owner": repo.owner, "name": repo.name}})
-    rc, out, err = gh(["api", "graphql", "--input", "-"], repo.timeout_s, stdin_text=payload)
-    if rc != 0:
-        eprint(f"ci:remote: POST /graphql (stack rollups) failed:\n{err.strip()[:400]}")
-        sys.exit(classify_failure(err, rc))
-    data = json.loads(out)
-    if "errors" in data:
-        eprint(f"ci:remote: GraphQL errors (stack rollups): {json.dumps(data['errors'])[:300]}")
-        sys.exit(2)
-    repository = data["data"]["repository"] or {}
+    data = repo.github.graphql(query, {"owner": repo.owner, "name": repo.name})
+    repository = data["repository"] or {}
     return {pr["number"]: pr for pr in repository.values() if pr is not None}
 
 
@@ -1591,7 +1549,14 @@ def watch(repo: Repo, pr_number: int, branch: str, options: Options) -> tuple[di
     poll = 0
     while True:
         poll += 1
-        report, exit_code = snapshot_once(repo, pr_number, branch, options.with_stack)
+        try:
+            report, exit_code = snapshot_once(repo, pr_number, branch, options.with_stack)
+        except GitHubError as err:
+            if not err.transient or time.monotonic() + options.interval > deadline:
+                raise
+            eprint(f"watch[{poll}] {datetime.now(UTC).strftime('%H:%M:%S')}: skipped — {err}")
+            time.sleep(options.interval)
+            continue
         pending = report["counts"]["pending"]
         if not options.as_json:
             elapsed = int(time.monotonic() - (deadline - options.max_wait))
@@ -1623,8 +1588,15 @@ def main() -> int:
     args = build_parser().parse_args()
     options = parse_options(args)
     owner, name = parse_repo()
-    repo = Repo(owner, name, options.timeout_s)
+    try:
+        github = replace(GitHub.from_env(), timeout=float(options.timeout_s))
+        return run(Repo(owner, name, options.timeout_s, github), args.branch, options)
+    except GitHubError as err:
+        eprint(f"ci:remote: {err}")
+        return 1 if err.transient or err.status in AUTH_FAILURES else 2
 
+
+def run(repo: Repo, branch_arg: str | None, options: Options) -> int:
     if options.stack_only:
         report, exit_code = stack_snapshot(repo)
         if options.as_json:
@@ -1633,7 +1605,7 @@ def main() -> int:
             render_stack_only(report)
         return exit_code
 
-    branch = args.branch or current_branch()
+    branch = branch_arg or current_branch()
     resolved = resolve_pr(repo.slug, branch, options.timeout_s)
     if resolved is None:
         print(f"ci:remote: no open PR for '{branch}' — push first or check the branch name.")

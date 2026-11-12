@@ -67,3 +67,27 @@ def test_a_plain_403_is_a_refusal_and_not_retried(api: FakeGitHub, waits: list[f
     with pytest.raises(GitHubError, match="after 1 attempt"):
         _post(api)
     assert waits == []
+
+
+def test_a_download_redirect_does_not_carry_the_token(api: FakeGitHub) -> None:
+    """Blob storage answers a forwarded GitHub token with 401 (artifact 13967725027, 2026-11-12)."""
+    blob = api.url.replace("127.0.0.1", "localhost") + "/blob/zip"
+    api.on("GET", "/artifacts/9/zip$", Reply(302, None, headers={"Location": blob}))
+    api.on("GET", "/blob/zip$", Reply(200, b"PK\x03\x04"))
+
+    assert GitHub.from_env().get_bytes("repos/o/r/actions/artifacts/9/zip") == b"PK\x03\x04"
+    first, followed = api.requests
+    assert first.headers.get("Authorization") == "Bearer stub-token"
+    assert "Authorization" not in followed.headers
+
+
+def test_a_failure_says_whether_it_was_transient(api: FakeGitHub, waits: list[float]) -> None:
+    api.on("GET", "/outage$", Reply(503, {}))
+    api.on("GET", "/gone$", Reply(404, {}))
+
+    with pytest.raises(GitHubError) as outage:
+        GitHub.from_env().get("repos/o/r/outage")
+    with pytest.raises(GitHubError) as gone:
+        GitHub.from_env().get("repos/o/r/gone")
+    assert (outage.value.transient, outage.value.status) == (True, 503)
+    assert (gone.value.transient, gone.value.status) == (False, 404)
