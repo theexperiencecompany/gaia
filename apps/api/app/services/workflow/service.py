@@ -4,13 +4,17 @@ import uuid
 
 from pymongo.errors import DuplicateKeyError
 
+from app.constants.briefing import BriefingFrequency
+from app.constants.error_codes import BRIEFS_OFF
 from app.constants.log_tags import LogTag
 from app.constants.trigger_gates import GateAuthor, GateOwner
+from app.constants.workflows import WorkflowDelivery
 from app.db.chroma.chromadb import ChromaClient
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.caching import Cacheable
 from app.models.scheduler_models import DeactivationReason
 from app.models.trigger_gate_models import AuthoredGate
+from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     PublicWorkflowCard,
@@ -60,6 +64,32 @@ from .validators import WorkflowValidator
 
 _SLUG_SUFFIX_LEN = 6
 _SLUG_MAX_RETRIES = 5
+
+
+BRIEFS_OFF_FIX = "Choose Tell me now or Don't notify me, or turn briefs back on in Settings"
+
+
+class BriefsOffError(AppError):
+    """A workflow cannot send its results to the brief while the user has briefs off."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="Briefs are off, so a workflow cannot add its results to your brief",
+            why="With briefs off, its results would go nowhere",
+            fix=BRIEFS_OFF_FIX,
+            status_code=409,
+            code=BRIEFS_OFF,
+        )
+
+
+def delivers_to_a_missing_brief(
+    owner: AuthenticatedUser, delivery: WorkflowDelivery | None
+) -> bool:
+    """Report whether delivery is the brief while the owner has briefs turned off."""
+    return (
+        delivery is WorkflowDelivery.BRIEF
+        and owner.briefing_schedule.frequency is BriefingFrequency.OFF
+    )
 
 
 def _slug_suffix() -> str:
@@ -194,7 +224,9 @@ class WorkflowService:
         trigger_ids: list[str] = []
 
         # Every creator (route, tool, worker) lands here, so none can save a workflow for a non-user.
-        await require_owner(user_id)
+        owner = await require_owner(user_id)
+        if delivers_to_a_missing_brief(owner, request.delivery):
+            raise BriefsOffError()
 
         # A system workflow is one-per-user, keyed by system_workflow_key — hand
         # back the existing one instead of creating a near-duplicate.
@@ -608,6 +640,10 @@ class WorkflowService:
             current_workflow = await WorkflowService.get_workflow(workflow_id, user_id)
             if not current_workflow:
                 return None
+            if request.delivery is WorkflowDelivery.BRIEF and delivers_to_a_missing_brief(
+                await require_owner(user_id), request.delivery
+            ):
+                raise BriefsOffError()
 
             # `model_fields_set` is what the client actually sent — the same
             # distinction `model_dump(exclude_unset=True)` encoded, kept on the
