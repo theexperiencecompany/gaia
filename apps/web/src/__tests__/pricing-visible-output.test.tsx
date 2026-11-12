@@ -347,6 +347,26 @@ describe("pricing cards", () => {
     );
   });
 
+  it("the yearly chip claims the months free the gift card shows", () => {
+    const gift = giftCardPrice(FRIEND_GIFT);
+    const tabs = render(
+      <BillingPeriodTabs isYearly onChange={vi.fn()} gift={gift} />,
+    );
+    expect(visibleText(tabs.container)).toBe("MonthlyYearly3 months free");
+    cleanup();
+    const card = render(<PricingCards gift={gift} />);
+    expect(visibleText(card.container)).toContain("23 months free");
+    cleanup();
+    const monthlyOnly = giftCardPrice({
+      ...FRIEND_GIFT,
+      billing_cycles: ["monthly"],
+    });
+    const listTabs = render(
+      <BillingPeriodTabs isYearly onChange={vi.fn()} gift={monthlyOnly} />,
+    );
+    expect(visibleText(listTabs.container)).toBe("MonthlyYearly2 months free");
+  });
+
   it("never rounds a part month up into the chip", () => {
     // $271/yr saves $89: 2.97 months of $30, so two months free, not three.
     mockPlans = [PRO_MONTHLY, { ...PRO_YEARLY, amount: 27100 }];

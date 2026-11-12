@@ -17,7 +17,7 @@ from app.db.repositories.referral_codes import referral_code_repository
 from app.db.repositories.referrals import referral_repository
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
-from app.models.referral_models import ReferralDocument, ReferralRewardState, ReferredFriendStatus
+from app.models.referral_models import ReferralDocument, ReferralRewardState, ReferredFriendStanding
 from app.schemas.referrals import (
     ReferralFriendGift,
     ReferralGiftResponse,
@@ -44,13 +44,13 @@ _EARNED_STATES = frozenset(
 
 
 def _friend_entry(referral: ReferralDocument, first_name: str | None) -> ReferredFriend:
-    """List a friend; one whose first payment was refunded or disputed earned nothing, so shows as joined."""
-    revoked = referral.reward_state is ReferralRewardState.REVOKED
+    """List a friend; one whose first payment was refunded or disputed shows as refunded, with no payment date."""
+    if referral.refunded:
+        standing, paid_at = ReferredFriendStanding.REFUNDED, None
+    else:
+        standing, paid_at = ReferredFriendStanding(referral.status.value), referral.paid_at
     return ReferredFriend(
-        first_name=first_name,
-        status=ReferredFriendStatus.JOINED if revoked else referral.status,
-        joined_at=referral.joined_at,
-        paid_at=None if revoked else referral.paid_at,
+        first_name=first_name, status=standing, joined_at=referral.joined_at, paid_at=paid_at
     )
 
 
@@ -78,7 +78,9 @@ async def get_referral_overview(user_id: str) -> ReferralMeResponse:
         friend.id: friend
         for friend in await user_repository.find_by_ids([r.friend_user_id for r in referrals])
     }
-    rewards = Counter(r.reward_state for r in referrals if r.reward_state in _EARNED_STATES)
+    rewards = Counter(
+        r.reward_state for r in referrals if r.reward_state in _EARNED_STATES and not r.refunded
+    )
     return ReferralMeResponse(
         code=code,
         share_link=share_link(code),

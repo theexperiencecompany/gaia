@@ -17,6 +17,14 @@ class ReferredFriendStatus(StrEnum):
     PAID = "paid"
 
 
+class ReferredFriendStanding(StrEnum):
+    """How the referral page lists a friend: joined, paid, or refunded, a first payment taken back."""
+
+    JOINED = "joined"
+    PAID = "paid"
+    REFUNDED = "refunded"
+
+
 class ReferralRewardState(StrEnum):
     """What became of the free month a paying friend earned their referrer.
 
@@ -104,11 +112,14 @@ class ReferralDocument(MongoDocument):
     updated_at: datetime
 
     @property
+    def refunded(self) -> bool:
+        """Whether the friend's first payment was refunded or disputed, so it earns nothing."""
+        return self.revoke_reason is not None
+
+    @property
     def revocation_owed(self) -> bool:
         """Whether a refund or dispute asked for this reward back and it is not yet taken."""
-        return (
-            self.revoke_reason is not None and self.reward_state is not ReferralRewardState.REVOKED
-        )
+        return self.refunded and self.reward_state is not ReferralRewardState.REVOKED
 
 
 class ReferralUpdate(BaseModel):

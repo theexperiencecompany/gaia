@@ -15763,7 +15763,7 @@
             "title": "Paid At"
           },
           "status": {
-            "$ref": "#/components/schemas/ReferredFriendStatus"
+            "$ref": "#/components/schemas/ReferredFriendStanding"
           }
         },
         "required": [
@@ -15775,13 +15775,14 @@
         "title": "ReferredFriend",
         "type": "object"
       },
-      "ReferredFriendStatus": {
-        "description": "Where a referred friend is: signed up, or past their first successful payment.",
+      "ReferredFriendStanding": {
+        "description": "How the referral page lists a friend: joined, paid, or refunded, a first payment taken back.",
         "enum": [
           "joined",
-          "paid"
+          "paid",
+          "refunded"
         ],
-        "title": "ReferredFriendStatus",
+        "title": "ReferredFriendStanding",
         "type": "string"
       },
       "RegenerateStepsRequest": {

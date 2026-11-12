@@ -14,7 +14,7 @@ from app.models.referral_models import (
     ReferralInviteStatus,
     ReferralInviteSurface,
     ReferralSuggestionReason,
-    ReferredFriendStatus,
+    ReferredFriendStanding,
 )
 from app.schemas.common import ResponseModel
 
@@ -34,7 +34,7 @@ class ReferredFriend(ResponseModel):
     first_name: str | None = Field(
         description="The friend's first name, when their account has one"
     )
-    status: ReferredFriendStatus
+    status: ReferredFriendStanding
     joined_at: datetime
     paid_at: datetime | None = Field(
         default=None, description="When their first payment went through"

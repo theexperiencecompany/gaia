@@ -79,7 +79,11 @@ export function Payment() {
           {...MOTION_FADE_UP}
         >
           {gift && giftOnCycle && <FriendGiftBadge gift={gift} />}
-          <BillingPeriodTabs isYearly={isYearly} onChange={setIsYearly} />
+          <BillingPeriodTabs
+            isYearly={isYearly}
+            onChange={setIsYearly}
+            gift={giftPrice}
+          />
           <PricingCards
             durationIsMonth={!isYearly}
             hideEnterprise
