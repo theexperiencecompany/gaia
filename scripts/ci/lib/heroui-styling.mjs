@@ -107,7 +107,10 @@ function classStrings(node, out) {
     case "ObjectExpression":
       for (const prop of node.properties) {
         if (prop.type !== "ObjectProperty") continue;
-        if (prop.key.type === "StringLiteral") out.push(prop.key.value);
+        const key = prop.key.type === "StringLiteral" ? prop.key.value : prop.key.name;
+        // A variant call's className option ({ className: "bg-x" }) is a class list; other keys are cn() conditions.
+        if (key === "className" && !prop.computed) classStrings(prop.value, out);
+        else if (prop.key.type === "StringLiteral") out.push(prop.key.value);
         else if (prop.key.type === "Identifier" && !prop.computed) out.push(prop.key.name);
       }
       break;

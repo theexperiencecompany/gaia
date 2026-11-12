@@ -11,6 +11,7 @@
 # This file only ever shrinks. A line that no longer matches anything is
 # reported as removable and does not fail the gate.
 apps/web/src/app/[locale]/(landing)/cli/InstallPageClient.tsx:Tabs.Panel:pt-3
+apps/web/src/app/[locale]/(landing)/cli/InstallPageClient.tsx:Tabs:pb-0
 apps/web/src/app/[locale]/(landing)/marketplace/[slug]/IntegrationToolsCard.tsx:Card:bg-zinc-900/50
 apps/web/src/app/[locale]/(landing)/marketplace/[slug]/IntegrationToolsCard.tsx:Card:rounded-3xl
 apps/web/src/app/[locale]/(landing)/privacy/page.tsx:Link:text-blue-500
@@ -19,6 +20,8 @@ apps/web/src/components/browser/RecapSlideshow.tsx:GaiaButton:bg-black/45
 apps/web/src/components/browser/RecapSlideshow.tsx:GaiaButton:data-[hover=true]:bg-black/65
 apps/web/src/components/browser/RecapSlideshow.tsx:GaiaButton:text-white
 apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Body:py-4
+apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Dialog:bg-zinc-900
+apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Dialog:border-zinc-800
 apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Header:border-zinc-800
 apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Header:pb-3
 apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Heading:text-zinc-200
@@ -40,6 +43,7 @@ apps/web/src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx:S
 apps/web/src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx:TextArea:bg-zinc-800/30
 apps/web/src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx:TextArea:hover:bg-zinc-800/50
 apps/web/src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx:TextArea:placeholder:text-zinc-700
+apps/web/src/components/layout/sidebar/right-variants/IntegrationSidebar.tsx:Chip:text-zinc-300
 apps/web/src/components/layout/sidebar/right-variants/integration-sidebar/IntegrationAccountRenameModal.tsx:Modal.Header:pb-0
 apps/web/src/components/layout/sidebar/right-variants/integration-sidebar/IntegrationAccountRow.tsx:DropdownItem:text-danger
 apps/web/src/components/seo/ComparisonTable.tsx:Table.Cell:px-4
@@ -58,6 +62,8 @@ apps/web/src/components/shared/CollapsibleListWrapper.tsx:Accordion.Item:px-0
 apps/web/src/components/shared/CollapsibleListWrapper.tsx:Accordion:px-0
 apps/web/src/components/shared/IntegrationConnectCard.tsx:Button:px-4
 apps/web/src/components/shared/KeyboardShortcutsModal.tsx:Modal.Body:pb-6
+apps/web/src/components/shared/KeyboardShortcutsModal.tsx:Modal.Dialog:bg-zinc-900/90
+apps/web/src/components/shared/KeyboardShortcutsModal.tsx:Modal.Dialog:rounded-2xl
 apps/web/src/components/ui/holo-card/HoloCardEditor.tsx:Popover.Content:bg-zinc-800
 apps/web/src/components/ui/holo-card/HoloCardEditor.tsx:Popover.Content:p-4
 apps/web/src/config/openui/components/CopyableContentView.tsx:Button:p-0
@@ -86,6 +92,7 @@ apps/web/src/features/calendar/components/NaturalLanguageDateInput.tsx:InputGrou
 apps/web/src/features/calendar/components/NaturalLanguageDateInput.tsx:InputGroup:hover:bg-zinc-800/50
 apps/web/src/features/chat/components/bubbles/bot/BrowserTaskSection.tsx:Chip:bg-zinc-700
 apps/web/src/features/chat/components/bubbles/bot/BrowserTaskSection.tsx:Separator:bg-zinc-700/50
+apps/web/src/features/chat/components/bubbles/bot/DeepResearchResultsTabs.tsx:Tabs:p-0
 apps/web/src/features/chat/components/bubbles/bot/FileArtifactSection.tsx:Card:bg-zinc-900/70
 apps/web/src/features/chat/components/bubbles/bot/FileArtifactSection.tsx:Card:border-zinc-700/80
 apps/web/src/features/chat/components/bubbles/bot/FileArtifactSection.tsx:Card:hover:bg-zinc-900
@@ -100,6 +107,7 @@ apps/web/src/features/chat/components/bubbles/bot/NotificationListSection.tsx:Ch
 apps/web/src/features/chat/components/bubbles/bot/NotificationListSection.tsx:Chip:text-blue-400
 apps/web/src/features/chat/components/bubbles/bot/RateLimitCard.tsx:Separator:bg-zinc-700/50
 apps/web/src/features/chat/components/bubbles/bot/SearchResultsTabs.tsx:Popover.Content:bg-transparent
+apps/web/src/features/chat/components/bubbles/bot/SearchedImageDialog.tsx:Modal.Dialog:text-foreground
 apps/web/src/features/chat/components/bubbles/bot/TodoProgressSection.tsx:AccordionItem:px-2
 apps/web/src/features/chat/components/bubbles/bot/UnifiedToolThread.tsx:Accordion.Trigger:py-0
 apps/web/src/features/chat/components/code-block/CustomAnchor.tsx:Tooltip.Content:border-zinc-800
@@ -125,6 +133,9 @@ apps/web/src/features/faq/components/FAQPageClient.tsx:Accordion:p-0!
 apps/web/src/features/first-steps/components/FirstStepsWidget.tsx:ProgressBar.Fill:bg-success
 apps/web/src/features/first-steps/components/FirstStepsWidget.tsx:ProgressBar.Track:bg-zinc-700
 apps/web/src/features/integrations/components/BearerTokenModal.tsx:Modal.Dialog:rounded-2xl
+apps/web/src/features/integrations/components/IntegrationInstructionsModal.tsx:Modal.Dialog:bg-zinc-900/95
+apps/web/src/features/integrations/components/IntegrationInstructionsModal.tsx:Modal.Dialog:border-zinc-800
+apps/web/src/features/integrations/components/IntegrationInstructionsModal.tsx:Modal.Dialog:rounded-2xl
 apps/web/src/features/integrations/components/IntegrationInstructionsModal.tsx:Tabs.Panel:pb-0
 apps/web/src/features/integrations/components/IntegrationInstructionsModal.tsx:Tabs.Panel:px-0
 apps/web/src/features/integrations/components/IntegrationPermissionsModal.tsx:Modal.Body:pb-6
@@ -167,7 +178,10 @@ apps/web/src/features/landing/components/demo/dashboard-demo/DemoDashboardView.t
 apps/web/src/features/landing/components/demo/dashboard-demo/DemoDashboardView.tsx:Chip:text-zinc-400
 apps/web/src/features/landing/components/demo/founders-demo/IntegrationStrip.tsx:Chip:bg-zinc-800
 apps/web/src/features/landing/components/demo/founders-demo/IntegrationStrip.tsx:Chip:text-zinc-300
+apps/web/src/features/landing/components/demo/integrations-demo/DemoIntegrationsView.tsx:Chip:text-zinc-300
 apps/web/src/features/landing/components/demo/integrations-demo/DemoIntegrationsView.tsx:Chip:text-zinc-400
+apps/web/src/features/landing/components/demo/integrations-demo/DemoIntegrationsView.tsx:InputGroup:bg-zinc-800/50
+apps/web/src/features/landing/components/demo/integrations-demo/DemoIntegrationsView.tsx:InputGroup:border-zinc-700
 apps/web/src/features/landing/components/demo/todos-demo/DemoTodosView.tsx:Chip:px-1
 apps/web/src/features/landing/components/demo/todos-demo/DemoTodosView.tsx:Chip:px-2
 apps/web/src/features/landing/components/demo/todos-demo/DemoTodosView.tsx:Chip:style.color
@@ -202,6 +216,7 @@ apps/web/src/features/pricing/components/FAQAccordion.tsx:Accordion:p-0!
 apps/web/src/features/pricing/components/UpgradeModal.tsx:Modal.CloseTrigger:hover:bg-zinc-800
 apps/web/src/features/pricing/components/UpgradeModal.tsx:Modal.CloseTrigger:hover:text-white
 apps/web/src/features/pricing/components/UpgradeModal.tsx:Modal.CloseTrigger:text-zinc-400
+apps/web/src/features/pricing/components/UpgradeModal.tsx:Modal.Dialog:p-4
 apps/web/src/features/pricing/components/UpgradeModalModes.tsx:Button:data-[hover=true]:bg-transparent
 apps/web/src/features/pricing/components/UpgradeModalModes.tsx:Button:data-[hover=true]:text-zinc-300
 apps/web/src/features/pricing/components/UpgradeModalModes.tsx:Button:p-0
@@ -221,6 +236,7 @@ apps/web/src/features/settings/components/SettingsMenu.tsx:Dropdown.Item:text-zi
 apps/web/src/features/settings/components/VoiceTable.tsx:GaiaButton:hover:text-yellow-300
 apps/web/src/features/settings/components/VoiceTable.tsx:GaiaButton:text-yellow-400
 apps/web/src/features/settings/components/composio/ComposioCatalogModal.tsx:Modal.Body:pb-6
+apps/web/src/features/settings/components/composio/ComposioCatalogModal.tsx:Modal.Dialog:rounded-2xl
 apps/web/src/features/settings/components/desktop/AppIconPicker.tsx:Button:p-1
 apps/web/src/features/settings/components/desktop/AppIconPicker.tsx:Button:rounded-[24%]
 apps/web/src/features/settings/components/desktop/ShortcutRecorder.tsx:Kbd:bg-zinc-700/80
@@ -228,6 +244,7 @@ apps/web/src/features/settings/components/providers/ProviderFeatureList.tsx:Acco
 apps/web/src/features/settings/components/providers/ProviderFeatureList.tsx:Accordion:rounded-2xl
 apps/web/src/features/settings/components/usage/UsageHeatmap.tsx:Chip.Label:px-2
 apps/web/src/features/settings/components/usage/UsageHeatmap.tsx:Chip.Label:text-orange-400
+apps/web/src/features/settings/components/usage/UsageHeatmap.tsx:Chip:bg-orange-500/15
 apps/web/src/features/settings/components/usage/UsageHeatmap.tsx:GaiaButton:bg-zinc-900/60
 apps/web/src/features/settings/components/usage/UsageHeatmap.tsx:GaiaButton:data-[hover=true]:bg-zinc-800/70
 apps/web/src/features/settings/components/usage/UsageHeatmap.tsx:GaiaButton:p-4
@@ -251,9 +268,13 @@ apps/web/src/features/thanks/components/ToolCard.tsx:Tooltip.Content:p-0
 apps/web/src/features/thanks/components/ToolCard.tsx:Tooltip.Content:rounded-2xl
 apps/web/src/features/thanks/components/ToolCard.tsx:Tooltip.Content:text-white
 apps/web/src/features/todo/components/TodoItemMeta.tsx:Chip:style.color
+apps/web/src/features/todo/components/TodoSidebarEditors.tsx:Checkbox:bg-zinc-900
+apps/web/src/features/todo/components/TodoSidebarEditors.tsx:Checkbox:border-zinc-500
 apps/web/src/features/todo/components/TodoSidebarEditors.tsx:TextArea:bg-zinc-800/30
 apps/web/src/features/todo/components/TodoSidebarEditors.tsx:TextArea:hover:bg-zinc-800/50
 apps/web/src/features/todo/components/fields/BaseFieldChip.tsx:Popover.Content:rounded-2xl
+apps/web/src/features/todo/components/fields/LabelsFieldChip.tsx:Input:focus:bg-zinc-700
+apps/web/src/features/todo/components/fields/LabelsFieldChip.tsx:Input:hover:bg-zinc-700
 apps/web/src/features/todo/components/fields/ScheduledFieldChip.tsx:Button:text-red-400
 apps/web/src/features/todo/components/fields/ScheduledFieldChip.tsx:Separator:bg-zinc-700
 apps/web/src/features/use-cases/components/UseCaseSection.tsx:Chip:bg-white/5!
@@ -267,6 +288,7 @@ apps/web/src/features/workflows/components/shared/UnifiedWorkflowCard.tsx:Toolti
 apps/web/src/features/workflows/components/shared/UnifiedWorkflowCard.tsx:Tooltip.Content:rounded-3xl
 apps/web/src/features/workflows/components/shared/WorkflowCardComponents.tsx:Tooltip.Content:bg-zinc-800
 apps/web/src/features/workflows/components/workflow-modal/WorkflowIconPicker.tsx:GaiaButton:style.backgroundColor
+apps/web/src/features/workflows/components/workflow-modal/WorkflowIconPicker.tsx:Input:bg-transparent
 apps/web/src/features/workflows/components/workflow-modal/WorkflowIconPicker.tsx:Popover.Content:bg-zinc-800
 apps/web/src/features/workflows/components/workflow-modal/WorkflowModalFormView.tsx:Separator:bg-zinc-700
 apps/web/src/features/workflows/triggers/components/GateSkipList.tsx:Button:py-1.5
