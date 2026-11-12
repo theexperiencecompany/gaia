@@ -337,6 +337,7 @@ class TestFraming:
     def test_the_framing_never_reaches_the_user(self) -> None:
         content = as_interjection(InboxEntry(id="t1", text="also check spam")).content
 
+        assert isinstance(content, str)
         stripped = strip_internal_agent_tags(content)
         assert "also check spam" in stripped
         assert "user_interjection" not in stripped

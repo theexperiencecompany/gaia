@@ -9,7 +9,7 @@
  * against.
  */
 
-import type { PlatformName } from "@gaia/shared/bots";
+import { allCommands, type PlatformName } from "@gaia/shared/bots";
 import { HarnessAdapter } from "./adapter";
 import { isEmulatablePlatform, resolveEmulation } from "./emulation";
 import type { Scenario, ScenarioAssertion } from "./scenario.types";
@@ -146,7 +146,8 @@ async function bootAdapter(
     consumesOutbound,
   });
   try {
-    await adapter.boot([]);
+    // The same commands the real bots register, so /stop, /new and /help behave as they do live.
+    await adapter.boot(allCommands);
   } catch (error: unknown) {
     // Boot can fail after the outbound consumer is up; left running it keeps
     // the process alive and silently takes another run's replies.
