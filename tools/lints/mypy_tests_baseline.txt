@@ -122,7 +122,6 @@ apps/api/tests/unit/agents/test_subagent_landing_wake.py	attr-defined
 apps/api/tests/unit/agents/test_subagent_landing_wake.py	typeddict-item
 apps/api/tests/unit/agents/test_vision_describe.py	arg-type
 apps/api/tests/unit/agents/test_vision_describe.py	attr-defined
-apps/api/tests/unit/agents/test_workflow_platform_delivery.py	arg-type
 apps/api/tests/unit/agents/tools/coding/test_edit_tool.py	arg-type
 apps/api/tests/unit/agents/tools/coding/test_edit_tool.py	misc
 apps/api/tests/unit/agents/tools/coding/test_edit_tool.py	return-value

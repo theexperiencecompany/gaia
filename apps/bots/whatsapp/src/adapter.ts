@@ -722,7 +722,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         async (newText: string) => {
           const sent = await this.sendWhatsAppText(waId, newText);
           lastEditFn = sent.edit;
-          return sent.edit;
+          return { edit: sent.edit };
         },
         // onAuthError
         async (authUrl: string) => {

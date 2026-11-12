@@ -1,5 +1,3 @@
-import { NEW_MESSAGE_BREAK_TOKEN } from "./messageBreakUtils";
-
 /**
  * Minimal structural type for @openuidev/react-lang's Library.
  * Duck-typed to avoid a hard dep on a specific openui version.
@@ -113,63 +111,23 @@ export function parseOpenUISegments(
   return segments.filter((s) => s.content.trim().length > 0);
 }
 
-/**
- * Split assistant text into bubbles on NEW_MESSAGE_BREAK.
- *
- * The single splitter every surface uses. Breaks inside :::openui / ::: blocks
- * are ignored so a fence is never bisected across two bubbles; text with no
- * fence in it splits on the plain token. It lives here rather than beside the
- * token constant because fence awareness is what makes it correct, and that
- * knowledge belongs to this module.
- */
-export function splitMessageByBreaks(content: string): string[] {
-  const BREAK = NEW_MESSAGE_BREAK_TOKEN;
-  if (!content?.trim()) return [];
-  if (!content.includes(BREAK)) return [content];
-  if (!content.includes(OPENUI_OPEN)) {
-    return content
-      .split(BREAK)
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0);
-  }
-
-  const fenceRanges: [number, number][] = [];
+/** Character ranges `[start, end)` of every :::openui block, an unterminated one running to the end. */
+export function openUIBlockRanges(text: string): [number, number][] {
+  const ranges: [number, number][] = [];
   let search = 0;
-  while (search < content.length) {
-    const openIdx = content.indexOf(OPENUI_OPEN, search);
+  while (search < text.length) {
+    const openIdx = text.indexOf(OPENUI_OPEN, search);
     if (openIdx === -1) break;
-    const closeStart = findFenceCloseStart(
-      content,
-      openIdx + OPENUI_OPEN.length,
-    );
-    if (closeStart !== -1) {
-      const closeIdx = closeStart + OPENUI_CLOSE.length;
-      fenceRanges.push([openIdx, closeIdx]);
-      search = closeIdx;
-    } else {
-      fenceRanges.push([openIdx, content.length]);
+    const closeStart = findFenceCloseStart(text, openIdx + OPENUI_OPEN.length);
+    if (closeStart === -1) {
+      ranges.push([openIdx, text.length]);
       break;
     }
+    const closeIdx = closeStart + OPENUI_CLOSE.length;
+    ranges.push([openIdx, closeIdx]);
+    search = closeIdx;
   }
-
-  const isInsideFence = (pos: number) =>
-    fenceRanges.some(([s, e]) => pos >= s && pos < e);
-
-  const parts: string[] = [];
-  let cursor = 0;
-  let breakIdx = content.indexOf(BREAK, cursor);
-  while (breakIdx !== -1) {
-    if (!isInsideFence(breakIdx)) {
-      const part = content.slice(cursor, breakIdx).trim();
-      if (part) parts.push(part);
-      cursor = breakIdx + BREAK.length;
-    }
-    breakIdx = content.indexOf(BREAK, breakIdx + BREAK.length);
-  }
-  const tail = content.slice(cursor).trim();
-  if (tail) parts.push(tail);
-
-  return parts;
+  return ranges;
 }
 
 function splitTopLevelArgs(s: string): string[] {

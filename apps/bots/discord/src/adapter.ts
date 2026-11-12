@@ -380,27 +380,19 @@ export class DiscordAdapter extends BaseBotAdapter {
     const isDm = !interaction.guild;
 
     await interaction.deferReply();
-    let isFirstMessage = true;
-    let lastFollowUp: Awaited<ReturnType<typeof interaction.followUp>> | null =
-      null;
 
     await handleStreamingChat(
       this.gaia,
       { message, platform: "discord", platformUserId: userId, channelId, isDm },
       async (content: string) => {
-        if (isFirstMessage) {
-          await interaction.editReply({ content });
-        } else if (lastFollowUp) {
-          await lastFollowUp.edit({ content });
-        }
+        await interaction.editReply({ content });
       },
       async (content: string) => {
-        lastFollowUp = await interaction.followUp({ content });
-        isFirstMessage = false;
-        return async (updatedText: string) => {
-          if (lastFollowUp) {
-            await lastFollowUp.edit({ content: updatedText });
-          }
+        const followUp = await interaction.followUp({ content });
+        return {
+          edit: async (updatedText: string) => {
+            await followUp.edit({ content: updatedText });
+          },
         };
       },
       async (authUrl: string) => {
@@ -412,11 +404,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           await interaction.user.send(
             renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
           );
-          if (isFirstMessage) {
-            await interaction.editReply({ content: publicContent });
-          } else if (lastFollowUp) {
-            await lastFollowUp.edit({ content: publicContent });
-          }
+          await interaction.editReply({ content: publicContent });
         } catch (dmError) {
           wideLog.warning("auth_dm_failed", sanitizeErrorForLog(dmError));
           await interaction.followUp({
@@ -426,17 +414,11 @@ export class DiscordAdapter extends BaseBotAdapter {
             ),
             ephemeral: true,
           });
-          if (isFirstMessage) {
-            await interaction.editReply({ content: publicContentFallback });
-          }
+          await interaction.editReply({ content: publicContentFallback });
         }
       },
       async (errMsg: string) => {
-        if (isFirstMessage) {
-          await interaction.editReply({ content: errMsg });
-        } else if (lastFollowUp) {
-          await lastFollowUp.edit({ content: errMsg });
-        }
+        await interaction.editReply({ content: errMsg });
       },
       STREAMING_DEFAULTS.discord,
       await this.analyticsFor(userId),
@@ -532,9 +514,10 @@ export class DiscordAdapter extends BaseBotAdapter {
       async (text: string) => {
         replied = true;
         const followUp = await interaction.followUp({ content: text });
-        lastFollowUp = followUp;
-        return async (updated: string) => {
-          await followUp.edit({ content: updated });
+        return {
+          edit: async (updated: string) => {
+            await followUp.edit({ content: updated });
+          },
         };
       },
       async (authUrl: string) => {
@@ -683,9 +666,11 @@ export class DiscordAdapter extends BaseBotAdapter {
         },
         async (content: string) => {
           stopTyping();
-          currentMsg = await send(content);
-          return async (updatedText: string) => {
-            await currentMsg?.edit(updatedText);
+          const sent = await send(content);
+          return {
+            edit: async (updatedText: string) => {
+              await sent.edit(updatedText);
+            },
           };
         },
         async (authUrl: string) => {
@@ -937,9 +922,11 @@ export class DiscordAdapter extends BaseBotAdapter {
         sendOrEdit,
         async (text: string) => {
           stopTyping();
-          currentMsg = await send(text);
-          return async (updatedText: string) => {
-            await currentMsg?.edit(updatedText);
+          const sent = await send(text);
+          return {
+            edit: async (updatedText: string) => {
+              await sent.edit(updatedText);
+            },
           };
         },
         async (authUrl: string) => {

@@ -1,16 +1,16 @@
 /**
  * Shared streaming chat handler for all bot platforms.
  *
- * This module eliminates ~250 lines of duplicated streaming logic across
- * Discord, Slack, Telegram, and WhatsApp bots. Each bot provides thin callbacks:
+ * Each bot provides thin callbacks:
  *
- *   editMessage   - Update the "Thinking..." message with new content
- *   onAuthError   - Show auth URL when user isn't linked
- *   onGenericError - Show formatted error message
+ *   editMessage    - Update the "Thinking..." placeholder, and only it
+ *   sendNewMessage - Post a message, returning its own edit (and delete) handle
+ *   onAuthError    - Show auth URL when user isn't linked
+ *   onGenericError - Show formatted error message in the placeholder
  *
- * The shared function handles: text accumulation, throttled message edits
- * (to respect platform rate limits), cursor indicator display, timer
- * cleanup, and error routing through formatBotError.
+ * The shared function runs the turn through the delivery state machine
+ * (bubble-delivery.ts), throttles live previews to the platform's edit rate,
+ * and routes errors through formatBotError.
  *
  * Usage in a bot command file:
  *   import { handleStreamingChat, STREAMING_DEFAULTS } from "@gaia/shared";
@@ -30,7 +30,18 @@ import {
   isLostReply,
 } from "../delivery-failures";
 import type { ChatRequest, PlatformName } from "../types";
-import { segmentIntoBubbles } from "./bubbles";
+import {
+  initialDeliveryState,
+  PLACEHOLDER_SLOT,
+  stepDelivery,
+} from "./bubble-delivery";
+import type {
+  DeliveryConfig,
+  DeliveryEvent,
+  DeliveryOp,
+  MessageSlot,
+} from "./bubble-delivery.types";
+import { BUBBLE_PAUSE_MS } from "./bubbles";
 import { isMessageGoneError, retryAfterMs } from "./delivery-errors";
 import { BOT_FAILURE_REASON, recordBotFailure } from "./failure-reasons";
 import {
@@ -49,7 +60,7 @@ import {
   type ReactionOutcome,
   reactionDeliveredProperties,
 } from "./reaction-outcome";
-import { chunkResponse, PLATFORM_LIMITS } from "./text";
+import { sleep } from "./timeout";
 import { wideLog, withWideEvent } from "./wide-events";
 
 const logger = createBotLogger("shared", "streaming");
@@ -81,7 +92,12 @@ export interface StreamingOptions {
 }
 
 export type MessageEditor = (text: string) => Promise<void>;
-export type NewMessageSender = (text: string) => Promise<MessageEditor>;
+/** A message the streamer posted: editable, and deletable where the platform lets a bot unsend. */
+export interface SentBubble {
+  edit: MessageEditor;
+  delete?: () => Promise<void>;
+}
+export type NewMessageSender = (text: string) => Promise<SentBubble>;
 /** Clears what the adapter showed while waiting, for a turn that ended with no reply. */
 export type NoReplyHandler = () => Promise<void>;
 
@@ -130,7 +146,8 @@ async function _handleStream(
   editMessage: MessageEditor,
   sendNewMessage: NewMessageSender,
   onAuthError: ((authUrl: string) => Promise<void>) | null,
-  onGenericError: (formattedError: string, cause: unknown) => Promise<void>,
+  onGenericError: (formattedError: string) => Promise<void>,
+  recordFailure: (cause: unknown) => void,
   options: StreamingOptions,
   onReaction: ReactionHandler | undefined,
   onNoReply: NoReplyHandler | undefined,
@@ -141,240 +158,176 @@ async function _handleStream(
   // platform converter HERE, at the single chokepoint, so adapters receive
   // already-converted text and never call convertTo<Platform>Markdown inline.
   const render = PLATFORM_MARKDOWN[platform];
-  const emitGenericError = (text: string, cause: unknown) =>
-    onGenericError(render(text), cause);
-  const wrappedEditMessage: MessageEditor = (text) => editMessage(render(text));
-  const wrappedSendNewMessage: NewMessageSender = async (text) => {
-    const editor = await sendNewMessage(render(text));
-    return (updatedText) => editor(render(updatedText));
-  };
-
-  const limit = PLATFORM_LIMITS[platform];
-  /** Rendered length — the size the platform actually enforces. */
-  const measure = (text: string): number => render(text).length;
+  const config: DeliveryConfig = { live: streaming, platform, render };
+  let delivery = initialDeliveryState();
+  /** Every message this turn put on screen, by slot; the placeholder's delete is the adapter's clear-up. */
+  const messages = new Map<MessageSlot, SentBubble>([
+    [PLACEHOLDER_SLOT, { edit: editMessage, delete: onNoReply }],
+  ]);
 
   let lastEditTime = 0;
   let editTimer: ReturnType<typeof setTimeout> | null = null;
-  /** Text streamed for the assistant message currently in flight. */
-  let pending = "";
   let streamDone = false;
-  let currentEditor = wrappedEditMessage;
-  /** What the live bubble currently shows, so no-op edits are skipped. */
-  let shownText = "";
-  /** True once the live bubble holds finished text and must not be rewritten. */
-  let bubbleSealed = false;
-  /** Position of the next finished bubble in this reply, for the delivery event. */
-  let bubbleIndex = 0;
-  /**
-   * True while the live bubble holds text the backend has since retracted (a
-   * MOMENT-1 handoff preamble). It stays on screen — no platform lets us delete
-   * a message — until the real reply overwrites it in place.
-   */
-  let bubbleProvisional = false;
   /** True once the stream's own error handler has told the user about a failure. */
   let failureReported = false;
 
-  // Serialization queue to prevent concurrent Telegram API calls
-  // which cause out-of-order message updates
+  // One platform call at a time, in order: concurrent edits land out of order.
   let opQueue: Promise<void> = Promise.resolve();
   const enqueue = (fn: () => Promise<void>): Promise<void> => {
     opQueue = opQueue.then(fn, fn);
     return opQueue;
   };
 
-  /**
-   * Delivers one finished bubble. It lands in the live bubble if that one is
-   * still open, otherwise in a new message. This is the only path that emits
-   * final text, and it never truncates — oversized input is chunked before it
-   * gets here.
-   */
-  const noteDelivered = (method: "edit" | "new", chars: number): void => {
-    logger.info("bubble_delivered", { method, index: bubbleIndex, chars });
+  const post = async (slot: MessageSlot, text: string): Promise<void> => {
+    messages.set(slot, await sendNewMessage(render(text)));
+    logger.info("bubble_delivered", {
+      method: "new",
+      slot,
+      chars: text.length,
+    });
   };
 
   /**
-   * Puts finished text into the live bubble, reacting to WHY an edit failed.
-   *
-   * Every failure used to take the same branch — re-send the whole text as a
-   * new message — which on a rate limit or a network blip left the original
-   * bubble on screen and posted the reply a second time underneath it. Only a
-   * message that is genuinely gone justifies a new one.
+   * Edits a message, reacting to WHY an edit failed: only a message that is
+   * genuinely gone justifies posting the text again, since re-sending on a rate
+   * limit or a network blip delivered the reply twice.
    */
-  const editFinished = async (text: string): Promise<void> => {
+  const editSlot = async (slot: MessageSlot, text: string): Promise<void> => {
+    const message = messages.get(slot);
+    if (!message) {
+      await post(slot, text);
+      return;
+    }
     try {
-      await currentEditor(text);
-      noteDelivered("edit", text.length);
+      await message.edit(render(text));
       return;
     } catch (err) {
       if (isMessageGoneError(err)) {
-        // Nothing to edit any more, and this is the only copy of the text.
         logger.info("stream_edit_recovered", sanitizeErrorForLog(err));
-        currentEditor = await wrappedSendNewMessage(text);
-        noteDelivered("new", text.length);
+        await post(slot, text);
         return;
       }
       const waitMs = retryAfterMs(err);
-      if (waitMs !== null) {
-        await new Promise((resolve) => setTimeout(resolve, waitMs));
-      }
+      if (waitMs !== null) await sleep(waitMs);
       try {
-        await currentEditor(text);
-        noteDelivered("edit", text.length);
+        await message.edit(render(text));
       } catch (retryErr) {
-        // Keep the bubble that is already there. Re-sending is what
-        // double-posted the reply, and the user is not better off with two.
         logger.info("stream_edit_skipped", {
           ...sanitizeErrorForLog(retryErr),
-          bubble_index: bubbleIndex,
+          slot,
         });
       }
     }
   };
 
-  const deliverBubble = async (text: string): Promise<void> => {
-    if (!text) return;
-    if (bubbleSealed) {
-      currentEditor = await wrappedSendNewMessage(text);
-      noteDelivered("new", text.length);
-    } else if (text !== shownText) {
-      await editFinished(text);
+  const deleteSlot = async (slot: MessageSlot): Promise<void> => {
+    const message = messages.get(slot);
+    messages.delete(slot);
+    if (!message) return;
+    if (!message.delete) {
+      throw new Error(
+        `${platform} cannot delete a bot message, so it must not stream`,
+      );
     }
-    shownText = text;
-    bubbleSealed = true;
-    bubbleProvisional = false;
-    bubbleIndex += 1;
-  };
-
-  /**
-   * Shows in-progress text in the live bubble. Never final, so a failed edit is
-   * harmless — the next preview or the finished-bubble delivery supersedes it.
-   */
-  const previewBubble = async (text: string): Promise<void> => {
-    if (!text || (!bubbleSealed && text === shownText)) return;
-    // A preview is best effort and is queued without being awaited, so it must never reject:
-    // a failed preview would otherwise surface as an unhandled rejection, or fail the final
-    // delivery that awaits the queue.
     try {
-      if (bubbleSealed) {
-        currentEditor = await wrappedSendNewMessage(text);
-        bubbleSealed = false;
-      } else {
-        await currentEditor(text);
-        bubbleProvisional = false;
-      }
-      shownText = text;
+      await message.delete();
     } catch (err) {
-      // Transient: the live bubble may have been deleted or the interaction expired — the next
-      // edit or final delivery recovers. But a persistent edit problem is exactly how a bot
-      // goes quiet without failing, so this is a visible line, not a debug one.
+      // The retracted text stays on screen; nothing else can take it back.
+      wideLog.warning("bubble_delete_failed", {
+        ...sanitizeErrorForLog(err),
+        slot,
+      });
+    }
+  };
+
+  const runOp = async (op: DeliveryOp): Promise<void> => {
+    switch (op.kind) {
+      case "pause":
+        await sleep(BUBBLE_PAUSE_MS);
+        return;
+      case "send":
+        await post(op.slot, op.text);
+        return;
+      case "edit":
+        await editSlot(op.slot, op.text);
+        return;
+      case "delete":
+        await deleteSlot(op.slot);
+        return;
+      default: {
+        const unhandled: never = op;
+        return unhandled;
+      }
+    }
+  };
+
+  /** Runs one stream event through the delivery machine, then its platform operations, in order. */
+  const apply = (event: DeliveryEvent): Promise<void> =>
+    enqueue(async () => {
+      const step = stepDelivery(delivery, event, config);
+      delivery = step.state;
+      if (event.kind === "boundary" && event.discarded) {
+        logger.info("bubble_discarded", {
+          deleted: step.ops.filter((op) => op.kind === "delete").length,
+        });
+      }
+      for (const op of step.ops) await runOp(op);
+    });
+
+  /** A live preview is best effort: the next one, or the bubble's sealing, supersedes it. */
+  const preview = (): void => {
+    lastEditTime = Date.now();
+    apply({ kind: "tick" }).catch((err: unknown) => {
       logger.info("stream_edit_skipped", sanitizeErrorForLog(err));
+    });
+  };
+
+  const clearEditTimer = (): void => {
+    if (editTimer) {
+      clearTimeout(editTimer);
+      editTimer = null;
     }
   };
 
-  /**
-   * The messages a finished assistant message should be sent as: the model's
-   * own sentinel-separated bubbles, then chunked to the platform's limit.
-   * A reply with no sentinel ships as one message: the model owns the splits
-   * (see Bubbles in the comms prompt), and nothing here invents them.
-   */
-  const bubblesFor = (message: string): string[] =>
-    segmentIntoBubbles(message).flatMap((bubble) =>
-      chunkResponse(bubble, platform, render),
-    );
-
-  /**
-   * What the live bubble should show for text streamed so far: bubbles this message will
-   * eventually split into, rejoined — stripping sentinels (whole, half-received, or near-miss
-   * like ``<NEW_LINE_BREAK>``) so the preview is a prefix of what's finally delivered.
-   *
-   * Capped at the platform's render limit: an in-flight preview can outgrow it before the split
-   * boundary, and an oversized edit is rejected outright, freezing the bubble. Nothing is lost —
-   * the full text stays in ``pending`` and goes out, split, at the boundary.
-   */
-  const previewFor = (streamed: string): string => {
-    const text = segmentIntoBubbles(streamed).join("\n\n");
-    if (measure(text) <= limit) return text;
-    return chunkResponse(text, platform, render)[0] ?? "";
-  };
-
-  /**
-   * Delivers the assistant message that just ended, as the bubbles it splits into: the first
-   * replaces the live preview, the rest are new messages.
-   *
-   * **Nothing is sealed before this point.** Segmenting mid-stream (on every sentinel/overflow)
-   * used to seal bubbles while still in flight; since a retraction can only reopen the ONE bubble
-   * being edited, a style-guard rewrite left already-sealed bubbles on screen and delivered the
-   * reply twice. Waiting for the boundary lets a retraction take back the whole message.
-   */
-  const flushMessage = async (): Promise<void> => {
-    // Take the text out of `pending` FIRST, then deliver it — the stream callback keeps
-    // appending while a delivery is in flight, so assigning after an await would overwrite,
-    // silently dropping whatever arrived in the meantime.
-    const message = pending;
-    pending = "";
-    for (const bubble of bubblesFor(message)) {
-      await deliverBubble(bubble);
+  const schedulePreview = (): void => {
+    if (streamDone || !streaming) return;
+    const sinceLast = Date.now() - lastEditTime;
+    if (sinceLast >= editIntervalMs) {
+      clearEditTimer();
+      preview();
+    } else if (!editTimer) {
+      editTimer = setTimeout(() => {
+        editTimer = null;
+        if (!streamDone) preview();
+      }, editIntervalMs - sinceLast);
     }
   };
 
+  const handleMessageBoundary = (discarded: boolean): Promise<void> =>
+    apply({ kind: "boundary", discarded });
+
   /**
-   * The backend has retracted the message currently on screen: its text was
-   * either a preamble to a handoff ("let me get the tasks created…") or a draft
-   * the style guard is about to rewrite, and the real reply is the NEXT message.
-   *
-   * No platform lets a bot unsend, and sending a correction would be a second
-   * message about a message. So the bubble is left un-sealed instead: the reply
-   * that arrives next overwrites it in place, and the user only ever sees one.
+   * Posts a message outside the streamed reply: the HIL approval prompt the user must
+   * answer while the agent is paused, or a rate-limit notice. It lands below what has
+   * streamed so far and survives the message it arrived during being retracted.
    */
-  const discardCurrentMessage = (): void => {
-    if (!pending && !shownText) return;
-    pending = "";
-    // A SEALED bubble holds something that isn't the retracted text — an approval prompt or
-    // rate-limit notice, posted out of band. Reopening it would hand the replacement reply
-    // that message to overwrite, disappearing a question the user still has to answer.
-    if (bubbleSealed) {
-      logger.info("bubble_discarded", { chars: 0, sealed: true });
+  const deliverOutOfBand = (text: string): Promise<void> =>
+    apply({ kind: "outOfBand", text });
+
+  /**
+   * Tells the user the turn failed: in the placeholder while it still holds nothing the
+   * user needs, else as a message of its own, so no bubble they read is overwritten.
+   */
+  const emitGenericError = async (
+    text: string,
+    cause: unknown,
+  ): Promise<void> => {
+    recordFailure(cause);
+    if (delivery.reusable?.slot === PLACEHOLDER_SLOT) {
+      await onGenericError(render(text));
       return;
     }
-    bubbleProvisional = true;
-    logger.info("bubble_discarded", { chars: shownText.length });
-  };
-
-  /**
-   * One assistant message has ended, and the backend has said whether it counts.
-   *
-   * This is the only place streamed text becomes final, so it is also the only
-   * place a retraction still has something to take back.
-   */
-  const handleMessageBoundary = async (discarded: boolean): Promise<void> => {
-    await enqueue(async () => {
-      // Non-streaming platforms (Discord, WhatsApp, iMessage) have shown nothing yet: the whole
-      // reply is delivered at stream end from ``finalText``, already built from KEPT messages
-      // only. Acting on a boundary here would deliver that text a second time.
-      if (!streaming) return;
-      if (discarded) {
-        discardCurrentMessage();
-        return;
-      }
-      await flushMessage();
-    });
-  };
-
-  /**
-   * Posts a message outside the streamed reply — currently the HIL approval prompt the user
-   * must answer while the agent is paused. Adapters point "the current message" at the prompt
-   * the moment it's sent, so whatever has streamed so far is delivered and sealed first, then
-   * the bubble is sealed again after so the rest of the reply opens a fresh message.
-   *
-   * Sealing before the boundary is deliberate: a following retraction then finds a sealed
-   * bubble and leaves the prompt alone (see discardCurrentMessage).
-   */
-  const deliverOutOfBand = async (text: string): Promise<void> => {
-    await enqueue(async () => {
-      await flushMessage();
-      await wrappedSendNewMessage(text);
-      bubbleSealed = true;
-    });
+    await deliverOutOfBand(text);
   };
 
   /** Hands a reaction to the adapter to attach natively, once any edit still in flight has landed. */
@@ -393,74 +346,34 @@ async function _handleStream(
 
   try {
     await streamFn(
-      (chunk) => {
-        pending += chunk;
-        if (streamDone || !streaming) return;
-
-        const now = Date.now();
-        if (now - lastEditTime >= editIntervalMs) {
-          lastEditTime = now;
-          if (editTimer) {
-            clearTimeout(editTimer);
-            editTimer = null;
-          }
-          // A preview never rejects (previewBubble catches its own failures), so
-          // it is queued without waiting; the final delivery awaits the queue.
-          void enqueue(() => previewBubble(previewFor(pending)));
-        } else if (!editTimer) {
-          editTimer = setTimeout(
-            () => {
-              editTimer = null;
-              if (!streamDone) {
-                lastEditTime = Date.now();
-                void enqueue(() => previewBubble(previewFor(pending)));
-              }
-            },
-            editIntervalMs - (now - lastEditTime),
-          );
-        }
+      async (chunk) => {
+        await apply({ kind: "text", chunk });
+        schedulePreview();
       },
-      async (finalText) => {
+      async () => {
         streamDone = true;
-        if (editTimer) {
-          clearTimeout(editTimer);
-          editTimer = null;
-        }
-
-        // Wait for any in-flight operations to finish before final delivery
-        await opQueue;
-
-        // Non-streaming platforms (Discord, WhatsApp, iMessage) show nothing yet, so the whole
-        // reply is delivered here from ``finalText``; streaming platforms already delivered each
-        // message at its boundary, so ``pending`` only holds a leftover last message — a legacy stream, or one cut short by an error.
-        if (!streaming) {
-          pending = finalText;
-          shownText = "";
-          bubbleSealed = false;
-        }
-
-        await flushMessage();
+        clearEditTimer();
+        await apply({ kind: "end" });
 
         // A retracted preamble with nothing to replace it means the turn produced no reply at
-        // all. The preamble stays — a blank message is worse than the agent's own words — but
+        // all. The preamble stays (a blank message is worse than the agent's own words), but
         // it must still be visible that this happened.
-        if (bubbleProvisional) {
-          logger.info("bubble_preamble_kept", { chars: shownText.length });
+        if (delivery.reusable?.retracted) {
+          logger.info("bubble_preamble_kept", {
+            slot: delivery.reusable.slot,
+          });
         }
 
         // A hand-off or a reaction says nothing: whatever the adapter put up while
         // waiting must not outlive the turn.
-        if (!shownText && onNoReply) {
+        if (!delivery.spoke && onNoReply) {
           await onNoReply();
         }
       },
       async (error) => {
         streamDone = true;
         failureReported = true;
-        if (editTimer) {
-          clearTimeout(editTimer);
-          editTimer = null;
-        }
+        clearEditTimer();
         if (
           error.message === BOT_STREAM_ERROR.notAuthenticated &&
           onAuthError
@@ -599,10 +512,7 @@ async function runStreamingChat(
     await onAuthError(authUrl);
   };
 
-  const wrappedOnGenericError = async (
-    formattedError: string,
-    cause: unknown,
-  ) => {
+  const recordStreamFailure = (cause: unknown): void => {
     // The failure with its reason and full latency context — a real-time line,
     // an errors[] entry, and outcome "failed" on this chat's wide event.
     const reason = recordBotFailure("chat_stream_failed", cause, {
@@ -629,7 +539,6 @@ async function runStreamingChat(
       context: "chat:streaming",
       duration_ms: Date.now() - startMs,
     });
-    await onGenericError(formattedError);
   };
 
   const streamFn = (
@@ -703,7 +612,8 @@ async function runStreamingChat(
       editMessage,
       sendNewMessage,
       wrappedOnAuthError,
-      wrappedOnGenericError,
+      onGenericError,
+      recordStreamFailure,
       options,
       onReaction,
       onNoReply,

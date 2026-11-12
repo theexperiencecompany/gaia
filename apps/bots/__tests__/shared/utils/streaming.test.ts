@@ -8,6 +8,7 @@
  */
 import type { ApprovalRequestData } from "@gaia/shared";
 import {
+  BUBBLE_PAUSE_MS,
   type GaiaClient,
   handleStreamingChat,
   PLATFORM_LIMITS,
@@ -41,7 +42,9 @@ function body(word: string, sentences: number): string {
 type StreamStep =
   | string
   | { boundary: { discarded: boolean } }
-  | { notice: string };
+  | { notice: string }
+  | { waitMs: number }
+  | { fail: string };
 
 /** The style guard's retraction frame, and the kept boundary that ends a message. */
 const DISCARDED = { boundary: { discarded: true } } as const;
@@ -60,7 +63,7 @@ function streamingGaia(
         fullText: string,
         conversationId: string,
       ) => void | Promise<void>,
-      _onError: unknown,
+      onError: (error: Error) => void | Promise<void>,
       onApproval?: (data: ApprovalRequestData) => void | Promise<void>,
       onBoundary?: (discarded: boolean) => void | Promise<void>,
       onNotice?: (text: string) => void | Promise<void>,
@@ -77,6 +80,14 @@ function streamingGaia(
       };
       for (const [i, step] of chunks.entries()) {
         if (typeof step !== "string") {
+          if ("fail" in step) {
+            await onError(new Error(step.fail));
+            return full;
+          }
+          if ("waitMs" in step) {
+            await new Promise((resolve) => setTimeout(resolve, step.waitMs));
+            continue;
+          }
           if ("notice" in step) {
             await onNotice?.(step.notice);
             continue;
@@ -134,7 +145,7 @@ function failingGaia(error: unknown): GaiaClient {
 }
 
 interface Delivered {
-  /** Final text of every message the platform ended up holding, in order. */
+  /** Final text of every message still on screen, in the order each was opened. */
   bubbles: string[];
   /** Every distinct text the platform was ever asked to display. */
   writes: string[];
@@ -142,12 +153,17 @@ interface Delivered {
   newMessages: number;
   /** Every formatted error the platform was asked to show. */
   errors: string[];
+  /** Every state the screen passed through, one entry per platform call. */
+  frames: string[][];
+  /** When each frame appeared, epoch ms. */
+  times: number[];
 }
 
 /**
  * Runs one streamed turn against a platform, emulating that platform's real
- * edit semantics: editable platforms update the live message in place,
- * non-editable ones (WhatsApp, iMessage) turn every edit into a new message.
+ * wiring: `editMessage` edits the placeholder, each new message is a handle of
+ * its own, editable platforms edit in place and non-editable ones (WhatsApp,
+ * iMessage) turn every edit into a new message. Live platforms can delete.
  */
 async function deliver(
   platform: PlatformName,
@@ -168,13 +184,20 @@ async function deliver(
     failStream?: unknown;
   } = {},
 ): Promise<Delivered> {
-  const bubbles: string[] = [];
+  /** Every message posted, `null` once deleted; index 0 is the placeholder once written. */
+  const screen: (string | null)[] = [];
   const writes: string[] = [];
   const errors: string[] = [];
-  let current = -1;
+  const frames: string[][] = [];
+  const times: number[] = [];
+  let placeholder = -1;
   let editAttempts = 0;
   let newMessages = 0;
 
+  const snapshot = (): void => {
+    frames.push(screen.filter((m): m is string => m !== null));
+    times.push(Date.now());
+  };
   const maybeFail = (): void => {
     if (failEdit && editAttempts === failEdit.at) {
       editAttempts += 1;
@@ -182,32 +205,47 @@ async function deliver(
     }
     editAttempts += 1;
   };
+  const post = (text: string): number => {
+    writes.push(text);
+    screen.push(text);
+    snapshot();
+    return screen.length - 1;
+  };
+  const write = (index: number, text: string): void => {
+    writes.push(text);
+    if (editable) {
+      screen[index] = text;
+      snapshot();
+      return;
+    }
+    post(text);
+  };
 
   const editMessage = async (text: string): Promise<void> => {
     maybeFail();
-    writes.push(text);
-    if (current === -1 || !editable) {
-      bubbles.push(text);
-      current = bubbles.length - 1;
+    if (placeholder === -1) {
+      placeholder = post(text);
       return;
     }
-    bubbles[current] = text;
+    write(placeholder, text);
   };
 
   const sendNewMessage = async (text: string) => {
     newMessages += 1;
-    writes.push(text);
-    bubbles.push(text);
-    const index = bubbles.length - 1;
-    current = index;
-    return async (updated: string): Promise<void> => {
-      maybeFail();
-      writes.push(updated);
-      if (editable) {
-        bubbles[index] = updated;
-        return;
-      }
-      bubbles.push(updated);
+    const index = post(text);
+    return {
+      edit: async (updated: string): Promise<void> => {
+        maybeFail();
+        write(index, updated);
+      },
+      ...(STREAMING_DEFAULTS[platform].streaming
+        ? {
+            delete: async (): Promise<void> => {
+              screen[index] = null;
+              snapshot();
+            },
+          }
+        : {}),
     };
   };
 
@@ -233,9 +271,42 @@ async function deliver(
       }
     },
     STREAMING_DEFAULTS[platform],
+    undefined,
+    undefined,
+    // A live adapter's no-reply handler deletes its placeholder; nothing else has one.
+    STREAMING_DEFAULTS[platform].streaming
+      ? async () => {
+          if (placeholder === -1) return;
+          screen[placeholder] = null;
+          snapshot();
+        }
+      : undefined,
   );
 
-  return { bubbles, writes, newMessages, errors };
+  return {
+    bubbles: screen.filter((m): m is string => m !== null),
+    writes,
+    newMessages,
+    errors,
+    frames,
+    times,
+  };
+}
+
+/**
+ * Fails when any text the user could read left the screen: every message in a
+ * frame must still be there, at least as long, in the next frame.
+ */
+function expectNothingVanishes(frames: string[][]): void {
+  for (const [i, frame] of frames.entries()) {
+    const next = frames[i + 1];
+    if (!next) continue;
+    const shown = frame.join("\n\n").replace(/\s+/g, " ").trim();
+    const after = next.join("\n\n").replace(/\s+/g, " ").trim();
+    expect(after.startsWith(shown), `frame ${i}: ${shown}\n-> ${after}`).toBe(
+      true,
+    );
+  }
 }
 
 /** Word count, so text is compared by content rather than exact whitespace. */
@@ -576,17 +647,16 @@ describe("handleStreamingChat delivery", () => {
     ].map((bubble) => renderForPlatform(bubble, "telegram"));
 
     it("when the rewrite ends with a kept boundary", async () => {
-      const { bubbles, newMessages } = await deliver("telegram", [
+      const { bubbles } = await deliver("telegram", [
         ...DRAFT,
         DISCARDED,
         ...REWRITE,
         KEPT,
       ]);
 
+      // The draft's later bubbles were deleted and its first overwritten in
+      // place: the rewrite is all that is left, once.
       expect(bubbles).toEqual(REWRITE_BUBBLES);
-      // The first rewrite bubble replaced the draft's live bubble in place, so
-      // only the second one needed a message of its own.
-      expect(newMessages).toBe(1);
     });
 
     it("when the stream ends without a boundary", async () => {
@@ -740,5 +810,94 @@ describe("a rate-limit notice", () => {
     expect(bubbles.indexOf("all set.")).toBeGreaterThan(
       bubbles.indexOf(NOTICE),
     );
+  });
+});
+
+describe("what the user sees while a multi-bubble reply streams", () => {
+  /** The throttle's interval and a little: long enough for one more live preview. */
+  const gapFor = (platform: PlatformName) => ({
+    waitMs: STREAMING_DEFAULTS[platform].editIntervalMs + 100,
+  });
+
+  it.each<PlatformName>(["telegram", "slack"])(
+    "%s shows each bubble as its own message from its first words, and nothing vanishes",
+    async (platform) => {
+      const { bubbles, frames } = await deliver(platform, [
+        GREETING,
+        BREAK,
+        "I checked your calendar",
+        gapFor(platform),
+        " for the whole of next week.",
+        BREAK,
+        ANSWER,
+        gapFor(platform),
+        KEPT,
+      ]);
+
+      expect(bubbles).toEqual(
+        [GREETING, CHECKED, ANSWER].map((b) => renderForPlatform(b, platform)),
+      );
+      // The second bubble was on screen as a message of its own while it streamed.
+      expect(frames).toContainEqual([
+        renderForPlatform(GREETING, platform),
+        renderForPlatform("I checked your calendar", platform),
+      ]);
+      expectNothingVanishes(frames);
+    },
+    10_000,
+  );
+
+  it("a retracted preamble's later bubbles are deleted, its first replaced in place", async () => {
+    const { bubbles, frames } = await deliver("telegram", [
+      "Sure thing, give me a second here.",
+      BREAK,
+      "Let me pull up your calendar",
+      gapFor("telegram"),
+      DISCARDED,
+      ANSWER,
+      KEPT,
+    ]);
+
+    expect(frames.some((frame) => frame.length === 2)).toBe(true);
+    expect(bubbles).toEqual([renderForPlatform(ANSWER, "telegram")]);
+  }, 10_000);
+
+  it.each<PlatformName>(["discord", "whatsapp"])(
+    "%s sends the bubbles in order with a pause between them",
+    async (platform) => {
+      const { bubbles, times } = await deliver(
+        platform,
+        [GREETING, BREAK, CHECKED, BREAK, ANSWER, KEPT],
+        { editable: platform !== "whatsapp" },
+      );
+
+      expect(bubbles).toEqual(
+        [GREETING, CHECKED, ANSWER].map((b) => renderForPlatform(b, platform)),
+      );
+      for (const [i, at] of times.slice(1).entries()) {
+        expect(at - (times[i] ?? 0)).toBeGreaterThanOrEqual(
+          BUBBLE_PAUSE_MS - 20,
+        );
+      }
+    },
+    10_000,
+  );
+});
+
+describe("a stream that fails after bubbles were shown", () => {
+  it("posts the error below them instead of overwriting one", async () => {
+    const { bubbles, errors } = await deliver("telegram", [
+      GREETING,
+      BREAK,
+      CHECKED,
+      KEPT,
+      { fail: "socket hang up" },
+    ]);
+
+    expect(errors).toEqual([]);
+    expect(bubbles.slice(0, 2)).toEqual(
+      [GREETING, CHECKED].map((b) => renderForPlatform(b, "telegram")),
+    );
+    expect(bubbles).toHaveLength(3);
   });
 });

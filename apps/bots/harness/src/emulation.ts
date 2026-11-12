@@ -42,6 +42,11 @@ export interface PlatformEmulation {
    */
   supportsEdit: boolean;
   /**
+   * Whether the adapter can take back a bubble it streamed (grammY `deleteMessage`,
+   * Slack `chat.delete`): the live platforms, whose retracted bubbles are deleted.
+   */
+  supportsDelete: boolean;
+  /**
    * Whether the adapter handles a user's next message only after the previous
    * one's handler finished: Telegram, WhatsApp and iMessage, through the shared
    * `PerUserInboundQueue` (which runs /stop at once). Discord and Slack run
@@ -53,6 +58,15 @@ export interface PlatformEmulation {
 /** Residual capability map — see {@link PlatformEmulation.supportsEdit}. */
 const SUPPORTS_EDIT: Record<PlatformName, boolean> = {
   discord: true,
+  slack: true,
+  telegram: true,
+  whatsapp: false,
+  imessage: false,
+};
+
+/** Residual capability map — see {@link PlatformEmulation.supportsDelete}. */
+const SUPPORTS_DELETE: Record<PlatformName, boolean> = {
+  discord: false,
   slack: true,
   telegram: true,
   whatsapp: false,
@@ -87,6 +101,7 @@ export function resolveEmulation(platform: PlatformName): PlatformEmulation {
     streaming,
     render: (text: string) => renderForPlatform(text, platform),
     supportsEdit: SUPPORTS_EDIT[platform],
+    supportsDelete: SUPPORTS_DELETE[platform],
     serializesInbound: SERIALIZES_INBOUND[platform],
   };
 }

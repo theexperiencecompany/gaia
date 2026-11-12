@@ -323,15 +323,15 @@ export async function deliverTurn(
 }
 
 /**
- * The final text of everything delivered, in the order each first appeared: a
- * bubble holds its last edit, and with `proactive` a backend delivery and an
- * attachment caption are entries of their own.
+ * The final text of everything still delivered, in the order each first appeared:
+ * a bubble holds its last edit, a deleted one is gone, and with `proactive` a
+ * backend delivery and an attachment caption are entries of their own.
  */
 function deliveredTexts(
   events: readonly TranscriptEvent[],
   proactive: boolean,
 ): string[] {
-  const texts: string[] = [];
+  const texts: (string | null)[] = [];
   const indexById = new Map<string, number>();
   for (const event of events) {
     if (event.type === "send" || event.type === "edit") {
@@ -342,6 +342,9 @@ function deliveredTexts(
       } else {
         texts[index] = event.text;
       }
+    } else if (event.type === "delete") {
+      const index = indexById.get(event.messageId);
+      if (index !== undefined) texts[index] = null;
     } else if (
       proactive &&
       (event.type === "outbound-delivery" ||
@@ -350,7 +353,7 @@ function deliveredTexts(
       texts.push(event.text);
     }
   }
-  return texts;
+  return texts.filter((text) => text !== null);
 }
 
 /** 1-based positions of the inbound messages that received a reaction. */

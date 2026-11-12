@@ -130,9 +130,8 @@ async def _post_workflow_message(
     received the message, or None when it was skipped or failed.
     """
     source, platform_user_id = channel.source, channel.platform_user_id
-    # Comms splits its reply into bubbles with the break sentinel; the outbound
-    # publish and the provenance record below both need the split, not the raw
-    # text with its control tokens.
+    # The provenance record below stores the bubbles the user saw, not the raw
+    # text with its control tokens; the bot splits the published reply itself.
     bubbles = split_message_bubbles(response)
     try:
         conversation_id = await BotService.get_or_create_session(
@@ -158,7 +157,7 @@ async def _post_workflow_message(
         # The channel already carries the account id; a second read of the user
         # document to recompute it is what destination_override exists to skip.
         result = await publish_outbound_message(
-            source, user_id, bubbles, destination_override=platform_user_id
+            source, user_id, [response], destination_override=platform_user_id
         )
         if result is OutboundResult.FAILED:
             log.error(
