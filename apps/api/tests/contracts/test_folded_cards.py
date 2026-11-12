@@ -21,10 +21,11 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.conversations import ConversationRepository, conversation_repository
 from app.models.chat_models import MessageModel
 from app.models.conversation_models import ConversationDocument
+from app.models.tool_data_models import ToolDataEntry
 from app.services.folded_cards import save_folded_cards
 from tests.helpers import captured_wide_event
 
-CARD: dict[str, Any] = {"tool_name": "browser_result", "data": {"summary": "Booked."}}
+CARD: ToolDataEntry = {"tool_name": "browser_result", "data": {"summary": "Booked."}}
 
 # Every test here writes entries, so each needs the collection with its unique indexes.
 pytestmark = pytest.mark.usefixtures("entries_collection")
@@ -118,7 +119,7 @@ async def test_a_close_and_a_save_racing_each_other_land_every_card_once(
     conversation: ConversationDocument, raw_collection: Any
 ) -> None:
     for n in range(12):
-        card = {"tool_name": "step", "data": {"n": n}}
+        card: ToolDataEntry = {"tool_name": "step", "data": {"n": n}}
         close = save_folded_cards(
             conversation.conversation_id, conversation.user_id, f"m{n}", [card]
         )
@@ -201,7 +202,7 @@ async def test_readers_never_see_the_waiting_room(
 async def test_two_runs_ending_before_the_message_both_land_on_it(
     conversation: ConversationDocument,
 ) -> None:
-    other = {"tool_name": "subagent_group", "data": {"subagent_id": "row-2"}}
+    other: ToolDataEntry = {"tool_name": "subagent_group", "data": {"subagent_id": "row-2"}}
     await save_folded_cards(conversation.conversation_id, conversation.user_id, "m1", [CARD])
     await save_folded_cards(conversation.conversation_id, conversation.user_id, "m1", [other])
 
