@@ -39,7 +39,7 @@ async def finish_task(
         "Leave false unless this run's own instructions say when to set it. true: the run "
         "found nothing to tell the user, so result is kept as the run's record and no "
         "message is sent.",
-    ] = False,
+    ] = False,  # pragma: no mutate — the tool schema reads the unmutated signature; a test pins it
 ) -> str:
     # Both are read off the tool call by the run's outcome review, not returned.
     del outcome, nothing_for_user

@@ -5,6 +5,8 @@ and its name must match FINISH_TASK_NAME (the invariant the import-time assert
 guards).
 """
 
+from langchain_core.utils.function_calling import convert_to_openai_tool
+
 from app.agents.tools.finish_task_tool import finish_task
 from app.constants.general import FINISH_TASK_NAME
 
@@ -33,6 +35,6 @@ class TestFinishTask:
     async def test_the_model_is_told_a_run_has_something_for_the_user_unless_it_says_not(
         self,
     ) -> None:
-        schema = finish_task.tool_call_schema.model_json_schema()
+        schema = convert_to_openai_tool(finish_task)["function"]["parameters"]
         assert schema["properties"]["nothing_for_user"]["default"] is False
-        assert "nothing_for_user" not in schema.get("required", [])
+        assert schema["required"] == ["result"]
