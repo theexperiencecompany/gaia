@@ -14,6 +14,7 @@ from app.constants.log_tags import LogTag
 from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
+from app.models.agent_models import RunningSubagent
 from app.models.work_cancel_models import WorkCancelled
 from app.services.browser.job_stop import RequesterChat, stop_chat_jobs
 from app.services.hil.ledger_decide import cancel_ledger_approvals
@@ -38,8 +39,10 @@ async def cancel_all_work(
     """
     inbox = ExecutorInbox(conversation_id)
     lock_value = await _held_lock(conversation_id)
-    task_id = await _stop_running_executor(conversation_id, lock_value) if lock_value else None
-    subagents = await RunningSubagents(conversation_id).stop_all()
+    task_id, run_subagents = (
+        await _stop_running_executor(conversation_id, lock_value) if lock_value else (None, [])
+    )
+    subagents = [*run_subagents, *await RunningSubagents(conversation_id).stop_all()]
     approvals = await _close_approvals(conversation_id, user_id)
     pending = await inbox.clear()
     # After the clear: a stopped job's notice lands in the inbox and must survive it.
@@ -90,11 +93,14 @@ async def _held_lock(conversation_id: str) -> str | None:
     return decode_raw_item(raw_lock) if raw_lock is not None else None
 
 
-async def _stop_running_executor(conversation_id: str, lock_value: str) -> str:
-    """Cancel the run holding the busy lock and free the lock; return its task id."""
+async def _stop_running_executor(
+    conversation_id: str, lock_value: str
+) -> tuple[str, list[RunningSubagent]]:
+    """Cancel the lock-holding run and free its lock; return its task id and the subagents it stopped."""
     stream_id, task_id = parse_lock_value(lock_value)
-    if stream_id not in _NO_STREAM_IDS:
-        await stop_stream(conversation_id, stream_id)
+    subagents = (
+        await stop_stream(conversation_id, stream_id) if stream_id not in _NO_STREAM_IDS else []
+    )
     # Freed only once the stream is cancelled: freeing a run that kept going lets two run at once.
     await redis_cache.delete(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
     await drop_progress(conversation_id, lock_value)
@@ -104,7 +110,7 @@ async def _stop_running_executor(conversation_id: str, lock_value: str) -> str:
         stream_id=stream_id,
         conversation_id=conversation_id,
     )
-    return task_id
+    return task_id, subagents
 
 
 async def _close_approvals(conversation_id: str, user_id: str) -> list[str]:
@@ -143,5 +149,5 @@ async def _broadcast_executor_cancelled(user_id: str, conversation_id: str) -> N
             user_id,
             {"type": WS_EVENT_EXECUTOR_CANCELLED, "conversation_id": conversation_id},
         )
-    except Exception as e:  # best-effort UI signal
-        log.warning(f"{LogTag.TOOL} Failed to broadcast executor.cancelled", error=str(e))
+    except Exception:  # best-effort UI signal; the warning records the error
+        log.warning(f"{LogTag.TOOL} Failed to broadcast executor.cancelled")

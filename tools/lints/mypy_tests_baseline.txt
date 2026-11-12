@@ -112,9 +112,6 @@ apps/api/tests/unit/agents/test_deliver_to_executor.py	attr-defined
 apps/api/tests/unit/agents/test_email_processor.py	arg-type
 apps/api/tests/unit/agents/test_email_processor.py	list-item
 apps/api/tests/unit/agents/test_email_processor.py	method-assign
-apps/api/tests/unit/agents/test_executor_channel.py	arg-type
-apps/api/tests/unit/agents/test_executor_channel.py	misc
-apps/api/tests/unit/agents/test_executor_channel.py	var-annotated
 apps/api/tests/unit/agents/test_executor_queue.py	attr-defined
 apps/api/tests/unit/agents/test_executor_queue.py	misc
 apps/api/tests/unit/agents/test_executor_queue.py	typeddict-item

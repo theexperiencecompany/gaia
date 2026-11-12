@@ -51,6 +51,7 @@ export function LoadingIndicator({
 
   return (
     <m.div
+      data-testid="chat-loading-row"
       className={`flex items-center gap-4 text-sm font-medium pt-2 ${noPadding ? "" : "mt-3 pl-11.5"}`}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
