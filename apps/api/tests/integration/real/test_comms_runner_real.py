@@ -511,3 +511,65 @@ def answered(rt: Runtime, conversation_id: str) -> list[tuple[ReplyOutcome, tupl
     return [
         (item.outcome, item.answers) for item in logged_entries(rt, conversation_id, ReplySettled)
     ]
+
+
+@pytest.mark.service
+async def test_step_stop_while_thinking_records_the_interruption_and_writes_no_reply(
+    manager: CheckpointerManager, conversation_id: str
+) -> None:
+    rt = Runtime()
+    model = gated("never", hold=[0])
+    model._during[0] = lambda: accept(rt.ports, conversation_id, USER, stop("s"))
+    async with comms_graph([], model=model, checkpointer_manager=manager) as graph:
+        with patched_graph(graph):
+            await accept(rt.ports, conversation_id, USER, user("u1"))
+            await advance(stepping(rt, conversation_id), conversation_id, USER)
+            left = await thread_of(graph, conversation_id)
+    assert kinds(rt, conversation_id) == ["user_message", "stop_requested"]
+    assert (await rt.log.state(conversation_id)).stopped_through == 1
+    assert [str(m.content) for m in left].count(INTERRUPTION_MARKER) == 1
+
+
+@pytest.mark.service
+async def test_step_stop_then_a_new_message_shows_the_stop_once_and_answers_the_new_message(
+    manager: CheckpointerManager, conversation_id: str
+) -> None:
+    rt = Runtime()
+    model = gated("never", "hello", hold=[0])
+
+    async def stop_then_ask() -> None:
+        await accept(rt.ports, conversation_id, USER, stop("s"))
+        await accept(rt.ports, conversation_id, USER, user("u3"))
+
+    model._during[0] = stop_then_ask
+    async with comms_graph([], model=model, checkpointer_manager=manager) as graph:
+        with patched_graph(graph):
+            await accept(rt.ports, conversation_id, USER, user("u1"))
+            await advance(stepping(rt, conversation_id), conversation_id, USER)
+    assert answered(rt, conversation_id) == [(ReplyOutcome.ANSWERED, ("u3",))]
+    assert [e.text for e in logged_entries(rt, conversation_id, Reply)] == ["hello"]
+    shown = humans(model.prompts[1])
+    assert (
+        shown.count("text of u1"),
+        shown.count(INTERRUPTION_MARKER),
+        shown.count("text of u3"),
+    ) == (1, 1, 1)
+
+
+@pytest.mark.service
+async def test_step_a_model_that_raises_before_commit_leaves_a_failed_bubble(
+    manager: CheckpointerManager, conversation_id: str
+) -> None:
+    rt = Runtime()
+    model = gated("never")
+
+    async def model_down() -> None:
+        raise RuntimeError("model down")
+
+    model._during[0] = model_down
+    async with comms_graph([], model=model, checkpointer_manager=manager) as graph:
+        with patched_graph(graph):
+            await accept(rt.ports, conversation_id, USER, user("u1"))
+            await advance(stepping(rt, conversation_id), conversation_id, USER)
+    assert kinds(rt, conversation_id) == ["user_message", "reply", "reply_settled"]
+    assert answered(rt, conversation_id) == [(ReplyOutcome.FAILED, ("u1",))]
