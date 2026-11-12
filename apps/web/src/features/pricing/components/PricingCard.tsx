@@ -64,7 +64,6 @@ export function PricingCard({
     price,
     originalPrice,
     durationIsMonth,
-    currency,
     gift,
   });
 
