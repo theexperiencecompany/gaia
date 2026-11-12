@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from pymongo.errors import PyMongoError
 import pytest
 
 from app.agents.core.background import todo_run_delivery as trd
@@ -45,6 +46,7 @@ RUN = ExecutorRun(
     user_message_id=None,
 )
 SCHEDULED = TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True)
+WATCHING = TodoRun(todo_id="todo-1", trigger_type=TriggerType.TODO_TRIGGER, runs_once=False)
 
 
 @dataclass
@@ -96,6 +98,11 @@ def _todo(**fields: object) -> TodoDocument:
     return TodoDocument.model_validate(
         {"id": "todo-1", "user_id": USER_ID, "title": "Watch the deploy", **fields}
     )
+
+
+def _thread_todo(**fields: object) -> TodoDocument:
+    ref = todo_models.ExternalRef(source=todo_models.ExternalRefSource.GMAIL_THREAD, id="t1")
+    return _todo(external_ref=ref, **fields)
 
 
 class TestResultsThatReachNobody:
@@ -224,15 +231,104 @@ class TestABriefingThatOwnsItsForm:
     @pytest.mark.regression
     async def test_a_thread_todos_alert_reaches_the_user_as_written(self) -> None:
         """Regression: comms retold a thread's one-email alert, dropping its who, what and where."""
-        thread = _todo(
-            external_ref=todo_models.ExternalRef(
-                source=todo_models.ExternalRefSource.GMAIL_THREAD, id="t1"
-            )
-        )
-        with _seams(todo=thread) as seams:
+        with _seams(todo=_thread_todo()) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.in_app.await_args.args[0].content.body == "report"
+
+
+class TestARunThatFoundNothingForTheUser:
+    """A report-form todo's run declares it; its note is the run's record, never a message."""
+
+    NOTE = "Nothing needs the user now; the next briefing lists this open Stripe thread."
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "source",
+        [todo_models.ExternalRefSource.GMAIL_THREAD, todo_models.ExternalRefSource.INBOX_DESK],
+    )
+    async def test_its_note_is_sent_nowhere_whatever_comms_would_have_said(
+        self, source: todo_models.ExternalRefSource
+    ) -> None:
+        """Regression, seen live: comms answered the note instead of silencing it, and the note was sent."""
+        todo = _todo(external_ref=todo_models.ExternalRef(source=source, id="ref-1"))
+        with _seams(
+            todo=todo, narrated="Nothing new.", sent_on=ConversationSource.TELEGRAM
+        ) as seams:
+            await deliver_todo_run_result(RUN, WATCHING, self.NOTE, "final", nothing_for_user=True)
+
+        seams.narrate.assert_not_awaited()
+        seams.target.assert_not_awaited()
+        seams.send.assert_not_awaited()
+        seams.in_app.assert_not_awaited()
+        assert seams.entry() == (
+            f"result not sent: the run found nothing for the user (summary={self.NOTE!r})"
+        )
+        seams.capture.assert_called_once_with(
+            UserId(USER_ID),
+            TodosRunResultDelivered(
+                outcome="nothing_to_report",
+                delivered=False,
+                trigger_type=TriggerType.TODO_TRIGGER.value,
+                recurring=False,
+            ),
+        )
+
+    async def test_its_note_is_still_kept_for_the_chats_next_turn(self) -> None:
+        with _seams(todo=_thread_todo()) as seams:
+            await deliver_todo_run_result(RUN, WATCHING, self.NOTE, "final", nothing_for_user=True)
+
+        seams.report.assert_awaited_once_with("run-conv", self.NOTE, "result")
+
+    async def test_a_run_that_did_not_declare_it_is_still_left_to_comms(self) -> None:
+        with _seams(todo=_thread_todo()) as seams:
+            await deliver_todo_run_result(RUN, WATCHING, "Priya · pitch deck", "final")
+
+        seams.narrate.assert_awaited_once()
+        seams.report.assert_not_awaited()
+        assert seams.in_app.await_args.args[0].content.body == "Priya · pitch deck"
+
+    async def test_a_todo_that_sets_no_report_form_is_written_up_whatever_its_run_declared(
+        self,
+    ) -> None:
+        """Only a kind whose guidance defines the declaration may silence itself with it."""
+        with _seams(todo=_todo()) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final", nothing_for_user=True)
+
+        seams.narrate.assert_awaited_once()
+        assert seams.in_app.await_args.args[0].content.body == "Deploy failed."
+        assert seams.event().outcome == "delivered"
+
+    async def test_with_delivery_off_the_run_is_recorded_as_delivery_off(self) -> None:
+        with _seams(todo=_thread_todo(notify_on_run=False)) as seams:
+            await deliver_todo_run_result(RUN, WATCHING, self.NOTE, "final", nothing_for_user=True)
+
+        assert seams.event().outcome == "notify_off"
+        assert "result not sent: delivery is off for this todo" in seams.entry()
+
+    async def test_the_wide_event_names_the_outcome(self) -> None:
+        with _seams(todo=_thread_todo()):
+            async with captured_wide_event() as event:
+                await deliver_todo_run_result(
+                    RUN, WATCHING, self.NOTE, "final", nothing_for_user=True
+                )
+
+        assert event["todo_delivery"] == {
+            "todo_id": "todo-1",
+            "result_type": "final",
+            "outcome": "nothing_to_report",
+        }
+
+    async def test_the_durable_job_keeps_the_declaration(self) -> None:
+        """A store failure hands the run to a job, which must not then ask comms about the note."""
+        with _seams(todo=_thread_todo()) as seams, patch.object(trd, "enqueue_worker_job") as queue:
+            seams.activity.side_effect = PyMongoError("primary stepped down")
+            with patch.object(trd, "RedisPoolManager", MagicMock(get_pool=AsyncMock())):
+                await deliver_todo_run_result(
+                    RUN, WATCHING, self.NOTE, "final", nothing_for_user=True
+                )
+
+        assert queue.await_args.args[2].nothing_for_user is True
 
 
 class TestAOneTimeTodoAlwaysAnswers:

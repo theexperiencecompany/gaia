@@ -34,6 +34,7 @@ from app.agents.core.background.session import teardown_session
 from app.agents.core.graph_builder import build_graph as build_graph_module
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
+from app.agents.core.outcome_review import NOT_REVIEWED, OutcomeReview
 from app.agents.core.subagents import spawn_agent
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.hil import (
@@ -464,7 +465,7 @@ async def hil_world(
         _note: str,
         *,
         tool_data: list[ToolDataEntry] | None,
-        outcome_note: str = "",
+        review: OutcomeReview = NOT_REVIEWED,
     ) -> tuple[str, str]:
         world.delivered.append((text, result_type))
         return text, "executor-message-1"

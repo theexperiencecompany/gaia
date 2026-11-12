@@ -53,7 +53,7 @@ from app.agents.core.background.session import (
     get_session,
     signal_executor_done,
 )
-from app.agents.core.outcome_review import review_run
+from app.agents.core.outcome_review import NOT_REVIEWED, OutcomeReview, review_run
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     execute_subagent_stream,
@@ -580,10 +580,10 @@ async def _finalize_executor_run(
     # its TTL. The lock lifecycle is the load-bearing step — always run it.
     try:
         if not abandoned:
-            outcome_note = (
-                await _review_outcome_note(run.conversation_id, ctx)
+            review = (
+                await _review_outcome(run.conversation_id, ctx)
                 if ctx is not None and result_type == "final"
-                else ""
+                else NOT_REVIEWED
             )
             outcome = TerminalOutcome(
                 result_text=result_text,
@@ -591,7 +591,7 @@ async def _finalize_executor_run(
                 was_cancelled=was_cancelled,
                 returned_note=returned_note,
                 tool_data=tool_data,
-                outcome_note=outcome_note,
+                review=review,
             )
             step_outcome = await _deliver_unless_stepped(run, task, outcome)
     except Exception as e:  # never let delivery failure strand the queue
@@ -661,16 +661,16 @@ async def _log_approvals_requested(run: ExecutorRun, approval_ids: tuple[str, ..
         )
 
 
-async def _review_outcome_note(conversation_id: str, ctx: SubagentExecutionContext) -> str:
-    """Check the run's declared outcome against its own tool calls; the note comms delivers under.
+async def _review_outcome(conversation_id: str, ctx: SubagentExecutionContext) -> OutcomeReview:
+    """Check the run's declared outcome against its own tool calls; delivery reads the review.
 
-    The note is an addition to the result, so a review that cannot run drops the note, never the result.
+    The review is an addition to the result, so one that cannot run is dropped, never the result.
     """
     try:
         review = review_run(await thread_messages(ctx))
     except Exception:  # the thread read is a checkpointer call; the result still delivers
         log.error(f"{LogTag.AGENT} Executor outcome review failed")
-        return ""
+        return NOT_REVIEWED
     if review.verified and review.declared is OutcomeState.ASK:
         await record_confirmation_asked(conversation_id)
     log.set(
@@ -681,7 +681,7 @@ async def _review_outcome_note(conversation_id: str, ctx: SubagentExecutionConte
     )
     if review.problem:
         log.warning(f"{LogTag.AGENT} Executor outcome not verified", problem=review.problem)
-    return outcome_delivery_note(review.declared, review.problem)
+    return review
 
 
 async def _finalize_paused_run(run: ExecutorRun) -> None:
@@ -734,7 +734,7 @@ class TerminalOutcome:
     was_cancelled: bool
     returned_note: str
     tool_data: list[ToolDataEntry] | None
-    outcome_note: str = ""
+    review: OutcomeReview = NOT_REVIEWED
 
 
 def _work_outcome(outcome: TerminalOutcome, *, stopped: bool) -> WorkOutcome:
@@ -762,7 +762,8 @@ async def _log_work_finished(
     """Log a step-dispatched run's end once its busy lock is free; the step narrates it in the task's reply."""
     if outcome is None or not run.task_id:
         return
-    report = "\n\n".join(part for part in (outcome.result_text, outcome.outcome_note) if part)
+    note = outcome_delivery_note(outcome.review.declared, outcome.review.problem)
+    report = "\n\n".join(part for part in (outcome.result_text, note) if part)
     await record_work_finished(
         run.conversation_id,
         run.user.user_id,
@@ -804,7 +805,7 @@ async def _deliver_terminal_outcome(
             outcome.result_type,
             outcome.returned_note,
             tool_data=outcome.tool_data,
-            outcome_note=outcome.outcome_note,
+            review=outcome.review,
         )
         await _publish_voice_tts(run.stream_id, notification_text, message_id)
 

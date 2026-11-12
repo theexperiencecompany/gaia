@@ -14,12 +14,12 @@ narration), Redis, the activity store and the outbound transport.
 
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from arq import Retry
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
 from pymongo.errors import PyMongoError
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -45,21 +45,23 @@ from app.agents.core.background.todo_run import (
     run_todo_on_executor,
 )
 from app.agents.core.subagents import subagent_runner
+from app.agents.core.subagents.subagent_runner import SubagentExecutionContext
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants import todos as todo_constants
 from app.constants.agents import AgentTag
-from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent, TodoWakeKind
 from app.models.chat_models import ConversationSource
 from app.models.conversation_models import UpdateMessagesResponse
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.todo_wake_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services import todo_activity
 from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.delivery.presence import record_turn_presence
+from app.services.notification_service import notification_service
 from app.utils import auth_utils
 from app.utils.background_tasks import spawn_background_task
 from app.workers.tasks import tracked_todo_tasks
@@ -458,6 +460,76 @@ class TestNothingIsSentWhenNothingShouldBe:
         seams.narrate.assert_not_awaited()
         seams.send.assert_not_awaited()
         seams.activity.assert_not_awaited()
+
+
+class TestARunThatFoundNothingForTheUser:
+    """A report-form todo's run says so on finish_task, and delivery asks nobody else."""
+
+    NOTHING_NEW = "Nothing needs the user now; the next briefing will list this open Stripe thread."
+
+    def _thread_todo(self) -> TodoDocument:
+        ref = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread-1")
+        return _todo().model_copy(update={"external_ref": ref})
+
+    def _watching(self) -> TodoRunRequest:
+        woken = TodoRun(todo_id=TODO_ID, trigger_type=TriggerType.TODO_TRIGGER, runs_once=False)
+        return replace(_request(), todo_run=woken)
+
+    def _finished_with(self, **finish_args: object) -> tuple[_ExecutorResult, list[AnyMessage]]:
+        ctx = SubagentExecutionContext(
+            subagent_graph=MagicMock(),
+            agent_name="executor_agent",
+            config={"configurable": {}, "agent_name": "executor_agent"},
+            configurable={},
+            integration_id="executor",
+            initial_state={},
+        )
+        args = {"result": self.NOTHING_NEW, "outcome": "schedule", **finish_args}
+        thread: list[AnyMessage] = [
+            HumanMessage(content=_request().task),
+            AIMessage(
+                content="", tool_calls=[{"name": FINISH_TASK_NAME, "args": args, "id": "finish"}]
+            ),
+            ToolMessage(content=self.NOTHING_NEW, tool_call_id="finish", name=FINISH_TASK_NAME),
+        ]
+        return _ExecutorResult(self.NOTHING_NEW, "final", ctx=ctx), thread
+
+    @pytest.mark.regression
+    async def test_its_note_reaches_nobody_and_is_still_kept_in_the_todos_chat(self) -> None:
+        """Regression, seen live: comms answered a thread's nothing-new note, and the note itself was sent."""
+        finished, thread = self._finished_with(nothing_for_user=True)
+        in_app = AsyncMock()
+        with (
+            _seams(
+                todo=self._thread_todo(), narrated="Nothing new on Stripe.", executor=finished
+            ) as seams,
+            patch.object(er, "thread_messages", AsyncMock(return_value=thread)),
+            patch.object(rd, "websocket_manager", MagicMock(broadcast_to_user=AsyncMock())),
+            patch.object(notification_service, "create_notification", in_app),
+        ):
+            await run_todo_on_executor(self._watching())
+
+        seams.send.assert_not_awaited()
+        in_app.assert_not_awaited()
+        seams.narrate.assert_not_awaited()
+        (kept,) = seams.save_to_conversation.await_args.args[0].messages
+        assert (kept.type, kept.response) == ("bot", self.NOTHING_NEW)
+        assert _activity(seams).startswith(
+            "result not sent: the run found nothing for the user (summary="
+        )
+        assert seams.capture.call_args.args[1].outcome == "nothing_to_report"
+
+    async def test_a_run_that_does_not_say_so_is_still_written_up_and_sent_as_written(self) -> None:
+        finished, thread = self._finished_with()
+        with (
+            _seams(todo=self._thread_todo(), executor=finished) as seams,
+            patch.object(er, "thread_messages", AsyncMock(return_value=thread)),
+            patch.object(rd, "websocket_manager", MagicMock(broadcast_to_user=AsyncMock())),
+        ):
+            await run_todo_on_executor(self._watching())
+
+        seams.narrate.assert_awaited_once()
+        assert seams.send.await_args.kwargs["notification_text"] == self.NOTHING_NEW
 
 
 class TestAFinishedRunIsNeverRunAgainForItsDelivery:
