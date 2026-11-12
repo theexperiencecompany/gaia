@@ -723,6 +723,7 @@ class TestRunChatStreamBackground:
         assert (reply_complete in published_before_executor) is ends_before_executor
         published = [c.args[1] for c in sm.publish_chunk.call_args_list]
         assert published.count(reply_complete) == (1 if ends_before_executor else 0)
+        assert {c.args[0] for c in sm.publish_chunk.call_args_list} == {"stream_bot_turn"}
         # Web keeps its open stream: [DONE] still comes only after the executor wait.
         assert "data: [DONE]\n\n" not in published_before_executor
         assert "data: [DONE]\n\n" in published

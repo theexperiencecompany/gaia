@@ -10,9 +10,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
 from app.services.hil.notify import (
     _dead_tokens_from_receipts,
+    _format_expiry,
     _send_expo_push,
     bot_approval_prompt,
     notify_approval_pending,
@@ -114,12 +116,65 @@ class TestPromptOnBotPlatform:
 
         mock_channels.ws.broadcast_to_user.assert_awaited_once()
 
-    def test_the_prompt_asks_for_yes_or_no_and_says_when_it_expires(self):
-        prompt = bot_approval_prompt(SUMMARY)
+    async def test_an_undelivered_prompt_is_logged_with_its_approval(
+        self, mock_channels, mock_expo
+    ):
+        mock_channels.source.return_value = ConversationSource.TELEGRAM
+        mock_channels.platform.return_value = False
 
-        assert prompt.startswith(f"**Approval needed:** {SUMMARY}\n")
-        assert "Reply **yes** to approve or **no** to decline." in prompt
-        assert prompt.endswith("This expires in 6 hours.")
+        with patch(f"{_MOD}.log") as m_log:
+            await notify_approval_pending(USER_ID, CONVERSATION_ID, APPROVAL_ID, SUMMARY)
+
+        m_log.warning.assert_called_once_with(
+            f"{LogTag.HIL} HIL notify: bot approval prompt not delivered",
+            platform=str(ConversationSource.TELEGRAM),
+            approval_id=APPROVAL_ID,
+            conversation_id=CONVERSATION_ID,
+        )
+
+    async def test_a_delivered_prompt_logs_nothing(self, mock_channels, mock_expo):
+        mock_channels.source.return_value = ConversationSource.TELEGRAM
+
+        with patch(f"{_MOD}.log") as m_log:
+            await notify_approval_pending(USER_ID, CONVERSATION_ID, APPROVAL_ID, SUMMARY)
+
+        m_log.warning.assert_not_called()
+
+    async def test_a_platform_failure_is_logged_with_its_cause(self, mock_channels, mock_expo):
+        mock_channels.source.return_value = ConversationSource.TELEGRAM
+        mock_channels.platform.side_effect = RuntimeError("queue down")
+
+        with patch(f"{_MOD}.log") as m_log:
+            await notify_approval_pending(USER_ID, CONVERSATION_ID, APPROVAL_ID, SUMMARY)
+
+        m_log.warning.assert_called_once_with(
+            f"{LogTag.HIL} HIL notify: bot approval prompt failed",
+            error="queue down",
+            error_type="RuntimeError",
+            user_id=USER_ID,
+            conversation_id=CONVERSATION_ID,
+        )
+
+    def test_the_prompt_asks_for_yes_or_no_and_says_when_it_expires(self):
+        assert bot_approval_prompt(SUMMARY) == (
+            f"**Approval needed:** {SUMMARY}\n"
+            "Reply **yes** to approve or **no** to decline. This expires in 6 hours."
+        )
+
+    @pytest.mark.parametrize(
+        ("seconds", "expected"),
+        [
+            (0, "1 minute"),
+            (60, "1 minute"),
+            (120, "2 minutes"),
+            (3540, "59 minutes"),
+            (3600, "1 hour"),
+            (5400, "2 hours"),
+            (7200, "2 hours"),
+        ],
+    )
+    def test_the_expiry_reads_in_minutes_under_an_hour_and_hours_after(self, seconds, expected):
+        assert _format_expiry(seconds) == expected
 
 
 class TestBroadcastInApp:
@@ -214,7 +269,6 @@ class TestDeadTokensFromReceipts:
         return response
 
     def test_returns_device_not_registered_tokens(self):
-        batch = [{"to": "a"}, {"to": "b"}, {"to": "c"}]
         response = self._response(
             {
                 "data": [
@@ -225,13 +279,13 @@ class TestDeadTokensFromReceipts:
             }
         )
 
-        assert _dead_tokens_from_receipts(batch, response) == ["b"]
+        assert _dead_tokens_from_receipts(["a", "b", "c"], response) == ["b"]
 
     def test_empty_data(self):
-        assert _dead_tokens_from_receipts([{"to": "a"}], self._response({})) == []
+        assert _dead_tokens_from_receipts(["a"], self._response({})) == []
 
     def test_non_json_body(self):
         response = MagicMock()
         response.json.side_effect = ValueError("not json")
 
-        assert _dead_tokens_from_receipts([{"to": "a"}], response) == []
+        assert _dead_tokens_from_receipts(["a"], response) == []

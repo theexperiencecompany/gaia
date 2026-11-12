@@ -10,9 +10,9 @@ the gate:
 """
 
 import asyncio
-from typing import Any
 
 import httpx
+from pydantic import BaseModel, Field
 
 from app.constants.hil import HIL_APPROVAL_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
@@ -26,6 +26,22 @@ _EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 _EXPO_PUSH_TIMEOUT_SECONDS = 10.0
 # Expo rejects a push request carrying more than 100 messages.
 _EXPO_PUSH_BATCH_SIZE = 100
+_EXPO_UNREGISTERED_DEVICE_ERROR = "DeviceNotRegistered"
+
+
+class _ExpoTicketDetails(BaseModel):
+    error: str | None = None
+
+
+class _ExpoTicket(BaseModel):
+    status: str
+    details: _ExpoTicketDetails | None = None
+
+
+class _ExpoPushReceipts(BaseModel):
+    """Expo's reply to a push batch: one ticket per message, in the order sent."""
+
+    data: list[_ExpoTicket] = Field(default_factory=list)
 
 
 async def notify_approval_pending(
@@ -144,7 +160,7 @@ async def _active_device_tokens(user_id: str) -> list[str]:
 async def _send_expo_push(
     tokens: list[str], *, conversation_id: str, approval_id: str, summary: str
 ) -> None:
-    messages: list[dict[str, Any]] = [
+    messages: list[dict[str, object]] = [
         {
             "to": token,
             "title": "GAIA needs your approval",
@@ -164,28 +180,27 @@ async def _send_expo_push(
         for start in range(0, len(messages), _EXPO_PUSH_BATCH_SIZE):
             batch = messages[start : start + _EXPO_PUSH_BATCH_SIZE]
             response = await client.post(_EXPO_PUSH_URL, json=batch)
-            dead_tokens.extend(_dead_tokens_from_receipts(batch, response))
+            dead_tokens.extend(
+                _dead_tokens_from_receipts(tokens[start : start + _EXPO_PUSH_BATCH_SIZE], response)
+            )
 
     if dead_tokens:
         await _deactivate_device_tokens(dead_tokens)
 
 
-def _dead_tokens_from_receipts(batch: list[dict[str, Any]], response: httpx.Response) -> list[str]:
-    """Return the tokens Expo reported as DeviceNotRegistered for this batch.
-
-    Expo replies with {"data": [ticket, ...]} aligned to the messages sent; a
-    ticket flags a permanently dead token (app uninstalled / token expired).
-    """
+def _dead_tokens_from_receipts(tokens: list[str], response: httpx.Response) -> list[str]:
+    """Return the tokens of this batch whose ticket Expo marked DeviceNotRegistered (uninstalled or expired)."""
     try:
-        tickets = response.json().get("data", [])
+        receipts = _ExpoPushReceipts.model_validate(response.json())
     except ValueError:
         return []
-    dead: list[str] = []
-    for message, ticket in zip(batch, tickets, strict=False):
-        if isinstance(ticket, dict) and ticket.get("status") == "error":
-            if (ticket.get("details") or {}).get("error") == "DeviceNotRegistered":
-                dead.append(message["to"])
-    return dead
+    return [
+        token
+        for token, ticket in zip(tokens, receipts.data, strict=False)
+        if ticket.status == "error"
+        and ticket.details is not None
+        and ticket.details.error == _EXPO_UNREGISTERED_DEVICE_ERROR
+    ]
 
 
 async def _deactivate_device_tokens(tokens: list[str]) -> None:
