@@ -41,8 +41,9 @@ from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.services.canvas_markdown import deliverable_markdown
 from app.services.links.registry import REGISTRY
 from app.services.links.spec import SnapshotSource
-from app.services.storage import ArtifactInfo
+from app.services.storage import ArtifactInfo, JuiceFSUnavailable
 from app.services.tracked_todo_service import CANVAS_TEMPLATE
+from app.utils.errors import AppError
 
 PRIVATE_EMAIL = "ceo@acme-secret.com"
 PRIVATE_THREAD = "thread-18c2f9a"
@@ -378,6 +379,23 @@ class TestSessionArtifactSource:
 
         assert await _source("owner", "conv-1/q3.html") is None
         resolve.assert_not_awaited()
+
+    async def test_workspace_storage_offline_is_a_503_not_a_missing_file(self, workspace):
+        _, stat, _ = workspace
+        outage = JuiceFSUnavailable("mount gone")
+        stat.side_effect = outage
+
+        with pytest.raises(AppError) as raised:
+            await _source("owner", "conv-1/q3.html")
+
+        error = raised.value
+        assert (error.message, error.fix, error.status_code, error.code) == (
+            "Workspace storage is offline, so this file can't be shared right now",
+            "Try again in a minute",
+            503,
+            "workspace_storage_offline",
+        )
+        assert error.__cause__ is outage
 
     @pytest.mark.parametrize("target_type", [t for t in ShortLinkTargetType if t is not SESSION])
     def test_no_other_type_serves_bytes(self, target_type):

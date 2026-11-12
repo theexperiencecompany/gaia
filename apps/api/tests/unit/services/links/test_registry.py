@@ -23,6 +23,12 @@ def test_every_target_type_has_its_own_spec() -> None:
     assert all(spec.type is target_type for target_type, spec in REGISTRY.items())
 
 
+def test_a_registry_indexes_each_spec_under_its_own_type() -> None:
+    specs = tuple(REGISTRY.values())
+
+    assert dict(build_registry(specs)) == {spec.type: spec for spec in specs}
+
+
 def test_a_registry_missing_a_type_refuses_to_build() -> None:
     specs = tuple(
         spec for spec in REGISTRY.values() if spec.type is not ShortLinkTargetType.BRIEFING
