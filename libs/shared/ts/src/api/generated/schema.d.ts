@@ -7528,7 +7528,7 @@ export interface components {
              */
             is_unread?: boolean | null;
             /** Messages */
-            messages?: components["schemas"]["MessageModelOutput"][];
+            messages?: components["schemas"]["ConversationEntry"][];
             source?: components["schemas"]["ConversationSource"] | null;
             /** Starred */
             starred?: boolean | null;
@@ -7541,6 +7541,74 @@ export interface components {
             user_id: string;
         } & {
             [key: string]: unknown;
+        };
+        /**
+         * ConversationEntry
+         * @description One message of a conversation's log with the seq its append committed it under: order is seq, never a date.
+         */
+        ConversationEntry: {
+            /** Date */
+            date?: string | null;
+            /** Disclaimer */
+            disclaimer?: string | null;
+            /** Error */
+            error?: string | null;
+            /** File */
+            file?: string | null;
+            /**
+             * Filedata
+             * @default []
+             */
+            fileData?: components["schemas"]["FileData"][] | null;
+            /**
+             * Fileids
+             * @default []
+             */
+            fileIds?: string[] | null;
+            /** Filename */
+            filename?: string | null;
+            /** Filetype */
+            filetype?: string | null;
+            /** First Contact */
+            first_contact?: boolean | null;
+            /** Follow Up Actions */
+            follow_up_actions?: string[] | null;
+            image_data?: components["schemas"]["ImageData"] | null;
+            /** In Progress */
+            in_progress?: boolean | null;
+            /** @default text */
+            kind?: components["schemas"]["MessageKind"];
+            /** Message Id */
+            message_id?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Pinned */
+            pinned?: boolean | null;
+            /** Platform Message Id */
+            platform_message_id?: string | null;
+            /** Reacts To Message Id */
+            reacts_to_message_id?: string | null;
+            replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
+            /** Response */
+            response: string;
+            /** Selectedtool */
+            selectedTool?: string | null;
+            selectedWorkflow?: components["schemas"]["SelectedWorkflowDataOutput"] | null;
+            /** Seq */
+            seq: number;
+            /** Stopped */
+            stopped?: boolean | null;
+            /** Subtype */
+            subtype?: string | null;
+            todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
+            /** Tool Data */
+            tool_data?: components["schemas"]["ToolDataEntry"][] | null;
+            /** Toolcategory */
+            toolCategory?: string | null;
+            /** Type */
+            type: string;
         };
         /**
          * ConversationListResponse
@@ -7567,7 +7635,7 @@ export interface components {
         ConversationMessageHit: {
             /** Conversation Id */
             conversation_id: string;
-            message: components["schemas"]["MessageModelOutput"];
+            message: components["schemas"]["ConversationEntry"];
         };
         /**
          * ConversationModel
@@ -7665,7 +7733,7 @@ export interface components {
             /** Is Unread */
             is_unread: boolean | null;
             /** Messages */
-            messages: components["schemas"]["MessageModelOutput"][];
+            messages: components["schemas"]["ConversationEntry"][];
             source: components["schemas"]["ConversationSource"] | null;
             /** Starred */
             starred: boolean | null;
@@ -10918,7 +10986,7 @@ export interface components {
          * MessageModel
          * @description A single chat message with its content, attachments and tool data.
          */
-        MessageModelInput: {
+        MessageModel: {
             /** Date */
             date?: string | null;
             /** Disclaimer */
@@ -10946,6 +11014,8 @@ export interface components {
             /** Follow Up Actions */
             follow_up_actions?: string[] | null;
             image_data?: components["schemas"]["ImageData"] | null;
+            /** In Progress */
+            in_progress?: boolean | null;
             /** @default text */
             kind?: components["schemas"]["MessageKind"];
             /** Message Id */
@@ -10966,70 +11036,6 @@ export interface components {
             /** Selectedtool */
             selectedTool?: string | null;
             selectedWorkflow?: components["schemas"]["SelectedWorkflowDataInput"] | null;
-            /** Stopped */
-            stopped?: boolean | null;
-            /** Subtype */
-            subtype?: string | null;
-            todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
-            /** Tool Data */
-            tool_data?: components["schemas"]["ToolDataEntry"][] | null;
-            /** Toolcategory */
-            toolCategory?: string | null;
-            /** Type */
-            type: string;
-        };
-        /**
-         * MessageModel
-         * @description A single chat message with its content, attachments and tool data.
-         */
-        MessageModelOutput: {
-            /** Date */
-            date?: string | null;
-            /** Disclaimer */
-            disclaimer?: string | null;
-            /** Error */
-            error?: string | null;
-            /** File */
-            file?: string | null;
-            /**
-             * Filedata
-             * @default []
-             */
-            fileData?: components["schemas"]["FileData"][] | null;
-            /**
-             * Fileids
-             * @default []
-             */
-            fileIds?: string[] | null;
-            /** Filename */
-            filename?: string | null;
-            /** Filetype */
-            filetype?: string | null;
-            /** First Contact */
-            first_contact?: boolean | null;
-            /** Follow Up Actions */
-            follow_up_actions?: string[] | null;
-            image_data?: components["schemas"]["ImageData"] | null;
-            /** @default text */
-            kind?: components["schemas"]["MessageKind"];
-            /** Message Id */
-            message_id?: string | null;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
-            /** Pinned */
-            pinned?: boolean | null;
-            /** Platform Message Id */
-            platform_message_id?: string | null;
-            /** Reacts To Message Id */
-            reacts_to_message_id?: string | null;
-            replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
-            /** Response */
-            response: string;
-            /** Selectedtool */
-            selectedTool?: string | null;
-            selectedWorkflow?: components["schemas"]["SelectedWorkflowDataOutput"] | null;
             /** Stopped */
             stopped?: boolean | null;
             /** Subtype */
@@ -11114,7 +11120,7 @@ export interface components {
         MessageSearchResult: {
             /** Conversation Id */
             conversation_id: string;
-            message: components["schemas"]["MessageModelOutput"];
+            message: components["schemas"]["ConversationEntry"];
             /** Snippet */
             snippet: string;
         };
@@ -15402,7 +15408,7 @@ export interface components {
             /** Conversation Id */
             conversation_id: string;
             /** Messages */
-            messages: components["schemas"]["MessageModelInput"][];
+            messages: components["schemas"]["MessageModel"][];
         };
         /**
          * UpdateMessagesResponse
@@ -15416,6 +15422,8 @@ export interface components {
             message: string;
             /** Message Ids */
             message_ids: string[];
+            /** Message Seqs */
+            message_seqs: number[];
             /** Modified Count */
             modified_count: number;
         };
@@ -16527,6 +16535,7 @@ export type ConnectIntegrationResponse = components['schemas']['ConnectIntegrati
 export type ConversationActionResponse = components['schemas']['ConversationActionResponse'];
 export type ConversationDescriptionHit = components['schemas']['ConversationDescriptionHit'];
 export type ConversationDocument = components['schemas']['ConversationDocument'];
+export type ConversationEntry = components['schemas']['ConversationEntry'];
 export type ConversationListResponse = components['schemas']['ConversationListResponse'];
 export type ConversationMessageHit = components['schemas']['ConversationMessageHit'];
 export type ConversationModel = components['schemas']['ConversationModel'];
@@ -16717,8 +16726,7 @@ export type MessageDict = components['schemas']['MessageDict'];
 export type MessageFeedbackRequest = components['schemas']['MessageFeedbackRequest'];
 export type MessageFeedbackResponse = components['schemas']['MessageFeedbackResponse'];
 export type MessageKind = components['schemas']['MessageKind'];
-export type MessageModelInput = components['schemas']['MessageModelInput'];
-export type MessageModelOutput = components['schemas']['MessageModelOutput'];
+export type MessageModel = components['schemas']['MessageModel'];
 export type MessageRequest = components['schemas']['MessageRequest'];
 export type MessageRequestWithHistory = components['schemas']['MessageRequestWithHistory'];
 export type MessageSearchResult = components['schemas']['MessageSearchResult'];

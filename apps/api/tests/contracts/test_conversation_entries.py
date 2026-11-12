@@ -73,7 +73,7 @@ def _message(message_id: str, text: str = "hi") -> MessageModel:
 
 async def _ids(repo: ConversationRepository, doc: ConversationDocument) -> list[tuple[int, str]]:
     entries = await repo._read_entries(doc.conversation_id, user_id=doc.user_id)
-    return [(entry.seq, entry.message.message_id or "") for entry in entries]
+    return [(entry.seq, entry.message_id or "") for entry in entries]
 
 
 async def _outbox(raw_collection: Any, doc: ConversationDocument) -> dict[str, Any]:

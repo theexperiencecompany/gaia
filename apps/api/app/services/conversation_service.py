@@ -299,13 +299,13 @@ async def update_messages(
 ) -> UpdateMessagesResponse:
     """Append messages to a conversation, returning the ids they were stored under."""
     user_id = user.user_id
-    message_ids = await conversation_repository.append_messages(
+    seqs = await conversation_repository.append_messages(
         request.conversation_id,
         user_id=user_id,
         messages=request.messages,
     )
 
-    if message_ids is None:
+    if seqs is None:
         raise HTTPException(
             status_code=404,
             detail="Conversation not found or does not belong to the user",
@@ -315,7 +315,8 @@ async def update_messages(
         conversation_id=request.conversation_id,
         message="Messages updated",
         modified_count=1,
-        message_ids=message_ids,
+        message_ids=list(seqs),
+        message_seqs=list(seqs.values()),
     )
 
 

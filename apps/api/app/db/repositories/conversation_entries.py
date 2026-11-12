@@ -143,7 +143,33 @@ def entry_from_raw(raw: Mapping[str, object]) -> ConversationEntry:
     """Read a stored entry (from the collection or an outbox) back as a seq-tagged message."""
     message = {k: v for k, v in raw.items() if k not in _ENTRY_KEY_FIELDS}
     message["message_id"] = raw["id"]
-    return ConversationEntry.model_validate({"seq": raw["seq"], "message": message})
+    message["seq"] = raw["seq"]
+    return ConversationEntry.model_validate(message)
+
+
+def filled(message: MessageModel) -> list[dict[str, object]]:
+    """Pipeline that replaces an entry's content with message, keeping its keys and the cards folded in since it opened."""
+    data = stored_message(message)
+    own_cards = data.pop("tool_data", [])
+    del data["id"]
+    cleared = [
+        name
+        for name in MessageModel.model_fields
+        # pinned is the user's mark on the message, not the turn's content.
+        if name not in data and name not in ("message_id", "tool_data", "pinned")
+    ]
+    cards = {"$concatArrays": [{"$literal": own_cards}, {"$ifNull": ["$tool_data", []]}]}
+    pipeline: list[dict[str, object]] = [
+        {
+            "$set": {
+                **{key: {"$literal": value} for key, value in data.items()},
+                "tool_data": {"$cond": [{"$eq": [cards, []]}, "$$REMOVE", cards]},
+            }
+        }
+    ]
+    if cleared:
+        pipeline.append({"$unset": cleared})
+    return pipeline
 
 
 @contextmanager
