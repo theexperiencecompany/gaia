@@ -27,10 +27,10 @@ const slugs = (items: readonly { slug: string }[]) =>
   items.map((item) => item.slug);
 
 describe("relatedUseCases", () => {
-  it("links the use cases after this one, its own category first", () => {
+  it("links the use cases after this one, its own category first, a third of the list at most", () => {
     expect(
       slugs(relatedUseCases({ slug: "auto-draft-replies" }, EXPLORE, 3)),
-    ).toEqual(["follow-up-reminders", "inbox-triage", "rent-reminder"]);
+    ).toEqual(["follow-up-reminders", "rent-reminder", "save-the-bug"]);
   });
 
   it("ranks by the page's own category, not the shared featured tag", () => {
@@ -50,7 +50,7 @@ describe("relatedUseCases", () => {
     ]);
   });
 
-  it("keeps half the links outside its own category, so one topic does not repeat down the page", () => {
+  it("keeps two thirds of the links outside its own category, so one topic does not repeat down the page", () => {
     const related = relatedUseCases({ slug: "auto-draft-replies" }, EXPLORE, 2);
     expect(slugs(related)).toEqual(["follow-up-reminders", "rent-reminder"]);
   });
