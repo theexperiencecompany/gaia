@@ -34,7 +34,7 @@ class DeviceTokensRepository(UserScopedRepository[DeviceTokenDocument, DeviceTok
                 },
                 "$setOnInsert": {"created_at": datetime.now(UTC)},
             },
-            scope=user_id,
+            scope=user_id,  # pragma: no mutate — cache_policy None: no cache reads scope
             upsert=True,
         )
         return matched == 0

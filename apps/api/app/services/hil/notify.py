@@ -149,16 +149,17 @@ async def _send_expo_push(
 def _dead_tokens_from_receipts(batch: list[str], response: httpx.Response) -> list[str]:
     """Return the tokens of this batch that Expo reported as DeviceNotRegistered.
 
-    A ticket flags a permanently dead token (app uninstalled / token expired);
-    a reply that is not JSON or not ticket-shaped reports none.
+    A ticket flags a permanently dead token (app uninstalled / token expired). A reply
+    that is not JSON, not ticket-shaped, or not one ticket per message reports none.
     """
     try:
         tickets = _ExpoPushTickets.model_validate(response.json()).data
+        receipts = list(zip(batch, tickets, strict=True))
     except ValueError:
         return []
     return [
         token
-        for token, ticket in zip(batch, tickets, strict=False)
+        for token, ticket in receipts
         if ticket.status == "error"
         and ticket.details is not None
         and ticket.details.error == _EXPO_DEVICE_NOT_REGISTERED

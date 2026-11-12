@@ -86,7 +86,8 @@ class TestRegisterDeviceToken:
         assert result is False
         (error,) = event["errors"]
         assert error["msg"].endswith("Failed to register device token")
-        assert (error["error_type"], error["user_id"]) == ("RuntimeError", USER_ID)
+        assert (error["error"], error["error_type"]) == ("DB error", "RuntimeError")
+        assert error["user_id"] == USER_ID
         assert error["device_id"] == "device123"
         assert "device_token" not in event
 
@@ -108,7 +109,8 @@ class TestGetUserDeviceCount:
         assert result == 0
         (error,) = event["errors"]
         assert error["msg"].endswith("Failed to get device count")
-        assert (error["error_type"], error["user_id"]) == ("RuntimeError", USER_ID)
+        assert (error["error"], error["error_type"]) == ("DB error", "RuntimeError")
+        assert error["user_id"] == USER_ID
 
 
 @pytest.mark.unit
@@ -132,7 +134,8 @@ class TestVerifyTokenOwnership:
         assert result is False
         (error,) = event["errors"]
         assert error["msg"].endswith("Failed to verify token ownership")
-        assert (error["error_type"], error["user_id"]) == ("RuntimeError", USER_ID)
+        assert (error["error"], error["error_type"]) == ("DB error", "RuntimeError")
+        assert error["user_id"] == USER_ID
 
 
 @pytest.mark.unit
@@ -168,4 +171,5 @@ class TestUnregisterDeviceToken:
         assert result is False
         (error,) = event["errors"]
         assert error["msg"].endswith("Failed to unregister device token")
-        assert (error["error_type"], error["user_id"]) == ("RuntimeError", USER_ID)
+        assert (error["error"], error["error_type"]) == ("DB error", "RuntimeError")
+        assert error["user_id"] == USER_ID
