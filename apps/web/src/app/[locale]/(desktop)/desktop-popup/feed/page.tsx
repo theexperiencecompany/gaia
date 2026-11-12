@@ -2,12 +2,12 @@
 
 import { useEffect } from "react";
 import { useConversation } from "@/features/chat/hooks/useConversation";
+import { useActiveLiveLoading } from "@/features/chat/live/useLiveChat";
 import PopupFeed from "@/features/desktop-popup/components/PopupFeed";
 import { usePopupEscapeDismiss } from "@/features/desktop-popup/hooks/usePopupEscapeDismiss";
 import { useTransparentPopupChrome } from "@/features/desktop-popup/hooks/useTransparentPopupChrome";
 import { usePopupChatConsumer } from "@/features/desktop-popup/sync";
 import { useElectron } from "@/hooks/useElectron";
-import { useActiveLoading } from "@/stores/streamStore";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 /**
@@ -27,7 +27,7 @@ export default function DesktopPopupFeedPage() {
   // clamps to budget, hides when empty) — an empty conversation reports 0
   // so padding alone can't summon an empty glass card.
   const { convoMessages } = useConversation();
-  const { isLoading } = useActiveLoading();
+  const { isLoading } = useActiveLiveLoading();
   // A paid-only block is content too: a free user's very first send produces
   // no messages at all, so without this the window stays hidden and the
   // paywall notice never reaches the screen.

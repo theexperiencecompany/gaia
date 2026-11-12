@@ -1,14 +1,32 @@
+import { ENTRY_KIND, type UserMessage } from "@shared/conversation";
 import { useCallback, useState } from "react";
 
-import { sendMessage } from "@/features/chat/stream/sendMessage";
-import { useChatStore } from "@/stores/chatStore";
+import { deliverSend } from "@/features/chat/live/connection";
+import { liveConversation } from "@/features/chat/live/liveConversationStore";
+import { sendMessage } from "@/features/chat/live/sendMessage";
+
+/** The user message a retry resends: the message itself, or the newest one before the reply. */
+function messageToRetry(
+  conversationId: string,
+  messageId: string,
+): UserMessage | null {
+  const { entries } = liveConversation(conversationId).view;
+  const at = entries.findIndex(
+    ({ entry }) =>
+      entry.id === messageId ||
+      (entry.kind === ENTRY_KIND.REPLY && entry.reply_id === messageId),
+  );
+  if (at === -1) return null;
+  const asked = entries
+    .slice(0, at + 1)
+    .findLast(({ entry }) => entry.kind === ENTRY_KIND.USER_MESSAGE)?.entry;
+  return asked?.kind === ENTRY_KIND.USER_MESSAGE ? asked : null;
+}
 
 /**
- * Simple hook for retrying/regenerating a message.
- * Finds the relevant user message and resends it using the existing send message flow.
- * The message appears in the UI like a normal message (user bubble + loading indicator).
- *
- * Uses the same loading state management as Composer for consistent UX.
+ * Retry from a bubble's action. A send that never reached the server is resent
+ * as-is, so the server's message id dedup holds; an accepted message is sent
+ * again as a new message that names it in retry_of.
  */
 export const useRetryMessage = () => {
   const [isRetrying, setIsRetrying] = useState(false);
@@ -16,57 +34,30 @@ export const useRetryMessage = () => {
   const retryMessage = useCallback(
     async (conversationId: string, messageId: string) => {
       if (isRetrying) return;
-
-      const store = useChatStore.getState();
-      const messages = store.messagesByConversation[conversationId] ?? [];
-
-      // Find the message being retried
-      const targetMessageIndex = messages.findIndex(
-        (msg) => msg.id === messageId || msg.messageId === messageId,
-      );
-
-      if (targetMessageIndex === -1) {
-        console.error("[useRetryMessage] Message not found:", messageId);
-        return;
-      }
-
-      const targetMessage = messages[targetMessageIndex];
-
-      // Determine the user message to resend
-      let userMessage: (typeof messages)[0] | null = null;
-
-      if (targetMessage.role === "user") {
-        // Retrying a user message - use this message directly
-        userMessage = targetMessage;
-      } else {
-        // Retrying a bot message - find the preceding user message
-        for (let i = targetMessageIndex - 1; i >= 0; i--) {
-          if (messages[i].role === "user") {
-            userMessage = messages[i];
-            break;
-          }
-        }
-      }
-
-      if (!userMessage) {
-        console.error("[useRetryMessage] No user message found to retry");
-        return;
-      }
-
+      const live = liveConversation(conversationId);
       setIsRetrying(true);
-
       try {
-        // The send flow handles everything — optimistic UI, persistence,
-        // streaming, and the turn's loading indicator.
-        await sendMessage(userMessage.content, {
+        if (live.sends[messageId]?.failed) {
+          await deliverSend(conversationId, messageId);
+          return;
+        }
+        const message = messageToRetry(conversationId, messageId);
+        if (!message) {
+          console.error(
+            "[useRetryMessage] No user message to retry:",
+            messageId,
+          );
+          return;
+        }
+        await sendMessage(message.text, {
           conversationId,
-          files: userMessage.fileData ?? undefined,
-          selectedTool: userMessage.toolName,
-          selectedToolCategory: userMessage.toolCategory,
-          selectedWorkflow: userMessage.selectedWorkflow,
-          selectedCalendarEvent: userMessage.selectedCalendarEvent,
-          replyToMessage: userMessage.replyToMessageData,
-          isRetry: true,
+          files: message.files,
+          replyToMessage: message.reply_to_message,
+          selectedTool: message.selected_tool,
+          toolCategory: message.tool_category,
+          selectedWorkflow: message.selected_workflow,
+          selectedCalendarEvent: message.selected_calendar_event,
+          retryOf: message.id,
         });
       } catch (error) {
         console.error("[useRetryMessage] Error retrying message:", error);

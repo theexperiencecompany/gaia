@@ -60,6 +60,14 @@ describe("applyFrame: entries", () => {
     expect(replayed.entries[0].entry).toEqual(filled);
   });
 
+  it("takes the newer content when a log replay re-sends an entry filled while the client was away", () => {
+    const view = fold([entryFrame(2, reply("r1", "a1"))]);
+    const filled = reply("r1", "a1", "the answer", 1);
+    const replayed = applyFrame(view, entryFrame(2, filled)).view;
+    expect(replayed.entries[0].entry).toEqual(filled);
+    expect(replayed.entries[0].at).toBe(view.entries[0].at);
+  });
+
   it("removes the optimistic send whose id the entry carries, and only that one", () => {
     let view = addPendingSend(EMPTY_CONVERSATION_VIEW, {
       id: "m1",

@@ -1,8 +1,10 @@
 import type { MessageReaction, TodoRunWake } from "@shared/api/generated";
+import type { LoggedEntry } from "@shared/conversation";
 import Dexie, { type IndexableType, type Table } from "dexie";
 import { EventEmitter } from "events";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import type { SystemPurpose } from "@/features/chat/api/chatApi";
+import type { LocalSend } from "@/features/chat/live/liveConversationStore";
 import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type {
@@ -95,6 +97,13 @@ export interface IMessage {
   reaction?: MessageReaction | null;
 }
 
+/** A conversation's log as this device last saw it, and the sends it made into it. */
+export interface IConversationLog {
+  conversationId: string;
+  entries: LoggedEntry[];
+  sends: Record<string, LocalSend>;
+}
+
 class MessageQueue {
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -154,6 +163,7 @@ export const dbEventEmitter = new DBEventEmitter();
 class ChatDexie extends Dexie {
   public conversations!: Table<IConversation, string>;
   public messages!: Table<IMessage, string>;
+  public conversationLogs!: Table<IConversationLog, string>;
 
   /**
    * Whether IndexedDB persistence is usable this session — iOS Safari refuses
@@ -187,8 +197,12 @@ class ChatDexie extends Dexie {
         await messages.bulkDelete(removedIds);
       });
 
+    // v4: the conversation event stream's log, so a reload shows it before the stream reconnects.
+    this.version(4).stores({ conversationLogs: "conversationId" });
+
     this.conversations = this.table("conversations");
     this.messages = this.table("messages");
+    this.conversationLogs = this.table("conversationLogs");
   }
 
   /**
@@ -235,6 +249,18 @@ class ChatDexie extends Dexie {
 
   public getConversation(id: string): Promise<IConversation | undefined> {
     return this.run(undefined, () => this.conversations.get(id));
+  }
+
+  public getConversationLog(
+    conversationId: string,
+  ): Promise<IConversationLog | undefined> {
+    return this.run(undefined, () => this.conversationLogs.get(conversationId));
+  }
+
+  public async putConversationLog(log: IConversationLog): Promise<void> {
+    await this.run(undefined, () =>
+      messageQueue.enqueue(() => this.conversationLogs.put(log)),
+    );
   }
 
   public getAllConversations(): Promise<IConversation[]> {
@@ -287,13 +313,6 @@ class ChatDexie extends Dexie {
     );
   }
 
-  public async getConversationIdsWithMessages(): Promise<string[]> {
-    const conversationIds = await this.run([], () =>
-      this.messages.orderBy("conversationId").keys(),
-    );
-    return Array.from(new Set(conversationIds)) as string[];
-  }
-
   public async putMessage(message: IMessage): Promise<string> {
     await this.run(undefined, () =>
       messageQueue.enqueue(() => this.messages.put(message)),
@@ -308,38 +327,6 @@ class ChatDexie extends Dexie {
     );
     messages.forEach((message) => dbEventEmitter.emitMessageUpserted(message));
     return messages.map((message) => message.id);
-  }
-
-  /**
-   * Atomically persist a user-bot message pair in a single transaction.
-   * This ensures both messages are saved together or neither is saved.
-   */
-  public async persistMessagePair(
-    userMessage: IMessage | null,
-    botMessage: IMessage | null,
-  ): Promise<{ userMessage: IMessage | null; botMessage: IMessage | null }> {
-    await this.run(undefined, () =>
-      messageQueue.enqueue(() =>
-        (this as Dexie).transaction("rw", this.messages, async () => {
-          if (userMessage) {
-            await this.messages.put(userMessage);
-          }
-          if (botMessage) {
-            await this.messages.put(botMessage);
-          }
-        }),
-      ),
-    );
-
-    // Emit events after successful transaction
-    if (userMessage) {
-      dbEventEmitter.emitMessageUpserted(userMessage);
-    }
-    if (botMessage) {
-      dbEventEmitter.emitMessageUpserted(botMessage);
-    }
-
-    return { userMessage, botMessage };
   }
 
   public async replaceMessage(
@@ -364,13 +351,13 @@ class ChatDexie extends Dexie {
       messageQueue.enqueue(() =>
         (this as Dexie).transaction(
           "rw",
-          this.conversations,
-          this.messages,
+          [this.conversations, this.messages, this.conversationLogs],
           async () => {
             await this.messages
               .where("conversationId")
               .equals(conversationId)
               .delete();
+            await this.conversationLogs.delete(conversationId);
             await this.conversations.delete(conversationId);
           },
         ),
@@ -391,8 +378,7 @@ class ChatDexie extends Dexie {
       messageQueue.enqueue(() =>
         (this as Dexie).transaction(
           "rw",
-          this.conversations,
-          this.messages,
+          [this.conversations, this.messages, this.conversationLogs],
           async () => {
             // Delete all messages for these conversations in one indexed
             // query — same rw transaction, no sequential await loop.
@@ -400,6 +386,7 @@ class ChatDexie extends Dexie {
               .where("conversationId")
               .anyOf(conversationIds)
               .delete();
+            await this.conversationLogs.bulkDelete(conversationIds);
             // Delete the conversations themselves
             await this.conversations.bulkDelete(conversationIds);
           },
@@ -409,25 +396,6 @@ class ChatDexie extends Dexie {
 
     // Emit event for store synchronization
     dbEventEmitter.emitConversationsDeletedBulk(conversationIds);
-  }
-
-  public async updateMessageContent(
-    messageId: string,
-    content: string,
-  ): Promise<void> {
-    let updatedMessage: IMessage | undefined;
-    await this.run(undefined, () =>
-      messageQueue.enqueue(async () => {
-        const message = await this.messages.get(messageId);
-        if (message) {
-          updatedMessage = { ...message, content, updatedAt: new Date() };
-          await this.messages.put(updatedMessage);
-        }
-      }),
-    );
-    if (updatedMessage) {
-      dbEventEmitter.emitMessageUpserted(updatedMessage);
-    }
   }
 
   /** Merge `updates` into an existing message. Returns the updated record,
@@ -456,62 +424,6 @@ class ChatDexie extends Dexie {
     return updatedMessage;
   }
 
-  public async updateMessageStatus(
-    messageId: string,
-    status: IMessage["status"],
-  ): Promise<void> {
-    let updatedMessage: IMessage | undefined;
-    await this.run(undefined, () =>
-      messageQueue.enqueue(async () => {
-        const message = await this.messages.get(messageId);
-        if (message) {
-          updatedMessage = { ...message, status, updatedAt: new Date() };
-          await this.messages.put(updatedMessage);
-        }
-      }),
-    );
-    if (updatedMessage) {
-      dbEventEmitter.emitMessageUpserted(updatedMessage);
-    }
-  }
-
-  public async replaceOptimisticMessage(
-    optimisticId: string,
-    backendId: string,
-    updatedData?: Partial<IMessage>,
-  ): Promise<void> {
-    let finalMessage: IMessage | undefined;
-    await this.run(undefined, () =>
-      messageQueue.enqueue(() =>
-        (this as Dexie).transaction("rw", this.messages, async () => {
-          const message = await this.messages.get(optimisticId);
-          if (!message) {
-            console.warn(`Optimistic message ${optimisticId} not found`);
-            return;
-          }
-
-          // Create the replacement message with the new backend ID
-          // IndexedDB cannot change primary key via update(), so we delete + put
-          finalMessage = {
-            ...message,
-            id: backendId,
-            messageId: backendId,
-            optimistic: false,
-            updatedAt: new Date(),
-            ...updatedData,
-          };
-
-          // Atomically delete old + add new within transaction
-          await this.messages.delete(optimisticId);
-          await this.messages.put(finalMessage);
-        }),
-      ),
-    );
-    if (finalMessage) {
-      dbEventEmitter.emitMessageIdReplaced(optimisticId, finalMessage);
-    }
-  }
-
   public async syncMessages(
     conversationId: string,
     messages: IMessage[],
@@ -532,10 +444,10 @@ class ChatDexie extends Dexie {
         const ids = await this.conversations.toCollection().primaryKeys();
         await (this as Dexie).transaction(
           "rw",
-          this.conversations,
-          this.messages,
+          [this.conversations, this.messages, this.conversationLogs],
           async () => {
             await this.messages.clear();
+            await this.conversationLogs.clear();
             await this.conversations.clear();
           },
         );
@@ -545,28 +457,6 @@ class ChatDexie extends Dexie {
 
     // Emit event for store synchronization
     dbEventEmitter.emitConversationsDeletedBulk(conversationIds as string[]);
-  }
-
-  public async cleanupOrphanedOptimisticMessages(
-    maxAgeMinutes = 5,
-  ): Promise<number> {
-    const cutoffTime = Date.now() - maxAgeMinutes * 60 * 1000;
-    let deletedCount = 0;
-
-    await this.run(undefined, () =>
-      messageQueue.enqueue(async () => {
-        const allMessages = await this.messages.toArray();
-        const orphaned = allMessages.filter(
-          (m) => m.optimistic && m.createdAt.getTime() < cutoffTime,
-        );
-        const orphanedIds = orphaned.map((m) => m.id);
-
-        await this.messages.bulkDelete(orphanedIds);
-        deletedCount = orphaned.length;
-      }),
-    );
-
-    return deletedCount;
   }
 
   public async updateConversationFields(

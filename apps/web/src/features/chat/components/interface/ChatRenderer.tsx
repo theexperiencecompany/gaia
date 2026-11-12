@@ -28,17 +28,13 @@ import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useConversationRow } from "@/features/chat/hooks/useConversationList";
 import { useMessageHighlight } from "@/features/chat/hooks/useMessageHighlight";
 import { useRetryMessage } from "@/features/chat/hooks/useRetryMessage";
+import { useActiveLiveLoading } from "@/features/chat/live/useLiveChat";
 import {
   filterEmptyMessagePairs,
   isBotMessageEmpty,
 } from "@/features/chat/utils/messageContentUtils";
 import { getMessageProps } from "@/features/chat/utils/messagePropsUtils";
 import { useChatStore } from "@/stores/chatStore";
-import {
-  useActiveLoading,
-  useIsAwaitingExecutor,
-  useIsConversationStreaming,
-} from "@/stores/streamStore";
 import type {
   ChatBubbleBotProps,
   ChatBubbleUserProps,
@@ -267,28 +263,12 @@ export default function ChatRenderer({
   const convoMessages = propConvoMessages ?? storeConvoMessages;
   const [openGeneratedImage, setOpenGeneratedImage] = useState<boolean>(false);
   const [openMemoryModal, setOpenMemoryModal] = useState<boolean>(false);
-  // Loading state for the ACTIVE conversation only — a stream running in
-  // another conversation renders its own indicator there, not here. Includes
-  // the awaiting-executor bridge and auxiliary (voice/upload) loading.
-  const { isLoading, loadingText, loadingTextKey, toolInfo } =
-    useActiveLoading();
+  // The open conversation's loading row, from its server state (plus voice/upload loading).
+  const { isLoading, loadingText, toolInfo } = useActiveLiveLoading();
   const { id: convoIdParam } = useParams<{ id: string }>();
-  // NB: compare against the store's `activeConversationId`, not the route param
-  // — new conversations rewrite the URL via `history.replaceState`, which does
-  // not update Next's `useParams`, so `convoIdParam` is stale during streaming.
-  const activeConversationId = useChatStore(
-    (state) => state.activeConversationId,
-  );
-  // While "in progress", suppress follow-ups and the hover action/timestamp
-  // row (they belong to a *finished* turn) — in progress means its SSE
-  // stream runs, or (for background-executor turns) until the WebSocket result arrives.
-  const isAwaitingExecutorResult = useIsAwaitingExecutor(activeConversationId);
-  const isTurnOpen = useIsConversationStreaming(activeConversationId);
-  const isConversationStreaming = isTurnOpen || isAwaitingExecutorResult;
-  // "Working" = the SSE turn runs or the loading indicator is visible. Used to
-  // suppress the follow-ups + action row on the *active turn's* bubble only
-  // (see `suppressForBusy` below) — finished turns keep their follow-ups.
-  const isConversationBusy = isConversationStreaming || isLoading;
+  // While GAIA owes a reply, the newest bubble's follow-ups and action row
+  // (they belong to a finished answer) are suppressed; finished turns keep theirs.
+  const isConversationBusy = isLoading;
   const { scrollToMessage } = useMessageHighlight();
 
   const { retryMessage, isRetrying } = useRetryMessage();
@@ -482,7 +462,6 @@ export default function ChatRenderer({
         <AnimatePresence>
           <LoadingIndicator
             loadingText={loadingText}
-            loadingTextKey={loadingTextKey}
             toolInfo={toolInfo}
             noPadding={compact}
             spinner={

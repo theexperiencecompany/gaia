@@ -20,7 +20,7 @@ vi.mock("@/lib/websocket/WebSocketManager", () => ({
   wsManager: { on: vi.fn(), off: vi.fn() },
 }));
 
-vi.mock("@/features/chat/stream/unread", () => ({
+vi.mock("@/features/chat/utils/unread", () => ({
   isViewingConversation: () => true,
   markConversationUnread: vi.fn(),
 }));
@@ -29,7 +29,6 @@ import { useBgMessageWebSocket } from "@/features/chat/hooks/useBgMessageWebSock
 import { db } from "@/lib/db/chatDb";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { useChatStore } from "@/stores/chatStore";
-import { useStreamStore } from "@/stores/streamStore";
 
 const CONVERSATION_ID = "todo-chat-1";
 const WAKE = {
@@ -84,29 +83,5 @@ describe("a tracked todo run's wake pushed to an open chat", () => {
       .getState()
       .messagesByConversation[CONVERSATION_ID]?.find((m) => m.id === "wake-1");
     expect(shown?.role).toBe("user");
-  });
-
-  it("does not end the wait for GAIA's reply", async () => {
-    const endSession = vi.fn();
-    useStreamStore.setState({
-      sessions: {
-        [CONVERSATION_ID]: { phase: "awaiting_executor" },
-      } as never,
-      endSession,
-    } as never);
-
-    await pushed()({
-      type: "conversation.new_message",
-      conversation_id: CONVERSATION_ID,
-      message: {
-        type: "user",
-        response: "",
-        message_id: "wake-2",
-        date: "2026-10-31T14:06:00Z",
-        todo_run_wake: WAKE,
-      },
-    });
-
-    expect(endSession).not.toHaveBeenCalled();
   });
 });

@@ -84,13 +84,28 @@ function settle(view: ConversationView, replyId: string): ConversationView {
   return { ...view, drafts, closedAttempts, closedTasks };
 }
 
+// A held entry changes only to a higher revision, so a replayed original never undoes a later fill.
+function upgradeEntry(
+  view: ConversationView,
+  index: number,
+  entry: Entry,
+): ConversationView {
+  const held = view.entries[index];
+  const incoming = revisionOf(entry);
+  const current = revisionOf(held.entry);
+  if (incoming === null || current === null || incoming <= current) return view;
+  const entries = view.entries.map((logged, at) =>
+    at === index ? { ...held, entry } : logged,
+  );
+  return { ...view, entries };
+}
+
 function applyEntry(
   view: ConversationView,
   logged: LoggedEntry,
 ): ConversationView {
   const index = findSeq(view.entries, logged.seq);
-  // An append never changes content: a replayed original must not undo a later fill.
-  if (index >= 0) return view;
+  if (index >= 0) return upgradeEntry(view, index, logged.entry);
   const point = -(index + 1);
   const entries = [
     ...view.entries.slice(0, point),
@@ -115,15 +130,7 @@ function applyEntryUpdated(
 ): FrameOutcome {
   const index = findSeq(view.entries, seq);
   if (index < 0) return { status: "unknown_seq", seq, view };
-  const held = view.entries[index];
-  const incoming = revisionOf(entry);
-  const current = revisionOf(held.entry);
-  if (incoming === null || current === null || incoming <= current)
-    return applied(view);
-  const entries = view.entries.map((logged, at) =>
-    at === index ? { ...held, entry } : logged,
-  );
-  return applied({ ...view, entries });
+  return applied(upgradeEntry(view, index, entry));
 }
 
 const sameStream =
@@ -216,6 +223,9 @@ export function applyFrame(
       return applied(retract(view, frame.attempt_id));
     case FRAME_KIND.STATE:
       return applied(applyState(view, frame));
+    // The title is the conversation's metadata, held with the conversation list, not in the log's view.
+    case FRAME_KIND.CONVERSATION_UPDATED:
+      return applied(view);
     default: {
       const unhandled: never = frame;
       return unhandled;

@@ -131,14 +131,66 @@ function workStatus(view: ConversationView, taskId: string): WorkStatus {
   return live?.awaiting_approval ? "awaiting_approval" : "running";
 }
 
+// A task handed to running work belongs to that work's bubble, through any chain of hand-overs.
+function joinedRoots(view: ConversationView): (taskId: string) => string {
+  const joins = new Map<string, string>();
+  for (const { entry } of view.entries) {
+    if (entry.kind === ENTRY_KIND.WORK_STARTED && entry.joins)
+      joins.set(entry.task_id, entry.joins);
+  }
+  return (taskId) => {
+    let root = taskId;
+    const visited = new Set<string>();
+    while (joins.has(root) && !visited.has(root)) {
+      visited.add(root);
+      root = joins.get(root) ?? root;
+    }
+    return root;
+  };
+}
+
+// Finished tasks whose narrating reply has not settled: their logged cards stand in for live ones.
+function unsettledFinishedCards(
+  view: ConversationView,
+): Map<string, readonly ToolDataEntry[]> {
+  const settled = new Set(
+    view.entries.flatMap(({ entry }) =>
+      entry.kind === ENTRY_KIND.REPLY_SETTLED ? [entry.reply_id] : [],
+    ),
+  );
+  const cards = new Map<string, readonly ToolDataEntry[]>();
+  for (const { entry } of view.entries) {
+    if (
+      entry.kind === ENTRY_KIND.WORK_FINISHED &&
+      !settled.has(entry.task_id) &&
+      !view.closedTasks[entry.task_id]
+    )
+      cards.set(entry.task_id, entry.tool_data);
+  }
+  return cards;
+}
+
 // C2: one bubble per live task and per task whose cards no settled reply has taken over yet.
 function workBubbles(view: ConversationView): LiveBubble[] {
+  const rootOf = joinedRoots(view);
   const drafts = view.drafts.filter(isWorkDraft);
+  const finishedCards = unsettledFinishedCards(view);
+  const liveCards = new Map<string, ToolDataEntry[]>();
+  for (const draft of drafts) {
+    const root = rootOf(draft.taskId);
+    liveCards.set(root, [
+      ...(liveCards.get(root) ?? []),
+      ...draft.content.toolData,
+    ]);
+  }
   const taskIds = [
-    ...new Set([
-      ...view.work.map((task) => task.task_id),
-      ...drafts.map((draft) => draft.taskId),
-    ]),
+    ...new Set(
+      [
+        ...view.work.map((task) => task.task_id),
+        ...drafts.map((draft) => draft.taskId),
+        ...finishedCards.keys(),
+      ].map(rootOf),
+    ),
   ];
   return taskIds.map((taskId) => ({
     kind: "work",
@@ -150,8 +202,7 @@ function workBubbles(view: ConversationView): LiveBubble[] {
       )?.seq ?? null,
     taskId,
     status: workStatus(view, taskId),
-    toolData:
-      drafts.find((draft) => draft.taskId === taskId)?.content.toolData ?? [],
+    toolData: liveCards.get(taskId) ?? finishedCards.get(taskId) ?? [],
   }));
 }
 
@@ -212,16 +263,17 @@ export function loadingRow(view: ConversationView): LoadingRow {
   return { visible, status: view.display, detail: progress ?? null };
 }
 
-/** The user message a settled reply visibly points at, as the server chose it. */
+/** The user message a reply visibly points at: the server's choice at open, and its final one once settled. */
 export function quoteFor(
   view: ConversationView,
   replyId: string,
 ): string | null {
-  const settled = view.entries.find(
-    ({ entry }) =>
-      entry.kind === ENTRY_KIND.REPLY_SETTLED && entry.reply_id === replyId,
-  )?.entry;
-  return settled?.kind === ENTRY_KIND.REPLY_SETTLED
-    ? settled.quote_target
-    : null;
+  let opened: string | null = null;
+  for (const { entry } of view.entries) {
+    if (entry.kind === ENTRY_KIND.REPLY_SETTLED && entry.reply_id === replyId)
+      return entry.quote_target;
+    if (entry.kind === ENTRY_KIND.REPLY && entry.reply_id === replyId)
+      opened = entry.quote_target;
+  }
+  return opened;
 }

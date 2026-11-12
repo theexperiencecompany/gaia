@@ -100,8 +100,8 @@ async function buildHarness(): Promise<Harnessed> {
     })),
     // The conversation is already idle with the message answered, so the follow ends at once.
     conversationEvents: vi.fn(async function* () {
-      yield { stream_id: null, frame: entryFrame(1, stopRequested("s1")) };
-      yield { stream_id: null, frame: stateFrame(1, "idle") };
+      yield { streamId: null, frame: entryFrame(1, stopRequested("s1")) };
+      yield { streamId: null, frame: stateFrame(1, "idle") };
     }),
     // Authenticated → the welcome path is skipped and the user is cached.
     checkAuthStatus: vi.fn(async () => ({

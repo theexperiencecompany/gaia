@@ -161,7 +161,7 @@ describe.each([
         ...answer(4, "r1", "All three, done.", ["u1", "u2", "u3"], 3),
         stateFrame(5, "idle"),
       ];
-      for (const frame of frames) yield { stream_id: null, frame };
+      for (const frame of frames) yield { streamId: null, frame };
     };
     const followers = new ConversationFollowers(source, options);
     const ctx = { platform: options.platform, platformUserId: "7" };
@@ -299,13 +299,13 @@ describe.each([
       cursors.push(after);
       if (cursors.length === 1) {
         for (const [index, frame] of first.entries()) {
-          yield { stream_id: `1-${index}`, frame };
+          yield { streamId: `1-${index}`, frame };
         }
         throw new Error("socket hang up");
       }
       // The server resumes after the cursor; a replayed frame must render nothing.
-      for (const frame of first.slice(-4)) yield { stream_id: "1-9", frame };
-      yield { stream_id: "2-0", frame: stateFrame(4, "idle") };
+      for (const frame of first.slice(-4)) yield { streamId: "1-9", frame };
+      yield { streamId: "2-0", frame: stateFrame(4, "idle") };
     };
     const followers = new ConversationFollowers(source, options);
     followers.follow(

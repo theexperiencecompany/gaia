@@ -1,3 +1,5 @@
+import type { FailureReason, ToolDataEntry } from "../api/generated";
+import { FAILURE_REASON } from "./entries";
 import type {
   ConversationFrame,
   DisplayState,
@@ -7,7 +9,7 @@ import type {
   UserMessage,
 } from "./types";
 
-/** Builders for conversation frames in tests, shaped as parseConversationFrame returns them. */
+/** Builders for conversation frames in tests, shaped as parseConversationEvent returns their frames. */
 
 const AT = "2026-11-12T10:00:00+00:00";
 
@@ -25,6 +27,12 @@ export const userMessage = (
   reply_to: null,
   retry_of: null,
   file_ids: [],
+  files: [],
+  selected_tool: null,
+  tool_category: null,
+  selected_workflow: null,
+  selected_calendar_event: null,
+  reply_to_message: null,
   voice: false,
   reaction,
   revision,
@@ -44,8 +52,8 @@ export const reply = (
   text,
   tool_data: [],
   follow_up_actions: [],
-  quote_target: quoteTarget,
   heard_through: null,
+  quote_target: quoteTarget,
   revision,
 });
 
@@ -55,9 +63,8 @@ export const replySettled = (
   through: number,
   quoteTarget: string | null = null,
   outcome: "answered" | "stopped" | "failed" | "silent" = "answered",
-  failure: "model_error" | "step_limit" | "server_restart" | null = outcome ===
-  "failed"
-    ? "model_error"
+  failure: FailureReason | null = outcome === "failed"
+    ? FAILURE_REASON.MODEL_ERROR
     : null,
 ): Entry => ({
   kind: "reply_settled",
@@ -86,12 +93,14 @@ export const workStarted = (
 export const workFinished = (
   taskId: string,
   outcome: "done" | "failed" | "cancelled" | "lost" = "done",
+  toolData: ToolDataEntry[] = [],
 ): Entry => ({
   kind: "work_finished",
   id: `finished-${taskId}`,
   task_id: taskId,
   outcome,
   report: "report",
+  tool_data: toolData,
 });
 
 export const approvalRequested = (

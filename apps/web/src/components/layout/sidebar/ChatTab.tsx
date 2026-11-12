@@ -1,14 +1,12 @@
 "use client";
 import { Button } from "@heroui/button";
 import { ChatBotIcon, Mail01Icon, StarIcon } from "@icons";
+import { DISPLAY_STATE } from "@shared/conversation";
 import Link from "next/link";
 import React, { type FC, useState } from "react";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
+import { useConversationDisplay } from "@/features/chat/live/useLiveChat";
 import { usePathname } from "@/i18n/navigation";
-import {
-  useIsConversationAwaitingApproval,
-  useIsConversationStreaming,
-} from "@/stores/streamStore";
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
 
 const ICON_WIDTH = "20";
@@ -38,14 +36,11 @@ export const ChatTab: FC<ChatTabProps> = ({
   const pathname = usePathname();
   const [buttonHovered, setButtonHovered] = useState(false);
 
-  // Per-conversation: multiple conversations can stream concurrently.
-  const isStreaming = useIsConversationStreaming(id);
-  const isAwaitingApproval = useIsConversationAwaitingApproval(id);
-  // A turn paused on an approval has left the streaming phase (SSE closed), so
-  // the dot keys off both; hasPendingApproval covers reloads and background
-  // runs where no stream state exists.
-  const showApprovalDot = isAwaitingApproval || hasPendingApproval;
-  const isBusy = isStreaming || showApprovalDot;
+  // Live for a conversation open on this device; hasPendingApproval covers the rest.
+  const display = useConversationDisplay(id);
+  const showApprovalDot =
+    display === DISPLAY_STATE.AWAITING_APPROVAL || hasPendingApproval;
+  const isBusy = display !== DISPLAY_STATE.IDLE || showApprovalDot;
 
   // Derive current conversation ID from pathname during render
   const pathParts = pathname.split("/");

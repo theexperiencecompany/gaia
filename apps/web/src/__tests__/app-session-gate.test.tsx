@@ -42,12 +42,6 @@ vi.mock("@/features/notification/hooks/useNotificationWebSocket", () => ({
 vi.mock("@/features/chat/hooks/useBgMessageWebSocket", () => ({
   useBgMessageWebSocket: () => paidSessionHook("bg_messages"),
 }));
-vi.mock("@/features/chat/hooks/useExecutorStream", () => ({
-  useExecutorStream: () => paidSessionHook("executor_stream"),
-}));
-vi.mock("@/features/chat/hooks/useExecutorCancelWebSocket", () => ({
-  useExecutorCancelWebSocket: () => paidSessionHook("executor_cancel"),
-}));
 vi.mock("@/features/chat/hooks/useApprovalDecisionWebSocket", () => ({
   useApprovalDecisionWebSocket: () => paidSessionHook("approvals"),
 }));

@@ -73,7 +73,7 @@ export async function* readConversationEvents(
           });
           continue;
         }
-        yield parsed.value;
+        yield parsed.event;
       }
     }
   } finally {

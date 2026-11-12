@@ -6,11 +6,7 @@ import type {
   ReplySchema,
   UserMessageSchema,
 } from "./entries";
-import type {
-  ConversationEventSchema,
-  ConversationFrameSchema,
-  LiveTaskSchema,
-} from "./frames";
+import type { ConversationFrameSchema, LiveTaskSchema } from "./frames";
 
 export type Entry = z.infer<typeof EntrySchema>;
 export type UserMessage = z.infer<typeof UserMessageSchema>;
@@ -25,8 +21,11 @@ export interface LoggedEntry {
 }
 
 export type ConversationFrame = z.infer<typeof ConversationFrameSchema>;
-/** One parsed `data:` line of the events stream: a frame, and the stream id to resume after. */
-export type ConversationStreamEvent = z.infer<typeof ConversationEventSchema>;
+/** One event of the stream: the frame, and the stream id to resume after (null when replayed from the log). */
+export interface ConversationStreamEvent {
+  streamId: string | null;
+  frame: ConversationFrame;
+}
 type FrameOf<K extends ConversationFrame["kind"]> = Extract<
   ConversationFrame,
   { kind: K }

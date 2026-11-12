@@ -128,7 +128,7 @@ function makeGaia(script: ApiScript, held: Promise<void> = Promise.resolve()) {
     conversationEvents: vi.fn(async function* () {
       await held;
       for (const frame of turnFrames(script, posts)) {
-        yield { stream_id: null, frame };
+        yield { streamId: null, frame };
       }
     }),
     createLinkToken: vi.fn(async () => ({

@@ -169,6 +169,45 @@ describe("visibleBubbles", () => {
     expect(shape(narrated)).toEqual(["user:m1", 'reply:k1 "Found it"']);
   });
 
+  it("shows a finished task's logged cards when its live cards were never seen here", () => {
+    const card = {
+      tool_name: "tool_calls_data",
+      data: { tool_call_id: "c1" },
+    };
+    const view = fold([
+      entryFrame(1, userMessage("m1")),
+      entryFrame(2, workStarted("k1", 1)),
+      entryFrame(3, workFinished("k1", "done", [card])),
+      stateFrame(3, "thinking"),
+    ]);
+    expect(shape(view)).toEqual(["user:m1", "work:k1 done cards=1"]);
+    const settled = fold(
+      [
+        entryFrame(4, reply("k1", "a2", "Found it")),
+        entryFrame(5, replySettled("k1", ["m1"], 3)),
+      ],
+      view,
+    );
+    expect(shape(settled)).toEqual(["user:m1", 'reply:k1 "Found it"']);
+  });
+
+  it("renders a task handed to running work under the work it joined", () => {
+    const view = fold([
+      entryFrame(1, userMessage("m1")),
+      entryFrame(2, workStarted("k1", 1)),
+      workCardDelta("k1", 0, "Searching mail"),
+      entryFrame(3, userMessage("m2")),
+      entryFrame(4, workStarted("k2", 3, "k1")),
+      workCardDelta("k2", 0, "Searching more mail"),
+      stateFrame(4, "working", [liveTask("k1")]),
+    ]);
+    expect(shape(view)).toEqual([
+      "user:m1",
+      "work:k1 running cards=2",
+      "user:m2",
+    ]);
+  });
+
   it("shows cancelled work as stopped, keeping its cards", () => {
     const view = fold([
       entryFrame(1, userMessage("m1")),
@@ -236,8 +275,20 @@ describe("quoteFor", () => {
     expect(quoteFor(view, "r1")).toBe(expected);
   });
 
-  it("returns no quote for a reply that has not settled", () => {
-    const view = fold([entryFrame(2, reply("r1", "a1", "x"))]);
+  it("returns the target the reply opened with before it settles", () => {
+    const view = fold([
+      entryFrame(1, userMessage("m1")),
+      entryFrame(2, reply("r1", "a1", "x", 0, "m1")),
+    ]);
+    expect(quoteFor(view, "r1")).toBe("m1");
+  });
+
+  it("lets the settled target replace the one the reply opened with", () => {
+    const view = fold([
+      entryFrame(1, userMessage("m1")),
+      entryFrame(2, reply("r1", "a1", "x", 0, "m1")),
+      entryFrame(3, replySettled("r1", ["m1"], 1, null)),
+    ]);
     expect(quoteFor(view, "r1")).toBeNull();
   });
 });

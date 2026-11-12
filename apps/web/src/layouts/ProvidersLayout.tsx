@@ -8,8 +8,6 @@ import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsP
 import { Toaster } from "@/components/ui/Toaster";
 import { useApprovalDecisionWebSocket } from "@/features/chat/hooks/useApprovalDecisionWebSocket";
 import { useBgMessageWebSocket } from "@/features/chat/hooks/useBgMessageWebSocket";
-import { useExecutorCancelWebSocket } from "@/features/chat/hooks/useExecutorCancelWebSocket";
-import { useExecutorStream } from "@/features/chat/hooks/useExecutorStream";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
@@ -30,8 +28,8 @@ const GlobalIntegrationModal = dynamic(
 );
 
 /**
- * The signed-in app's background requests: realtime sockets, notifications,
- * executor streams. All of them are paid-only, so they mount only once the
+ * The signed-in app's background requests: realtime sockets and notifications.
+ * All of them are paid-only, so they mount only once the
  * plan is read and allows them; an unpaid account on /onboarding fires none.
  */
 function PaidSessionEffects() {
@@ -44,16 +42,9 @@ function PaidSessionEffects() {
   // Subscribe to notification events — writes the shared query cache
   useNotificationWebSocket();
 
-  // Subscribe to background executor completion messages — inserts new
-  // bot messages delivered via WebSocket (executor notifications, queued task results)
+  // Messages saved into conversations the server still runs outside the event
+  // stream (workflow and todo runs) arrive over the WebSocket.
   useBgMessageWebSocket();
-
-  // Subscribe to queued executor SSE streams for live tool progress
-  useExecutorStream();
-
-  // Subscribe to agent-initiated executor cancellations — clears the stuck
-  // executor-pending loading indicator and finalizes in-flight tool cards
-  useExecutorCancelWebSocket();
 
   // Subscribe to ledger approval decisions — settles open cards (and raises
   // revoke tombstones) decided anywhere but this tab, with no reload

@@ -54,9 +54,9 @@ async function* replay(
   after: string,
 ): AsyncGenerator<ConversationStreamEvent> {
   for (const frame of log) {
-    if (seqOf(frame) > Number(after)) yield { stream_id: null, frame };
+    if (seqOf(frame) > Number(after)) yield { streamId: null, frame };
   }
-  yield { stream_id: "9-0", frame: stateFrame(log.length, "idle") };
+  yield { streamId: "9-0", frame: stateFrame(log.length, "idle") };
 }
 
 class RestartedAdapter extends BaseBotAdapter {

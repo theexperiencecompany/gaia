@@ -152,7 +152,7 @@ export class ConversationFollowers {
           abort.signal,
         )) {
           await follower.apply(event.frame);
-          if (event.stream_id) cursor = event.stream_id;
+          if (event.streamId) cursor = event.streamId;
           failures = 0;
           if (follower.finished) {
             // Leave the registry before any await, so a message posted now starts a new follow.

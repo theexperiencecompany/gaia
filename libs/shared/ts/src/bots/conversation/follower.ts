@@ -147,6 +147,9 @@ export class ConversationFollower {
       case FRAME_KIND.WORK_DELTA:
         // Tool cards and progress are web-only; a bot hears about work in its reply.
         return;
+      case FRAME_KIND.CONVERSATION_UPDATED:
+        // A chat platform shows no conversation title.
+        return;
       default: {
         const unhandled: never = frame;
         return unhandled;

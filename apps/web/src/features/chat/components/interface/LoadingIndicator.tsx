@@ -9,7 +9,6 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 interface LoadingIndicatorProps {
   loadingText: string;
-  loadingTextKey: number;
   toolInfo?: {
     toolName?: string;
     toolCategory?: string;
@@ -39,7 +38,6 @@ function formatCategoryName(category: string): string {
 
 export function LoadingIndicator({
   loadingText,
-  loadingTextKey,
   toolInfo,
   noPadding = false,
   spinner,
@@ -83,7 +81,7 @@ export function LoadingIndicator({
         spinner || <WaveSpinnerSquare />}
       <AnimatePresence mode="wait">
         <m.span
-          key={loadingTextKey}
+          key={loadingText}
           variants={slideUp}
           initial="initial"
           animate="animate"

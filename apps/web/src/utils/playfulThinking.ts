@@ -1,4 +1,1 @@
-export {
-  getRandomThinkingMessage,
-  getRelevantThinkingMessage,
-} from "@shared/utils";
+export { getRandomThinkingMessage } from "@shared/utils";

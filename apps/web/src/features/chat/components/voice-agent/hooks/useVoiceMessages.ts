@@ -11,8 +11,8 @@ import {
 import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
 import { track } from "@/lib/analytics";
 import type { IMessage } from "@/lib/db/chatDb";
+import { useAuxLoadingStore } from "@/stores/auxLoadingStore";
 import { useChatStore } from "@/stores/chatStore";
-import { useStreamStore } from "@/stores/streamStore";
 import { useVoiceModeActions } from "@/stores/voiceModeStore";
 
 interface VoiceBotTurn {
@@ -75,7 +75,7 @@ function appendToolDataEntry(
   const hints = readToolDataLoadingHints((entry as { data?: unknown }).data);
   if (hints) {
     const { message, ...toolInfo } = hints;
-    useStreamStore.getState().setAuxLoading(true, message, toolInfo);
+    useAuxLoadingStore.getState().setAuxLoading(true, message, toolInfo);
   }
   return true;
 }
@@ -211,7 +211,7 @@ export function useVoiceMessages(
     // This turn's first token has arrived — clear the thinking indicator and
     // keep it cleared for the rest of the turn.
     botTokenSeenThisTurnRef.current = true;
-    useStreamStore.getState().setAuxLoading(false);
+    useAuxLoadingStore.getState().setAuxLoading(false);
     return turn;
   }, [room, nextCreatedAt, closeUserGroup]);
 
@@ -268,7 +268,7 @@ export function useVoiceMessages(
         // bubble. The turn closes when the next user utterance starts.
         turn.loading = false;
         // Drop any per-tool loading label so it doesn't linger past the reply.
-        useStreamStore.getState().setAuxLoading(false);
+        useAuxLoadingStore.getState().setAuxLoading(false);
         changed = true;
       }
 
@@ -432,14 +432,14 @@ export function useVoiceMessages(
   // follow-up generation (which kept the indicator on); `listening` clears it too.
   useEffect(() => {
     if (agentState === "thinking" && !botTokenSeenThisTurnRef.current) {
-      useStreamStore.getState().setAuxLoading(true);
+      useAuxLoadingStore.getState().setAuxLoading(true);
     } else if (agentState === "listening") {
-      useStreamStore.getState().setAuxLoading(false);
+      useAuxLoadingStore.getState().setAuxLoading(false);
     }
   }, [agentState]);
 
   // Clear the indicator when leaving voice mode.
-  useEffect(() => () => useStreamStore.getState().setAuxLoading(false), []);
+  useEffect(() => () => useAuxLoadingStore.getState().setAuxLoading(false), []);
 
   return { sendUserTurn };
 }

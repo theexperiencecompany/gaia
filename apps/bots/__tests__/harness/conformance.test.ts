@@ -170,7 +170,7 @@ function makeGaia(script: ApiScript) {
     }),
     conversationEvents: vi.fn(async function* () {
       for (const frame of turnFrames(script, posts[0])) {
-        yield { stream_id: null, frame };
+        yield { streamId: null, frame };
       }
     }),
     checkAuthStatus: vi.fn(async () => ({
