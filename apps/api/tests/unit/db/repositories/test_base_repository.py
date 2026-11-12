@@ -18,7 +18,6 @@ from pydantic import BaseModel
 from pymongo.errors import AutoReconnect, DuplicateKeyError
 import pytest
 
-from app.db.repositories import base as base_module
 from app.db.repositories.base import MongoDocument, _BaseRepository
 from app.db.repositories.errors import AlreadyExistsError, RepositoryError
 from app.utils.errors import RepositoryMisconfiguredError
@@ -46,7 +45,7 @@ def _concrete(**overrides: Any) -> type[_BaseRepository]:
         "uses_object_id": False,
     }
     classvars.update(overrides)
-    return type("ThingRepository", (_BaseRepository,), classvars)  # type: ignore[return-value]  # test builds an untyped dynamic subclass
+    return type("ThingRepository", (_BaseRepository,), classvars)
 
 
 def test_a_complete_concrete_repository_is_accepted() -> None:
@@ -215,18 +214,24 @@ async def test_a_repository_body_still_catches_the_driver_error_of_its_own_neste
         assert await _NestingRepository().create_or_false(_Doc(id="a", name="a")) is False
 
 
-async def test_a_new_subclass_public_coroutine_translates_with_no_handling_of_its_own() -> None:
-    async def count_named(self: _BaseRepository[_Doc, _Update], name: str) -> int:
+class _CountingRepository(_BaseRepository[_Doc, _Update]):
+    collection_name = "things"
+    document_model = _Doc
+    update_model = _Update
+    uses_object_id = False
+
+    async def count_named(self, name: str) -> int:
         return await self._count({"name": name})
 
-    repo = _concrete(count_named=count_named)()
+
+async def test_a_new_subclass_public_coroutine_translates_with_no_handling_of_its_own() -> None:
     collection = MagicMock()
     collection.count_documents = AsyncMock(side_effect=AutoReconnect("down"))
     with (
         patch("app.db.repositories.base.get_async_collection", return_value=collection),
         pytest.raises(RepositoryError),
     ):
-        await repo.count_named("x")  # type: ignore[attr-defined]  # added by the dynamic subclass
+        await _CountingRepository().count_named("x")
 
 
 async def test_the_wide_event_names_the_driver_error_behind_the_repository_error() -> None:
@@ -235,7 +240,7 @@ async def test_the_wide_event_names_the_driver_error_behind_the_repository_error
     recorded: list[dict[str, object]] = []
     with (
         patch("app.db.repositories.base.get_async_collection", return_value=collection),
-        patch.object(base_module.log, "set", lambda **fields: recorded.append(fields)),
+        patch("app.db.repositories.base.log.set", lambda **fields: recorded.append(fields)),
         pytest.raises(RepositoryError),
     ):
         await _NestingRepository().get_twice("x")

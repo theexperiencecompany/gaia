@@ -11,6 +11,7 @@ from app.constants.log_tags import LogTag
 from app.constants.payments import PAID_PERSON_SYNC_RETRY_DELAY
 from app.db.repositories.errors import RepositoryError
 from app.models.payment_models import SubscriptionDocument
+from app.workers.task_envelope import ArqJobContext
 from app.workers.tasks.paid_person_tasks import sync_paid_person_properties_task
 
 EVENTS = "app.services.payments.subscription_events"
@@ -72,9 +73,12 @@ class TestSyncPaidPersonPropertiesTask:
             },
         )
 
-    @pytest.mark.parametrize(("ctx", "factor"), [({}, 1), ({"job_try": 1}, 1), ({"job_try": 3}, 4)])
+    @pytest.mark.parametrize(
+        ("ctx", "factor"),
+        [(ArqJobContext(), 1), (ArqJobContext(job_try=1), 1), (ArqJobContext(job_try=3), 4)],
+    )
     async def test_an_unreadable_row_asks_arq_for_a_backed_off_retry(
-        self, ctx: dict[str, int], factor: int
+        self, ctx: ArqJobContext, factor: int
     ) -> None:
         defer = PAID_PERSON_SYNC_RETRY_DELAY * factor
         with (

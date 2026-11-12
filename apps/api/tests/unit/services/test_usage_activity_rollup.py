@@ -18,7 +18,6 @@ from app.db.repositories.usage_daily import (
     UsageDailyIncrement,
     usage_daily_repository,
 )
-from app.services import usage_activity
 from app.services.usage_activity import get_activity, record_activity, record_cost
 
 USER = "user-activity-1"
@@ -27,7 +26,7 @@ FROZEN = "2026-03-04T09:30:00+00:00"
 
 
 def _row(date: str, **fields: object) -> UsageDailyDocument:
-    return UsageDailyDocument(user_id=USER, date=date, **fields)
+    return UsageDailyDocument.model_validate({"user_id": USER, "date": date, **fields})
 
 
 @pytest.fixture(autouse=True)
@@ -186,7 +185,7 @@ class TestRecordCost:
         # has already paid for.
         increment.side_effect = RepositoryError("rollup write failed")
 
-        with patch.object(usage_activity.log, "warning") as warned:
+        with patch("app.services.usage_activity.log.warning") as warned:
             await record_cost(USER, _spend(0.02, 300), charged=True)
 
         increment.assert_awaited_once()
@@ -204,7 +203,7 @@ class TestRecordActivity:
     ) -> None:
         increment.side_effect = RepositoryError("rollup write failed")
 
-        with patch.object(usage_activity.log, "warning") as warned:
+        with patch("app.services.usage_activity.log.warning") as warned:
             await record_activity(USER, 2)
 
         increment.assert_awaited_once()
