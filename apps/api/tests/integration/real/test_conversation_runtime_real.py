@@ -32,6 +32,7 @@ from app.models.agent_models import AgentRunnableConfig
 from app.models.conversation_frame_models import EntryFrame, ToolDataEvent, WorkDeltaFrame
 from app.models.conversation_log_models import (
     ApprovalDecided,
+    ApprovalRequested,
     Batch,
     DisplayState,
     IntegrationConnected,
@@ -487,7 +488,9 @@ async def test_an_approval_holds_the_work_until_the_user_decides(
     _during(model, 0, lambda: rig.start_work("t1"))
     await rig.send("m1", "send the invoice")
     await rig.settle()
-    await record_approval_requested(rig.conversation_id, rig.user_id, "t1", "a1")
+    await record_approval_requested(
+        rig.conversation_id, rig.user_id, "t1", "a1", summary="Send the invoice", expires_at=None
+    )
     waiting = await rig.ports.log.state(rig.conversation_id, rig.user_id)
     await record_approval_decided(rig.conversation_id, rig.user_id, "a1", "approve")
     await record_approval_decided(rig.conversation_id, rig.user_id, "a1", "approve")
@@ -496,6 +499,9 @@ async def test_an_approval_holds_the_work_until_the_user_decides(
     assert waiting.display is DisplayState.AWAITING_APPROVAL
     assert [work.pending_approvals for work in decided.work] == [frozenset()]
     assert len(await rig.of(ApprovalDecided)) == 1
+    assert [(a.summary, a.expires_at) for a in await rig.of(ApprovalRequested)] == [
+        ("Send the invoice", None)
+    ]
 
 
 async def _legacy_turn(rig: Rig, said: str) -> None:

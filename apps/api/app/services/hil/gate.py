@@ -301,7 +301,12 @@ async def _decide_ledger(
         )
         if task_id is not None:
             await record_approval_requested(
-                context.conversation_id, context.user_id, task_id, ap_id
+                context.conversation_id,
+                context.user_id,
+                task_id,
+                ap_id,
+                summary=summary,
+                expires_at=None,
             )
         log.info(
             f"{LogTag.HIL} Ledger registered gated call",

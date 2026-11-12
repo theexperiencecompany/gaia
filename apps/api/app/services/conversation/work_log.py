@@ -1,6 +1,7 @@
 """Background work as conversation log entries: started (fenced on the step's claim), approvals, finished."""
 
 from collections.abc import Sequence
+from datetime import datetime
 
 from app.agents.core.background.executor_queue import get_lock_holder, parse_lock_value
 from app.constants.hil import ApprovalResolution
@@ -97,11 +98,21 @@ async def running_step_task(conversation_id: str, user_id: str) -> str | None:
 
 
 async def record_approval_requested(
-    conversation_id: str, user_id: str, task_id: str, approval_id: str
+    conversation_id: str,
+    user_id: str,
+    task_id: str,
+    approval_id: str,
+    *,
+    summary: str,
+    expires_at: datetime | None,
 ) -> None:
-    """Append ApprovalRequested for live work paused on the user's decision."""
+    """Append ApprovalRequested for live work waiting on the user's decision, as its card reads."""
     entry = ApprovalRequested(
-        id=f"approval:{approval_id}", task_id=task_id, approval_id=approval_id
+        id=f"approval:{approval_id}",
+        task_id=task_id,
+        approval_id=approval_id,
+        summary=summary,
+        expires_at=expires_at,
     )
     await accept(runtime_ports(), conversation_id, user_id, entry)
 

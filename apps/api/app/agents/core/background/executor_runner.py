@@ -94,7 +94,7 @@ from app.services.conversation.work_log import (
     record_approval_requested,
     record_work_finished,
 )
-from app.services.hil.approvals_store import set_resume_item
+from app.services.hil.approvals_store import get_approval, set_resume_item
 from app.services.hil.resume_slot import release_resume_dispatch
 from app.services.latency_metrics import (
     observe_executor_active,
@@ -647,8 +647,16 @@ async def _log_approvals_requested(run: ExecutorRun, approval_ids: tuple[str, ..
     if run.conversation_step is None or not run.task_id:
         return
     for approval_id in approval_ids:
+        record = await get_approval(approval_id)
+        if record is None:
+            raise LookupError(f"approval {approval_id} the run paused on has no record")
         await record_approval_requested(
-            run.conversation_id, run.user.user_id, run.task_id, approval_id
+            run.conversation_id,
+            run.user.user_id,
+            run.task_id,
+            approval_id,
+            summary=record.summary,
+            expires_at=record.expires_at,
         )
 
 

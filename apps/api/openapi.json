@@ -479,6 +479,18 @@
             "title": "Approval Id",
             "type": "string"
           },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
           "id": {
             "description": "Producer-minted idempotency key",
             "minLength": 1,
@@ -489,6 +501,11 @@
             "const": "approval_requested",
             "default": "approval_requested",
             "title": "Kind",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
             "type": "string"
           },
           "task_id": {

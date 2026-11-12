@@ -179,6 +179,9 @@ class ApprovalRequested(_Entry):
     kind: Literal[EntryKind.APPROVAL_REQUESTED] = EntryKind.APPROVAL_REQUESTED
     task_id: str
     approval_id: str
+    # What the approval card shows, and when the request lapses (None: it never does).
+    summary: str = ""
+    expires_at: AwareDatetime | None = None
 
 
 class ApprovalDecided(_Entry):

@@ -6156,6 +6156,8 @@ export interface components {
         ApprovalRequested: {
             /** Approval Id */
             approval_id: string;
+            /** Expires At */
+            expires_at?: string | null;
             /**
              * Id
              * @description Producer-minted idempotency key
@@ -6166,6 +6168,11 @@ export interface components {
              * @enum {string}
              */
             kind: "approval_requested";
+            /**
+             * Summary
+             * @default
+             */
+            summary?: string;
             /** Task Id */
             task_id: string;
         };
