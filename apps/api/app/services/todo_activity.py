@@ -61,7 +61,7 @@ def run_finished_marker(run_id: str) -> str:
 async def record_run_finished(todo_id: str, user_id: str, run_id: str, detail: str) -> None:
     """Append a run's finish entry exactly once, retrying a failed write with backoff.
 
-    Raises the last PyMongoError once the attempts run out. A todo deleted
+    Raises the last RepositoryError once the attempts run out. A todo deleted
     meanwhile has nowhere to keep the entry, and append_activity says so.
     """
     line = activity_line(TodoActivityEvent.RUN_FINISHED, f"run {run_id}: {detail}")

@@ -18,8 +18,6 @@ JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from pymongo.errors import DuplicateKeyError
-
 from app.constants.todos import (
     ACTIVE_TRACKED_SUMMARY_LIMIT,
     CANVAS_DONE_WHEN_SECTION,
@@ -33,6 +31,7 @@ from app.constants.todos import (
     TodoActivityEvent,
     WaitingOn,
 )
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.todos import todo_repository
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
@@ -487,7 +486,7 @@ class TrackedTodoService:
                 written = await todo_repository.update_if_completed(
                     previous.id, user_id, update=update
                 )
-            except DuplicateKeyError as taken:
+            except AlreadyExistsError as taken:
                 # Another create opened a todo for the object after the lookup.
                 await raise_ref_taken(user_id, previous.external_ref, taken)
             if written is None:

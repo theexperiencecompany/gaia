@@ -11,7 +11,6 @@ import asyncio
 from typing import NamedTuple
 
 from pydantic import BaseModel, ConfigDict
-from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
 
 from app.agents.core.background.comms_narrator import (
@@ -38,6 +37,7 @@ from app.constants.todos import (
     TodoRunFinishFailure,
 )
 from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
+from app.db.repositories.errors import RepositoryError
 from app.db.repositories.todos import todo_repository
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
@@ -152,7 +152,7 @@ async def finish_todo_run(
             entry, owner_id = sent
             finished = finished.model_copy(update={"finish_entry": entry, "user_id": owner_id})
         await record_run_finished(finished.todo_id, finished.user_id, finished.run_id, entry)
-    except PyMongoError as e:
+    except RepositoryError as e:
         log.warning(
             f"{LogTag.AGENT} the todo store failed a finished run's delivery",
             todo_id=finished.todo_id,

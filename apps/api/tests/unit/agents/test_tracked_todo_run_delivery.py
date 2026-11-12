@@ -20,7 +20,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from arq import Retry
 from langchain_core.messages import SystemMessage
-from pymongo.errors import PyMongoError
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
 
@@ -51,6 +50,7 @@ from app.constants.agents import AgentTag
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent, TodoWakeKind
+from app.db.repositories.errors import RepositoryError
 from app.models.chat_models import ConversationSource
 from app.models.message_models import TodoRunWake
 from app.models.todo_models import TodoDocument
@@ -460,7 +460,7 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
 
     async def test_a_record_write_that_fails_once_is_retried_into_one_entry(self) -> None:
         written: list[str] = []
-        outage = [PyMongoError("primary stepped down")]
+        outage = [RepositoryError("primary stepped down")]
 
         async def store(todo_id: str, user_id: str, entry: str, *, once: str) -> bool:
             if outage:
@@ -484,7 +484,10 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
     ) -> None:
         """Regression: a failed read of the todo dropped the finished run's message and entry."""
         with _seams(todo=_todo()) as seams, _no_backoff():
-            seams.repo.get_by_id.side_effect = [PyMongoError("primary stepped down"), _todo()]
+            seams.repo.get_by_id.side_effect = [
+                RepositoryError("primary stepped down"),
+                _todo(),
+            ]
             await run_todo_on_executor(_request())
 
         seams.send.assert_awaited_once()
@@ -492,7 +495,7 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
 
     async def test_a_read_that_keeps_failing_is_delivered_by_the_runs_job(self) -> None:
         with _seams(todo=_todo()) as seams, _no_backoff():
-            seams.repo.get_by_id.side_effect = PyMongoError("primary stepped down")
+            seams.repo.get_by_id.side_effect = RepositoryError("primary stepped down")
             await run_todo_on_executor(_request())
             seams.send.assert_not_awaited()
             undone = _queued(seams, "todo_run_result_not_delivered")
@@ -510,7 +513,7 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
         self,
     ) -> None:
         with _seams(todo=_todo()) as seams, _no_backoff():
-            seams.activity.side_effect = PyMongoError("primary stepped down")
+            seams.activity.side_effect = RepositoryError("primary stepped down")
             await run_todo_on_executor(_request())
             undone = _queued(seams, "todo_run_result_not_recorded")
 
@@ -523,7 +526,7 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
     async def test_a_job_that_sends_but_cannot_record_hands_the_entry_on(self) -> None:
         """A replay of the sending job would send again; the entry gets a job of its own."""
         with _seams(todo=_todo()) as seams, _no_backoff():
-            seams.activity.side_effect = PyMongoError("primary stepped down")
+            seams.activity.side_effect = RepositoryError("primary stepped down")
             await tracked_todo_tasks.finish_tracked_todo_run({"job_try": 1}, _undelivered())
 
         seams.send.assert_awaited_once()
@@ -546,7 +549,7 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
             _no_backoff(),
             patch("shared.py.wide_events._loguru", recorder),
         ):
-            seams.repo.get_by_id.side_effect = PyMongoError("primary stepped down")
+            seams.repo.get_by_id.side_effect = RepositoryError("primary stepped down")
             with pytest.raises(Retry) as retry:
                 await tracked_todo_tasks.finish_tracked_todo_run({"job_try": 4}, _undelivered())
             last_try = todo_constants.TODO_RUN_FINISH_MAX_TRIES
@@ -569,7 +572,7 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
             _no_backoff(),
             patch("shared.py.wide_events._loguru", recorder),
         ):
-            seams.repo.get_by_id.side_effect = PyMongoError("primary stepped down")
+            seams.repo.get_by_id.side_effect = RepositoryError("primary stepped down")
             seams.enqueue.side_effect = RedisConnectionError("redis down")
             await run_todo_on_executor(_request())
 
@@ -588,7 +591,7 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
             event["stream_id"],
             "todo_run_result_not_delivered",
             "primary stepped down",
-            "PyMongoError",
+            "RepositoryError",
         )
 
 
