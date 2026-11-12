@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import React, { useCallback } from "react";
 import {
   MessageScrollerProvider,
@@ -16,15 +17,23 @@ import { useVoiceModeControls } from "@/features/chat/components/interface/hooks
 import { useWorkflowAutoSend } from "@/features/chat/components/interface/hooks/useWorkflowAutoSend";
 import { ChatWithMessages } from "@/features/chat/components/interface/layouts/ChatWithMessages";
 import { NewChatLayout } from "@/features/chat/components/interface/layouts/NewChatLayout";
-import {
-  VoiceControlBarContainer,
-  VoiceControlBarSlot,
-} from "@/features/chat/components/voice-agent/VoiceControlBarContainer";
 import { VoiceModeBackground } from "@/features/chat/components/voice-agent/VoiceModeBackground";
 import { useStreamResume } from "@/features/chat/hooks/useStreamResume";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import { toast } from "@/lib/toast";
+
+// LiveKit (~125 KB gzip) loads only when the user starts voice mode.
+const loadVoiceControlBar = () =>
+  import("@/features/chat/components/voice-agent/VoiceControlBarContainer");
+const VoiceControlBarContainer = dynamic(
+  () => loadVoiceControlBar().then((module) => module.VoiceControlBarContainer),
+  { ssr: false },
+);
+const VoiceControlBarSlot = dynamic(
+  () => loadVoiceControlBar().then((module) => module.VoiceControlBarSlot),
+  { ssr: false },
+);
 
 const MainChat = React.memo(function MainChat() {
   // Mounting useIntegrations refreshes the personalized catalog (staleTime: 0)
