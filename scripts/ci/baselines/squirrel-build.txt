@@ -10,7 +10,7 @@
 # Generated, never hand-edited: a crawl rewrites it (SMOKE_SQUIRREL_UPDATE=1).
 # The PR that fixes a finding drops its line, and a finding not listed fails.
 
-score:Content=79
+score:Content=80
 score:Core SEO=89
 score:Links=87
 score:Performance=75
@@ -27,7 +27,6 @@ score:URL Structure=93
 *	url/slug-convention/slug-convention	depth:faq:1
 *	url/slug-convention/slug-convention	depth:faq:2
 /	perf/cache-headers/cache-control
-/about	links/no-contextual-inbound/no-contextual-inbound
 /about	perf/cache-headers/cache-control
 /ai-assistant-like-jarvis	perf/cache-headers/cache-control
 /ai-assistant-that-can-see-your-screen	content/keyword-stuffing/keyword-stuffing	screen
@@ -41,7 +40,6 @@ score:URL Structure=93
 /alternative-to/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /alternative-to/akiflow	content/keyword-stuffing/keyword-stuffing	tasks
 /alternative-to/akiflow	core/meta-description/meta-description
-/alternative-to/asana	content/keyword-stuffing/keyword-stuffing	asana
 /alternative-to/bardeen	content/keyword-stuffing/keyword-stuffing	browser
 /alternative-to/bear	content/keyword-stuffing/keyword-stuffing	bear
 /alternative-to/bee	content/keyword-stuffing/keyword-stuffing	bee
@@ -55,7 +53,6 @@ score:URL Structure=93
 /alternative-to/dot-app	content/keyword-stuffing/keyword-stuffing	dot
 /alternative-to/fantastical	content/keyword-stuffing/keyword-stuffing	calendar
 /alternative-to/friend-pendant	content/keyword-stuffing/keyword-stuffing	friend
-/alternative-to/gemini	content/keyword-stuffing/keyword-stuffing	gemini
 /alternative-to/gemini	content/keyword-stuffing/keyword-stuffing	google
 /alternative-to/gemini-assistant	content/keyword-stuffing/keyword-stuffing	assistant
 /alternative-to/google-assistant	content/keyword-stuffing/keyword-stuffing	assistant
@@ -85,7 +82,6 @@ score:URL Structure=93
 /alternative-to/ticktick	content/keyword-stuffing/keyword-stuffing	task
 /alternative-to/todoist	content/keyword-stuffing/keyword-stuffing	task
 /alternative-to/todoist	content/keyword-stuffing/keyword-stuffing	todoist
-/alternative-to/trello	content/keyword-stuffing/keyword-stuffing	trello
 /automate	content/keyword-stuffing/keyword-stuffing	calendar
 /automate/airtable-google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
 /automate/airtable-notion	content/keyword-stuffing/keyword-stuffing	airtable
@@ -206,8 +202,6 @@ score:URL Structure=93
 /automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
 /automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	events
 /automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	google
-/automate/with/google-docs	content/word-count/word-count
-/automate/with/google-docs	links/orphan-pages/orphan-pages
 /automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	drive
 /automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	driveattach
 /automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	google
@@ -252,53 +246,40 @@ score:URL Structure=93
 /best-ai-email-assistant	perf/cache-headers/cache-control
 /best-ai-executive-assistant	perf/cache-headers/cache-control
 /blog	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
-/blog	links/no-contextual-inbound/no-contextual-inbound
 /blog/desktop	core/meta-description/meta-description
 /blog/monorepo	core/meta-description/meta-description
 /blog/tool-calling-under-the-hood	content/keyword-stuffing/keyword-stuffing	tool
 /bots	perf/cache-headers/cache-control
-/brand	links/no-contextual-inbound/no-contextual-inbound
 /brand	perf/cache-headers/cache-control
 /cli	core/meta-description/meta-description
 /cli	perf/cache-headers/cache-control
 /compare/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /compare/apple-reminders	content/keyword-stuffing/keyword-stuffing	apple
 /compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
-/compare/category/ai-assistants	links/orphan-pages/orphan-pages
 /compare/category/automation	a11y/heading-order/heading-order	H3 after H1
 /compare/category/automation	content/keyword-stuffing/keyword-stuffing	automation
-/compare/category/automation	links/orphan-pages/orphan-pages
 /compare/category/calendar-scheduling	a11y/heading-order/heading-order	H3 after H1
 /compare/category/calendar-scheduling	content/keyword-stuffing/keyword-stuffing	calendar
-/compare/category/calendar-scheduling	links/orphan-pages/orphan-pages
 /compare/category/email	a11y/heading-order/heading-order	H3 after H1
 /compare/category/email	content/keyword-stuffing/keyword-stuffing	email
-/compare/category/email	links/orphan-pages/orphan-pages
 /compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
-/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
 /compare/category/other	a11y/heading-order/heading-order	H3 after H1
-/compare/category/other	links/orphan-pages/orphan-pages
 /compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
 /compare/category/project-management	content/keyword-stuffing/keyword-stuffing	management
 /compare/category/project-management	content/keyword-stuffing/keyword-stuffing	project
-/compare/category/project-management	links/orphan-pages/orphan-pages
 /compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
 /compare/category/task-management	content/keyword-stuffing/keyword-stuffing	task
-/compare/category/task-management	links/orphan-pages/orphan-pages
 /compare/clickup	content/keyword-stuffing/keyword-stuffing	clickup
 /compare/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
 /compare/fantastical	content/keyword-stuffing/keyword-stuffing	calendar
-/compare/fathom	content/keyword-stuffing/keyword-stuffing	meeting
 /compare/figma	content/keyword-stuffing/keyword-stuffing	design
 /compare/fireflies-ai	content/keyword-stuffing/keyword-stuffing	meeting
 /compare/gemini	content/keyword-stuffing/keyword-stuffing	google
-/compare/gemini-assistant	content/keyword-stuffing/keyword-stuffing	assistant
 /compare/google-assistant	content/keyword-stuffing/keyword-stuffing	google
 /compare/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
 /compare/google-calendar	content/keyword-stuffing/keyword-stuffing	google
 /compare/hey-email	content/keyword-stuffing/keyword-stuffing	hey
 /compare/hubspot	content/keyword-stuffing/keyword-stuffing	hubspot
-/compare/ia-writer	content/keyword-stuffing/keyword-stuffing	writing
 /compare/linear	content/keyword-stuffing/keyword-stuffing	linear
 /compare/motion	content/keyword-stuffing/keyword-stuffing	calendar
 /compare/notion	content/keyword-stuffing/keyword-stuffing	notion
@@ -306,8 +287,6 @@ score:URL Structure=93
 /compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	calendar
 /compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	notion
 /compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
-/compare/page/2	links/no-contextual-inbound/no-contextual-inbound
-/compare/page/3	links/no-contextual-inbound/no-contextual-inbound
 /compare/reclaim	content/keyword-stuffing/keyword-stuffing	calendar
 /compare/sanebox	content/keyword-stuffing/keyword-stuffing	email
 /compare/shortwave	content/keyword-stuffing/keyword-stuffing	email
@@ -316,8 +295,8 @@ score:URL Structure=93
 /contact	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
 /de/alternative-to	content/keyword-stuffing/keyword-stuffing	mit
 /de/alternative-to	content/keyword-stuffing/keyword-stuffing	und
-/de/alternative-to	links/no-contextual-inbound/no-contextual-inbound
 /de/alternative-to/airtable	content/keyword-stuffing/keyword-stuffing	airtable
+/de/alternative-to/airtable	content/keyword-stuffing/keyword-stuffing	und
 /de/alternative-to/bee	content/keyword-stuffing/keyword-stuffing	bee
 /de/alternative-to/bee	content/keyword-stuffing/keyword-stuffing	und
 /de/alternative-to/carly	content/keyword-stuffing/keyword-stuffing	sie
@@ -328,6 +307,7 @@ score:URL Structure=93
 /de/alternative-to/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	sie
 /de/alternative-to/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	und
 /de/alternative-to/clickup	content/keyword-stuffing/keyword-stuffing	clickup
+/de/alternative-to/clickup	content/keyword-stuffing/keyword-stuffing	und
 /de/alternative-to/coda	content/keyword-stuffing/keyword-stuffing	coda
 /de/alternative-to/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
 /de/alternative-to/craft	content/keyword-stuffing/keyword-stuffing	craft
@@ -339,6 +319,7 @@ score:URL Structure=93
 /de/alternative-to/friend-pendant	content/keyword-stuffing/keyword-stuffing	sie
 /de/alternative-to/friend-pendant	content/keyword-stuffing/keyword-stuffing	und
 /de/alternative-to/gemini	content/keyword-stuffing/keyword-stuffing	google
+/de/alternative-to/gemini	content/keyword-stuffing/keyword-stuffing	und
 /de/alternative-to/gemini-assistant	content/keyword-stuffing/keyword-stuffing	und
 /de/alternative-to/google-assistant	content/keyword-stuffing/keyword-stuffing	google
 /de/alternative-to/google-assistant	content/keyword-stuffing/keyword-stuffing	und
@@ -351,14 +332,12 @@ score:URL Structure=93
 /de/alternative-to/instinct	content/keyword-stuffing/keyword-stuffing	und
 /de/alternative-to/jira	content/keyword-stuffing/keyword-stuffing	jira
 /de/alternative-to/lark	content/keyword-stuffing/keyword-stuffing	und
-/de/alternative-to/lifestack	content/keyword-stuffing/keyword-stuffing	sie
 /de/alternative-to/lifestack	content/keyword-stuffing/keyword-stuffing	und
 /de/alternative-to/limitless-ai	content/keyword-stuffing/keyword-stuffing	und
 /de/alternative-to/lindy-ai	content/keyword-stuffing/keyword-stuffing	lindy
 /de/alternative-to/linear	content/keyword-stuffing/keyword-stuffing	linear
 /de/alternative-to/monday	content/keyword-stuffing/keyword-stuffing	und
 /de/alternative-to/morgen	content/keyword-stuffing/keyword-stuffing	und
-/de/alternative-to/motion	content/keyword-stuffing/keyword-stuffing	motion
 /de/alternative-to/motion	content/keyword-stuffing/keyword-stuffing	und
 /de/alternative-to/notion	content/keyword-stuffing/keyword-stuffing	notion
 /de/alternative-to/notion	content/keyword-stuffing/keyword-stuffing	und
@@ -379,9 +358,9 @@ score:URL Structure=93
 /de/alternative-to/siri	content/keyword-stuffing/keyword-stuffing	und
 /de/alternative-to/todoist	content/keyword-stuffing/keyword-stuffing	todoist
 /de/alternative-to/todoist	content/keyword-stuffing/keyword-stuffing	und
+/de/alternative-to/trello	content/keyword-stuffing/keyword-stuffing	und
 /de/automate	content/keyword-stuffing/keyword-stuffing	automatisch
 /de/automate	content/keyword-stuffing/keyword-stuffing	und
-/de/automate	links/no-contextual-inbound/no-contextual-inbound
 /de/automate/airtable-google-calendar	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/airtable-google-sheets	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/airtable-notion	content/keyword-stuffing/keyword-stuffing	notion
@@ -650,9 +629,6 @@ score:URL Structure=93
 /de/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	google
 /de/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/google-calendar	core/meta-description/meta-description
-/de/automate/with/google-docs	content/word-count/word-count
-/de/automate/with/google-docs	core/meta-description/meta-description
-/de/automate/with/google-docs	links/orphan-pages/orphan-pages
 /de/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	anh
 /de/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	automatisch
 /de/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	drive
@@ -734,7 +710,6 @@ score:URL Structure=93
 /de/automate/zoom-teams	content/keyword-stuffing/keyword-stuffing	und
 /de/compare	content/keyword-stuffing/keyword-stuffing	und
 /de/compare/activepieces	content/keyword-stuffing/keyword-stuffing	und
-/de/compare/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /de/compare/airtable	content/keyword-stuffing/keyword-stuffing	und
 /de/compare/akiflow	content/keyword-stuffing/keyword-stuffing	und
 /de/compare/anydo	content/keyword-stuffing/keyword-stuffing	und
@@ -750,25 +725,17 @@ score:URL Structure=93
 /de/compare/carly	content/keyword-stuffing/keyword-stuffing	und
 /de/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
 /de/compare/category/ai-assistants	content/keyword-stuffing/keyword-stuffing	und
-/de/compare/category/ai-assistants	links/orphan-pages/orphan-pages
 /de/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
-/de/compare/category/automation	links/orphan-pages/orphan-pages
 /de/compare/category/calendar-scheduling	a11y/heading-order/heading-order	H3 after H1
 /de/compare/category/calendar-scheduling	content/keyword-stuffing/keyword-stuffing	und
-/de/compare/category/calendar-scheduling	links/orphan-pages/orphan-pages
 /de/compare/category/email	a11y/heading-order/heading-order	H3 after H1
 /de/compare/category/email	content/keyword-stuffing/keyword-stuffing	email
 /de/compare/category/email	core/meta-description/meta-description
-/de/compare/category/email	links/orphan-pages/orphan-pages
 /de/compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
-/de/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
 /de/compare/category/other	a11y/heading-order/heading-order	H3 after H1
-/de/compare/category/other	links/orphan-pages/orphan-pages
 /de/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
-/de/compare/category/project-management	links/orphan-pages/orphan-pages
 /de/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
 /de/compare/category/task-management	content/keyword-stuffing/keyword-stuffing	und
-/de/compare/category/task-management	links/orphan-pages/orphan-pages
 /de/compare/chatgpt	content/keyword-stuffing/keyword-stuffing	und
 /de/compare/chatgpt-enterprise	content/keyword-stuffing/keyword-stuffing	und
 /de/compare/chatgpt-teams	content/keyword-stuffing/keyword-stuffing	und
@@ -808,7 +775,6 @@ score:URL Structure=93
 /de/compare/google-calendar	content/keyword-stuffing/keyword-stuffing	und
 /de/compare/hey-email	content/keyword-stuffing/keyword-stuffing	und
 /de/compare/hubspot	content/keyword-stuffing/keyword-stuffing	hubspot
-/de/compare/ia-writer	content/keyword-stuffing/keyword-stuffing	writing
 /de/compare/instinct	content/keyword-stuffing/keyword-stuffing	und
 /de/compare/lifestack	content/keyword-stuffing/keyword-stuffing	und
 /de/compare/linear	content/keyword-stuffing/keyword-stuffing	linear
@@ -822,8 +788,6 @@ score:URL Structure=93
 /de/compare/openai-dots	content/keyword-stuffing/keyword-stuffing	und
 /de/compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
 /de/compare/page/2	content/keyword-stuffing/keyword-stuffing	und
-/de/compare/page/2	links/no-contextual-inbound/no-contextual-inbound
-/de/compare/page/3	links/no-contextual-inbound/no-contextual-inbound
 /de/compare/poke	content/keyword-stuffing/keyword-stuffing	sie
 /de/compare/poke	content/keyword-stuffing/keyword-stuffing	und
 /de/compare/quip	content/keyword-stuffing/keyword-stuffing	und
@@ -880,20 +844,19 @@ score:URL Structure=93
 /de/learn/ai-email-management	content/keyword-stuffing/keyword-stuffing	mail
 /de/learn/ai-email-management	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/ai-meeting-assistant	content/keyword-stuffing/keyword-stuffing	die
-/de/learn/ai-meeting-assistant	content/keyword-stuffing/keyword-stuffing	meeting
 /de/learn/ai-meeting-assistant	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/ai-orchestration	content/keyword-stuffing/keyword-stuffing	und
+/de/learn/ai-personal-productivity	content/keyword-stuffing/keyword-stuffing	produktivit
 /de/learn/ai-personal-productivity	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/ai-task-prioritization	content/keyword-stuffing/keyword-stuffing	die
-/de/learn/api-gateway	content/keyword-stuffing/keyword-stuffing	api
 /de/learn/api-gateway	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/asynchronous-meeting	content/keyword-stuffing/keyword-stuffing	die
 /de/learn/asynchronous-meeting	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/attention-management	content/keyword-stuffing/keyword-stuffing	die
-/de/learn/attention-management	content/keyword-stuffing/keyword-stuffing	ist
 /de/learn/audit-log	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/autonomous-agent	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/availability-window	content/keyword-stuffing/keyword-stuffing	und
+/de/learn/bee	content/keyword-stuffing/keyword-stuffing	sie
 /de/learn/bee	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/body-doubling	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/buffer-time	content/keyword-stuffing/keyword-stuffing	und
@@ -901,32 +864,24 @@ score:URL Structure=93
 /de/learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
 /de/learn/category/ai-concepts	content/keyword-stuffing/keyword-stuffing	die
 /de/learn/category/ai-concepts	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/category/ai-concepts	links/orphan-pages/orphan-pages
 /de/learn/category/automation	a11y/heading-order/heading-order	H3 after H1
 /de/learn/category/automation	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/category/automation	links/orphan-pages/orphan-pages
 /de/learn/category/calendar	a11y/heading-order/heading-order	H3 after H1
 /de/learn/category/calendar	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/category/calendar	links/orphan-pages/orphan-pages
 /de/learn/category/development	a11y/heading-order/heading-order	H3 after H1
 /de/learn/category/development	content/keyword-stuffing/keyword-stuffing	ist
 /de/learn/category/development	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/category/development	links/orphan-pages/orphan-pages
 /de/learn/category/email	a11y/heading-order/heading-order	H3 after H1
 /de/learn/category/email	content/keyword-stuffing/keyword-stuffing	mail
 /de/learn/category/email	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/category/email	links/orphan-pages/orphan-pages
 /de/learn/category/knowledge-management	a11y/heading-order/heading-order	H3 after H1
 /de/learn/category/knowledge-management	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/category/knowledge-management	content/word-count/word-count
-/de/learn/category/knowledge-management	links/orphan-pages/orphan-pages
 /de/learn/category/productivity	a11y/heading-order/heading-order	H3 after H1
 /de/learn/category/productivity	content/keyword-stuffing/keyword-stuffing	ist
 /de/learn/category/productivity	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/category/productivity	links/orphan-pages/orphan-pages
 /de/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
 /de/learn/category/task-management	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/category/task-management	links/orphan-pages/orphan-pages
 /de/learn/chain-of-thought-reasoning	content/keyword-stuffing/keyword-stuffing	die
 /de/learn/chatbot-vs-ai-assistant	content/keyword-stuffing/keyword-stuffing	die
 /de/learn/chatbot-vs-ai-assistant	content/keyword-stuffing/keyword-stuffing	ein
@@ -937,10 +892,10 @@ score:URL Structure=93
 /de/learn/cognitive-architecture	content/keyword-stuffing/keyword-stuffing	die
 /de/learn/cognitive-architecture	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/cognitive-load	content/keyword-stuffing/keyword-stuffing	die
+/de/learn/cognitive-load	content/keyword-stuffing/keyword-stuffing	sie
 /de/learn/cognitive-load	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/cold-email	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/conditional-logic	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/constitutional-ai	content/keyword-stuffing/keyword-stuffing	von
 /de/learn/context-awareness	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/context-switching	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/cron-job	content/keyword-stuffing/keyword-stuffing	und
@@ -949,6 +904,7 @@ score:URL Structure=93
 /de/learn/digital-assistant	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/digital-detox	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/digital-executive-assistant	content/keyword-stuffing/keyword-stuffing	und
+/de/learn/digital-minimalism	content/keyword-stuffing/keyword-stuffing	die
 /de/learn/dot-app	content/keyword-stuffing/keyword-stuffing	sie
 /de/learn/dot-app	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/eisenhower-matrix	content/keyword-stuffing/keyword-stuffing	die
@@ -1002,9 +958,9 @@ score:URL Structure=93
 /de/learn/meeting-scheduling	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/memory-augmented-ai	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/message-queue	content/keyword-stuffing/keyword-stuffing	und
+/de/learn/microservices	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/model-context-protocol	content/keyword-stuffing/keyword-stuffing	mcp
 /de/learn/multimodal-ai	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/named-entity-recognition	content/keyword-stuffing/keyword-stuffing	ner
 /de/learn/natural-language-processing	content/keyword-stuffing/keyword-stuffing	nlp
 /de/learn/natural-language-processing	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/neural-network	content/keyword-stuffing/keyword-stuffing	die
@@ -1012,7 +968,6 @@ score:URL Structure=93
 /de/learn/no-code	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/no-code-automation	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/offline-first	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/okrs	content/keyword-stuffing/keyword-stuffing	okrs
 /de/learn/okrs	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/omi	content/keyword-stuffing/keyword-stuffing	die
 /de/learn/omi	content/keyword-stuffing/keyword-stuffing	ist
@@ -1024,14 +979,10 @@ score:URL Structure=93
 /de/learn/orchestration	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/page/2	content/keyword-stuffing/keyword-stuffing	die
 /de/learn/page/2	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/page/2	links/no-contextual-inbound/no-contextual-inbound
 /de/learn/page/3	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/page/3	links/no-contextual-inbound/no-contextual-inbound
 /de/learn/page/4	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/page/4	links/no-contextual-inbound/no-contextual-inbound
 /de/learn/page/5	content/keyword-stuffing/keyword-stuffing	ist
 /de/learn/page/5	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/page/5	links/no-contextual-inbound/no-contextual-inbound
 /de/learn/para-method	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/parallel-agents	content/keyword-stuffing/keyword-stuffing	die
 /de/learn/personal-crm	content/keyword-stuffing/keyword-stuffing	und
@@ -1044,6 +995,7 @@ score:URL Structure=93
 /de/learn/reinforcement-learning	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/retrieval-augmented-generation	content/keyword-stuffing/keyword-stuffing	die
 /de/learn/retrospective	content/keyword-stuffing/keyword-stuffing	und
+/de/learn/rpa	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/scheduling-automation	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/screen-sharing	content/keyword-stuffing/keyword-stuffing	die
 /de/learn/scrum	content/keyword-stuffing/keyword-stuffing	und
@@ -1057,7 +1009,6 @@ score:URL Structure=93
 /de/learn/siri	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/smart-notifications	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/smart-scheduling	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/spam-filter	content/keyword-stuffing/keyword-stuffing	spam
 /de/learn/speech-to-text	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/sprint	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/structured-output	content/keyword-stuffing/keyword-stuffing	und
@@ -1089,7 +1040,6 @@ score:URL Structure=93
 /de/learn/vector-database	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/video-conferencing	content/keyword-stuffing/keyword-stuffing	die
 /de/learn/video-conferencing	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/video-conferencing	content/keyword-stuffing/keyword-stuffing	von
 /de/learn/weekly-review	content/keyword-stuffing/keyword-stuffing	die
 /de/learn/weekly-review	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/work-life-integration	content/keyword-stuffing/keyword-stuffing	die
@@ -1101,9 +1051,7 @@ score:URL Structure=93
 /de/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
 /download	perf/cache-headers/cache-control
 /es/alternative-to	content/keyword-stuffing/keyword-stuffing	con
-/es/alternative-to	links/no-contextual-inbound/no-contextual-inbound
 /es/alternative-to/airtable	content/keyword-stuffing/keyword-stuffing	airtable
-/es/alternative-to/bear	content/keyword-stuffing/keyword-stuffing	bear
 /es/alternative-to/bee	content/keyword-stuffing/keyword-stuffing	bee
 /es/alternative-to/bee	content/keyword-stuffing/keyword-stuffing	que
 /es/alternative-to/calendly	content/keyword-stuffing/keyword-stuffing	para
@@ -1117,8 +1065,6 @@ score:URL Structure=93
 /es/alternative-to/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
 /es/alternative-to/craft	content/keyword-stuffing/keyword-stuffing	craft
 /es/alternative-to/dot-app	content/keyword-stuffing/keyword-stuffing	dot
-/es/alternative-to/dot-app	content/keyword-stuffing/keyword-stuffing	que
-/es/alternative-to/fantastical	content/keyword-stuffing/keyword-stuffing	calendario
 /es/alternative-to/friend-pendant	content/keyword-stuffing/keyword-stuffing	friend
 /es/alternative-to/friend-pendant	content/keyword-stuffing/keyword-stuffing	que
 /es/alternative-to/gemini	content/keyword-stuffing/keyword-stuffing	google
@@ -1128,13 +1074,11 @@ score:URL Structure=93
 /es/alternative-to/google-calendar	content/keyword-stuffing/keyword-stuffing	google
 /es/alternative-to/hey-email	content/keyword-stuffing/keyword-stuffing	email
 /es/alternative-to/hey-email	content/keyword-stuffing/keyword-stuffing	hey
-/es/alternative-to/instinct	content/keyword-stuffing/keyword-stuffing	instinct
 /es/alternative-to/instinct	content/keyword-stuffing/keyword-stuffing	que
 /es/alternative-to/jira	content/keyword-stuffing/keyword-stuffing	jira
 /es/alternative-to/lifestack	content/keyword-stuffing/keyword-stuffing	con
 /es/alternative-to/lindy-ai	content/keyword-stuffing/keyword-stuffing	lindy
 /es/alternative-to/linear	content/keyword-stuffing/keyword-stuffing	linear
-/es/alternative-to/missive	content/keyword-stuffing/keyword-stuffing	email
 /es/alternative-to/motion	content/keyword-stuffing/keyword-stuffing	para
 /es/alternative-to/notion	content/keyword-stuffing/keyword-stuffing	que
 /es/alternative-to/notion-ai	content/keyword-stuffing/keyword-stuffing	notion
@@ -1147,6 +1091,7 @@ score:URL Structure=93
 /es/alternative-to/poke	content/keyword-stuffing/keyword-stuffing	que
 /es/alternative-to/roam-research	content/keyword-stuffing/keyword-stuffing	roam
 /es/alternative-to/saner-ai	content/keyword-stuffing/keyword-stuffing	que
+/es/alternative-to/siri	content/keyword-stuffing/keyword-stuffing	con
 /es/alternative-to/siri	content/keyword-stuffing/keyword-stuffing	siri
 /es/alternative-to/spark	content/keyword-stuffing/keyword-stuffing	email
 /es/alternative-to/ticktick	content/keyword-stuffing/keyword-stuffing	tareas
@@ -1155,7 +1100,6 @@ score:URL Structure=93
 /es/automate	content/keyword-stuffing/keyword-stuffing	autom
 /es/automate	content/keyword-stuffing/keyword-stuffing	con
 /es/automate	content/keyword-stuffing/keyword-stuffing	tareas
-/es/automate	links/no-contextual-inbound/no-contextual-inbound
 /es/automate/airtable-google-calendar	content/keyword-stuffing/keyword-stuffing	airtable
 /es/automate/airtable-google-calendar	content/keyword-stuffing/keyword-stuffing	google
 /es/automate/airtable-google-sheets	content/keyword-stuffing/keyword-stuffing	airtable
@@ -1490,9 +1434,6 @@ score:URL Structure=93
 /es/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	eventos
 /es/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	google
 /es/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	las
-/es/automate/with/google-docs	content/word-count/word-count
-/es/automate/with/google-docs	core/meta-description/meta-description
-/es/automate/with/google-docs	links/orphan-pages/orphan-pages
 /es/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	archivos
 /es/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	autom
 /es/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	drive
@@ -1566,31 +1507,22 @@ score:URL Structure=93
 /es/compare/airtable	content/keyword-stuffing/keyword-stuffing	que
 /es/compare/akiflow	content/keyword-stuffing/keyword-stuffing	para
 /es/compare/akiflow	content/keyword-stuffing/keyword-stuffing	tareas
-/es/compare/apple-reminders	content/keyword-stuffing/keyword-stuffing	apple
 /es/compare/bee	content/keyword-stuffing/keyword-stuffing	que
 /es/compare/carly	content/keyword-stuffing/keyword-stuffing	con
 /es/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
-/es/compare/category/ai-assistants	links/orphan-pages/orphan-pages
 /es/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
 /es/compare/category/automation	core/meta-description/meta-description
-/es/compare/category/automation	links/orphan-pages/orphan-pages
 /es/compare/category/calendar-scheduling	a11y/heading-order/heading-order	H3 after H1
 /es/compare/category/calendar-scheduling	content/keyword-stuffing/keyword-stuffing	calendar
-/es/compare/category/calendar-scheduling	links/orphan-pages/orphan-pages
 /es/compare/category/email	a11y/heading-order/heading-order	H3 after H1
 /es/compare/category/email	content/keyword-stuffing/keyword-stuffing	email
 /es/compare/category/email	core/meta-description/meta-description
-/es/compare/category/email	links/orphan-pages/orphan-pages
 /es/compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
-/es/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
 /es/compare/category/other	a11y/heading-order/heading-order	H3 after H1
 /es/compare/category/other	core/meta-description/meta-description
-/es/compare/category/other	links/orphan-pages/orphan-pages
 /es/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
-/es/compare/category/project-management	links/orphan-pages/orphan-pages
 /es/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
 /es/compare/category/task-management	content/keyword-stuffing/keyword-stuffing	task
-/es/compare/category/task-management	links/orphan-pages/orphan-pages
 /es/compare/clickup	content/keyword-stuffing/keyword-stuffing	clickup
 /es/compare/confluence	content/keyword-stuffing/keyword-stuffing	para
 /es/compare/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
@@ -1598,7 +1530,6 @@ score:URL Structure=93
 /es/compare/discord	content/keyword-stuffing/keyword-stuffing	para
 /es/compare/dot-app	content/keyword-stuffing/keyword-stuffing	que
 /es/compare/fantastical	content/keyword-stuffing/keyword-stuffing	calendar
-/es/compare/fathom	content/keyword-stuffing/keyword-stuffing	meeting
 /es/compare/figma	content/keyword-stuffing/keyword-stuffing	design
 /es/compare/fireflies-ai	content/keyword-stuffing/keyword-stuffing	meeting
 /es/compare/gemini	content/keyword-stuffing/keyword-stuffing	google
@@ -1615,10 +1546,7 @@ score:URL Structure=93
 /es/compare/notion-ai	content/keyword-stuffing/keyword-stuffing	notion
 /es/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	calendar
 /es/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	notion
-/es/compare/openai-dots	content/keyword-stuffing/keyword-stuffing	que
 /es/compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
-/es/compare/page/2	links/no-contextual-inbound/no-contextual-inbound
-/es/compare/page/3	links/no-contextual-inbound/no-contextual-inbound
 /es/compare/poke	content/keyword-stuffing/keyword-stuffing	que
 /es/compare/quip	content/keyword-stuffing/keyword-stuffing	salesforce
 /es/compare/reclaim	content/keyword-stuffing/keyword-stuffing	calendar
@@ -1680,6 +1608,7 @@ score:URL Structure=93
 /es/for/virtual-assistants	content/keyword-stuffing/keyword-stuffing	para
 /es/for/virtual-assistants	content/keyword-stuffing/keyword-stuffing	que
 /es/learn	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/accountability-partner	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/agent-loop	content/keyword-stuffing/keyword-stuffing	una
 /es/learn/agent-memory	content/keyword-stuffing/keyword-stuffing	memoria
 /es/learn/agent-memory	content/keyword-stuffing/keyword-stuffing	que
@@ -1690,7 +1619,6 @@ score:URL Structure=93
 /es/learn/ai-alignment	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/ai-assistant	content/keyword-stuffing/keyword-stuffing	asistente
 /es/learn/ai-assistant	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/ai-assistant-vs-ai-agent	content/keyword-stuffing/keyword-stuffing	agente
 /es/learn/ai-assistant-vs-ai-agent	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/ai-calendar-management	content/keyword-stuffing/keyword-stuffing	calendario
 /es/learn/ai-calendar-management	content/keyword-stuffing/keyword-stuffing	con
@@ -1709,8 +1637,8 @@ score:URL Structure=93
 /es/learn/async-communication	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/asynchronous-meeting	content/keyword-stuffing/keyword-stuffing	para
 /es/learn/asynchronous-meeting	content/keyword-stuffing/keyword-stuffing	reuniones
-/es/learn/attention-management	content/keyword-stuffing/keyword-stuffing	atenci
 /es/learn/attention-management	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/audit-log	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/audit-log	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/autonomous-agent	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/availability-window	content/keyword-stuffing/keyword-stuffing	para
@@ -1725,39 +1653,29 @@ score:URL Structure=93
 /es/learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
 /es/learn/category/ai-concepts	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/category/ai-concepts	content/keyword-stuffing/keyword-stuffing	una
-/es/learn/category/ai-concepts	links/orphan-pages/orphan-pages
 /es/learn/category/automation	a11y/heading-order/heading-order	H3 after H1
 /es/learn/category/automation	content/keyword-stuffing/keyword-stuffing	automatizaci
-/es/learn/category/automation	links/orphan-pages/orphan-pages
 /es/learn/category/calendar	a11y/heading-order/heading-order	H3 after H1
-/es/learn/category/calendar	links/orphan-pages/orphan-pages
 /es/learn/category/development	a11y/heading-order/heading-order	H3 after H1
 /es/learn/category/development	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/category/development	links/orphan-pages/orphan-pages
 /es/learn/category/email	a11y/heading-order/heading-order	H3 after H1
 /es/learn/category/email	content/keyword-stuffing/keyword-stuffing	correo
 /es/learn/category/email	content/keyword-stuffing/keyword-stuffing	electr
-/es/learn/category/email	links/orphan-pages/orphan-pages
 /es/learn/category/knowledge-management	a11y/heading-order/heading-order	H3 after H1
 /es/learn/category/knowledge-management	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/category/knowledge-management	content/word-count/word-count
-/es/learn/category/knowledge-management	links/orphan-pages/orphan-pages
 /es/learn/category/productivity	a11y/heading-order/heading-order	H3 after H1
 /es/learn/category/productivity	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/category/productivity	links/orphan-pages/orphan-pages
 /es/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
 /es/learn/category/task-management	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/category/task-management	content/keyword-stuffing/keyword-stuffing	tareas
-/es/learn/category/task-management	links/orphan-pages/orphan-pages
 /es/learn/chain-of-thought-reasoning	content/keyword-stuffing/keyword-stuffing	razonamiento
 /es/learn/chatbot-vs-ai-assistant	content/keyword-stuffing/keyword-stuffing	asistente
 /es/learn/chatbot-vs-ai-assistant	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/cognitive-architecture	content/keyword-stuffing/keyword-stuffing	arquitectura
 /es/learn/cognitive-load	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/cold-email	content/keyword-stuffing/keyword-stuffing	correo
 /es/learn/cold-email	content/keyword-stuffing/keyword-stuffing	electr
-/es/learn/conflict-resolution	content/keyword-stuffing/keyword-stuffing	conflictos
 /es/learn/conflict-resolution	content/keyword-stuffing/keyword-stuffing	datos
 /es/learn/conflict-resolution	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/context-awareness	content/keyword-stuffing/keyword-stuffing	que
@@ -1778,7 +1696,6 @@ score:URL Structure=93
 /es/learn/email-deliverability	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/email-threading	content/keyword-stuffing/keyword-stuffing	correo
 /es/learn/email-triage	content/keyword-stuffing/keyword-stuffing	electr
-/es/learn/embeddings	content/keyword-stuffing/keyword-stuffing	embeddings
 /es/learn/embeddings	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/energy-management	content/keyword-stuffing/keyword-stuffing	energ
 /es/learn/entity-extraction	content/keyword-stuffing/keyword-stuffing	entidades
@@ -1786,17 +1703,17 @@ score:URL Structure=93
 /es/learn/event-driven-architecture	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/event-driven-architecture	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/event-driven-automation	content/keyword-stuffing/keyword-stuffing	una
+/es/learn/fine-tuning	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/focus-session	content/keyword-stuffing/keyword-stuffing	concentraci
 /es/learn/follow-up-automation	content/keyword-stuffing/keyword-stuffing	para
-/es/learn/foundation-model	content/keyword-stuffing/keyword-stuffing	modelo
 /es/learn/foundation-model	content/keyword-stuffing/keyword-stuffing	modelos
 /es/learn/friend-pendant	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/function-calling	content/keyword-stuffing/keyword-stuffing	herramientas
 /es/learn/function-calling	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/gdpr	content/keyword-stuffing/keyword-stuffing	datos
 /es/learn/gdpr	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/graph-based-memory	content/keyword-stuffing/keyword-stuffing	memoria
 /es/learn/guardrails	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/hallucination	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/ical	content/keyword-stuffing/keyword-stuffing	calendario
 /es/learn/ical	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/idempotency	content/keyword-stuffing/keyword-stuffing	que
@@ -1804,10 +1721,8 @@ score:URL Structure=93
 /es/learn/inference	content/keyword-stuffing/keyword-stuffing	inferencia
 /es/learn/inference	content/keyword-stuffing/keyword-stuffing	modelo
 /es/learn/information-overload	content/keyword-stuffing/keyword-stuffing	informaci
-/es/learn/information-overload	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/instinct	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/intent-recognition	content/keyword-stuffing/keyword-stuffing	intenci
-/es/learn/knowledge-worker	content/keyword-stuffing/keyword-stuffing	conocimiento
 /es/learn/knowledge-worker	content/keyword-stuffing/keyword-stuffing	del
 /es/learn/llm	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/low-code	content/keyword-stuffing/keyword-stuffing	code
@@ -1833,32 +1748,25 @@ score:URL Structure=93
 /es/learn/openai-dots	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/orchestration	content/keyword-stuffing/keyword-stuffing	orquestaci
 /es/learn/page/2	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/page/2	links/no-contextual-inbound/no-contextual-inbound
 /es/learn/page/3	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/page/3	links/no-contextual-inbound/no-contextual-inbound
 /es/learn/page/4	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/page/4	links/no-contextual-inbound/no-contextual-inbound
 /es/learn/page/5	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/page/5	links/no-contextual-inbound/no-contextual-inbound
 /es/learn/para-method	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/parallel-agents	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/password-manager	content/keyword-stuffing/keyword-stuffing	contrase
+/es/learn/password-manager	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/password-manager	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/personal-crm	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/personal-knowledge-management	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/phishing	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/proactive-ai	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/proactive-ai	content/keyword-stuffing/keyword-stuffing	una
-/es/learn/prompt-chaining	content/keyword-stuffing/keyword-stuffing	una
 /es/learn/pub-sub	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/rate-limiting	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/rate-limiting	content/keyword-stuffing/keyword-stuffing	que
+/es/learn/real-time-sync	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/reasoning-model	content/keyword-stuffing/keyword-stuffing	modelo
 /es/learn/reasoning-model	content/keyword-stuffing/keyword-stuffing	razonamiento
 /es/learn/recurring-event	content/keyword-stuffing/keyword-stuffing	una
 /es/learn/rest-api	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/rlhf	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/rlhf	content/keyword-stuffing/keyword-stuffing	rlhf
 /es/learn/rpa	content/keyword-stuffing/keyword-stuffing	automatizaci
 /es/learn/rpa	content/keyword-stuffing/keyword-stuffing	rpa
 /es/learn/scheduling-automation	content/keyword-stuffing/keyword-stuffing	para
@@ -1870,9 +1778,8 @@ score:URL Structure=93
 /es/learn/semantic-routing	content/keyword-stuffing/keyword-stuffing	una
 /es/learn/semantic-search	content/keyword-stuffing/keyword-stuffing	sem
 /es/learn/semantic-search	content/keyword-stuffing/keyword-stuffing	squeda
+/es/learn/serverless	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/single-sign-on	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/single-sign-on	content/keyword-stuffing/keyword-stuffing	sso
-/es/learn/single-tasking	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/siri	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/smart-scheduling	content/keyword-stuffing/keyword-stuffing	para
 /es/learn/social-engineering	content/keyword-stuffing/keyword-stuffing	que
@@ -1887,7 +1794,6 @@ score:URL Structure=93
 /es/learn/system-prompt	content/keyword-stuffing/keyword-stuffing	del
 /es/learn/task-automation	content/keyword-stuffing/keyword-stuffing	tareas
 /es/learn/temperature	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/temperature	content/keyword-stuffing/keyword-stuffing	temperatura
 /es/learn/text-to-speech	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/text-to-speech	content/keyword-stuffing/keyword-stuffing	voz
 /es/learn/time-audit	content/keyword-stuffing/keyword-stuffing	tiempo
@@ -1905,40 +1811,30 @@ score:URL Structure=93
 /es/learn/transfer-learning	content/keyword-stuffing/keyword-stuffing	modelo
 /es/learn/transformer	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/transformer	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/travel-time	content/keyword-stuffing/keyword-stuffing	reuniones
 /es/learn/travel-time	content/keyword-stuffing/keyword-stuffing	tiempo
 /es/learn/trigger	content/keyword-stuffing/keyword-stuffing	disparadores
+/es/learn/two-factor-authentication	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/two-factor-authentication	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/vector-database	content/keyword-stuffing/keyword-stuffing	datos
-/es/learn/vector-database	content/keyword-stuffing/keyword-stuffing	una
 /es/learn/webhook	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/webhook	content/keyword-stuffing/keyword-stuffing	una
 /es/learn/webhook-vs-polling	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/work-life-integration	content/keyword-stuffing/keyword-stuffing	vida
 /es/learn/workflow-automation	content/keyword-stuffing/keyword-stuffing	automatizaci
 /es/learn/workflow-automation	content/keyword-stuffing/keyword-stuffing	flujos
 /es/learn/workflow-orchestration	content/keyword-stuffing/keyword-stuffing	flujos
 /es/learn/workflow-orchestration	content/keyword-stuffing/keyword-stuffing	trabajo
 /es/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
-/es/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	zero
-/faq	links/no-contextual-inbound/no-contextual-inbound
 /faq	perf/cache-headers/cache-control
 /features	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
 /features/contacts	content/keyword-stuffing/keyword-stuffing	contact
 /features/contacts	content/keyword-stuffing/keyword-stuffing	email
 /features/dashboard	content/keyword-stuffing/keyword-stuffing	dashboard
-/features/dashboard	links/orphan-pages/orphan-pages
-/features/dashboard	links/weak-internal-links/weak-internal-links
 /features/discord-bot	content/keyword-stuffing/keyword-stuffing	discord
 /features/event-triggers	content/keyword-stuffing/keyword-stuffing	event
-/features/image-generation	links/orphan-pages/orphan-pages
-/features/image-generation	links/weak-internal-links/weak-internal-links
 /features/marketplace	content/keyword-stuffing/keyword-stuffing	integration
 /features/marketplace	core/meta-description/meta-description
 /features/mcp-support	content/keyword-stuffing/keyword-stuffing	mcp
 /features/pins	core/meta-description/meta-description
-/features/pins	links/orphan-pages/orphan-pages
-/features/pins	links/weak-internal-links/weak-internal-links
 /features/reminders	content/keyword-stuffing/keyword-stuffing	reminder
 /features/rich-responses	core/meta-description/meta-description
 /features/skills	content/keyword-stuffing/keyword-stuffing	skill
@@ -1957,13 +1853,13 @@ score:URL Structure=93
 /for/virtual-assistants	content/keyword-stuffing/keyword-stuffing	client
 /fr/alternative-to	content/keyword-stuffing/keyword-stuffing	avec
 /fr/alternative-to	content/keyword-stuffing/keyword-stuffing	les
-/fr/alternative-to	links/no-contextual-inbound/no-contextual-inbound
 /fr/alternative-to/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /fr/alternative-to/asana	content/keyword-stuffing/keyword-stuffing	les
-/fr/alternative-to/bear	content/keyword-stuffing/keyword-stuffing	notes
 /fr/alternative-to/bee	content/keyword-stuffing/keyword-stuffing	bee
+/fr/alternative-to/calendly	content/keyword-stuffing/keyword-stuffing	pour
+/fr/alternative-to/carly	content/keyword-stuffing/keyword-stuffing	des
+/fr/alternative-to/chatgpt	content/keyword-stuffing/keyword-stuffing	des
 /fr/alternative-to/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	atlas
-/fr/alternative-to/clickup	content/keyword-stuffing/keyword-stuffing	clickup
 /fr/alternative-to/coda	content/keyword-stuffing/keyword-stuffing	coda
 /fr/alternative-to/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
 /fr/alternative-to/dot-app	content/keyword-stuffing/keyword-stuffing	dot
@@ -1973,11 +1869,9 @@ score:URL Structure=93
 /fr/alternative-to/gemini-assistant	content/keyword-stuffing/keyword-stuffing	les
 /fr/alternative-to/google-assistant	content/keyword-stuffing/keyword-stuffing	assistant
 /fr/alternative-to/google-assistant	content/keyword-stuffing/keyword-stuffing	google
-/fr/alternative-to/google-assistant	content/keyword-stuffing/keyword-stuffing	les
 /fr/alternative-to/google-calendar	content/keyword-stuffing/keyword-stuffing	google
 /fr/alternative-to/granola	content/keyword-stuffing/keyword-stuffing	des
 /fr/alternative-to/granola	content/keyword-stuffing/keyword-stuffing	les
-/fr/alternative-to/hey-email	content/keyword-stuffing/keyword-stuffing	hey
 /fr/alternative-to/jira	content/keyword-stuffing/keyword-stuffing	jira
 /fr/alternative-to/lark	content/keyword-stuffing/keyword-stuffing	des
 /fr/alternative-to/lark	content/keyword-stuffing/keyword-stuffing	les
@@ -1989,17 +1883,19 @@ score:URL Structure=93
 /fr/alternative-to/linear	content/keyword-stuffing/keyword-stuffing	linear
 /fr/alternative-to/monday	content/keyword-stuffing/keyword-stuffing	les
 /fr/alternative-to/morgen	content/keyword-stuffing/keyword-stuffing	les
+/fr/alternative-to/motion	content/keyword-stuffing/keyword-stuffing	des
 /fr/alternative-to/notion	content/keyword-stuffing/keyword-stuffing	les
 /fr/alternative-to/notion-ai	content/keyword-stuffing/keyword-stuffing	notion
 /fr/alternative-to/omi	content/keyword-stuffing/keyword-stuffing	omi
-/fr/alternative-to/openclaw	content/keyword-stuffing/keyword-stuffing	openclaw
 /fr/alternative-to/perplexity	content/keyword-stuffing/keyword-stuffing	perplexity
+/fr/alternative-to/poke	content/keyword-stuffing/keyword-stuffing	des
 /fr/alternative-to/reclaim	content/keyword-stuffing/keyword-stuffing	des
 /fr/alternative-to/reclaim	content/keyword-stuffing/keyword-stuffing	les
 /fr/alternative-to/roam-research	content/keyword-stuffing/keyword-stuffing	roam
 /fr/alternative-to/sanebox	content/keyword-stuffing/keyword-stuffing	les
 /fr/alternative-to/saner-ai	content/keyword-stuffing/keyword-stuffing	les
 /fr/alternative-to/siri	content/keyword-stuffing/keyword-stuffing	siri
+/fr/alternative-to/tana	content/keyword-stuffing/keyword-stuffing	des
 /fr/alternative-to/ticktick	content/keyword-stuffing/keyword-stuffing	ches
 /fr/alternative-to/ticktick	content/keyword-stuffing/keyword-stuffing	des
 /fr/alternative-to/todoist	content/keyword-stuffing/keyword-stuffing	ches
@@ -2008,7 +1904,6 @@ score:URL Structure=93
 /fr/alternative-to/todoist	content/keyword-stuffing/keyword-stuffing	todoist
 /fr/alternative-to/zapier	content/keyword-stuffing/keyword-stuffing	des
 /fr/automate	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate	links/no-contextual-inbound/no-contextual-inbound
 /fr/automate/airtable-google-calendar	content/keyword-stuffing/keyword-stuffing	agenda
 /fr/automate/airtable-google-calendar	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/airtable-google-sheets	content/keyword-stuffing/keyword-stuffing	les
@@ -2294,9 +2189,6 @@ score:URL Structure=93
 /fr/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	nements
 /fr/automate/with/google-calendar	core/meta-description/meta-description
-/fr/automate/with/google-docs	content/word-count/word-count
-/fr/automate/with/google-docs	core/meta-description/meta-description
-/fr/automate/with/google-docs	links/orphan-pages/orphan-pages
 /fr/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	automatiquement
 /fr/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	aux
 /fr/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	drive
@@ -2382,7 +2274,6 @@ score:URL Structure=93
 /fr/compare/akiflow	content/keyword-stuffing/keyword-stuffing	des
 /fr/compare/anydo	content/keyword-stuffing/keyword-stuffing	des
 /fr/compare/asana	content/keyword-stuffing/keyword-stuffing	des
-/fr/compare/bardeen	content/keyword-stuffing/keyword-stuffing	des
 /fr/compare/bardeen	content/keyword-stuffing/keyword-stuffing	les
 /fr/compare/basecamp	content/keyword-stuffing/keyword-stuffing	les
 /fr/compare/bear	content/keyword-stuffing/keyword-stuffing	les
@@ -2392,23 +2283,15 @@ score:URL Structure=93
 /fr/compare/calendly	content/keyword-stuffing/keyword-stuffing	les
 /fr/compare/capacities	content/keyword-stuffing/keyword-stuffing	des
 /fr/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
-/fr/compare/category/ai-assistants	links/orphan-pages/orphan-pages
 /fr/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
-/fr/compare/category/automation	links/orphan-pages/orphan-pages
 /fr/compare/category/calendar-scheduling	a11y/heading-order/heading-order	H3 after H1
-/fr/compare/category/calendar-scheduling	links/orphan-pages/orphan-pages
 /fr/compare/category/email	a11y/heading-order/heading-order	H3 after H1
 /fr/compare/category/email	content/keyword-stuffing/keyword-stuffing	email
-/fr/compare/category/email	links/orphan-pages/orphan-pages
 /fr/compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
-/fr/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
 /fr/compare/category/other	a11y/heading-order/heading-order	H3 after H1
-/fr/compare/category/other	links/orphan-pages/orphan-pages
 /fr/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
-/fr/compare/category/project-management	links/orphan-pages/orphan-pages
 /fr/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
 /fr/compare/category/task-management	content/keyword-stuffing/keyword-stuffing	task
-/fr/compare/category/task-management	links/orphan-pages/orphan-pages
 /fr/compare/chatgpt	content/keyword-stuffing/keyword-stuffing	des
 /fr/compare/chatgpt	content/keyword-stuffing/keyword-stuffing	les
 /fr/compare/chatgpt-enterprise	content/keyword-stuffing/keyword-stuffing	des
@@ -2461,14 +2344,12 @@ score:URL Structure=93
 /fr/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	calendar
 /fr/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	notion
 /fr/compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
-/fr/compare/page/2	links/no-contextual-inbound/no-contextual-inbound
-/fr/compare/page/3	links/no-contextual-inbound/no-contextual-inbound
 /fr/compare/quip	content/keyword-stuffing/keyword-stuffing	les
 /fr/compare/reclaim	content/keyword-stuffing/keyword-stuffing	calendar
 /fr/compare/sanebox	content/keyword-stuffing/keyword-stuffing	email
 /fr/compare/saner-ai	content/keyword-stuffing/keyword-stuffing	les
+/fr/compare/saner-ai	content/keyword-stuffing/keyword-stuffing	notes
 /fr/compare/shortwave	content/keyword-stuffing/keyword-stuffing	email
-/fr/compare/siri	content/keyword-stuffing/keyword-stuffing	les
 /fr/compare/spark	content/keyword-stuffing/keyword-stuffing	email
 /fr/compare/zoho	content/keyword-stuffing/keyword-stuffing	zoho
 /fr/for	content/keyword-stuffing/keyword-stuffing	les
@@ -2556,9 +2437,11 @@ score:URL Structure=93
 /fr/learn/accountability-partner	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/accountability-partner	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/agent-loop	content/keyword-stuffing/keyword-stuffing	des
+/fr/learn/agent-loop	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/agent-loop	content/keyword-stuffing/keyword-stuffing	une
 /fr/learn/agent-memory	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/agent-memory	content/keyword-stuffing/keyword-stuffing	moire
+/fr/learn/agent-state	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/agent-state	content/keyword-stuffing/keyword-stuffing	tat
 /fr/learn/agentic-ai	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/agentic-ai	content/keyword-stuffing/keyword-stuffing	les
@@ -2568,6 +2451,7 @@ score:URL Structure=93
 /fr/learn/ai-assistant	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/ai-calendar-management	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/ai-copilot	content/keyword-stuffing/keyword-stuffing	des
+/fr/learn/ai-copilot	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/ai-email-assistant	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/ai-email-assistant	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/ai-email-management	content/keyword-stuffing/keyword-stuffing	des
@@ -2577,16 +2461,17 @@ score:URL Structure=93
 /fr/learn/ai-meeting-assistant	content/keyword-stuffing/keyword-stuffing	union
 /fr/learn/ai-orchestration	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/ai-orchestration	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/ai-personal-productivity	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/ai-personal-productivity	content/keyword-stuffing/keyword-stuffing	les
+/fr/learn/ai-personal-productivity	content/keyword-stuffing/keyword-stuffing	productivit
 /fr/learn/ai-task-prioritization	content/keyword-stuffing/keyword-stuffing	ches
 /fr/learn/ai-task-prioritization	content/keyword-stuffing/keyword-stuffing	des
+/fr/learn/ai-task-prioritization	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/api-gateway	content/keyword-stuffing/keyword-stuffing	api
 /fr/learn/api-gateway	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/api-gateway	content/keyword-stuffing/keyword-stuffing	une
 /fr/learn/api-integration	content/keyword-stuffing/keyword-stuffing	int
 /fr/learn/async-communication	content/keyword-stuffing/keyword-stuffing	des
-/fr/learn/attention-management	content/keyword-stuffing/keyword-stuffing	des
+/fr/learn/async-communication	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/attention-management	content/keyword-stuffing/keyword-stuffing	une
 /fr/learn/audit-log	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/autonomous-agent	content/keyword-stuffing/keyword-stuffing	des
@@ -2609,34 +2494,26 @@ score:URL Structure=93
 /fr/learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
 /fr/learn/category/ai-concepts	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/category/ai-concepts	content/keyword-stuffing/keyword-stuffing	une
-/fr/learn/category/ai-concepts	links/orphan-pages/orphan-pages
 /fr/learn/category/automation	a11y/heading-order/heading-order	H3 after H1
 /fr/learn/category/automation	content/keyword-stuffing/keyword-stuffing	automatisation
 /fr/learn/category/automation	content/keyword-stuffing/keyword-stuffing	des
-/fr/learn/category/automation	links/orphan-pages/orphan-pages
 /fr/learn/category/calendar	a11y/heading-order/heading-order	H3 after H1
 /fr/learn/category/calendar	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/category/calendar	links/orphan-pages/orphan-pages
 /fr/learn/category/development	a11y/heading-order/heading-order	H3 after H1
 /fr/learn/category/development	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/category/development	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/category/development	links/orphan-pages/orphan-pages
 /fr/learn/category/email	a11y/heading-order/heading-order	H3 after H1
 /fr/learn/category/email	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/category/email	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/category/email	links/orphan-pages/orphan-pages
 /fr/learn/category/knowledge-management	a11y/heading-order/heading-order	H3 after H1
 /fr/learn/category/knowledge-management	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/category/knowledge-management	content/word-count/word-count
-/fr/learn/category/knowledge-management	links/orphan-pages/orphan-pages
 /fr/learn/category/productivity	a11y/heading-order/heading-order	H3 after H1
 /fr/learn/category/productivity	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/category/productivity	content/keyword-stuffing/keyword-stuffing	est
-/fr/learn/category/productivity	links/orphan-pages/orphan-pages
 /fr/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
 /fr/learn/category/task-management	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/category/task-management	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/category/task-management	links/orphan-pages/orphan-pages
 /fr/learn/chain-of-thought-reasoning	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/chatbot-vs-ai-assistant	content/keyword-stuffing/keyword-stuffing	assistant
 /fr/learn/chatbot-vs-ai-assistant	content/keyword-stuffing/keyword-stuffing	des
@@ -2646,14 +2523,15 @@ score:URL Structure=93
 /fr/learn/cognitive-architecture	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/cognitive-load	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/cold-email	content/keyword-stuffing/keyword-stuffing	des
+/fr/learn/cold-email	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/conditional-logic	content/keyword-stuffing/keyword-stuffing	des
+/fr/learn/conditional-logic	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/conflict-resolution	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/conflict-resolution	content/keyword-stuffing/keyword-stuffing	donn
 /fr/learn/conflict-resolution	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/context-awareness	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/context-awareness	content/keyword-stuffing/keyword-stuffing	une
-/fr/learn/context-switching	content/keyword-stuffing/keyword-stuffing	des
-/fr/learn/context-window	content/keyword-stuffing/keyword-stuffing	contexte
+/fr/learn/context-switching	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/context-window	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/cron-job	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/cron-job	content/keyword-stuffing/keyword-stuffing	une
@@ -2672,6 +2550,7 @@ score:URL Structure=93
 /fr/learn/digital-executive-assistant	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/dot-app	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/eat-the-frog	content/keyword-stuffing/keyword-stuffing	les
+/fr/learn/eisenhower-matrix	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/email-automation	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/email-automation	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/email-deliverability	content/keyword-stuffing/keyword-stuffing	des
@@ -2691,7 +2570,6 @@ score:URL Structure=93
 /fr/learn/event-driven-architecture	content/keyword-stuffing/keyword-stuffing	nements
 /fr/learn/event-driven-architecture	content/keyword-stuffing/keyword-stuffing	une
 /fr/learn/event-driven-automation	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/event-driven-automation	content/keyword-stuffing/keyword-stuffing	une
 /fr/learn/few-shot-learning	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/few-shot-learning	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/fine-tuning	content/keyword-stuffing/keyword-stuffing	des
@@ -2714,12 +2592,15 @@ score:URL Structure=93
 /fr/learn/gdpr	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/gemini-assistant	content/keyword-stuffing/keyword-stuffing	assistant
 /fr/learn/gemini-assistant	content/keyword-stuffing/keyword-stuffing	des
+/fr/learn/gemini-assistant	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/getting-things-done	content/keyword-stuffing/keyword-stuffing	des
+/fr/learn/getting-things-done	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/graph-based-memory	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/graph-based-memory	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/graph-based-memory	content/keyword-stuffing/keyword-stuffing	moire
 /fr/learn/guardrails	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/guardrails	content/keyword-stuffing/keyword-stuffing	les
+/fr/learn/habit-stacking	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/hallucination	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/hallucination	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/human-in-the-loop	content/keyword-stuffing/keyword-stuffing	des
@@ -2728,9 +2609,7 @@ score:URL Structure=93
 /fr/learn/idempotency	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/idempotency	content/keyword-stuffing/keyword-stuffing	une
 /fr/learn/inbox-management	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/inbox-management	content/keyword-stuffing/keyword-stuffing	une
 /fr/learn/inbox-zero	content/keyword-stuffing/keyword-stuffing	des
-/fr/learn/inference	content/keyword-stuffing/keyword-stuffing	inf
 /fr/learn/inference	content/keyword-stuffing/keyword-stuffing	mod
 /fr/learn/information-overload	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/information-overload	content/keyword-stuffing/keyword-stuffing	les
@@ -2739,25 +2618,24 @@ score:URL Structure=93
 /fr/learn/kanban	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/knowledge-graph	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/knowledge-worker	content/keyword-stuffing/keyword-stuffing	des
+/fr/learn/knowledge-worker	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/langgraph	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/langgraph	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/llm	content/keyword-stuffing/keyword-stuffing	des
-/fr/learn/llm	content/keyword-stuffing/keyword-stuffing	llm
 /fr/learn/local-llm	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/local-llm	content/keyword-stuffing/keyword-stuffing	mod
 /fr/learn/low-code	content/keyword-stuffing/keyword-stuffing	code
 /fr/learn/low-code	content/keyword-stuffing/keyword-stuffing	des
+/fr/learn/low-code	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/meeting-fatigue	content/keyword-stuffing/keyword-stuffing	meeting
 /fr/learn/meeting-intelligence	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/meeting-intelligence	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/meeting-intelligence	content/keyword-stuffing/keyword-stuffing	union
 /fr/learn/meeting-scheduling	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/meeting-scheduling	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/memory-augmented-ai	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/memory-augmented-ai	content/keyword-stuffing/keyword-stuffing	moire
 /fr/learn/message-queue	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/message-queue	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/microservices	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/microservices	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/model-context-protocol	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/model-context-protocol	content/keyword-stuffing/keyword-stuffing	mcp
@@ -2772,6 +2650,7 @@ score:URL Structure=93
 /fr/learn/no-code	content/keyword-stuffing/keyword-stuffing	code
 /fr/learn/no-code	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/no-code-automation	content/keyword-stuffing/keyword-stuffing	des
+/fr/learn/no-code-automation	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/notification-fatigue	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/notification-fatigue	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/notification-fatigue	content/keyword-stuffing/keyword-stuffing	notifications
@@ -2782,21 +2661,17 @@ score:URL Structure=93
 /fr/learn/okrs	content/keyword-stuffing/keyword-stuffing	okr
 /fr/learn/omi	content/keyword-stuffing/keyword-stuffing	est
 /fr/learn/openai-dots	content/keyword-stuffing/keyword-stuffing	est
+/fr/learn/openai-dots	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/orchestration	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/orchestration	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/orchestration	content/keyword-stuffing/keyword-stuffing	orchestration
 /fr/learn/page/2	content/keyword-stuffing/keyword-stuffing	des
-/fr/learn/page/2	links/no-contextual-inbound/no-contextual-inbound
 /fr/learn/page/3	content/keyword-stuffing/keyword-stuffing	des
-/fr/learn/page/3	links/no-contextual-inbound/no-contextual-inbound
 /fr/learn/page/4	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/page/4	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/page/4	links/no-contextual-inbound/no-contextual-inbound
 /fr/learn/page/5	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/page/5	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/page/5	links/no-contextual-inbound/no-contextual-inbound
 /fr/learn/parallel-agents	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/parallel-agents	content/keyword-stuffing/keyword-stuffing	parall
 /fr/learn/parkinson-law	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/parkinson-law	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/parkinson-law	content/keyword-stuffing/keyword-stuffing	pour
@@ -2812,9 +2687,11 @@ score:URL Structure=93
 /fr/learn/phishing	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/pomodoro-technique	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/pomodoro-technique	content/keyword-stuffing/keyword-stuffing	les
+/fr/learn/proactive-ai	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/proactive-ai	content/keyword-stuffing/keyword-stuffing	une
 /fr/learn/prompt-chaining	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/prompt-engineering	content/keyword-stuffing/keyword-stuffing	des
+/fr/learn/prompt-engineering	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/pub-sub	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/real-time-sync	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/reasoning-model	content/keyword-stuffing/keyword-stuffing	les
@@ -2826,7 +2703,6 @@ score:URL Structure=93
 /fr/learn/rest-api	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/rest-api	content/keyword-stuffing/keyword-stuffing	une
 /fr/learn/retrieval-augmented-generation	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/retrieval-augmented-generation	content/keyword-stuffing/keyword-stuffing	une
 /fr/learn/retrospective	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/retrospective	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/rpa	content/keyword-stuffing/keyword-stuffing	automatisation
@@ -2848,9 +2724,10 @@ score:URL Structure=93
 /fr/learn/single-sign-on	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/single-tasking	content/keyword-stuffing/keyword-stuffing	che
 /fr/learn/single-tasking	content/keyword-stuffing/keyword-stuffing	des
-/fr/learn/siri	content/keyword-stuffing/keyword-stuffing	des
+/fr/learn/siri	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/smart-notifications	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/smart-reply	content/keyword-stuffing/keyword-stuffing	des
+/fr/learn/smart-reply	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/smart-scheduling	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/smart-scheduling	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/social-engineering	content/keyword-stuffing/keyword-stuffing	des
@@ -2868,14 +2745,11 @@ score:URL Structure=93
 /fr/learn/subagent	content/keyword-stuffing/keyword-stuffing	sous
 /fr/learn/supervisor-agent	content/keyword-stuffing/keyword-stuffing	agent
 /fr/learn/supervisor-agent	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/supervisor-agent	content/keyword-stuffing/keyword-stuffing	superviseur
 /fr/learn/system-prompt	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/system-prompt	content/keyword-stuffing/keyword-stuffing	syst
 /fr/learn/task-automation	content/keyword-stuffing/keyword-stuffing	ches
 /fr/learn/task-automation	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/task-automation	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/task-batching	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/temperature	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/text-to-speech	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/time-audit	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/time-audit	content/keyword-stuffing/keyword-stuffing	les
@@ -2884,7 +2758,6 @@ score:URL Structure=93
 /fr/learn/time-zone-management	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/time-zone-management	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/token	content/keyword-stuffing/keyword-stuffing	tokens
-/fr/learn/tokenization	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/tokenization	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/tool-use	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/transactional-email	content/keyword-stuffing/keyword-stuffing	des
@@ -2905,10 +2778,8 @@ score:URL Structure=93
 /fr/learn/vector-database	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/vector-database	content/keyword-stuffing/keyword-stuffing	une
 /fr/learn/video-conferencing	content/keyword-stuffing/keyword-stuffing	meeting
-/fr/learn/video-conferencing	content/keyword-stuffing/keyword-stuffing	video
 /fr/learn/webhook	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/weekly-review	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/work-life-integration	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/work-life-integration	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/work-life-integration	content/keyword-stuffing/keyword-stuffing	vie
 /fr/learn/workflow-automation	content/keyword-stuffing/keyword-stuffing	des
@@ -2919,93 +2790,42 @@ score:URL Structure=93
 /fr/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
 /how-to-use-ai-as-a-personal-assistant	perf/cache-headers/cache-control
 /inbox-zero-ai	perf/cache-headers/cache-control
-/ja/alternative-to	links/no-contextual-inbound/no-contextual-inbound
-/ja/automate	links/no-contextual-inbound/no-contextual-inbound
-/ja/automate/with/google-docs	links/orphan-pages/orphan-pages
 /ja/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
-/ja/compare/category/ai-assistants	links/orphan-pages/orphan-pages
 /ja/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
-/ja/compare/category/automation	links/orphan-pages/orphan-pages
 /ja/compare/category/calendar-scheduling	a11y/heading-order/heading-order	H3 after H1
-/ja/compare/category/calendar-scheduling	links/orphan-pages/orphan-pages
 /ja/compare/category/email	a11y/heading-order/heading-order	H3 after H1
-/ja/compare/category/email	links/orphan-pages/orphan-pages
 /ja/compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
-/ja/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
 /ja/compare/category/other	a11y/heading-order/heading-order	H3 after H1
-/ja/compare/category/other	links/orphan-pages/orphan-pages
 /ja/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
-/ja/compare/category/project-management	links/orphan-pages/orphan-pages
 /ja/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
-/ja/compare/category/task-management	links/orphan-pages/orphan-pages
-/ja/compare/page/2	links/no-contextual-inbound/no-contextual-inbound
-/ja/compare/page/3	links/no-contextual-inbound/no-contextual-inbound
 /ja/learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
-/ja/learn/category/ai-concepts	links/orphan-pages/orphan-pages
 /ja/learn/category/automation	a11y/heading-order/heading-order	H3 after H1
-/ja/learn/category/automation	links/orphan-pages/orphan-pages
 /ja/learn/category/calendar	a11y/heading-order/heading-order	H3 after H1
-/ja/learn/category/calendar	links/orphan-pages/orphan-pages
 /ja/learn/category/development	a11y/heading-order/heading-order	H3 after H1
-/ja/learn/category/development	links/orphan-pages/orphan-pages
 /ja/learn/category/email	a11y/heading-order/heading-order	H3 after H1
-/ja/learn/category/email	links/orphan-pages/orphan-pages
 /ja/learn/category/knowledge-management	a11y/heading-order/heading-order	H3 after H1
-/ja/learn/category/knowledge-management	links/orphan-pages/orphan-pages
 /ja/learn/category/productivity	a11y/heading-order/heading-order	H3 after H1
-/ja/learn/category/productivity	links/orphan-pages/orphan-pages
 /ja/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
-/ja/learn/category/task-management	links/orphan-pages/orphan-pages
-/ja/learn/page/2	links/no-contextual-inbound/no-contextual-inbound
-/ja/learn/page/3	links/no-contextual-inbound/no-contextual-inbound
-/ja/learn/page/4	links/no-contextual-inbound/no-contextual-inbound
-/ja/learn/page/5	links/no-contextual-inbound/no-contextual-inbound
-/ko/alternative-to	links/no-contextual-inbound/no-contextual-inbound
-/ko/automate	links/no-contextual-inbound/no-contextual-inbound
-/ko/automate/with/google-docs	links/orphan-pages/orphan-pages
 /ko/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
-/ko/compare/category/ai-assistants	links/orphan-pages/orphan-pages
 /ko/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
-/ko/compare/category/automation	links/orphan-pages/orphan-pages
 /ko/compare/category/calendar-scheduling	a11y/heading-order/heading-order	H3 after H1
-/ko/compare/category/calendar-scheduling	links/orphan-pages/orphan-pages
 /ko/compare/category/email	a11y/heading-order/heading-order	H3 after H1
-/ko/compare/category/email	links/orphan-pages/orphan-pages
 /ko/compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
-/ko/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
 /ko/compare/category/other	a11y/heading-order/heading-order	H3 after H1
-/ko/compare/category/other	links/orphan-pages/orphan-pages
 /ko/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
-/ko/compare/category/project-management	links/orphan-pages/orphan-pages
 /ko/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
-/ko/compare/category/task-management	links/orphan-pages/orphan-pages
-/ko/compare/page/2	links/no-contextual-inbound/no-contextual-inbound
-/ko/compare/page/3	links/no-contextual-inbound/no-contextual-inbound
 /ko/learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
-/ko/learn/category/ai-concepts	links/orphan-pages/orphan-pages
 /ko/learn/category/automation	a11y/heading-order/heading-order	H3 after H1
-/ko/learn/category/automation	links/orphan-pages/orphan-pages
 /ko/learn/category/calendar	a11y/heading-order/heading-order	H3 after H1
-/ko/learn/category/calendar	links/orphan-pages/orphan-pages
 /ko/learn/category/development	a11y/heading-order/heading-order	H3 after H1
-/ko/learn/category/development	links/orphan-pages/orphan-pages
 /ko/learn/category/email	a11y/heading-order/heading-order	H3 after H1
-/ko/learn/category/email	links/orphan-pages/orphan-pages
 /ko/learn/category/knowledge-management	a11y/heading-order/heading-order	H3 after H1
-/ko/learn/category/knowledge-management	links/orphan-pages/orphan-pages
 /ko/learn/category/productivity	a11y/heading-order/heading-order	H3 after H1
-/ko/learn/category/productivity	links/orphan-pages/orphan-pages
 /ko/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
-/ko/learn/category/task-management	links/orphan-pages/orphan-pages
-/ko/learn/page/2	links/no-contextual-inbound/no-contextual-inbound
-/ko/learn/page/3	links/no-contextual-inbound/no-contextual-inbound
-/ko/learn/page/4	links/no-contextual-inbound/no-contextual-inbound
-/ko/learn/page/5	links/no-contextual-inbound/no-contextual-inbound
 /learn/agent-loop	content/keyword-stuffing/keyword-stuffing	agent
 /learn/agent-memory	content/keyword-stuffing/keyword-stuffing	memory
 /learn/agent-state	content/keyword-stuffing/keyword-stuffing	agent
 /learn/agent-state	content/keyword-stuffing/keyword-stuffing	state
-/learn/ai-assistant-vs-ai-agent	content/keyword-stuffing/keyword-stuffing	assistant
 /learn/ai-calendar-management	content/keyword-stuffing/keyword-stuffing	calendar
 /learn/ai-email-assistant	content/keyword-stuffing/keyword-stuffing	email
 /learn/ai-email-management	content/keyword-stuffing/keyword-stuffing	email
@@ -3017,34 +2837,24 @@ score:URL Structure=93
 /learn/calendar-automation	content/keyword-stuffing/keyword-stuffing	calendar
 /learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
 /learn/category/ai-concepts	core/meta-description/meta-description
-/learn/category/ai-concepts	links/orphan-pages/orphan-pages
 /learn/category/automation	a11y/heading-order/heading-order	H3 after H1
 /learn/category/automation	content/keyword-stuffing/keyword-stuffing	automation
-/learn/category/automation	links/orphan-pages/orphan-pages
 /learn/category/calendar	a11y/heading-order/heading-order	H3 after H1
 /learn/category/calendar	content/keyword-stuffing/keyword-stuffing	meeting
 /learn/category/calendar	content/keyword-stuffing/keyword-stuffing	time
-/learn/category/calendar	links/orphan-pages/orphan-pages
 /learn/category/development	a11y/heading-order/heading-order	H3 after H1
-/learn/category/development	links/orphan-pages/orphan-pages
 /learn/category/email	a11y/heading-order/heading-order	H3 after H1
 /learn/category/email	content/keyword-stuffing/keyword-stuffing	email
 /learn/category/email	core/meta-description/meta-description
-/learn/category/email	links/orphan-pages/orphan-pages
 /learn/category/knowledge-management	a11y/heading-order/heading-order	H3 after H1
 /learn/category/knowledge-management	content/keyword-stuffing/keyword-stuffing	knowledge
 /learn/category/knowledge-management	content/word-count/word-count
 /learn/category/knowledge-management	core/meta-description/meta-description
-/learn/category/knowledge-management	links/orphan-pages/orphan-pages
 /learn/category/productivity	a11y/heading-order/heading-order	H3 after H1
 /learn/category/productivity	core/meta-description/meta-description
-/learn/category/productivity	links/orphan-pages/orphan-pages
 /learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
 /learn/category/task-management	core/meta-description/meta-description
-/learn/category/task-management	links/orphan-pages/orphan-pages
 /learn/chatbot-vs-ai-assistant	content/keyword-stuffing/keyword-stuffing	assistant
-/learn/cognitive-architecture	content/keyword-stuffing/keyword-stuffing	architecture
-/learn/cold-email	content/keyword-stuffing/keyword-stuffing	cold
 /learn/conflict-resolution	content/keyword-stuffing/keyword-stuffing	data
 /learn/constitutional-ai	content/keyword-stuffing/keyword-stuffing	human
 /learn/context-window	content/keyword-stuffing/keyword-stuffing	context
@@ -3057,12 +2867,10 @@ score:URL Structure=93
 /learn/email-summarization	content/keyword-stuffing/keyword-stuffing	email
 /learn/email-threading	content/keyword-stuffing/keyword-stuffing	email
 /learn/email-triage	content/keyword-stuffing/keyword-stuffing	email
-/learn/embeddings	content/keyword-stuffing/keyword-stuffing	embeddings
 /learn/energy-management	content/keyword-stuffing/keyword-stuffing	energy
 /learn/event-driven-automation	content/keyword-stuffing/keyword-stuffing	event
 /learn/few-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
 /learn/fine-tuning	content/keyword-stuffing/keyword-stuffing	fine
-/learn/fine-tuning	content/keyword-stuffing/keyword-stuffing	model
 /learn/follow-up-automation	content/keyword-stuffing/keyword-stuffing	follow
 /learn/foundation-model	content/keyword-stuffing/keyword-stuffing	foundation
 /learn/foundation-model	content/keyword-stuffing/keyword-stuffing	model
@@ -3070,8 +2878,6 @@ score:URL Structure=93
 /learn/function-calling	content/keyword-stuffing/keyword-stuffing	function
 /learn/gdpr	content/keyword-stuffing/keyword-stuffing	data
 /learn/gemini-assistant	content/keyword-stuffing/keyword-stuffing	assistant
-/learn/graph-based-memory	content/keyword-stuffing/keyword-stuffing	based
-/learn/graph-based-memory	content/keyword-stuffing/keyword-stuffing	memory
 /learn/habit-stacking	content/keyword-stuffing/keyword-stuffing	habit
 /learn/human-in-the-loop	content/keyword-stuffing/keyword-stuffing	human
 /learn/ical	content/keyword-stuffing/keyword-stuffing	calendar
@@ -3090,17 +2896,11 @@ score:URL Structure=93
 /learn/memory-augmented-ai	content/keyword-stuffing/keyword-stuffing	memory
 /learn/model-context-protocol	content/keyword-stuffing/keyword-stuffing	mcp
 /learn/named-entity-recognition	content/keyword-stuffing/keyword-stuffing	ner
-/learn/natural-language-processing	content/keyword-stuffing/keyword-stuffing	language
 /learn/natural-language-processing	content/keyword-stuffing/keyword-stuffing	nlp
 /learn/neural-network	content/keyword-stuffing/keyword-stuffing	neural
 /learn/no-code	content/keyword-stuffing/keyword-stuffing	code
-/learn/offline-first	content/keyword-stuffing/keyword-stuffing	data
 /learn/okrs	content/keyword-stuffing/keyword-stuffing	okrs
 /learn/orchestration	content/keyword-stuffing/keyword-stuffing	orchestration
-/learn/page/2	links/no-contextual-inbound/no-contextual-inbound
-/learn/page/3	links/no-contextual-inbound/no-contextual-inbound
-/learn/page/4	links/no-contextual-inbound/no-contextual-inbound
-/learn/page/5	links/no-contextual-inbound/no-contextual-inbound
 /learn/password-manager	content/keyword-stuffing/keyword-stuffing	password
 /learn/prompt-chaining	content/keyword-stuffing/keyword-stuffing	prompt
 /learn/prompt-engineering	content/keyword-stuffing/keyword-stuffing	prompt
@@ -3110,18 +2910,13 @@ score:URL Structure=93
 /learn/rpa	content/keyword-stuffing/keyword-stuffing	rpa
 /learn/screen-sharing	content/keyword-stuffing/keyword-stuffing	screen
 /learn/semantic-search	content/keyword-stuffing/keyword-stuffing	search
-/learn/single-sign-on	content/keyword-stuffing/keyword-stuffing	sso
 /learn/smart-reply	content/keyword-stuffing/keyword-stuffing	email
 /learn/spam-filter	content/keyword-stuffing/keyword-stuffing	spam
 /learn/speech-to-text	content/keyword-stuffing/keyword-stuffing	speech
 /learn/speech-to-text	content/keyword-stuffing/keyword-stuffing	text
-/learn/structured-output	content/keyword-stuffing/keyword-stuffing	model
-/learn/structured-output	content/keyword-stuffing/keyword-stuffing	output
-/learn/structured-output	content/keyword-stuffing/keyword-stuffing	structured
 /learn/supervisor-agent	content/keyword-stuffing/keyword-stuffing	agent
 /learn/supervisor-agent	content/keyword-stuffing/keyword-stuffing	supervisor
 /learn/system-prompt	content/keyword-stuffing/keyword-stuffing	system
-/learn/task-automation	content/keyword-stuffing/keyword-stuffing	tasks
 /learn/temperature	content/keyword-stuffing/keyword-stuffing	temperature
 /learn/time-audit	content/keyword-stuffing/keyword-stuffing	time
 /learn/time-blocking	content/keyword-stuffing/keyword-stuffing	time
@@ -3137,7 +2932,6 @@ score:URL Structure=93
 /learn/work-life-integration	content/keyword-stuffing/keyword-stuffing	work
 /learn/workflow-orchestration	content/keyword-stuffing/keyword-stuffing	workflow
 /learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
-/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	zero
 /manifesto	links/no-contextual-inbound/no-contextual-inbound
 /manifesto	perf/cache-headers/cache-control
 /marketplace/adspo-mcp-other	content/keyword-stuffing/keyword-stuffing	adspo
@@ -3185,9 +2979,7 @@ score:URL Structure=93
 /marketplace/outlook	perf/dom-size/dom-max-children
 /marketplace/outlook	perf/dom-size/dom-total-nodes
 /marketplace/page/2	content/word-count/word-count
-/marketplace/page/2	links/no-contextual-inbound/no-contextual-inbound
 /marketplace/page/3	content/word-count/word-count
-/marketplace/page/3	links/no-contextual-inbound/no-contextual-inbound
 /marketplace/postman-code-eu-mcp-developer	content/keyword-stuffing/keyword-stuffing	code
 /marketplace/postman-code-mcp-developer	content/keyword-stuffing/keyword-stuffing	api
 /marketplace/postman-full-mcp-developer	content/keyword-stuffing/keyword-stuffing	api
@@ -3218,12 +3010,12 @@ score:URL Structure=93
 /privacy	perf/cache-headers/cache-control
 /pt-br/alternative-to	content/keyword-stuffing/keyword-stuffing	com
 /pt-br/alternative-to	content/keyword-stuffing/keyword-stuffing	para
-/pt-br/alternative-to	links/no-contextual-inbound/no-contextual-inbound
 /pt-br/alternative-to/airtable	content/keyword-stuffing/keyword-stuffing	airtable
-/pt-br/alternative-to/asana	content/keyword-stuffing/keyword-stuffing	asana
 /pt-br/alternative-to/bear	content/keyword-stuffing/keyword-stuffing	bear
 /pt-br/alternative-to/bee	content/keyword-stuffing/keyword-stuffing	bee
+/pt-br/alternative-to/bee	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/alternative-to/bee	content/keyword-stuffing/keyword-stuffing	que
+/pt-br/alternative-to/calendly	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/alternative-to/carly	content/keyword-stuffing/keyword-stuffing	com
 /pt-br/alternative-to/carly	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/alternative-to/chatgpt	content/keyword-stuffing/keyword-stuffing	chatgpt
@@ -3265,16 +3057,13 @@ score:URL Structure=93
 /pt-br/alternative-to/openclaw	core/meta-description/meta-description
 /pt-br/alternative-to/perplexity	content/keyword-stuffing/keyword-stuffing	perplexity
 /pt-br/alternative-to/poke	content/keyword-stuffing/keyword-stuffing	para
-/pt-br/alternative-to/reclaim	content/keyword-stuffing/keyword-stuffing	reclaim
 /pt-br/alternative-to/roam-research	content/keyword-stuffing/keyword-stuffing	roam
 /pt-br/alternative-to/siri	content/keyword-stuffing/keyword-stuffing	siri
 /pt-br/alternative-to/things3	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/alternative-to/ticktick	content/keyword-stuffing/keyword-stuffing	tarefas
 /pt-br/alternative-to/todoist	content/keyword-stuffing/keyword-stuffing	tarefas
 /pt-br/alternative-to/todoist	content/keyword-stuffing/keyword-stuffing	todoist
-/pt-br/alternative-to/trello	content/keyword-stuffing/keyword-stuffing	trello
 /pt-br/automate	content/keyword-stuffing/keyword-stuffing	tarefas
-/pt-br/automate	links/no-contextual-inbound/no-contextual-inbound
 /pt-br/automate/airtable-google-calendar	content/keyword-stuffing/keyword-stuffing	agenda
 /pt-br/automate/airtable-notion	content/keyword-stuffing/keyword-stuffing	airtable
 /pt-br/automate/asana-drive	content/keyword-stuffing/keyword-stuffing	drive
@@ -3429,9 +3218,6 @@ score:URL Structure=93
 /pt-br/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	eventos
 /pt-br/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	google
 /pt-br/automate/with/google-calendar	core/meta-description/meta-description
-/pt-br/automate/with/google-docs	content/word-count/word-count
-/pt-br/automate/with/google-docs	core/meta-description/meta-description
-/pt-br/automate/with/google-docs	links/orphan-pages/orphan-pages
 /pt-br/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	autom
 /pt-br/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	drive
 /pt-br/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	driveanexe
@@ -3494,32 +3280,23 @@ score:URL Structure=93
 /pt-br/compare/airtable	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/compare/akiflow	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/compare/akiflow	content/keyword-stuffing/keyword-stuffing	tarefas
-/pt-br/compare/anydo	content/keyword-stuffing/keyword-stuffing	com
 /pt-br/compare/asana	core/meta-description/meta-description
 /pt-br/compare/bee	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/compare/cal	content/keyword-stuffing/keyword-stuffing	com
 /pt-br/compare/carly	content/keyword-stuffing/keyword-stuffing	com
 /pt-br/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
-/pt-br/compare/category/ai-assistants	links/orphan-pages/orphan-pages
 /pt-br/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
-/pt-br/compare/category/automation	links/orphan-pages/orphan-pages
 /pt-br/compare/category/calendar-scheduling	a11y/heading-order/heading-order	H3 after H1
 /pt-br/compare/category/calendar-scheduling	content/keyword-stuffing/keyword-stuffing	calendar
-/pt-br/compare/category/calendar-scheduling	links/orphan-pages/orphan-pages
 /pt-br/compare/category/email	a11y/heading-order/heading-order	H3 after H1
 /pt-br/compare/category/email	content/keyword-stuffing/keyword-stuffing	email
 /pt-br/compare/category/email	core/meta-description/meta-description
-/pt-br/compare/category/email	links/orphan-pages/orphan-pages
 /pt-br/compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
-/pt-br/compare/category/notes-knowledge	links/orphan-pages/orphan-pages
 /pt-br/compare/category/other	a11y/heading-order/heading-order	H3 after H1
-/pt-br/compare/category/other	links/orphan-pages/orphan-pages
 /pt-br/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
 /pt-br/compare/category/project-management	content/keyword-stuffing/keyword-stuffing	project
-/pt-br/compare/category/project-management	links/orphan-pages/orphan-pages
 /pt-br/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
 /pt-br/compare/category/task-management	content/keyword-stuffing/keyword-stuffing	task
-/pt-br/compare/category/task-management	links/orphan-pages/orphan-pages
 /pt-br/compare/clickup	content/keyword-stuffing/keyword-stuffing	clickup
 /pt-br/compare/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
 /pt-br/compare/dot-app	content/keyword-stuffing/keyword-stuffing	que
@@ -3542,8 +3319,6 @@ score:URL Structure=93
 /pt-br/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	calendar
 /pt-br/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	notion
 /pt-br/compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
-/pt-br/compare/page/2	links/no-contextual-inbound/no-contextual-inbound
-/pt-br/compare/page/3	links/no-contextual-inbound/no-contextual-inbound
 /pt-br/compare/poke	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/compare/quip	content/keyword-stuffing/keyword-stuffing	salesforce
 /pt-br/compare/reclaim	content/keyword-stuffing/keyword-stuffing	calendar
@@ -3580,11 +3355,12 @@ score:URL Structure=93
 /pt-br/learn/ai-assistant-vs-ai-agent	content/keyword-stuffing/keyword-stuffing	agente
 /pt-br/learn/ai-assistant-vs-ai-agent	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/ai-calendar-management	content/keyword-stuffing/keyword-stuffing	com
+/pt-br/learn/ai-calendar-management	content/keyword-stuffing/keyword-stuffing	para
+/pt-br/learn/ai-calendar-management	content/keyword-stuffing/keyword-stuffing	rio
 /pt-br/learn/ai-email-assistant	content/keyword-stuffing/keyword-stuffing	com
 /pt-br/learn/ai-email-assistant	content/keyword-stuffing/keyword-stuffing	mail
 /pt-br/learn/ai-meeting-assistant	content/keyword-stuffing/keyword-stuffing	com
 /pt-br/learn/ai-meeting-assistant	content/keyword-stuffing/keyword-stuffing	reuni
-/pt-br/learn/ai-orchestration	content/keyword-stuffing/keyword-stuffing	com
 /pt-br/learn/ai-orchestration	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/learn/ai-task-prioritization	content/keyword-stuffing/keyword-stuffing	tarefas
 /pt-br/learn/api-gateway	content/keyword-stuffing/keyword-stuffing	api
@@ -3596,66 +3372,49 @@ score:URL Structure=93
 /pt-br/learn/asynchronous-meeting	content/keyword-stuffing/keyword-stuffing	ass
 /pt-br/learn/asynchronous-meeting	content/keyword-stuffing/keyword-stuffing	reuni
 /pt-br/learn/audit-log	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/learn/autonomous-agent	content/keyword-stuffing/keyword-stuffing	aut
 /pt-br/learn/availability-window	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/learn/bee	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/buffer-time	content/keyword-stuffing/keyword-stuffing	reuni
 /pt-br/learn/business-process-automation	content/keyword-stuffing/keyword-stuffing	automa
 /pt-br/learn/business-process-automation	content/keyword-stuffing/keyword-stuffing	processos
-/pt-br/learn/calendar-automation	content/keyword-stuffing/keyword-stuffing	calend
 /pt-br/learn/calendar-automation	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
 /pt-br/learn/category/ai-concepts	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/learn/category/ai-concepts	links/orphan-pages/orphan-pages
 /pt-br/learn/category/automation	a11y/heading-order/heading-order	H3 after H1
 /pt-br/learn/category/automation	content/keyword-stuffing/keyword-stuffing	automa
-/pt-br/learn/category/automation	links/orphan-pages/orphan-pages
 /pt-br/learn/category/calendar	a11y/heading-order/heading-order	H3 after H1
 /pt-br/learn/category/calendar	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/learn/category/calendar	content/keyword-stuffing/keyword-stuffing	reuni
-/pt-br/learn/category/calendar	links/orphan-pages/orphan-pages
 /pt-br/learn/category/development	a11y/heading-order/heading-order	H3 after H1
 /pt-br/learn/category/development	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/learn/category/development	links/orphan-pages/orphan-pages
 /pt-br/learn/category/email	a11y/heading-order/heading-order	H3 after H1
 /pt-br/learn/category/email	content/keyword-stuffing/keyword-stuffing	para
-/pt-br/learn/category/email	links/orphan-pages/orphan-pages
 /pt-br/learn/category/knowledge-management	a11y/heading-order/heading-order	H3 after H1
 /pt-br/learn/category/knowledge-management	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/learn/category/knowledge-management	content/word-count/word-count
 /pt-br/learn/category/knowledge-management	core/meta-description/meta-description
-/pt-br/learn/category/knowledge-management	links/orphan-pages/orphan-pages
 /pt-br/learn/category/productivity	a11y/heading-order/heading-order	H3 after H1
 /pt-br/learn/category/productivity	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/learn/category/productivity	links/orphan-pages/orphan-pages
 /pt-br/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
 /pt-br/learn/category/task-management	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/category/task-management	content/keyword-stuffing/keyword-stuffing	tarefas
-/pt-br/learn/category/task-management	links/orphan-pages/orphan-pages
 /pt-br/learn/chain-of-thought-reasoning	content/keyword-stuffing/keyword-stuffing	nio
 /pt-br/learn/chain-of-thought-reasoning	content/keyword-stuffing/keyword-stuffing	racioc
 /pt-br/learn/chatbot-vs-ai-assistant	content/keyword-stuffing/keyword-stuffing	assistente
 /pt-br/learn/chatbot-vs-ai-assistant	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/learn/cognitive-architecture	content/keyword-stuffing/keyword-stuffing	arquitetura
-/pt-br/learn/cognitive-load	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/cold-email	content/keyword-stuffing/keyword-stuffing	para
-/pt-br/learn/conflict-resolution	content/keyword-stuffing/keyword-stuffing	conflitos
 /pt-br/learn/conflict-resolution	content/keyword-stuffing/keyword-stuffing	dados
-/pt-br/learn/context-awareness	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/context-window	content/keyword-stuffing/keyword-stuffing	contexto
 /pt-br/learn/data-sovereignty	content/keyword-stuffing/keyword-stuffing	dados
 /pt-br/learn/digital-executive-assistant	content/keyword-stuffing/keyword-stuffing	assistente
-/pt-br/learn/digital-executive-assistant	content/keyword-stuffing/keyword-stuffing	que
+/pt-br/learn/digital-minimalism	content/keyword-stuffing/keyword-stuffing	digital
 /pt-br/learn/dot-app	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/energy-management	content/keyword-stuffing/keyword-stuffing	energia
-/pt-br/learn/entity-extraction	content/keyword-stuffing/keyword-stuffing	entidades
 /pt-br/learn/entity-extraction	content/keyword-stuffing/keyword-stuffing	extra
 /pt-br/learn/event-driven-architecture	content/keyword-stuffing/keyword-stuffing	eventos
-/pt-br/learn/few-shot-learning	content/keyword-stuffing/keyword-stuffing	exemplos
 /pt-br/learn/few-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
 /pt-br/learn/fine-tuning	content/keyword-stuffing/keyword-stuffing	para
-/pt-br/learn/focus-session	content/keyword-stuffing/keyword-stuffing	sess
 /pt-br/learn/follow-up-automation	content/keyword-stuffing/keyword-stuffing	follow
 /pt-br/learn/follow-up-automation	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/learn/foundation-model	content/keyword-stuffing/keyword-stuffing	modelo
@@ -3664,7 +3423,6 @@ score:URL Structure=93
 /pt-br/learn/function-calling	content/keyword-stuffing/keyword-stuffing	fun
 /pt-br/learn/function-calling	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/gdpr	content/keyword-stuffing/keyword-stuffing	dados
-/pt-br/learn/graph-based-memory	content/keyword-stuffing/keyword-stuffing	mem
 /pt-br/learn/graph-based-memory	content/keyword-stuffing/keyword-stuffing	ria
 /pt-br/learn/guardrails	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/human-in-the-loop	content/keyword-stuffing/keyword-stuffing	para
@@ -3693,42 +3451,34 @@ score:URL Structure=93
 /pt-br/learn/meeting-scheduling	content/keyword-stuffing/keyword-stuffing	reuni
 /pt-br/learn/memory-augmented-ai	content/keyword-stuffing/keyword-stuffing	mem
 /pt-br/learn/memory-augmented-ai	content/keyword-stuffing/keyword-stuffing	ria
-/pt-br/learn/microservices	content/keyword-stuffing/keyword-stuffing	servi
 /pt-br/learn/model-context-protocol	content/keyword-stuffing/keyword-stuffing	mcp
 /pt-br/learn/model-context-protocol	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/multimodal-ai	content/keyword-stuffing/keyword-stuffing	com
 /pt-br/learn/named-entity-recognition	content/keyword-stuffing/keyword-stuffing	ner
-/pt-br/learn/natural-language-processing	content/keyword-stuffing/keyword-stuffing	linguagem
 /pt-br/learn/natural-language-processing	content/keyword-stuffing/keyword-stuffing	pln
 /pt-br/learn/no-code	content/keyword-stuffing/keyword-stuffing	code
 /pt-br/learn/notification-fatigue	content/keyword-stuffing/keyword-stuffing	notifica
 /pt-br/learn/oauth	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/okrs	content/keyword-stuffing/keyword-stuffing	okrs
-/pt-br/learn/omi	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/openai-dots	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/orchestration	content/keyword-stuffing/keyword-stuffing	orquestra
 /pt-br/learn/page/2	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/learn/page/2	links/no-contextual-inbound/no-contextual-inbound
 /pt-br/learn/page/3	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/learn/page/3	links/no-contextual-inbound/no-contextual-inbound
 /pt-br/learn/page/4	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/learn/page/4	links/no-contextual-inbound/no-contextual-inbound
 /pt-br/learn/page/5	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/learn/page/5	links/no-contextual-inbound/no-contextual-inbound
 /pt-br/learn/para-method	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/learn/parkinson-law	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/learn/password-manager	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/password-manager	content/keyword-stuffing/keyword-stuffing	senhas
 /pt-br/learn/proactive-ai	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/real-time-sync	content/keyword-stuffing/keyword-stuffing	para
-/pt-br/learn/reasoning-model	content/keyword-stuffing/keyword-stuffing	modelo
 /pt-br/learn/reasoning-model	content/keyword-stuffing/keyword-stuffing	nio
 /pt-br/learn/reasoning-model	content/keyword-stuffing/keyword-stuffing	racioc
 /pt-br/learn/recurring-event	content/keyword-stuffing/keyword-stuffing	para
+/pt-br/learn/reinforcement-learning	content/keyword-stuffing/keyword-stuffing	por
 /pt-br/learn/rest-api	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/retrospective	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/rlhf	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/learn/rlhf	content/keyword-stuffing/keyword-stuffing	rlhf
 /pt-br/learn/rpa	content/keyword-stuffing/keyword-stuffing	automa
 /pt-br/learn/rpa	content/keyword-stuffing/keyword-stuffing	rpa
 /pt-br/learn/scheduling-automation	content/keyword-stuffing/keyword-stuffing	para
@@ -3738,15 +3488,14 @@ score:URL Structure=93
 /pt-br/learn/scrum	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/second-brain	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/semantic-routing	content/keyword-stuffing/keyword-stuffing	para
-/pt-br/learn/semantic-routing	content/keyword-stuffing/keyword-stuffing	uma
 /pt-br/learn/semantic-search	content/keyword-stuffing/keyword-stuffing	busca
 /pt-br/learn/semantic-search	content/keyword-stuffing/keyword-stuffing	sem
 /pt-br/learn/single-sign-on	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/learn/single-sign-on	content/keyword-stuffing/keyword-stuffing	sso
 /pt-br/learn/single-tasking	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/siri	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/smart-reply	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/learn/smart-scheduling	content/keyword-stuffing/keyword-stuffing	para
+/pt-br/learn/social-engineering	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/learn/spam-filter	content/keyword-stuffing/keyword-stuffing	como
 /pt-br/learn/spam-filter	content/keyword-stuffing/keyword-stuffing	mails
 /pt-br/learn/spam-filter	content/keyword-stuffing/keyword-stuffing	spam
@@ -3770,7 +3519,6 @@ score:URL Structure=93
 /pt-br/learn/transfer-learning	content/keyword-stuffing/keyword-stuffing	modelo
 /pt-br/learn/transformer	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/travel-time	content/keyword-stuffing/keyword-stuffing	para
-/pt-br/learn/travel-time	content/keyword-stuffing/keyword-stuffing	reuni
 /pt-br/learn/travel-time	content/keyword-stuffing/keyword-stuffing	tempo
 /pt-br/learn/trigger	content/keyword-stuffing/keyword-stuffing	gatilhos
 /pt-br/learn/two-factor-authentication	content/keyword-stuffing/keyword-stuffing	que
@@ -3784,7 +3532,6 @@ score:URL Structure=93
 /terms	perf/cache-headers/cache-control
 /thanks	a11y/identical-links-same-purpose/identical-links-same-purpose	"discord" → 2 different URLs
 /thanks	content/word-count/word-count
-/thanks	links/orphan-pages/orphan-pages
 /thanks	perf/cache-headers/cache-control
 /use-cases/add-deadlines-to-calendar	content/word-count/word-count
 /use-cases/assignment-tracker	content/keyword-stuffing/keyword-stuffing	due
