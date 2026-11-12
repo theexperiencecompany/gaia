@@ -1,7 +1,7 @@
 """JEV choice judge for auto mode (app/services/hil/intent.py's other half).
 
 One Decisions API call returns authorized / forbidden / unclear with a
-calibrated confidence; code maps it to accept / reject / ask and applies the
+calibrated confidence; code maps it to accept / ask and applies the
 checks a classifier must never grade itself on (target grounding, history
 bias). Transport failure degrades to the injected LLM fallback — the gate's
 behavior on a JEV outage is today's behavior, not an open gate.
@@ -16,12 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import re
 
-from app.constants.hil import (
-    HIL_JEV_ACCEPT_LINE,
-    HIL_JEV_REJECT_FLOOR,
-    JEV_FORBID_CHECK_FAILED,
-    JevChoice,
-)
+from app.constants.hil import HIL_JEV_ACCEPT_LINE, JevChoice
 from app.constants.log_tags import LogTag
 from app.services.hil.intent import (
     AutoHistory,
@@ -35,27 +30,19 @@ from app.services.hil.intent import (
     ungrounded_targets,
 )
 from app.services.hil.jev_client import post_decisions
-from app.services.hil.prompts import (
-    JEV_FORBID_QUESTION,
-    JEV_QUESTION,
-    JEV_QUESTIONS_VERSION,
-)
+from app.services.hil.prompts import JEV_QUESTION, JEV_QUESTIONS_VERSION
 from app.services.hil.utils import PriorCall
 from shared.py.wide_events import log
 
 
-def map_jev_choice(
-    choice: str, confidence: float, *, accept_line: float, reject_floor: float
-) -> AutoOutcome:
-    """JEV verdict to gate outcome. Pure — the offline sweep reuses this."""
+def map_jev_choice(choice: str, confidence: float, *, accept_line: float) -> AutoOutcome:
+    """JEV verdict to gate outcome: only a confident authorized runs, everything else asks."""
     if choice == JevChoice.AUTHORIZED and confidence >= accept_line:
         return "accept"
-    if choice == JevChoice.FORBIDDEN and confidence >= reject_floor:
-        return "reject"
     return "ask"
 
 
-#: Forbid double-check on the accept path: crisp prohibitions, not moods.
+#: Forbid tripwire on the accept path: crisp prohibitions, not moods.
 #: Temporary boundaries ask on merits; these claim the act itself is off limits.
 #: Bare "no" absent — "no, send it" lifts, not forbids.
 _FORBID_PATTERNS = (
@@ -91,13 +78,7 @@ _LIFT_PATTERNS = (
 
 
 def forbid_tripwire(user_messages: list[str]) -> bool:
-    """Whether an earlier turn forbids with no later lift — check needed.
-
-    A tripwire, not a verdict: it only ever downgrades an accept into a
-    focused forbid-check (or an ask), never into a run. Matching is
-    deterministic keyword/regex on the user's own words; the JUDGMENT of
-    whether the forbid covers this call belongs to the focused JEV question.
-    """
+    """Whether an earlier turn forbids with no later lift; an accept then asks instead."""
     for index, turn in enumerate(user_messages):
         if _matches_any(turn, _FORBID_PATTERNS) and not any(
             _matches_any(later, _LIFT_PATTERNS) for later in user_messages[index + 1 :]
@@ -109,65 +90,6 @@ def forbid_tripwire(user_messages: list[str]) -> bool:
 def _matches_any(turn: str, patterns: tuple[str, ...]) -> bool:
     lowered = turn.lower()
     return any(re.search(pattern, lowered) for pattern in patterns)
-
-
-def decisive_forbidden(
-    choice: str, probabilities: Mapping[str, float], *, margin: float = 0.40
-) -> bool:
-    """Whether forbidden is the runaway winner, whatever its absolute number.
-
-    One-sided margin: a 0.40 lead over the runner-up rejects; accept keeps its line.
-    """
-    if choice != JevChoice.FORBIDDEN:
-        return False
-    runner_up = max(
-        (prob for label, prob in probabilities.items() if label != JevChoice.FORBIDDEN),
-        default=0.0,
-    )
-    return probabilities.get(JevChoice.FORBIDDEN, 0.0) - runner_up >= margin
-
-
-async def ask_jev_forbid(
-    *,
-    user_messages: list[str],
-    call: JudgedCall,
-) -> tuple[str, float, int, int]:
-    """Focused forbid check: does any earlier turn forbid THIS action?
-
-    Second, decomposed opinion — runs only when the main verdict would accept
-    but the tripwire found forbid language. Returns (choice, confidence, in,
-    out) tokens; transport failure raises (caller degrades to ask, never to
-    a run).
-    """
-    state = {
-        "earlier_turns": user_messages[:-1],
-        "latest_turns": user_messages[-1:],
-        "pending_action": {"tool": call.tool_name, "args": call.args},
-    }
-    body = await post_decisions(state, {"forbid": JEV_FORBID_QUESTION})
-    answer = body.choice("forbid", (JevChoice.FORBIDDEN, JevChoice.PERMITTED), label="forbid ")
-    return (answer.choice, float(answer.confidence or 0.0), *body.tokens())
-
-
-def needs_forbid_check(mapped_outcome: AutoOutcome, user_messages: list[str]) -> bool:
-    """Whether an accept needs the focused forbid double-check.
-
-    Pure predicate shared by prod and the eval transport: the main verdict
-    says accept, but earlier turns carry forbid language with no later lift.
-    """
-    return mapped_outcome == "accept" and forbid_tripwire(user_messages)
-
-
-def settle_forbid(
-    choice: str, confidence: float, *, reject_floor: float = HIL_JEV_REJECT_FLOOR
-) -> JevChoice:
-    """Settle a forbid double-check answer: forbidden only at or past the floor, else permitted.
-
-    Pure, shared by prod and the eval transport so the sweep regrades the rule prod runs.
-    """
-    if choice == JevChoice.FORBIDDEN and confidence >= reject_floor:
-        return JevChoice.FORBIDDEN
-    return JevChoice.PERMITTED
 
 
 async def ask_jev(
@@ -266,7 +188,6 @@ class JevIntentJudge:
                 choice=choice,
                 confidence=confidence,
                 probabilities=probs,
-                forbid=await self._forbid_verdict(choice, confidence, user_messages, call),
             ),
             JevCase(
                 call=call,
@@ -276,55 +197,14 @@ class JevIntentJudge:
             ),
         )
 
-    async def _forbid_verdict(
-        self,
-        choice: str,
-        confidence: float,
-        user_messages: list[str],
-        call: JudgedCall,
-    ) -> str | None:
-        """Focused forbid verdict, or None when no double-check is warranted.
-
-        Runs only on the accept path with tripped forbid language. A failed
-        focused check degrades to ask (the tripwire already downgraded the
-        accept) — never back to a run.
-        """
-        outcome = map_jev_choice(
-            choice,
-            confidence,
-            accept_line=HIL_JEV_ACCEPT_LINE,
-            reject_floor=HIL_JEV_REJECT_FLOOR,
-        )
-        if not needs_forbid_check(outcome, user_messages):
-            return None
-        try:
-            forbid_choice, forbid_conf, _in, _out = await ask_jev_forbid(
-                user_messages=user_messages, call=call
-            )
-        except Exception as e:
-            log.warning(
-                f"{LogTag.HIL} forbid double-check failed; asking",
-                tool_name=call.tool_name,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            return JEV_FORBID_CHECK_FAILED
-        log.info(
-            f"{LogTag.HIL} forbid double-check",
-            tool_name=call.tool_name,
-            hil={"choice": forbid_choice, "confidence": round(forbid_conf, 3)},
-        )
-        return settle_forbid(forbid_choice, forbid_conf)
-
 
 @dataclass(frozen=True)
 class JevVerdict:
-    """What JEV said about one call, plus the focused forbid re-check when one ran."""
+    """What JEV said about one call."""
 
     choice: str
     confidence: float
     probabilities: Mapping[str, float] | None = None
-    forbid: str | None = None
 
 
 @dataclass(frozen=True)
@@ -342,14 +222,9 @@ def decide_from_verdict(
     case: JevCase,
     *,
     accept_line: float = HIL_JEV_ACCEPT_LINE,
-    reject_floor: float = HIL_JEV_REJECT_FLOOR,
 ) -> IntentDecision:
-    """Map one JEV verdict through the code vetoes. Pure, shared by prod and eval.
-
-    The verdict's forbid carries the focused double-check; only forbidden rejects.
-    """
+    """Map one JEV verdict through the code vetoes. Pure, shared by prod and eval."""
     choice, confidence, call = verdict.choice, verdict.confidence, case.call
-    forbid = verdict.forbid
     log.info(
         f"{LogTag.HIL} JEV judge",
         tool_name=call.tool_name,
@@ -359,58 +234,36 @@ def decide_from_verdict(
             "version": JEV_QUESTIONS_VERSION,
         },
     )
-    outcome = map_jev_choice(
-        choice,
-        confidence,
-        accept_line=accept_line,
-        reject_floor=reject_floor,
-    )
-    if outcome == "ask" and decisive_forbidden(choice, verdict.probabilities or {}):
-        outcome = "reject"
-    if outcome == "accept" and forbid == JevChoice.FORBIDDEN:
-        return IntentDecision(
-            "reject",
-            "Auto mode held this off: an earlier message forbids this "
-            f"{call.tool_name} call and nothing since lifted it.",
-        )
-    if outcome == "accept" and forbid is not None:
-        # The tripwire found forbid language but the double-check would not
-        # refuse: contradictory turns still need the human, so the accept
-        # floors to a card rather than running.
+    if map_jev_choice(choice, confidence, accept_line=accept_line) != "accept":
         return IntentDecision(
             "ask",
-            "Auto mode wasn't sure: an earlier message argues against this "
-            f"{call.tool_name} call — your call.",
+            f"this {call.tool_name} call may not match your request ({choice} {confidence:.2f}).",
         )
-    if outcome == "reject":
+    if forbid_tripwire(case.user_messages):
         return IntentDecision(
-            "reject",
-            f"Auto mode held this off: your messages argue against this {call.tool_name} call.",
+            "ask",
+            f"an earlier message argues against this {call.tool_name} call "
+            "and nothing since lifted it.",
         )
-    if outcome == "accept":
-        if _history_blocks(case.history):
-            return IntentDecision(
-                "ask",
-                f"You denied {case.history.denied_recent} recent "
-                f"{call.tool_name} call(s), so this one needs your "
-                "go-ahead even though it looks authorized.",
-            )
-        missing = ungrounded_targets(
-            call.args,
-            case.user_messages,
-            case.prior_calls,
-            frozenset(case.history.known_targets),
-        )
-        if missing:
-            return IntentDecision(
-                "ask",
-                f"the target ({', '.join(missing[:3])}) doesn't trace to your words.",
-            )
+    if _history_blocks(case.history):
         return IntentDecision(
-            "accept",
-            f"Auto mode matched this to your request ({choice} {confidence:.2f}).",
+            "ask",
+            f"You denied {case.history.denied_recent} recent "
+            f"{call.tool_name} call(s), so this one needs your "
+            "go-ahead even though it looks authorized.",
+        )
+    missing = ungrounded_targets(
+        call.args,
+        case.user_messages,
+        case.prior_calls,
+        frozenset(case.history.known_targets),
+    )
+    if missing:
+        return IntentDecision(
+            "ask",
+            f"the target ({', '.join(missing[:3])}) doesn't trace to your words.",
         )
     return IntentDecision(
-        "ask",
-        f"this {call.tool_name} call may not match your request ({choice} {confidence:.2f}).",
+        "accept",
+        f"Auto mode matched this to your request ({choice} {confidence:.2f}).",
     )

@@ -16,28 +16,27 @@ import pytest
 
 from app.constants.hil import (
     HIL_JEV_MODEL_NAME,
-    HIL_JEV_REJECT_FLOOR,
     HIL_JEV_TIMEOUT_SECONDS,
     HIL_JEV_URL,
-    JevChoice,
 )
 from app.constants.providers import CredentialProviderName
-from app.services.hil.intent import AutoHistory, IntentDecision, JudgedCall
+from app.services.hil.intent import (
+    AutoContext,
+    AutoHistory,
+    IntentDecision,
+    JudgedCall,
+    judge_intent,
+)
 from app.services.hil.jev_judge import (
     JevCase,
     JevIntentJudge,
     JevVerdict,
     ask_jev,
-    ask_jev_forbid,
     decide_from_verdict,
-    decisive_forbidden,
     forbid_tripwire,
     map_jev_choice,
-    needs_forbid_check,
-    settle_forbid,
     ungrounded_targets,
 )
-from app.services.hil.prompts import JEV_FORBID_QUESTION
 from app.services.hil.utils import PriorCall
 from app.services.providers.provider_credentials_service import ProviderConfig
 
@@ -113,75 +112,35 @@ async def _decide(
 
 class TestMapping:
     async def test_confident_authorized_is_accept(self) -> None:
-        assert map_jev_choice("authorized", 0.9, accept_line=0.5, reject_floor=0.5) == "accept"
+        assert map_jev_choice("authorized", 0.9, accept_line=0.5) == "accept"
 
     async def test_below_line_authorized_is_ask_not_accept(self) -> None:
         # Confidence lines are load-bearing: a 0.49 authorized must not run.
-        assert map_jev_choice("authorized", 0.49, accept_line=0.5, reject_floor=0.5) == "ask"
+        assert map_jev_choice("authorized", 0.49, accept_line=0.5) == "ask"
 
-    async def test_forbidden_needs_its_own_floor(self) -> None:
-        assert map_jev_choice("forbidden", 0.4, accept_line=0.5, reject_floor=0.5) == "ask"
-        assert map_jev_choice("forbidden", 0.6, accept_line=0.5, reject_floor=0.5) == "reject"
+    async def test_forbidden_asks_however_confident(self) -> None:
+        assert map_jev_choice("forbidden", 0.4, accept_line=0.5) == "ask"
+        assert map_jev_choice("forbidden", 1.0, accept_line=0.5) == "ask"
 
     async def test_unclear_is_always_ask(self) -> None:
-        assert map_jev_choice("unclear", 1.0, accept_line=0.5, reject_floor=0.5) == "ask"
+        assert map_jev_choice("unclear", 1.0, accept_line=0.5) == "ask"
 
     async def test_unknown_choice_is_ask(self) -> None:
-        assert map_jev_choice("maybe", 1.0, accept_line=0.5, reject_floor=0.5) == "ask"
+        assert map_jev_choice("maybe", 1.0, accept_line=0.5) == "ask"
 
 
-class TestDecisiveForbidden:
-    """A runaway forbidden wins whatever its absolute number.
+class TestForbiddenAsks:
+    """A forbidden verdict is a question for the user, never a silent refusal."""
 
-    One-sided by design: over-rejecting is silent (no card), over-accepting
-    runs the action — so only refusal gets the margin rule.
-    """
-
-    async def test_runaway_forbidden_rejects_below_the_floor(self) -> None:
-        assert (
-            decisive_forbidden("forbidden", {"forbidden": 0.48, "unclear": 0.06, "authorized": 0.0})
-            is True
-        )
-
-    async def test_close_race_does_not_reject(self) -> None:
-        assert (
-            decisive_forbidden(
-                "forbidden", {"forbidden": 0.48, "unclear": 0.40, "authorized": 0.12}
-            )
-            is False
-        )
-
-    async def test_just_under_the_margin_does_not_reject(self) -> None:
-        # 0.37 margin: the journal band where temporary-boundary asks
-        # (bg-boundary, r-hold) sit — the margin must clear them.
-        assert (
-            decisive_forbidden("forbidden", {"forbidden": 0.43, "unclear": 0.06, "authorized": 0.0})
-            is False
-        )
-
-    async def test_margin_never_accepts(self) -> None:
-        # The accept side keeps its absolute line plus grounding, always.
-        assert (
-            decisive_forbidden("authorized", {"authorized": 0.9, "unclear": 0.05, "forbidden": 0.0})
-            is False
-        )
-
-    async def test_empty_probabilities_do_not_reject(self) -> None:
-        assert decisive_forbidden("forbidden", {}) is False
-
-    async def test_decisive_forbidden_rejects_through_decide(self) -> None:
+    async def test_a_runaway_forbidden_asks(self) -> None:
         d = await _decide(
-            _answer(
-                "forbidden",
-                0.22,
-                {"forbidden": 0.50, "unclear": 0.06, "authorized": 0.0},
-            )
+            _answer("forbidden", 0.95, {"forbidden": 0.95, "unclear": 0.05, "authorized": 0.0})
         )
-        assert d.outcome == "reject"
+        assert d.outcome == "ask"
 
 
 class TestForbidTripwire:
-    """The tripwire only ever downgrades an accept into a double-check."""
+    """The tripwire only ever downgrades an accept into an ask."""
 
     async def test_forbid_without_lift_trips(self) -> None:
         assert forbid_tripwire(["keep everything for now", "delete thread t5"]) is True
@@ -193,39 +152,9 @@ class TestForbidTripwire:
     async def test_clean_history_never_trips(self) -> None:
         assert forbid_tripwire(["draft an email to bob", "looks good, send it"]) is False
 
-    async def test_check_runs_only_on_would_accept(self) -> None:
-        assert needs_forbid_check("accept", ["never email alice", "email alice"]) is True
-        assert needs_forbid_check("ask", ["never email alice", "email alice"]) is False
-        assert needs_forbid_check("accept", ["send the deck"]) is False
-        assert needs_forbid_check("reject", ["never email alice"]) is False
-
-    async def test_forbidden_double_check_rejects(self) -> None:
+    async def test_forbid_language_floors_an_authorized_verdict_to_ask(self) -> None:
         d = decide_from_verdict(
-            JevVerdict(
-                choice="authorized",
-                confidence=0.9,
-                probabilities={"authorized": 0.9},
-                forbid="forbidden",
-            ),
-            JevCase(
-                call=_call(),
-                user_messages=["send it"],
-                prior_calls=[],
-                history=AutoHistory(),
-            ),
-        )
-        assert d.outcome == "reject"
-
-    async def test_permitted_double_check_floors_accept_to_ask(self) -> None:
-        # The tripwire fired (forbid words present) but the check cleared it:
-        # contradictory turns still need the human — a card, never a run.
-        d = decide_from_verdict(
-            JevVerdict(
-                choice="authorized",
-                confidence=0.9,
-                probabilities={"authorized": 0.9},
-                forbid="permitted",
-            ),
+            JevVerdict(choice="authorized", confidence=0.9, probabilities={"authorized": 0.9}),
             JevCase(
                 call=_call(),
                 user_messages=["don't send anything yet", "send it"],
@@ -235,23 +164,6 @@ class TestForbidTripwire:
         )
         assert d.outcome == "ask"
         assert "earlier message" in d.reason
-
-    async def test_failed_double_check_floors_accept_to_ask(self) -> None:
-        d = decide_from_verdict(
-            JevVerdict(
-                choice="authorized",
-                confidence=0.9,
-                probabilities={"authorized": 0.9},
-                forbid="unclear-forbid",
-            ),
-            JevCase(
-                call=_call(),
-                user_messages=["don't send anything yet", "send it"],
-                prior_calls=[],
-                history=AutoHistory(),
-            ),
-        )
-        assert d.outcome == "ask"
 
 
 class TestGrounding:
@@ -371,9 +283,9 @@ class TestGrounding:
 
 
 class TestVetoes:
-    async def test_forbidden_is_reject_with_a_reason(self) -> None:
+    async def test_forbidden_is_ask_with_a_reason(self) -> None:
         d = await _decide(_answer("forbidden", 0.9))
-        assert d.outcome == "reject"
+        assert d.outcome == "ask"
         assert d.reason
 
     async def test_unclear_is_ask_carrying_tool_and_choice(self) -> None:
@@ -429,6 +341,24 @@ class TestFallback:
                 history=AutoHistory(),
             )
         fallback.decide.assert_awaited_once()
+
+    async def test_no_key_and_a_failing_llm_judge_end_in_ask(self) -> None:
+        # A self-host with no OpenRouter key whose LLM provider is also down.
+        with (
+            _openrouter_key(None),
+            patch(
+                "app.services.hil.intent.ainvoke_structured",
+                new=AsyncMock(side_effect=ConnectionError("llm down")),
+            ),
+        ):
+            decision = await judge_intent(
+                AutoContext(user_id="u"),
+                user_messages=["send the deck to bob@example.com"],
+                call=_call(),
+                prior_calls=[],
+                judge=JevIntentJudge(),
+            )
+        assert decision.outcome == "ask"
 
 
 class TestWire:
@@ -518,33 +448,6 @@ class TestWire:
         assert probs == {"unclear": 0.5}
 
 
-class TestSettleForbid:
-    def test_forbidden_at_the_floor_forbids(self) -> None:
-        assert settle_forbid("forbidden", HIL_JEV_REJECT_FLOOR) is JevChoice.FORBIDDEN
-
-    def test_forbidden_below_the_floor_permits(self) -> None:
-        assert settle_forbid("forbidden", HIL_JEV_REJECT_FLOOR - 0.01) is JevChoice.PERMITTED
-
-    def test_any_other_answer_permits_however_confident(self) -> None:
-        """The eval once passed "unclear" through untouched; prod has always settled it to permitted."""
-        assert settle_forbid("unclear", 0.99) is JevChoice.PERMITTED
-
-    def test_the_sweep_can_move_the_floor(self) -> None:
-        assert settle_forbid("forbidden", 0.6, reject_floor=0.7) is JevChoice.PERMITTED
-        assert settle_forbid("forbidden", 0.6, reject_floor=0.5) is JevChoice.FORBIDDEN
-
-
-def _forbid_answer(
-    choice: str, confidence: float | None, usage: dict[str, int] | None = None
-) -> dict[str, Any]:
-    body: dict[str, Any] = {
-        "answers": {"forbid": {"type": "choice", "choice": choice, "confidence": confidence}}
-    }
-    if usage is not None:
-        body["usage"] = usage
-    return body
-
-
 def _sequence_client(*answers: dict[str, Any] | Exception) -> AsyncMock:
     """Fake httpx.AsyncClient serving one answer per post, in order."""
     effects: list[Any] = []
@@ -587,16 +490,7 @@ FORBID_TURNS = ["never email bob@example.com", "email bob@example.com the deck"]
 
 class TestTheLinesAreInclusive:
     async def test_confidence_exactly_on_the_accept_line_accepts(self) -> None:
-        assert map_jev_choice("authorized", 0.5, accept_line=0.5, reject_floor=0.5) == "accept"
-
-    async def test_confidence_exactly_on_the_reject_floor_rejects(self) -> None:
-        assert map_jev_choice("forbidden", 0.5, accept_line=0.5, reject_floor=0.5) == "reject"
-
-    async def test_a_lone_forbidden_is_measured_against_nothing(self) -> None:
-        assert decisive_forbidden("forbidden", {"forbidden": 0.45}) is True
-
-    async def test_a_lead_exactly_at_the_margin_is_decisive(self) -> None:
-        assert decisive_forbidden("forbidden", {"forbidden": 0.5, "unclear": 0.1}) is True
+        assert map_jev_choice("authorized", 0.5, accept_line=0.5) == "accept"
 
 
 class TestTheTripwireReadsEachLaterTurn:
@@ -665,63 +559,6 @@ class TestTheDecisionsWire:
         assert result == ("authorized", 0.0, {}, 0, 0)
 
 
-class TestTheForbidWire:
-    async def test_the_focused_question_sees_earlier_and_latest_turns_apart(self) -> None:
-        turns = ["never email bob", "hold on", "email bob the deck"]
-        client = _sequence_client(_forbid_answer("forbidden", 0.8, {"input_tokens": 9}))
-        with _jev(client) as factory:
-            result = await ask_jev_forbid(user_messages=turns, call=_call())
-
-        assert result == ("forbidden", 0.8, 9, 0)
-        factory.assert_called_once_with(timeout=HIL_JEV_TIMEOUT_SECONDS)
-        post = client.post.await_args
-        assert post.args == (HIL_JEV_URL,)
-        assert post.kwargs["headers"] == {"Authorization": "Bearer or-key"}
-        assert post.kwargs["json"] == {
-            "model": HIL_JEV_MODEL_NAME,
-            "state": {
-                "earlier_turns": ["never email bob", "hold on"],
-                "latest_turns": ["email bob the deck"],
-                "pending_action": {"tool": "send_email", "args": _call().args},
-            },
-            "questions": {"forbid": JEV_FORBID_QUESTION},
-        }
-
-    async def test_missing_confidence_and_usage_read_as_zero(self) -> None:
-        with _jev(_sequence_client(_forbid_answer("permitted", None))):
-            result = await ask_jev_forbid(user_messages=FORBID_TURNS, call=_call())
-
-        assert result == ("permitted", 0.0, 0, 0)
-
-    async def test_no_key_means_no_request(self) -> None:
-        client = _sequence_client(_forbid_answer("permitted", 0.9))
-        with (
-            _jev(client, key=None),
-            pytest.raises(
-                RuntimeError, match="^No OpenRouter key saved or set; cannot reach the JEV judge$"
-            ),
-        ):
-            await ask_jev_forbid(user_messages=FORBID_TURNS, call=_call())
-        client.post.assert_not_awaited()
-
-    async def test_a_non_choice_answer_is_refused_with_a_bounded_message(self) -> None:
-        answer = {"answers": {"forbid": {"type": "text", "choice": "x" * 400}}}
-        with _jev(_sequence_client(answer)), pytest.raises(ValueError) as caught:
-            await ask_jev_forbid(user_messages=FORBID_TURNS, call=_call())
-
-        assert str(caught.value).startswith("non-choice JEV forbid answer: ")
-        assert len(str(caught.value)) == 300
-
-    async def test_an_unknown_choice_is_refused_by_name(self) -> None:
-        with (
-            _jev(_sequence_client(_forbid_answer("authorized", 0.9))),
-            pytest.raises(ValueError) as caught,
-        ):
-            await ask_jev_forbid(user_messages=FORBID_TURNS, call=_call())
-
-        assert str(caught.value) == "unknown JEV forbid choice: 'authorized'"
-
-
 class TestTheJudgeAroundTheWire:
     async def test_the_users_and_assistants_turns_reach_jev(self) -> None:
         client = _sequence_client(_answer("unclear", 0.5))
@@ -773,10 +610,8 @@ class TestTheJudgeAroundTheWire:
             "error_type": "ConnectionError",
         }
 
-    async def _decide_with_forbid(
-        self, forbid: dict[str, Any] | Exception
-    ) -> tuple[IntentDecision, AsyncMock]:
-        client = _sequence_client(_answer("authorized", 0.9), forbid)
+    async def test_forbid_language_asks_after_one_question(self) -> None:
+        client = _sequence_client(_answer("authorized", 0.9))
         with _jev(client):
             decision = await JevIntentJudge(fallback=AsyncMock()).decide(
                 user_id="u",
@@ -785,42 +620,14 @@ class TestTheJudgeAroundTheWire:
                 prior_calls=[],
                 history=AutoHistory(),
             )
-        return decision, client
-
-    async def test_a_confirmed_forbid_rejects_the_would_be_accept(self) -> None:
-        decision, client = await self._decide_with_forbid(_forbid_answer("forbidden", 0.9))
-
-        assert decision == IntentDecision(
-            "reject",
-            "Auto mode held this off: an earlier message forbids this send_email call "
-            "and nothing since lifted it.",
-        )
-        forbid_post = client.post.await_args_list[1].kwargs["json"]
-        assert forbid_post["state"]["earlier_turns"] == [FORBID_TURNS[0]]
-
-    async def test_a_weak_forbid_floors_the_accept_to_a_card(self) -> None:
-        decision, _ = await self._decide_with_forbid(_forbid_answer("forbidden", 0.3))
 
         assert decision == IntentDecision(
             "ask",
-            "Auto mode wasn't sure: an earlier message argues against this send_email call "
-            "— your call.",
+            "an earlier message argues against this send_email call and nothing since lifted it.",
         )
+        assert client.post.await_count == 1
 
-    async def test_a_failed_forbid_check_is_reported_and_asks(self) -> None:
-        with patch(f"{MODULE}.log") as log:
-            decision, _ = await self._decide_with_forbid(ConnectionError("down"))
-
-        assert decision.outcome == "ask"
-        log.warning.assert_called_once()
-        assert "forbid double-check failed; asking" in log.warning.call_args.args[0]
-        assert log.warning.call_args.kwargs == {
-            "tool_name": "send_email",
-            "error": "down",
-            "error_type": "ConnectionError",
-        }
-
-    async def test_no_forbid_language_skips_the_second_question(self) -> None:
+    async def test_no_forbid_language_accepts(self) -> None:
         client = _sequence_client(_answer("authorized", 0.9))
         with _jev(client):
             decision = await JevIntentJudge(fallback=AsyncMock()).decide(

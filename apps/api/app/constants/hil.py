@@ -57,11 +57,10 @@ HIL_JEV_MODEL_NAME = "typesafe/jev-1.13"
 HIL_JEV_URL = "https://openrouter.ai/api/alpha/decisions"
 HIL_JEV_TIMEOUT_SECONDS = 15
 HIL_JEV_ACCEPT_LINE = 0.50
-HIL_JEV_REJECT_FLOOR = 0.50
 
-
-# The forbid double-check itself failed; the verdict asks rather than trusting either way.
-JEV_FORBID_CHECK_FAILED = "unclear-forbid"
+# The note on a card auto mode raised instead of running the call. The judge's own
+# reason names tool slugs and scores, so it stays model-facing; the user reads this.
+AUTO_ASK_NOTE = "GAIA isn't sure you asked for this, so it's checking with you first."
 
 
 class JevChoice(StrEnum):
@@ -70,7 +69,6 @@ class JevChoice(StrEnum):
     AUTHORIZED = "authorized"
     FORBIDDEN = "forbidden"
     UNCLEAR = "unclear"
-    PERMITTED = "permitted"
 
 
 # JEV reply classifier: an approve under the line leaves the action pending.

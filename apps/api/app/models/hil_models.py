@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -50,9 +50,6 @@ class DeclinedCallRecord(TypedDict):
     """
 
     feedback: str | None
-    # Present only on auto-mode refusals (absent on rows written before this
-    # shipped, which correctly read as user-made).
-    auto: NotRequired[bool]
 
 
 class HilInterruptPayload(TypedDict, total=False):

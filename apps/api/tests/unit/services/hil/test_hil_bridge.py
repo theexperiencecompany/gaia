@@ -454,27 +454,6 @@ class TestDeclineMemory:
             await recall_declined_call(STREAM_ID, "send_email", {"to": "bob@example.com"}) is None
         )
 
-    async def test_an_auto_refusal_round_trips_its_provenance(self) -> None:
-        # The retry message differs ("auto declined" vs "the user declined"), so
-        # the provenance must survive the Redis round trip.
-        await remember_declined_call(
-            STREAM_ID, "send_email", {"to": "bob@example.com"}, "stop spamming", auto=True
-        )
-
-        outcome = await recall_declined_call(STREAM_ID, "send_email", {"to": "bob@example.com"})
-
-        assert outcome is not None
-        assert outcome.auto is True
-        assert outcome.feedback == "stop spamming"
-
-    async def test_a_user_decline_still_reads_as_user_made(self) -> None:
-        await remember_declined_call(STREAM_ID, "send_email", {"to": "bob@example.com"}, "no")
-
-        outcome = await recall_declined_call(STREAM_ID, "send_email", {"to": "bob@example.com"})
-
-        assert outcome is not None
-        assert outcome.auto is False
-
     async def test_unserializable_arguments_do_not_crash_the_gate(self) -> None:
         # Tool args come from an LLM and are only loosely typed. A key derivation that
         # raises here would fail the gate closed on every call carrying an odd value.
@@ -757,19 +736,6 @@ class TestApprovalFlagSyncScope:
             "error": "mongo down",
             "error_type": "RuntimeError",
         }
-
-
-class TestDeclineMemoryLegacyRecord:
-    async def test_a_record_without_provenance_reads_as_the_users_own_decline(self) -> None:
-        with patch(f"{MODULE}.redis_cache") as cache:
-            cache.redis = MagicMock()
-            cache.get = AsyncMock(return_value={"feedback": "no"})
-
-            outcome = await recall_declined_call(STREAM_ID, "send_email", {"to": "bob"})
-
-        assert outcome is not None
-        assert outcome.auto is False
-        assert outcome.feedback == "no"
 
 
 def _card_frame(approval_id: str, *, held: bool = False, **data: object) -> dict[str, object]:

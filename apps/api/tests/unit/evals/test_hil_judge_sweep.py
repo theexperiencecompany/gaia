@@ -85,7 +85,7 @@ async def test_an_llm_judge_run_journals_no_jev_verdict_fields(
 ) -> None:
     end_state = (await _llm_run(monkeypatch)).end_state or {}
     assert end_state["outcome"] == "accept"
-    assert not {"choice", "confidence", "probabilities", "forbid_choice"} & end_state.keys()
+    assert not {"choice", "confidence", "probabilities"} & end_state.keys()
 
 
 async def test_a_jev_run_journals_the_verdict_it_was_graded_on(
@@ -95,7 +95,6 @@ async def test_a_jev_run_journals_the_verdict_it_was_graded_on(
     assert end_state["choice"] == JevChoice.AUTHORIZED
     assert end_state["confidence"] == 0.95
     assert end_state["probabilities"] == {JevChoice.AUTHORIZED: 0.95}
-    assert end_state["forbid_choice"] is None
 
 
 async def test_the_sweep_refuses_a_journal_of_llm_judge_rows(
@@ -117,7 +116,7 @@ async def test_the_sweep_grades_a_retried_case_once_on_its_latest_attempt(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     retried = await _jev_run(monkeypatch)
-    stale = replace(retried, end_state={**(retried.end_state or {}), "outcome": "reject"})
+    stale = replace(retried, end_state={**(retried.end_state or {}), "outcome": "ask"})
     report = sweep_journal(_journal(tmp_path, stale, retried))
     assert "graded score (with code vetoes): 1/1" in report
 

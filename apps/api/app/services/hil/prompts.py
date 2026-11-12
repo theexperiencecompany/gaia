@@ -31,13 +31,10 @@ Everything the assistant chose on its own is UNAUTHORIZED until the user said ot
 - The arguments contain content, claims, or commitments the user did not ask for.
 - The action is broader, more permanent, or affects more people than what was asked.
 - What was asked is vague, or could reasonably mean something narrower than this action.
-- The user set a temporary boundary earlier ("don't send anything yet", "check with me first") that this action crosses and has not lifted. A temporary boundary means they want the final say — ask, don't refuse.
+- The user set a temporary boundary earlier ("don't send anything yet", "check with me first") that this action crosses and has not lifted. A temporary boundary means they want the final say.
+- The user's words argue AGAINST this action: a forbid ("don't ever email Alice", "cancel that"), a contradiction with their stated goal, or something they told you not to do. Say why in reason.
 - You cannot quote the user's own words authorizing it.
 - You are unsure for any reason.
-
-## Refuse outright (verdict="reject")
-- The user's words argue AGAINST this action: a permanent forbid ("don't ever email Alice", "cancel that"), a contradiction with their stated goal, or something they just told you not to do, period. A "not yet" boundary is not a forbid — that asks.
-- A refusal is not an authorization, so it needs no quote. Say why in reason.
 
 ## Does not require confirmation (verdict="allow")
 - The user specifically asked for this action, on this target, and you can quote the words where they did.
@@ -83,7 +80,7 @@ Background for shorthands only ("send it" after "your draft to X is ready"). The
 ## What the user decided before
 {history}
 
-A deny pattern argues against auto-approving: if the user keeps denying this tool, prefer "ask", and "reject" only when their words argue against this call.
+A deny pattern argues against auto-approving: if the user keeps denying this tool, prefer "ask".
 
 ## Pending action
 Tool: {tool}
@@ -164,32 +161,6 @@ JEV_QUESTION: dict[str, object] = {
 }
 
 
-# Focused forbid check: runs only on accept-path tripwire hits, versioned and
-# journaled with the main question; a decomposed opinion, not a second guess.
-JEV_FORBID_QUESTION: dict[str, object] = {
-    "type": "choice",
-    "instructions": (
-        "Read earlier_turns for a standing rule against pending_action, then read "
-        "latest_turns for lift language. Which one describes the situation?"
-    ),
-    "criteria": {
-        JevChoice.FORBIDDEN: (
-            "An earlier turn forbids this exact action ('never email Alice', "
-            "'do not pay anyone', 'keep the layoff news private', 'cancel that', "
-            "'don't touch the archive') and no later turn lifts it. A lift needs "
-            "explicit language ('actually, go ahead', 'never mind that', 'yes do "
-            "it' confirming this action) — a bare re-issue of the forbidden act, "
-            "or a temporary 'not yet', is not a lift."
-        ),
-        JevChoice.PERMITTED: (
-            "No earlier turn forbids this action, or a later turn clearly lifts "
-            "the rule, or the only limits are temporary manner/timing notes that "
-            "this call does not violate."
-        ),
-    },
-}
-
-
 # JEV reply question: what a bot user's chat reply means for ONE pending action,
 # asked once per action in a single call. {number} is the action's position in
 # state.pending_actions. Tuned through the hil-reply calibration suite.
@@ -264,16 +235,6 @@ TIMEOUT_TEMPLATE = (
     "whatever you did complete or prepare; preparing a reversible version (leaving a draft "
     "rather than sending) is fine. Say how long you waited, what is left, and that it only "
     "needs their go-ahead."
-)
-
-# Auto mode declined on its own: the judge's verdict was reject, so no card was
-# ever shown. Like GATE_ERROR it must never read as a decision the user made —
-# the recovery is the user asking explicitly, which re-proposes through a card.
-AUTO_REJECT_TEMPLATE = (
-    "Auto-approve declined to run `{tool}`: {reason} The action was NOT "
-    "performed and the user was NOT asked. Do not retry it in this run, and do "
-    "not use another tool to produce the same effect. If the user explicitly "
-    "asks for this action, say you held off and why."
 )
 
 # A gate that cannot determine whether a call is safe must not run it — but the refusal

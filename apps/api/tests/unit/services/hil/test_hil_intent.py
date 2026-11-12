@@ -11,6 +11,7 @@ _is_grounded and the no-turns guard are the production code under test and run f
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+from pydantic import ValidationError
 import pytest
 
 from app.agents.llm.client import StructuredCallOptions, silent_metered_config
@@ -166,27 +167,19 @@ class TestVetoes:
         assert decision.outcome == "accept"
 
 
-class TestReject:
-    """The judge can refuse outright — no card, no retry — with a reason.
+class TestNeverRefuses:
+    """The LLM judge has no refusal verdict: a call the user argued against asks."""
 
-    A refusal is not an authorization, so it needs no grounding quote; and a
-    reject must survive even a fully clean signal set, or "reject" is decor.
-    """
+    async def test_the_verdict_schema_offers_no_reject(self) -> None:
+        with pytest.raises(ValidationError):
+            verdict(verdict="reject")
 
-    async def test_reject_verdict_refuses_without_needing_a_quote(self) -> None:
-        decision, _ = await judge(verdict(verdict="reject", authorizing_quote=""))
-        assert decision.outcome == "reject"
-        assert decision.outcome != "accept"
+    async def test_a_reply_naming_reject_asks_instead_of_refusing(self) -> None:
+        decision, _ = await judge(ValidationError.from_exception_data("_Verdict", []))
+        assert decision.outcome == "ask"
 
-    async def test_reject_beats_clean_signals(self) -> None:
-        decision, _ = await judge(verdict(verdict="reject"))
-        assert decision.outcome == "reject"
-
-    async def test_the_reject_reason_reaches_the_decision(self) -> None:
-        decision, _ = await judge(
-            verdict(verdict="reject", reason="You denied this exact call twice.")
-        )
-        assert decision.reason == "You denied this exact call twice."
+    async def test_the_prompt_never_offers_a_reject_verdict(self) -> None:
+        assert 'verdict="reject"' not in INTENT_JUDGE_PROMPT
 
 
 class TestFailsTowardAsking:

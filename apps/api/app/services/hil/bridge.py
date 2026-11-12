@@ -93,9 +93,6 @@ class ApprovalOutcome:
     status: HILApprovalStatus
     feedback: str | None = None
     scope: str = "once"
-    # True when the refusal came from auto mode, never from the user — the
-    # retry message must not claim the user declined something they never saw.
-    auto: bool = False
 
 
 @dataclass(frozen=True)
@@ -346,12 +343,11 @@ async def remember_declined_call(
     tool_name: str,
     args: Mapping[str, object],
     feedback: str | None,
-    auto: bool = False,
 ) -> None:
     """Record that this exact call was declined for the rest of the turn."""
     if not redis_cache.redis:
         return
-    record: DeclinedCallRecord = {"feedback": feedback, "auto": auto}
+    record: DeclinedCallRecord = {"feedback": feedback}
     await redis_cache.set(
         _declined_key(stream_id, tool_name, args),
         record,
@@ -376,7 +372,6 @@ async def recall_declined_call(
     return ApprovalOutcome(
         status=HILApprovalStatus.DENIED,
         feedback=record.get("feedback"),
-        auto=record.get("auto", False),
     )
 
 
