@@ -1251,6 +1251,13 @@ class TestWeeklyRecap:
         (since,) = world.reads["list_since"].await_args.args[1:2]
         assert since == _WEEK_START
 
+    async def test_the_weekly_asks_whether_this_users_calendar_is_connected(
+        self, world: World
+    ) -> None:
+        await weekly.run_weekly_digest(_USER)
+
+        world.reads["calendar_connected"].assert_awaited_once_with(_USER)
+
     async def test_a_lead_the_weekly_edition_cannot_draw_moves_to_the_briefs_page(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -1829,6 +1836,7 @@ class TestTheDailyRunWiring:
         world.reads["gather_tracked_work"].assert_awaited_once_with(_USER, _DAY_START)
         world.reads["user_open_todo_summary"].assert_awaited_once_with(_USER)
         world.reads["gather_completed_since"].assert_awaited_once_with(_USER, _DAY_START)
+        world.reads["calendar_connected"].assert_awaited_once_with(_USER)
         calendar_call = world.reads["gather_calendar"].await_args
         assert calendar_call.args[0] == _USER and calendar_call.kwargs == {"days": 1}
         assert (calendar_call.args[1].date_str, calendar_call.args[1].tz.key) == (_DATE, _TZ)
