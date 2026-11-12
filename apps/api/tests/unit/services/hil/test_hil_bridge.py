@@ -22,14 +22,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agents.core.background.session import RunKind
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.models.hil_models import ApprovalLedgerDocument, HILApprovalStatus, LedgerState
+from app.models.stream_events import PendingApprovalCardData
 from app.services.hil.bridge import (
     ApprovalOutcome,
     GatedApproval,
     flush_held_approval_cards,
+    pending_card,
     publish_approval_request,
+    publish_auto_approval,
     publish_decision,
     publish_ledger_request,
     recall_declined_call,
@@ -951,3 +955,91 @@ class TestFlushHeldApprovalCardsDelivery:
             await flush_held_approval_cards(STREAM_ID)
 
         bridge["stream"].publish_chunk.assert_not_awaited()
+
+
+class TestHeldAndAutoCards:
+    async def test_a_held_live_card_is_stored_as_json_ready_for_the_drain(
+        self, bridge: dict
+    ) -> None:
+        bridge["session"].kind = RunKind.LIVE
+
+        await publish_ledger(live=True)
+
+        bridge["stream"].publish_chunk.assert_not_awaited()
+        (frame,) = bridge["session"].tool_events
+        assert frame["_held_approval"] is True
+        assert frame["tool_data"]["data"]["asked_at"] == "2026-11-10T09:30:00Z"
+
+    async def test_an_auto_approved_receipt_says_why_auto_mode_ran_it(self, bridge: dict) -> None:
+        approval = GatedApproval(
+            approval_id="appr-1",
+            stream_id=STREAM_ID,
+            user_id=USER_ID,
+            conversation_id=CONVERSATION_ID,
+            tool_call=TOOL_CALL,
+            description=DESCRIPTION,
+            integration_name="Gmail",
+        )
+        with patch(f"{MODULE}.record_auto_approval", new=AsyncMock()):
+            await publish_auto_approval(approval, reason="You asked to email Bob")
+
+        data = published_frame(bridge)["data"]
+        assert data["status"] == "auto_approved"
+        assert data["auto_reason"] == "You asked to email Bob"
+
+
+class TestPendingCard:
+    """The card a bot prompt lists is rebuilt from the stored row, field for field."""
+
+    async def test_a_ledger_row_rebuilds_its_card_with_the_account_and_version(self) -> None:
+        row = ApprovalLedgerDocument(
+            approval_id="ap_1",
+            conversation_id=CONVERSATION_ID,
+            user_id=USER_ID,
+            fingerprint="fp",
+            tool_name="send_email",
+            args={"to": "bob@example.com"},
+            account="work@example.com",
+            v=3,
+            created_at=ASKED_AT,
+        )
+
+        card = await pending_card(row)
+
+        description = describe_call("send_email", row.args, None, "work@example.com")
+        assert card == PendingApprovalCardData(
+            approval_id="ap_1",
+            tool_call_id="",
+            gated_tool_name="send_email",
+            integration_name=None,
+            summary=description.headline,
+            description=description,
+            args_preview={"to": "bob@example.com"},
+            feedback=None,
+            auto_reason=None,
+            asked_at=ASKED_AT,
+            ledger_version=3,
+            status="pending",
+            expires_at=None,
+        )
+        assert "work@example.com" in card.summary
+
+    async def test_a_barrier_record_rebuilds_its_card_with_its_expiry(self) -> None:
+        record = make_record(integration_name="Gmail", created_at=ASKED_AT)
+
+        card = await pending_card(record)
+
+        assert card == PendingApprovalCardData(
+            approval_id="appr-1",
+            tool_call_id="call-1",
+            gated_tool_name="send_email",
+            integration_name="Gmail",
+            summary=SUMMARY,
+            description=DESCRIPTION,
+            args_preview={"to": "bob@example.com"},
+            feedback=None,
+            auto_reason=None,
+            asked_at=ASKED_AT,
+            status="pending",
+            expires_at=record.expires_at,
+        )

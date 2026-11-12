@@ -179,11 +179,13 @@ async def publish_approval_request(
     )
     await _publish_entry(
         approval.stream_id,
-        await _pending_entry(
-            approval,
-            auto_reason=auto_reason,
-            asked_at=record.created_at,
-            expires_at=record.expires_at,
+        _entry(
+            await _pending_data(
+                approval,
+                auto_reason=auto_reason,
+                asked_at=record.created_at,
+                expires_at=record.expires_at,
+            )
         ),
     )
     _schedule_pending_notification(
@@ -215,8 +217,9 @@ async def publish_ledger_request(
             "stream_id": stream_id,
         }
     )
-    entry = await _pending_entry(approval, auto_reason=auto_reason, asked_at=asked_at)
-    entry.data.ledger_version = 0
+    entry = _entry(
+        await _pending_data(approval, auto_reason=auto_reason, asked_at=asked_at, ledger_version=0)
+    )
     # Server-owned funnel event: exactly once per registration, held or
     # streamed — the card exists either way. Explicit user_id: bridge paths
     # carry no request context to attribute from.
@@ -583,40 +586,36 @@ async def pending_card(
             description=describe_call(record.tool_name, record.args, None, record.account),
             integration_name=None,
         )
-        entry = await _pending_entry(card, auto_reason=None, asked_at=record.created_at)
-        data = entry.data
-        data.ledger_version = record.v
-    else:
-        card = SettledApprovalCard(
-            approval_id=record.approval_id,
-            tool_call=GatedCall(name=record.tool_name, id=record.tool_call_id, args=record.args),
-            description=describe_call(record.tool_name, record.args, record.integration_name),
-            integration_name=record.integration_name,
+        return await _pending_data(
+            card, auto_reason=None, asked_at=record.created_at, ledger_version=record.v
         )
-        entry = await _pending_entry(
-            card, auto_reason=None, asked_at=record.created_at, expires_at=record.expires_at
-        )
-        data = entry.data
-    if not isinstance(data, PendingApprovalCardData):
-        raise TypeError("a pending entry built a settled card")
-    return data
+    card = SettledApprovalCard(
+        approval_id=record.approval_id,
+        tool_call=GatedCall(name=record.tool_name, id=record.tool_call_id, args=record.args),
+        description=describe_call(record.tool_name, record.args, record.integration_name),
+        integration_name=record.integration_name,
+    )
+    return await _pending_data(
+        card, auto_reason=None, asked_at=record.created_at, expires_at=record.expires_at
+    )
 
 
-async def _pending_entry(
+async def _pending_data(
     card: ApprovalCard,
     *,
     auto_reason: str | None,
     asked_at: datetime,
     expires_at: datetime | None = None,
-) -> ApprovalRequestEntry:
+    ledger_version: int | None = None,
+) -> PendingApprovalCardData:
     """Build a PENDING card, stamped with whether its call asks every time."""
-    data = PendingApprovalCardData(
+    return PendingApprovalCardData(
         **_card_fields(card, asked_at=asked_at, feedback=None, auto_reason=auto_reason),
         status="pending",
         expires_at=expires_at,
+        ledger_version=ledger_version,
         always_asks=await asks_every_time(card.tool_call.name, card.tool_call.args),
     )
-    return _entry(data)
 
 
 def _approval_entry(

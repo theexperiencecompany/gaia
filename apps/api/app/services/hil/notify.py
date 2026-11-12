@@ -67,14 +67,7 @@ async def notify_approval_pending(
     approval_id: str,
     summary: str,
 ) -> None:
-    """Wake the user's backgrounded devices. Never raises."""
-    await _push_to_devices(user_id, conversation_id, approval_id, summary)
-
-
-async def _push_to_devices(
-    user_id: str, conversation_id: str, approval_id: str, summary: str
-) -> None:
-    """Best-effort Expo push to the user's registered devices."""
+    """Wake the user's backgrounded devices with a best-effort Expo push. Never raises."""
     try:
         tokens = await _active_device_tokens(user_id)
         if tokens:
@@ -138,7 +131,8 @@ def _dead_tokens_from_receipts(
         return []
     return [
         message.to
-        for message, ticket in zip(batch, receipt.data, strict=False)
+        # strict=None and an omitted strict both behave as strict=False
+        for message, ticket in zip(batch, receipt.data, strict=False)  # pragma: no mutate
         if ticket.status == "error"
         and ticket.details is not None
         and ticket.details.error == "DeviceNotRegistered"

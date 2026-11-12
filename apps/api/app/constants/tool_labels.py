@@ -191,7 +191,7 @@ def humanize_tool_name(raw: str, category: str | None = None) -> str:
 
 
 def clean_tool_slug(raw: str, category: str | None = None) -> str:
-    """Strip a raw slug's toolkit prefix and naming noise into lower-case words."""
+    """Strip a raw slug's toolkit prefix and naming noise into words; callers set the case."""
     tokens = raw.split("_")
     normalized_category = (category or "").replace("_", "").lower()
 
@@ -201,4 +201,4 @@ def clean_tool_slug(raw: str, category: str | None = None) -> str:
 
     tokens = [t for t in tokens if t.upper() not in _NOISE_TOKENS]
     cleaned = " ".join(tokens) if tokens else raw
-    return cleaned.replace("-", " ").lower()
+    return cleaned.replace("-", " ")

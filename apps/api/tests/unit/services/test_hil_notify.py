@@ -64,6 +64,7 @@ class TestNotifyApprovalPending:
 
         await notify_approval_pending(USER_ID, CONVERSATION_ID, APPROVAL_ID, SUMMARY)
 
+        mock_channels.device.get_active_tokens.assert_awaited_once_with(USER_ID)
         mock_expo.post.assert_awaited_once()
 
 
@@ -138,7 +139,7 @@ class TestSendExpoPush:
         mock_channels.device.deactivate_tokens.assert_awaited_once_with(["token-2"])
 
     async def test_post_failure_is_swallowed(self, mock_channels, mock_expo):
-        """The swallow happens in _push_to_devices — notify must never raise."""
+        """notify must never raise."""
         mock_channels.device.get_active_tokens.return_value = ["token-1"]
         mock_expo.post.side_effect = RuntimeError("expo down")
 

@@ -45,6 +45,7 @@ from app.services.hil.conversational import (
     list_pending_for_reply,
     resolve_pending_from_message,
 )
+from app.services.hil.describe import describe_call
 from app.services.hil.ledger_decide import LedgerDecision
 from app.services.hil.resolution import (
     ApprovalRequestForbiddenError,
@@ -653,6 +654,20 @@ def decided(decide: AsyncMock) -> list[tuple[str, str, str | None]]:
     return [(c.args[0], c.kwargs["kind"], c.kwargs["feedback"]) for c in decide.await_args_list]
 
 
+async def test_a_decided_barrier_record_is_reported_in_its_integrations_terms(
+    resolver: dict,
+) -> None:
+    record = make_record(tool_name="post_update", args={"text": "hi"}, integration_name="Acme")
+    resolver["llm"].return_value = DecisionResult(action="approve")
+    with patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=[record])):
+        outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+
+    described = describe_call("post_update", {"text": "hi"}, "Acme")
+    assert described != describe_call("post_update", {"text": "hi"}, None)
+    assert outcome is not None
+    assert outcome.decided == (described,)
+
+
 class TestLedgerRows:
     """Ledger-enabled users' approvals live in approval_ledger; a chat reply decides them there."""
 
@@ -763,6 +778,40 @@ class TestLedgerRows:
         assert "1. Send email ap_1" in text and "2. Send email ap_2" in text
         assert "'first yes, second no'" in text
         assert "draft the quarterly deck email" in text
+
+    async def test_a_decided_row_is_reported_as_the_account_it_acted_as(
+        self, ledger: dict[str, AsyncMock]
+    ) -> None:
+        row = _ledger_row("ap_1").model_copy(
+            update={"args": {"to": "bob@example.com"}, "account": "work@example.com"}
+        )
+        ledger["list_open"].return_value = [row]
+        ledger["llm"].return_value = DecisionResult(action="approve")
+
+        outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+
+        assert outcome is not None
+        assert outcome.decided == (
+            describe_call("send_email", {"to": "bob@example.com"}, None, "work@example.com"),
+        )
+
+    async def test_a_decided_batch_reports_every_row_it_decided(
+        self, ledger: dict[str, AsyncMock]
+    ) -> None:
+        ledger["list_open"].return_value = [_ledger_row("ap_1"), _ledger_row("ap_2")]
+        ledger["llm"].return_value = BatchDecisionResult(
+            unrelated=False,
+            decisions=[
+                BatchItemDecision(index=1, action="approve"),
+                BatchItemDecision(index=2, action="deny"),
+            ],
+        )
+
+        outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "1 yes, 2 no")
+
+        assert outcome is not None
+        description = describe_call("send_email", {}, None)
+        assert outcome.decided == (description, description)
 
     async def test_moving_on_from_a_batch_of_rows_leaves_them_all_pending(
         self, ledger: dict[str, AsyncMock]

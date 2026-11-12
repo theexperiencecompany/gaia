@@ -10101,6 +10101,7 @@ export interface components {
             /** Id */
             id: string;
         };
+        JsonValue: unknown;
         /**
          * LabEventResponse
          * @description Accepted; the payload itself is never echoed back.
@@ -12060,7 +12061,7 @@ export interface components {
             approval_id: string;
             /** Args Preview */
             args_preview: {
-                [key: string]: unknown;
+                [key: string]: components["schemas"]["JsonValue"];
             };
             /**
              * Asked At
@@ -13691,7 +13692,7 @@ export interface components {
             approval_id: string;
             /** Args Preview */
             args_preview: {
-                [key: string]: unknown;
+                [key: string]: components["schemas"]["JsonValue"];
             };
             /**
              * Asked At
@@ -16923,6 +16924,7 @@ export type IntegrationToolApproval = components['schemas']['IntegrationToolAppr
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
 export type InviteResponse = components['schemas']['InviteResponse'];
+export type JsonValue = components['schemas']['JsonValue'];
 export type LabEventResponse = components['schemas']['LabEventResponse'];
 export type LinearCommentAddedConfig = components['schemas']['LinearCommentAddedConfig'];
 export type LinearIssueCreatedConfig = components['schemas']['LinearIssueCreatedConfig'];

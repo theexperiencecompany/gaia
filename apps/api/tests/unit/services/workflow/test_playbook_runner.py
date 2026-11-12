@@ -41,6 +41,7 @@ from app.constants.agents import PLAYBOOK_SUSPECT_BASELINE_WINDOW
 from app.constants.hil import HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
 from app.models.agent_models import get_user_id
+from app.models.hil_models import ApprovalLedgerDocument
 from app.models.playbook_models import (
     DEFAULT_ASK_MAX_TOKENS,
     AskKind,
@@ -398,7 +399,16 @@ async def test_a_ledger_gated_call_stops_the_replay_pending_without_invoking_the
     ledger = MagicMock()
     ledger.find_live = AsyncMock(return_value=None)
     ledger.find_latest_denied = AsyncMock(return_value=None)
-    ledger.register = AsyncMock(return_value="ap_ledger01")
+    ledger.register = AsyncMock(
+        return_value=ApprovalLedgerDocument(
+            approval_id="ap_ledger01",
+            conversation_id="conv-1",
+            user_id=USER_ID,
+            fingerprint="fp",
+            tool_name="list_events",
+            created_at=datetime(2026, 11, 10, 9, 30, tzinfo=UTC),
+        )
+    )
     with (
         patch(f"{GATE}.approval_ledger_repository", ledger),
         patch(f"{GATE}.recall_declined_call", AsyncMock(return_value=None)),
