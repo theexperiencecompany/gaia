@@ -55,7 +55,7 @@ export default function WorkflowStep({
             variant="soft"
             title={categoryLabel}
             aria-label={categoryLabel}
-            className={`${chipHeight} pl-2 space-x-1 truncate ${chipTextSize}`}
+            className={`${chipHeight} rounded-xl pr-1 pl-2 space-x-1 truncate ${chipTextSize}`}
           >
             <div className="min-w-fit">
               {getToolCategoryIcon(
