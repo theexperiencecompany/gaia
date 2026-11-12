@@ -58,11 +58,17 @@ def _conversation_results() -> ConversationSearchResults:
                     "type": "bot",
                     "response": "test response about Python",
                     "message_id": "m1",
+                    "seq": 1,
                 },
             ),
             ConversationMessageHit(
                 conversation_id="conv2",
-                message={"type": "bot", "response": "Python programming", "message_id": "m2"},
+                message={
+                    "type": "bot",
+                    "response": "Python programming",
+                    "message_id": "m2",
+                    "seq": 1,
+                },
             ),
         ],
         conversations=[

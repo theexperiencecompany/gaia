@@ -40,10 +40,19 @@ from app.constants.cache import (
     SUBSCRIPTION_PLAN_CACHE_PREFIX,
     SUBSCRIPTION_PLAN_CACHE_TTL,
 )
-from app.db.mongodb.indexes import TODO_OPEN_EXTERNAL_REF_KEYS, TODO_OPEN_EXTERNAL_REF_OPTIONS
+from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
+from app.db.mongodb.indexes import (
+    CONVERSATION_ENTRY_INDEXES,
+    TODO_OPEN_EXTERNAL_REF_KEYS,
+    TODO_OPEN_EXTERNAL_REF_OPTIONS,
+)
 from app.db.redis import delete_cache, redis_cache
+from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
+from app.models.chat_models import MessageModel
+from app.models.conversation_models import ConversationDocument
 from app.models.payment_models import PlanType
+from shared.py.wide_events import _spawned_tasks
 from tests.helpers import (
     HeaderDrivenAuthMiddleware,
     pg_advisory_lock,
@@ -87,13 +96,19 @@ async def _autouse_hil_approvals_collection(hil_approvals_collection) -> None:
 
 @pytest.fixture
 async def conversations_collection(mongo_db):
-    """Return the real conversations collection production code reads, emptied around each test."""
+    """Return the real conversations collection production code reads, emptied around each test with its entries."""
     coll = mongo_db["conversations"]
+    entries = mongo_db[CONVERSATION_ENTRIES_COLLECTION]
+    for keys, options in CONVERSATION_ENTRY_INDEXES:
+        await entries.create_index(keys, **options)
     await coll.delete_many({})
+    await entries.delete_many({})
 
     yield coll
 
+    await asyncio.gather(*_spawned_tasks, return_exceptions=True)
     await coll.delete_many({})
+    await entries.delete_many({})
 
 
 @asynccontextmanager
@@ -232,26 +247,32 @@ async def clean_bridge_tables(
 
 @pytest.fixture
 def make_conversation(conversations_collection):
-    """Seed a conversation document in real MongoDB.
+    """Seed a conversation in real MongoDB through the repository: its head, then any messages as entries.
 
-    Writes the legacy timestamp pair as production does: createdAt an ISO string, updatedAt a BSON date. A datetime passed for createdAt is normalized to ISO here — seeding it raw would fail the repository's read-boundary validation.
+    A datetime passed for createdAt is normalized to the ISO string production stores.
     """
 
     async def _make(user_id: str, conv_id: str | None = None, **overrides):
         conv_id = conv_id or f"conv_{ObjectId()}"
+        messages = overrides.pop("messages", [])
         created_at = overrides.pop("createdAt", datetime.now(UTC))
         if isinstance(created_at, datetime):
             created_at = created_at.isoformat()
         doc = {
             "user_id": user_id,
             "conversation_id": conv_id,
-            "messages": [],
             "description": "Test conversation",
             "createdAt": created_at,
             "updatedAt": datetime.now(UTC),
             **overrides,
         }
-        await conversations_collection.insert_one(doc)
+        await conversation_repository.create(ConversationDocument.model_validate(doc))
+        if messages:
+            await conversation_repository.append_messages(
+                conv_id,
+                user_id=user_id,
+                messages=[MessageModel.model_validate(message) for message in messages],
+            )
         return conv_id
 
     return _make

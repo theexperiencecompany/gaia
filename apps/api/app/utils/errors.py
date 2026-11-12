@@ -114,10 +114,30 @@ class RepositoryMisconfiguredError(AppError):
     """A repository subclass is missing required ClassVars (raised at import)."""
 
 
+@dataclass
+class ConversationNotFoundError(AppError):
+    """The conversation a write named does not exist for this user."""
+
+    status_code: int = 404
+
+
+@dataclass
+class UnmigratedConversationError(AppError):
+    """A conversation still keeps its messages only in the embedded array the entries migration replaces."""
+
+
+@dataclass
+class ConversationStoreError(AppError):
+    """The conversation store failed or kept losing a conditional write; the operation did not happen."""
+
+
 __all__ = [
     "AppError",
+    "ConversationNotFoundError",
+    "ConversationStoreError",
     "EmptyUpdateError",
     "IntegrationNotConnectedError",
     "RepositoryMisconfiguredError",
+    "UnmigratedConversationError",
     "create_error",
 ]

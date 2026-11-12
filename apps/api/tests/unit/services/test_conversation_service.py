@@ -339,12 +339,12 @@ class TestListConversations:
 
 class TestUpdateMessages:
     async def test_appends_and_returns_ids(self, mock_repo, test_user):
-        mock_repo.append_messages.return_value = ["m1"]
+        mock_repo.append_messages.return_value = {"m1": 4}
         request = UpdateMessagesRequest(
             conversation_id="conv_abc", messages=[MessageModel(type="user", response="Hi")]
         )
         result = await update_messages(request, test_user)
-        assert result.message_ids == ["m1"]
+        assert (result.message_ids, result.message_seqs) == (["m1"], [4])
         assert result.conversation_id == "conv_abc"
         assert mock_repo.append_messages.call_args.kwargs["user_id"] == USER_ID
 
@@ -360,21 +360,23 @@ class TestUpdateMessages:
 
 class TestPinMessage:
     async def test_pins_message(self, mock_repo, test_user):
-        mock_repo.get.return_value = _document(
-            messages=[{"type": "bot", "response": "Hello", "message_id": "msg_1"}]
+        mock_repo.exists.return_value = True
+        mock_repo.get_message.return_value = MessageModel(
+            type="bot", response="Hello", message_id="msg_1"
         )
         mock_repo.set_message_pinned.return_value = True
         result = await pin_message("conv_abc", "msg_1", True, test_user)
         assert result.pinned is True
         assert "pinned successfully" in result.message
-        mock_repo.get.assert_awaited_once_with("conv_abc", user_id=USER_ID)
+        mock_repo.get_message.assert_awaited_once_with("conv_abc", "msg_1", user_id=USER_ID)
         mock_repo.set_message_pinned.assert_awaited_once_with(
             "conv_abc", user_id=USER_ID, message_id="msg_1", pinned=True
         )
 
     async def test_pin_captures_pinned_with_user_id(self, mock_repo, test_user):
-        mock_repo.get.return_value = _document(
-            messages=[{"type": "bot", "response": "Hello", "message_id": "msg_1"}]
+        mock_repo.exists.return_value = True
+        mock_repo.get_message.return_value = MessageModel(
+            type="bot", response="Hello", message_id="msg_1"
         )
         mock_repo.set_message_pinned.return_value = True
         with patch(
@@ -384,8 +386,9 @@ class TestPinMessage:
         mock_capture.assert_called_once_with(UserId(USER_ID), ChatMessagePinned())
 
     async def test_unpin_captures_unpinned_with_user_id(self, mock_repo, test_user):
-        mock_repo.get.return_value = _document(
-            messages=[{"type": "bot", "response": "Hello", "message_id": "msg_1"}]
+        mock_repo.exists.return_value = True
+        mock_repo.get_message.return_value = MessageModel(
+            type="bot", response="Hello", message_id="msg_1"
         )
         mock_repo.set_message_pinned.return_value = True
         with patch(
@@ -395,15 +398,14 @@ class TestPinMessage:
         mock_capture.assert_called_once_with(UserId(USER_ID), ChatMessageUnpinned())
 
     async def test_raises_404_conversation_not_found(self, mock_repo, test_user):
-        mock_repo.get.return_value = None
+        mock_repo.exists.return_value = False
         with pytest.raises(HTTPException) as exc_info:
             await pin_message("conv_abc", "msg_1", True, test_user)
         assert exc_info.value.status_code == 404
 
     async def test_raises_404_message_not_found(self, mock_repo, test_user):
-        mock_repo.get.return_value = _document(
-            messages=[{"type": "bot", "response": "x", "message_id": "other"}]
-        )
+        mock_repo.exists.return_value = True
+        mock_repo.get_message.return_value = None
         with pytest.raises(HTTPException) as exc_info:
             await pin_message("conv_abc", "missing", True, test_user)
         assert exc_info.value.status_code == 404
@@ -414,7 +416,13 @@ class TestGetStarredMessages:
         mock_repo.list_pinned_messages.return_value = [
             ConversationMessageHit(
                 conversation_id="conv_1",
-                message={"type": "bot", "response": "test", "message_id": "m1", "pinned": True},
+                message={
+                    "type": "bot",
+                    "response": "test",
+                    "message_id": "m1",
+                    "pinned": True,
+                    "seq": 1,
+                },
             )
         ]
         result = await get_starred_messages(test_user)
@@ -673,31 +681,3 @@ class TestRequireOwnedConversation:
             "CONVERSATION_NOT_FOUND",
             "Conversation not found",
         )
-
-
-class TestConversationSizeCap:
-    """A chat thread is one Mongo document; past 16MB it can never be written again."""
-
-    async def test_a_chat_append_caps_history_by_default(self, monkeypatch) -> None:
-        from app.constants.chat import CONVERSATION_MAX_MESSAGES
-        from app.services import conversation_service
-
-        seen: dict[str, object] = {}
-
-        async def record(conversation_id: str, **kwargs: object) -> list[str]:
-            seen.update(kwargs)
-            return ["m1"]
-
-        monkeypatch.setattr(
-            "app.services.conversation_service.conversation_repository.append_messages", record
-        )
-
-        await conversation_service.update_messages(
-            UpdateMessagesRequest(
-                conversation_id="c1",
-                messages=[MessageModel(type="user", response="", message_id="m1")],
-            ),
-            user=AuthenticatedUser(user_id="u1"),
-        )
-
-        assert seen["max_messages"] == CONVERSATION_MAX_MESSAGES

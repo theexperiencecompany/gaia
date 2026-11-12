@@ -2,10 +2,10 @@
 conversation endpoints' response shapes.
 
 The persistence models describe the document as it is actually stored and read
-back — distinct from the API *request* models, which live in ``chat_models``. The
-embedded ``messages`` array reuses ``MessageModel``; a before-validator runs the
-legacy tool-data normalization at the read boundary so the rest of the app never
-sees an un-normalized message.
+back — distinct from the API *request* models, which live in ``chat_models``.
+Messages are ``ConversationEntry`` rows read from conversation_entries, each with
+its seq; a before-validator runs the legacy tool-data normalization at the read
+boundary so the rest of the app never sees an un-normalized message.
 
 The response models at the bottom of this file live here rather than alongside
 the requests in ``chat_models`` because they are built from the persistence
@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.db.repositories.base import UserScopedDocument
 from app.models.artifact_models import ArtifactRegistryEntry
@@ -39,18 +39,27 @@ from app.schemas.common import ResponseModel
 from app.utils.tool_data_utils import convert_legacy_tool_data
 
 
-def _normalize_messages(value: object) -> object:
-    """Run legacy per-tool-field → unified ``tool_data`` conversion on each message."""
-    if isinstance(value, list):
-        return [convert_legacy_tool_data(m) if isinstance(m, dict) else m for m in value]
-    return value
-
-
 def _coerce_source(value: object) -> object:
     """Map a stored source string to the enum, tolerating unknown legacy values."""
     if isinstance(value, (ConversationSource, str)):
         return ConversationSource.coerce(value)
     return value
+
+
+class ConversationEntry(MessageModel):
+    """One message of a conversation's log with the seq its append committed it under: order is seq, never a date."""
+
+    seq: int
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize(cls, value: object) -> object:
+        return convert_legacy_tool_data(value) if isinstance(value, dict) else value
+
+    @classmethod
+    def committed(cls, message: MessageModel, seq: int) -> ConversationEntry:
+        """The message as committed at seq."""
+        return cls.model_validate({**message.model_dump(), "seq": seq})
 
 
 class FoldedCards(BaseModel):
@@ -63,7 +72,7 @@ class FoldedCards(BaseModel):
 
 
 class ConversationDocument(UserScopedDocument):
-    """A conversation and its embedded message history as stored in MongoDB.
+    """A conversation as the repository returns it: its head fields and, where read, its entries.
 
     ``extra="allow"`` preserves stray/legacy top-level fields (e.g. ``artifacts``,
     ``metadata``) so a full-document read returns them verbatim, matching the
@@ -86,7 +95,8 @@ class ConversationDocument(UserScopedDocument):
     # The tracked todo whose chat this is: its runs execute here. Such a chat is
     # reached only from its todo, never listed (see _listed). Set once at creation.
     todo_id: str | None = None
-    messages: list[MessageModel] = Field(default_factory=list)
+    # Assembled from conversation_entries by the reads that need history; never stored on the head.
+    messages: list[ConversationEntry] = Field(default_factory=list)
     # Conversation-level artifact registry: one entry per agent-written file,
     # deduped by path; services/chat/artifacts_registry.py owns every write.
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
@@ -95,7 +105,6 @@ class ConversationDocument(UserScopedDocument):
     createdAt: str | None = None
     updatedAt: datetime | None = None
 
-    _normalize_messages = field_validator("messages", mode="before")(_normalize_messages)
     _coerce_source = field_validator("source", mode="before")(_coerce_source)
 
 
@@ -136,12 +145,7 @@ class ConversationMessageHit(BaseModel):
     the pinned-messages and message-search results."""
 
     conversation_id: str
-    message: MessageModel
-
-    @field_validator("message", mode="before")
-    @classmethod
-    def _normalize_message(cls, value: object) -> object:
-        return convert_legacy_tool_data(value) if isinstance(value, dict) else value
+    message: ConversationEntry
 
 
 class ConversationDescriptionHit(BaseModel):
@@ -197,14 +201,6 @@ class _ConversationOwnerRow(_ConversationIdRow):
     model_config = ConfigDict(extra="forbid")
 
     user_id: str
-
-
-class _MessageProjectionRow(BaseModel):
-    """Positional ``messages.$`` projection — a one-element messages slice."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    messages: list[MessageModel] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -263,7 +259,7 @@ class ConversationSyncRow(ResponseModel):
     is_unread: bool | None = None
     createdAt: str | None = None
     updatedAt: datetime | None = None
-    messages: list[MessageModel] = Field(default_factory=list)
+    messages: list[ConversationEntry] = Field(default_factory=list)
     # Mirrored verbatim from the document (see ConversationDocument.artifacts).
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
     # Whether a background run holds a live approval here — drives the
@@ -322,6 +318,8 @@ class UpdateMessagesResponse(BaseModel):
     message: str
     modified_count: int
     message_ids: list[str]
+    # The seq each id holds in the conversation's order, index for index.
+    message_seqs: list[int]
 
 
 class PinMessageResponse(BaseModel):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from pymongo import MongoClient
 from pymongo.database import Database
@@ -20,6 +21,7 @@ BEFORE = datetime(2026, 9, 7, 23, 59, tzinfo=UTC)
 COLLECTIONS = (
     "users",
     "conversations",
+    "conversation_entries",
     "subscriptions",
     "processed_webhooks",
     "support_requests",
@@ -41,12 +43,34 @@ def db(mongodb_url: str) -> Iterator[Database[Document]]:
     client.close()
 
 
+def _seed(db: Database[Document], conversations: list[Document]) -> None:
+    """Store each conversation as the app does: a head, and one entry per message in order."""
+    for n, conversation in enumerate(conversations):
+        head = {k: v for k, v in conversation.items() if k != "messages"}
+        head.update(conversation_id=f"c{n}-{uuid4().hex}", user_id="u1", log_head=0)
+        entries = [
+            {
+                **message,
+                "conversation_id": head["conversation_id"],
+                "user_id": "u1",
+                "seq": seq,
+                "id": f"m{seq}",
+            }
+            for seq, message in enumerate(conversation.get("messages", []), 1)
+        ]
+        head["log_head"] = len(entries)
+        db.conversations.insert_one(head)
+        if entries:
+            db.conversation_entries.insert_many(entries)
+
+
 def _message(kind: str, when: datetime) -> Document:
     return {"type": kind, "date": when.isoformat(), "response": "x"}
 
 
 def test_messages_count_user_turns_by_their_own_date_per_source(db: Database[Document]) -> None:
-    db.conversations.insert_many(
+    _seed(
+        db,
         [
             # An old conversation: only the turn inside the window counts.
             {
@@ -63,7 +87,7 @@ def test_messages_count_user_turns_by_their_own_date_per_source(db: Database[Doc
             # The agent's own runs are not human messages.
             {"source": "workflow_system", "messages": [_message("user", INSIDE)]},
             {"source": "background", "messages": [_message("user", INSIDE)]},
-        ]
+        ],
     )
 
     assert mongo_signals(db, WINDOW).messages_by_source == {"web+desktop": 2, "telegram": 1}
@@ -72,12 +96,13 @@ def test_messages_count_user_turns_by_their_own_date_per_source(db: Database[Doc
 def test_web_and_desktop_are_one_bucket_since_neither_stores_a_source(
     db: Database[Document],
 ) -> None:
-    db.conversations.insert_many(
+    _seed(
+        db,
         [
             {"messages": [_message("user", INSIDE)]},
             {"source": "web", "messages": [_message("user", INSIDE)]},
             {"source": "desktop", "messages": [_message("user", INSIDE)]},
-        ]
+        ],
     )
 
     assert mongo_signals(db, WINDOW).messages_by_source == {"web+desktop": 3}
@@ -86,12 +111,13 @@ def test_web_and_desktop_are_one_bucket_since_neither_stores_a_source(
 def test_a_system_generated_conversations_user_turns_are_not_human(
     db: Database[Document],
 ) -> None:
-    db.conversations.insert_many(
+    _seed(
+        db,
         [
             # A workflow run's conversation, stored without a source.
             {"is_system_generated": True, "messages": [_message("user", INSIDE)]},
             {"is_system_generated": False, "messages": [_message("user", INSIDE)]},
-        ]
+        ],
     )
 
     assert mongo_signals(db, WINDOW).messages_by_source == {"web+desktop": 1}
@@ -100,15 +126,18 @@ def test_a_system_generated_conversations_user_turns_are_not_human(
 def test_the_linking_message_written_as_first_contact_is_not_a_submitted_turn(
     db: Database[Document],
 ) -> None:
-    db.conversations.insert_one(
-        {
-            "source": "whatsapp",
-            "messages": [
-                {**_message("user", INSIDE), "first_contact": True},
-                _message("bot", INSIDE),
-                _message("user", INSIDE),
-            ],
-        }
+    _seed(
+        db,
+        [
+            {
+                "source": "whatsapp",
+                "messages": [
+                    {**_message("user", INSIDE), "first_contact": True},
+                    _message("bot", INSIDE),
+                    _message("user", INSIDE),
+                ],
+            }
+        ],
     )
 
     assert mongo_signals(db, WINDOW).messages_by_source == {"whatsapp": 1}
@@ -118,14 +147,17 @@ def test_a_tracked_todo_run_woken_by_a_schedule_or_trigger_is_not_a_human_turn(
     db: Database[Document],
 ) -> None:
     wake = {"kind": "schedule", "trigger_names": [], "approval_summary": None}
-    db.conversations.insert_one(
-        {
-            "messages": [
-                {**_message("user", INSIDE), "todo_run_wake": wake},
-                _message("bot", INSIDE),
-                _message("user", INSIDE),
-            ],
-        }
+    _seed(
+        db,
+        [
+            {
+                "messages": [
+                    {**_message("user", INSIDE), "todo_run_wake": wake},
+                    _message("bot", INSIDE),
+                    _message("user", INSIDE),
+                ],
+            }
+        ],
     )
 
     assert mongo_signals(db, WINDOW).messages_by_source == {"web+desktop": 1}

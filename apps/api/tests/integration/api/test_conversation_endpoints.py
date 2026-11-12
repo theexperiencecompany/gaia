@@ -371,6 +371,7 @@ class TestConversationEndpoints:
             "message": "Messages updated",
             "modified_count": 1,
             "message_ids": ["msg-id-1"],
+            "message_seqs": [1],
         }
         response = await test_client.put(
             "/api/v1/conversations/conv-msg/messages",

@@ -18,13 +18,27 @@ from app.agents.core.background.result_delivery import (
     record_todo_run_wake,
 )
 from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
-from app.constants.todos import TODO_CONVERSATION_MAX_MESSAGES, TodoWakeKind
+from app.constants.todos import TodoWakeKind
 from app.models.chat_models import ConversationSource, ToolDataEntry
+from app.models.conversation_models import UpdateMessagesResponse
 from app.models.todo_wake_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 
 MODULE = "app.agents.core.background.result_delivery"
+SEQ = 7
+
+
+def _saved_at_seq() -> AsyncMock:
+    return AsyncMock(
+        return_value=UpdateMessagesResponse(
+            conversation_id="conv",
+            message="Messages updated",
+            modified_count=1,
+            message_ids=["saved"],
+            message_seqs=[SEQ],
+        )
+    )
 
 
 async def test_web_source_broadcasts_over_websocket_and_records() -> None:
@@ -33,7 +47,7 @@ async def test_web_source_broadcasts_over_websocket_and_records() -> None:
     ws = MagicMock()
     ws.broadcast_to_user = AsyncMock()
     with (
-        patch(f"{MODULE}.update_messages", new_callable=AsyncMock),
+        patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq),
         patch(f"{MODULE}.deliver_message_to_platform", new_callable=AsyncMock) as to_platform,
         patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock) as record,
         patch(f"{MODULE}.conversation_repository", convo_repo),
@@ -53,6 +67,7 @@ async def test_web_source_broadcasts_over_websocket_and_records() -> None:
     assert event["type"] == "conversation.new_message"
     assert event["conversation_id"] == "conv-1"
     assert event["message"]["response"] == "time to drink water"
+    assert event["message"]["seq"] == SEQ
     # No narration ran, so the checkpoint is recorded explicitly, framed with origin.
     record.assert_awaited_once()
     assert record.await_args.args[0] == "conv-1"
@@ -65,7 +80,7 @@ async def test_bot_source_delivers_to_platform_and_records() -> None:
     ws = MagicMock()
     ws.broadcast_to_user = AsyncMock()
     with (
-        patch(f"{MODULE}.update_messages", new_callable=AsyncMock),
+        patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq),
         patch(
             f"{MODULE}.deliver_message_to_platform", new_callable=AsyncMock, return_value=True
         ) as to_platform,
@@ -90,7 +105,7 @@ async def test_bot_source_delivers_to_platform_and_records() -> None:
 
 async def test_blank_text_delivers_nothing() -> None:
     with (
-        patch(f"{MODULE}.update_messages", new_callable=AsyncMock) as save,
+        patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq) as save,
         patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock) as record,
     ):
         source = await deliver_message_to_conversation(
@@ -129,7 +144,7 @@ async def test_websocket_path_builds_exact_target_message_and_verdict() -> None:
     convo_repo = MagicMock()
     convo_repo.get_source = AsyncMock(return_value=ConversationSource.WEB)
     with (
-        patch(f"{MODULE}.update_messages", new_callable=AsyncMock) as save,
+        patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq) as save,
         patch(f"{MODULE}._broadcast_bot_message", new_callable=AsyncMock) as broadcast,
         patch(f"{MODULE}._log_delivery_verdict") as verdict,
         patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock),
@@ -183,7 +198,7 @@ async def test_platform_path_logs_platform_transport_and_delivery() -> None:
     convo_repo = MagicMock()
     convo_repo.get_source = AsyncMock(return_value=ConversationSource.TELEGRAM)
     with (
-        patch(f"{MODULE}.update_messages", new_callable=AsyncMock),
+        patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq),
         patch(
             f"{MODULE}.deliver_message_to_platform", new_callable=AsyncMock, return_value=True
         ) as to_platform,
@@ -213,7 +228,7 @@ async def test_missing_user_id_defaults_to_empty_string() -> None:
     convo_repo = MagicMock()
     convo_repo.get_source = AsyncMock(return_value=ConversationSource.TELEGRAM)
     with (
-        patch(f"{MODULE}.update_messages", new_callable=AsyncMock),
+        patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq),
         patch(
             f"{MODULE}.deliver_message_to_platform", new_callable=AsyncMock, return_value=True
         ) as to_platform,
@@ -241,7 +256,7 @@ async def test_delivered_cards_are_saved_on_the_message() -> None:
     convo_repo = MagicMock()
     convo_repo.get_source = AsyncMock(return_value=ConversationSource.WEB)
     with (
-        patch(f"{MODULE}.update_messages", new_callable=AsyncMock) as save,
+        patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq) as save,
         patch(f"{MODULE}._broadcast_bot_message", new_callable=AsyncMock),
         patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock),
         patch(f"{MODULE}.conversation_repository", convo_repo),
@@ -263,7 +278,7 @@ async def test_delivered_cards_reach_the_live_client_too() -> None:
     convo_repo = MagicMock()
     convo_repo.get_source = AsyncMock(return_value=ConversationSource.WEB)
     with (
-        patch(f"{MODULE}.update_messages", new_callable=AsyncMock),
+        patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq),
         patch(f"{MODULE}._broadcast_bot_message", new_callable=AsyncMock) as broadcast,
         patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock),
         patch(f"{MODULE}.conversation_repository", convo_repo),
@@ -285,7 +300,7 @@ async def test_an_empty_card_feed_delivers_text_only() -> None:
     convo_repo = MagicMock()
     convo_repo.get_source = AsyncMock(return_value=ConversationSource.WEB)
     with (
-        patch(f"{MODULE}.update_messages", new_callable=AsyncMock) as save,
+        patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq) as save,
         patch(f"{MODULE}._broadcast_bot_message", new_callable=AsyncMock) as broadcast,
         patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock),
         patch(f"{MODULE}.conversation_repository", convo_repo),
@@ -332,7 +347,7 @@ class TestATrackedTodosRunReportIsKeptInItsChat:
     ) -> tuple[AsyncMock, AsyncMock, AsyncMock]:
         ws = MagicMock(broadcast_to_user=AsyncMock())
         with (
-            patch(f"{MODULE}.update_messages", new_callable=AsyncMock) as save,
+            patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq) as save,
             patch(f"{MODULE}.websocket_manager", ws),
             patch(f"{MODULE}.deliver_todo_run_result", new_callable=AsyncMock) as todo_delivery,
         ):
@@ -347,10 +362,7 @@ class TestATrackedTodosRunReportIsKeptInItsChat:
         request = save.await_args.args[0]
         (saved,) = request.messages
         assert request.conversation_id == TODO_CHAT
-        assert save.await_args.kwargs == {
-            "user": USER,
-            "max_messages": TODO_CONVERSATION_MAX_MESSAGES,
-        }
+        assert save.await_args.kwargs == {"user": USER}
         assert (saved.type, saved.response, saved.error, saved.message_id, saved.tool_data) == (
             "bot",
             "Deploy is green.",
@@ -368,6 +380,7 @@ class TestATrackedTodosRunReportIsKeptInItsChat:
                     "type": "bot",
                     "response": "Deploy is green.",
                     "message_id": "placeholder-1",
+                    "seq": SEQ,
                     "date": saved.date,
                     "kind": saved.kind.value,
                     "tool_data": CARDS,
@@ -414,7 +427,7 @@ class TestARunsWakeLeadsItInItsChat:
     async def test_the_wake_is_saved_and_pushed_as_json(self) -> None:
         ws = MagicMock(broadcast_to_user=AsyncMock())
         with (
-            patch(f"{MODULE}.update_messages", new_callable=AsyncMock) as save,
+            patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq) as save,
             patch(f"{MODULE}.websocket_manager", ws),
         ):
             await record_todo_run_wake(TODO_CHAT, USER, WAKE)
@@ -422,10 +435,7 @@ class TestARunsWakeLeadsItInItsChat:
         request = save.await_args.args[0]
         (saved,) = request.messages
         assert request.conversation_id == TODO_CHAT
-        assert save.await_args.kwargs == {
-            "user": USER,
-            "max_messages": TODO_CONVERSATION_MAX_MESSAGES,
-        }
+        assert save.await_args.kwargs == {"user": USER}
         assert (saved.type, saved.response, saved.todo_run_wake) == ("user", "", WAKE)
         assert str(UUID(saved.message_id)) == saved.message_id
         assert _is_utc_iso(saved.date)
@@ -438,6 +448,7 @@ class TestARunsWakeLeadsItInItsChat:
                     "type": "user",
                     "response": "",
                     "message_id": saved.message_id,
+                    "seq": SEQ,
                     "date": saved.date,
                     "todo_run_wake": {
                         "kind": "trigger",
@@ -482,7 +493,7 @@ class TestCommsNarratesARunsResultUnderItsOutcomeNote:
                 f"{MODULE}.narrate_executor_result", new_callable=AsyncMock, return_value="ok"
             ) as narrate,
             patch(f"{MODULE}.generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
-            patch(f"{MODULE}.update_messages", new_callable=AsyncMock),
+            patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq),
             patch(f"{MODULE}.conversation_repository", convo_repo),
             patch(f"{MODULE}.websocket_manager", MagicMock(broadcast_to_user=AsyncMock())),
         ):

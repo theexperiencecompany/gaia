@@ -107,15 +107,16 @@ UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS = 4000
 # chars into .txt attachments, so normal traffic never gets near this.
 MAX_MESSAGE_LENGTH = 50_000
 
-# A conversation is one Mongo document, and a 16MB one can never be written again:
-# every later $push is rejected outright. This keeps the newest messages and drops
-# the oldest, the same $slice the workflow threads already use.
-CONVERSATION_MAX_MESSAGES = 600
+# A conversation's messages, one document per entry ordered by seq; its head
+# (the conversations document) holds log_head and the not-yet-flushed outbox.
+CONVERSATION_ENTRIES_COLLECTION = "conversation_entries"
 
-# Pinned messages are kept outside that window, so the pin count is its own bound:
-# an unbounded set of pins would grow the document past 16MB just as history did.
-# Past this many, the oldest pins fall out with the messages that carried them.
-CONVERSATION_MAX_RETAINED_PINS = 100
+# Conditional head writes lost to a concurrent append before one gives up loudly.
+CONVERSATION_APPEND_MAX_ATTEMPTS = 64
+CONVERSATION_APPEND_JITTER_SECONDS = 0.004
+
+# Named in every refusal of a conversation the entries migration has not reached.
+CONVERSATION_ENTRIES_MIGRATION_SCRIPT = "app.scripts.migrate_conversation_entries"
 
 # ``MessageModel.type`` of a message the human wrote (the other value is
 # ``"bot"``). Named so a stored-message query and the writers agree on the literal.
@@ -124,6 +125,12 @@ USER_MESSAGE_TYPE = "user"
 # Shown when a turn dies and the provider exception carries no message of its
 # own. Names the exception type so a support report still identifies the failure.
 GENERIC_TURN_ERROR = "Something went wrong while generating this response ({error_type})."
+
+# Saved on a reply whose turn died (a crashed process) after the user saw it begin.
+TURN_INTERRUPTED = (
+    "My reply was cut off before I could finish it. Anything I started for it may "
+    "already be done, so check before asking again."
+)
 
 # Saved in place of a reply that could not be written. The work the turn did
 # (a reminder, a todo) stands, so the user must be told to look before re-asking.

@@ -214,13 +214,13 @@ class BotService:
     async def load_conversation_history(
         conversation_id: str, user_id: str, limit: int = 20
     ) -> list[MessageDict]:
-        """Return up to limit recent messages as role/content dicts, oldest first."""
-        conversation = await conversation_repository.get(conversation_id, user_id=user_id)
-        if conversation is None or not conversation.messages:
-            return []
-
+        """Return up to limit recent messages as role/content dicts in seq order, skipping replies still being written."""
         history: list[MessageDict] = []
-        for msg in conversation.messages[-limit:]:
+        for msg in await conversation_repository.list_recent_messages(
+            conversation_id, user_id=user_id, limit=limit
+        ):
+            if msg.in_progress:
+                continue
             if msg.type == "user":
                 history.append(MessageDict(role="user", content=msg.response or ""))
             elif msg.type == "bot":

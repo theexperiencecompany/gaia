@@ -29,14 +29,12 @@ from app.agents.core.background import (
 from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
-    TodoRun,
 )
 from app.agents.prompts.comms_prompts import (
     INTERACTIVE_DELIVERY_NOTE,
     PLATFORM_DELIVERY_NOTE,
     SILENCE_NOTE,
 )
-from app.constants.chat import CONVERSATION_MAX_MESSAGES
 from app.constants.executor import (
     EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE,
     EXECUTOR_NARRATION_FAILED_MESSAGE,
@@ -44,13 +42,12 @@ from app.constants.executor import (
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
-from app.constants.todos import TODO_CONVERSATION_MAX_MESSAGES
 from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import ConversationSource, MessageKind, MessageModel, ToolDataEntry
+from app.models.conversation_models import ConversationEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.models.user_models import AuthenticatedUser
-from app.models.workflow_models import TriggerType
 from app.services.delivery.chat_channel import InApp
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
@@ -493,37 +490,6 @@ class TestPersistCancelledRun:
         narrate.assert_not_awaited()  # the run was stopped — no re-voicing
         ws.assert_not_awaited()  # no re-broadcast of already-streamed data
 
-    @pytest.mark.parametrize(
-        ("todo_run", "cap"),
-        [
-            (None, CONVERSATION_MAX_MESSAGES),
-            (
-                TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True),
-                TODO_CONVERSATION_MAX_MESSAGES,
-            ),
-        ],
-        ids=["chat", "todo-chat"],
-    )
-    async def test_a_stopped_runs_cards_keep_the_conversations_cap(
-        self, todo_run: TodoRun | None, cap: int
-    ) -> None:
-        """Regression: an explicit None for a plain chat switched off the cap every conversation has."""
-        run = replace(
-            _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9"), todo_run=todo_run
-        )
-
-        with patch.object(rd, "update_messages", new_callable=AsyncMock) as save:
-            await rd.persist_cancelled_run(run, CARDS)
-
-        assert save.await_args.kwargs["max_messages"] == cap
-
-    async def test_a_bot_reply_keeps_the_conversations_cap(self) -> None:
-        bot_message = MessageModel(type="bot", response="hi")
-        with patch.object(rd, "update_messages", new_callable=AsyncMock) as save:
-            await rd._save_message("conv-1", AuthenticatedUser(user_id=USER_ID), bot_message)
-
-        assert save.await_args.kwargs["max_messages"] == CONVERSATION_MAX_MESSAGES
-
     async def test_no_cards_writes_nothing(self) -> None:
         run = _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9")
 
@@ -582,7 +548,7 @@ class TestDeliveryLatency:
         with patch.object(rd, "update_messages", new_callable=AsyncMock):
             assert (
                 await rd._save_message("conv-1", AuthenticatedUser(user_id=USER_ID), bot_message)
-                is True
+                is not None
             )
         assert _persist_count("save_bot_message") == before + 1
 
@@ -609,7 +575,7 @@ class TestDeliveryLatency:
         ):
             assert (
                 await rd._save_message("conv-1", AuthenticatedUser(user_id=USER_ID), bot_message)
-                is True
+                is not None
             )
         assert REGISTRY.get_sample_value("delivery_persist_seconds_sum", labels) == before + 0.25
 
@@ -872,7 +838,7 @@ class TestDeliverResultHilResume:
     """
 
     async def _deliver_resumed(self, run: ExecutorRun, *, existing_tool_data=None, tool_data=None):
-        existing = MessageModel(type="bot", response="old text", date="2026-01-01")
+        existing = ConversationEntry(seq=4, type="bot", response="old text", date="2026-01-01")
         existing.tool_data = existing_tool_data
         with (
             patch.object(
@@ -1275,19 +1241,23 @@ class TestMergeResumedResultFailurePaths:
             )
         if calls is not None:
             calls.update(get_message=get_msg, set_response=set_resp, set_tool_data=set_td)
-        return merged
+        if merged is None:
+            return None
+        cards, seq = merged
+        assert seq == 4
+        return cards
 
     async def test_a_missing_original_message_returns_none(self) -> None:
         assert await self._merge(existing=None) is None
 
     async def test_a_response_write_that_matched_nothing_returns_none(self) -> None:
-        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        existing = ConversationEntry(seq=4, type="bot", response="old", date="2026-01-01")
 
         assert await self._merge(existing=existing, set_response=False) is None
 
     async def test_a_failed_card_write_keeps_the_cards_the_user_already_saw(self) -> None:
         """Falling back to the merged list reports unstored cards; falling back to nothing blanks the user's rendered turn."""
-        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        existing = ConversationEntry(seq=4, type="bot", response="old", date="2026-01-01")
         existing.tool_data = [{"tool_name": "old_tool", "data": {}}]
 
         merged = await self._merge(
@@ -1299,7 +1269,7 @@ class TestMergeResumedResultFailurePaths:
         assert [e["tool_name"] for e in merged] == ["old_tool"]
 
     async def test_a_successful_merge_returns_original_plus_new_cards(self) -> None:
-        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        existing = ConversationEntry(seq=4, type="bot", response="old", date="2026-01-01")
         existing.tool_data = [{"tool_name": "old_tool", "data": {}}]
 
         merged = await self._merge(
@@ -1309,7 +1279,7 @@ class TestMergeResumedResultFailurePaths:
         assert [e["tool_name"] for e in merged] == ["old_tool", "new_tool"]
 
     async def _merge_with_follow_ups(self, actions):
-        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        existing = ConversationEntry(seq=4, type="bot", response="old", date="2026-01-01")
         bot_message = MessageModel(type="bot", response="new text", date="2026-01-01")
         bot_message.message_id = "orig-msg-1"
         bot_message.follow_up_actions = actions
@@ -1353,7 +1323,7 @@ class TestMergeResumedResultFailurePaths:
         set_fu.assert_not_awaited()
 
     async def test_no_new_cards_skips_the_write_and_keeps_the_originals(self) -> None:
-        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        existing = ConversationEntry(seq=4, type="bot", response="old", date="2026-01-01")
         existing.tool_data = [{"tool_name": "old_tool", "data": {}}]
 
         merged = await self._merge(existing=existing, new_cards=None)
@@ -1362,7 +1332,7 @@ class TestMergeResumedResultFailurePaths:
 
     async def test_every_write_is_scoped_to_this_conversation_message_and_user(self) -> None:
         """These are targeted in-place Mongo updates; an unscoped filter could edit somebody else's message."""
-        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        existing = ConversationEntry(seq=4, type="bot", response="old", date="2026-01-01")
         existing.tool_data = []
         calls: dict = {}
 
@@ -1511,7 +1481,7 @@ class TestReconcileLooksUpTheRightRecord:
 class TestMergeResumedResultFailsClosed:
     async def test_a_run_without_a_user_id_scopes_to_empty_not_none(self) -> None:
         """user_id=None in a Mongo filter matches documents with no owner rather than nothing — scoping must fail closed."""
-        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        existing = ConversationEntry(seq=4, type="bot", response="old", date="2026-01-01")
         bot_message = MessageModel(type="bot", response="new", date="2026-01-01")
         bot_message.message_id = "orig-msg-1"
         run = ExecutorRun(
@@ -1615,7 +1585,9 @@ class TestDeliveredMessageIdentity:
                 conversation_repository,
                 "get_message",
                 new=AsyncMock(
-                    return_value=MessageModel(type="bot", response="old", date="2026-01-01")
+                    return_value=ConversationEntry(
+                        seq=4, type="bot", response="old", date="2026-01-01"
+                    )
                 ),
             ),
             patch.object(
@@ -1662,7 +1634,7 @@ class TestDeletedConversationDuringDelivery:
 class TestMergedCardsAreActuallyWritten:
     async def test_the_merged_list_is_what_reaches_mongo(self) -> None:
         """Returning the merged cards while storing something else means the live push shows them but the reload does not."""
-        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        existing = ConversationEntry(seq=4, type="bot", response="old", date="2026-01-01")
         existing.tool_data = [{"tool_name": "old_tool", "data": {}}]
         bot_message = MessageModel(type="bot", response="new", date="2026-01-01")
         bot_message.message_id = "orig-msg-1"
@@ -1682,7 +1654,7 @@ class TestMergedCardsAreActuallyWritten:
             ) as set_td,
             patch.object(rd, "get_approval", new=AsyncMock(return_value=None)),
         ):
-            merged = await rd._merge_resumed_result(
+            merged, _ = await rd._merge_resumed_result(
                 _run(RunKind.QUEUED, bot_message_id="orig-msg-1"),
                 bot_message,
                 [{"tool_name": "new_tool", "data": {}}],
@@ -1717,7 +1689,7 @@ class TestDeferredFollowUpPush:
     """Follow-ups are generated AFTER the answer ships, so the spinner clears first and they arrive as a second push."""
 
     async def _push(self, *, generated, persisted=True):
-        bot_message = MessageModel(type="bot", response="answered", date="2026-01-01")
+        bot_message = ConversationEntry(seq=5, type="bot", response="answered", date="2026-01-01")
         bot_message.message_id = "msg-1"
         with (
             patch.object(rd, "_build_follow_up_actions", new=AsyncMock(return_value=generated)),
@@ -1819,7 +1791,7 @@ class TestFailurePathsAreDiagnosable:
         assert kwargs == {"conversation_id": "conv-1", "message_id": "orig-msg-1"}
 
     async def test_a_response_write_that_matched_nothing_names_the_message(self) -> None:
-        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        existing = ConversationEntry(seq=4, type="bot", response="old", date="2026-01-01")
 
         log = await self._merge_with_log(existing=existing, set_response=False)
 
@@ -1827,7 +1799,7 @@ class TestFailurePathsAreDiagnosable:
         assert kwargs == {"conversation_id": "conv-1", "message_id": "orig-msg-1"}
 
     async def test_a_dropped_card_write_names_the_message(self) -> None:
-        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        existing = ConversationEntry(seq=4, type="bot", response="old", date="2026-01-01")
 
         log = await self._merge_with_log(existing=existing, set_tool_data=False)
 
@@ -2056,7 +2028,7 @@ class TestAttachReplyQuoteLookup:
     """
 
     async def _attach(self, run: ExecutorRun, *, is_hil_resume: bool = False):
-        bot_message = MessageModel(type="bot", response="voiced", date="2026-01-01")
+        bot_message = ConversationEntry(seq=5, type="bot", response="voiced", date="2026-01-01")
         with patch.object(
             conversation_repository,
             "get_message",
@@ -2108,7 +2080,9 @@ class TestBroadcastPayloadIsWhatTheClientUpserts:
     """The WebSocket message body, whole: the client upserts on these exact keys, so a renamed one silently never shows."""
 
     async def _broadcast(self, target: rd._DeliveryTarget):
-        bot_message = MessageModel(type="bot", response="voiced", date="2026-01-01T00:00:00+00:00")
+        bot_message = ConversationEntry(
+            seq=5, type="bot", response="voiced", date="2026-01-01T00:00:00+00:00"
+        )
         bot_message.message_id = "msg-1"
         with patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws:
             await rd._broadcast_bot_message(
@@ -2127,6 +2101,7 @@ class TestBroadcastPayloadIsWhatTheClientUpserts:
             "type": "bot",
             "response": "voiced",
             "message_id": "msg-1",
+            "seq": 5,
             "date": "2026-01-01T00:00:00+00:00",
             "kind": "text",
             "task_id": "task-7",
@@ -2144,6 +2119,7 @@ class TestBroadcastPayloadIsWhatTheClientUpserts:
             "type": "bot",
             "response": "voiced",
             "message_id": "msg-1",
+            "seq": 5,
             "date": "2026-01-01T00:00:00+00:00",
             "kind": "text",
         }
@@ -2163,7 +2139,7 @@ class TestSpawnDeferredFollowUps:
             captured.update(kwargs)
 
         spawned: list = []
-        bot_message = MessageModel(type="bot", response="voiced", date="2026-01-01")
+        bot_message = ConversationEntry(seq=5, type="bot", response="voiced", date="2026-01-01")
 
         with (
             patch.object(rd, "_generate_and_push_follow_ups", new=_record),

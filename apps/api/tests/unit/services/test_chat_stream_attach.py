@@ -266,6 +266,7 @@ class TestResolvePendingApprovalTurnApproves:
         with (
             patch.object(chat_stream, "stream_manager") as sm,
             patch.object(chat_stream, "_persist_turn", new_callable=AsyncMock),
+            patch.object(chat_stream, "open_bot_reply", new=AsyncMock(return_value=2)),
             patch.object(chat_stream, "resolve_pending_from_message", new=classifier),
         ):
             sm.publish_chunk = AsyncMock()
@@ -427,6 +428,7 @@ class TestConsumeAgentStreamAccumulatesAcrossChunks:
         with (
             patch.object(chat_stream, "call_agent", fake_call_agent),
             patch.object(chat_stream, "stream_manager", sm),
+            patch.object(chat_stream, "open_bot_reply", new=AsyncMock(return_value=2)),
             patch("app.services.chat.chunks.stream_manager", sm),
             patch("app.utils.stream_publishers.stream_manager", sm),
         ):

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { create } from "zustand";
 import type { IConversation, IMessage } from "@/lib/db/chatDb";
 import { db, dbEventEmitter } from "@/lib/db/chatDb";
+import { compareMessageOrder } from "@/lib/db/messageOrder";
 import type {
   ReplyToMessageData,
   SelectedCalendarEventData,
@@ -126,18 +127,13 @@ export const useChatStore = create<ChatState>((set) => ({
         (existing) => existing.id === message.id,
       );
 
-      let updatedMessages =
+      const updatedMessages = (
         index === -1
           ? [...existingMessages, message]
           : existingMessages.map((existing) =>
               existing.id === message.id ? message : existing,
-            );
-
-      // Sort by createdAt to ensure correct chronological order
-      // This is critical: events may arrive out of order (bot before user)
-      updatedMessages = updatedMessages.toSorted(
-        (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-      );
+            )
+      ).toSorted(compareMessageOrder);
 
       return {
         messagesByConversation: {
@@ -156,20 +152,24 @@ export const useChatStore = create<ChatState>((set) => ({
         (existing) => existing.id === message.id,
       );
 
-      // Not present yet — fall back to the sorted insert path.
-      if (index === -1) {
-        const inserted = [...existingMessages, message].toSorted(
-          (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-        );
+      // Not present yet, or its place changed (its seq arrived): sorted insert.
+      if (
+        index === -1 ||
+        compareMessageOrder(existingMessages[index], message) !== 0
+      ) {
+        const placed = [
+          ...existingMessages.filter((existing) => existing.id !== message.id),
+          message,
+        ].toSorted(compareMessageOrder);
         return {
           messagesByConversation: {
             ...state.messagesByConversation,
-            [conversationId]: inserted,
+            [conversationId]: placed,
           },
         };
       }
 
-      // Same id, same createdAt — position is stable, skip the re-sort.
+      // Same place in the order — keep the array position, skip the re-sort.
       const updated = existingMessages.slice();
       updated[index] = message;
       return {
@@ -374,10 +374,7 @@ export const useChatStoreSync = () => {
         }
       }
 
-      // Sort by createdAt to ensure correct order
-      updatedMessages = updatedMessages.toSorted(
-        (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-      );
+      updatedMessages = updatedMessages.toSorted(compareMessageOrder);
 
       state.setMessagesForConversation(
         newMessage.conversationId,

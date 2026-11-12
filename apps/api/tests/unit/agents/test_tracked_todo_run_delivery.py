@@ -52,6 +52,7 @@ from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent, TodoWakeKind
 from app.models.chat_models import ConversationSource
+from app.models.conversation_models import UpdateMessagesResponse
 from app.models.todo_models import TodoDocument
 from app.models.todo_wake_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser
@@ -121,7 +122,15 @@ def _seams(
         send=AsyncMock(return_value=ConversationSource.TELEGRAM),
         activity=AsyncMock(return_value=True),
         capture=MagicMock(),
-        save_to_conversation=AsyncMock(),
+        save_to_conversation=AsyncMock(
+            return_value=UpdateMessagesResponse(
+                conversation_id="chat",
+                message="Messages updated",
+                modified_count=1,
+                message_ids=["saved"],
+                message_seqs=[1],
+            )
+        ),
         execute=AsyncMock(return_value=executor or _ExecutorResult(EXECUTOR_REPORT, "final")),
         lock=AsyncMock(return_value=True),
         spawn=MagicMock(side_effect=spawn_background_task),
@@ -262,10 +271,6 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         assert (message.type, message.response, message.error) == ("bot", EXECUTOR_REPORT, None)
         # Under the placeholder id the live stream rendered into, so it replaces it.
         assert message.message_id == run.task_id
-        # Every run adds one, so the chat is capped at its newest messages.
-        assert seams.save_to_conversation.await_args.kwargs["max_messages"] == (
-            todo_constants.TODO_CONVERSATION_MAX_MESSAGES
-        )
         user_id, event = broadcast.await_args.args
         assert user_id == USER.user_id
         assert event["type"] == "conversation.new_message"

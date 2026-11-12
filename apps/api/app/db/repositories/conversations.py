@@ -1,37 +1,59 @@
-"""Repository for the conversations collection (the chat hot path).
+"""Repository for a conversation's head (the conversations collection) and its entry log (conversation_entries).
 
 Identity is the business key conversation_id scoped to user_id, never Mongo's
-ObjectId _id. Most writes are array mutations via the raw-update seam.
+ObjectId _id. Messages are entries, one document each, ordered by a seq that
+only one conditional head write allocates (append). A committed entry sits in
+the head's outbox until a flush copies it into conversation_entries; every
+message read unions the two through _read_entries, head first.
 
-Caching is disabled (cache_policy = None): a conversation document carries its
-full message history (up to MongoDB's 16MB limit) and is written on every chat
-turn, so an entity/query cache would store megabytes and bump constantly. The
-no-op generation bumps below let a policy be enabled later with no call-site
-changes.
-
-createdAt (ISO string) and updatedAt (BSON date, via $currentDate) are a
-legacy camelCase pair; each mutating method that must advance the sync clock
-bumps updatedAt explicitly.
+Caching is disabled (cache_policy = None). createdAt (ISO string) and
+updatedAt (BSON date) are a legacy camelCase pair; each mutating method that
+must advance the sync clock bumps updatedAt explicitly.
 """
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import ClassVar
+import random
+from typing import Any, ClassVar
 
 from bson import ObjectId
-from pymongo.errors import DuplicateKeyError
+from motor.motor_asyncio import AsyncIOMotorCollection
+from pymongo.errors import BulkWriteError, DuplicateKeyError
 
 from app.constants.chat import (
-    CONVERSATION_MAX_RETAINED_PINS,
+    CONVERSATION_APPEND_JITTER_SECONDS,
+    CONVERSATION_APPEND_MAX_ATTEMPTS,
+    CONVERSATION_ENTRIES_COLLECTION,
     FOLDED_CARDS_FIELD,
-    FOLDED_CARDS_KEEP_SECONDS,
     SUBAGENT_GROUP_TOOL_NAME,
     USER_MESSAGE_TYPE,
 )
 from app.db.repositories.base import UserScopedRepository
 from app.db.repositories.cache import CachePolicy
+from app.db.repositories.conversation_entries import (
+    DROP_EMBEDDED_STAGE,
+    EMBEDDED_STATE_STAGE,
+    LOG_HEAD_FIELD,
+    MIGRATED_LAST_ID_FIELD,
+    OUTBOX_FIELD,
+    UNMIGRATED_HEADS,
+    EntryWindow,
+    Head,
+    absorbing,
+    at_log_head,
+    entry_from_raw,
+    filled,
+    head_fields,
+    head_from_raw,
+    parked,
+    still_waiting,
+    store_errors,
+    stored_message,
+    unmigrated,
+)
 from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
@@ -43,19 +65,27 @@ from app.models.chat_models import (
     ToolDataEntry,
 )
 from app.models.conversation_models import (
+    ConversationDescriptionHit,
     ConversationDocument,
+    ConversationEntry,
     ConversationMessageHit,
     ConversationSearchResults,
     ConversationSummary,
     ConversationUpdate,
     _ConversationIdRow,
     _ConversationOwnerRow,
-    _MessageProjectionRow,
     _SourceRow,
     _SystemGeneratedRow,
     _TodoBindingRow,
 )
+from app.utils.errors import (
+    ConversationNotFoundError,
+    ConversationStoreError,
+)
+from shared.py.wide_events import spawn_logged_task
 
+_DUPLICATE_KEY = 11000
+_JITTER = random.SystemRandom()
 _BOT_SOURCE_VALUES: list[str] = [s.value for s in BOT_CONVERSATION_SOURCES]
 _SUMMARY_PROJECTION: dict[str, object] = {
     "_id": 0,
@@ -165,16 +195,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         own prompt), so system-generated conversations are excluded — the
         signal is a human typing, not an automation running.
         """
-        return (
-            await self._count(
-                {
-                    "user_id": user_id,
-                    "is_system_generated": {"$ne": True},
-                    "messages.type": USER_MESSAGE_TYPE,
-                }
-            )
-            > 0
+        sent = await self._find_entries(
+            user_id, {"type": USER_MESSAGE_TYPE}, excluding={"is_system_generated": True}, limit=1
         )
+        return bool(sent)
 
     async def owned_ids(self, user_id: str, conversation_ids: Sequence[str]) -> set[str]:
         """Which of these conversation ids the user owns."""
@@ -274,88 +298,90 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return matched > 0
 
-    # ---- message-array writes ----
+    # ---- the entry log: append, flush, read ----
+
+    async def append(
+        self, conversation_id: str, *, user_id: str, entries: Sequence[MessageModel]
+    ) -> list[int]:
+        """Commit entries at consecutive seqs in one conditional head write, returning each one's seq.
+
+        All or none. An id already committed is not appended again; its seq is returned.
+        Raises ConversationNotFoundError for a missing conversation, writing nothing.
+        """
+        batch: dict[str, dict[str, object]] = {}
+        for message in entries:
+            if message.message_id is None:
+                raise ValueError("an appended entry carries its producer-minted id")
+            batch.setdefault(message.message_id, stored_message(message))
+        ids = [str(message.message_id) for message in entries]
+        for _ in range(CONVERSATION_APPEND_MAX_ATTEMPTS):
+            head = await self._read_head_for_append(conversation_id, user_id, list(batch))
+            if head is None:
+                raise ConversationNotFoundError(
+                    message=f"conversation {conversation_id} does not exist for this user",
+                    meta={"conversation_id": conversation_id},
+                )
+            known = head.known_seqs()
+            fresh = [(entry_id, data) for entry_id, data in batch.items() if entry_id not in known]
+            if not fresh:
+                if head.outbox:
+                    self._spawn_flush(conversation_id, user_id)
+                return [known[entry_id] for entry_id in ids]
+            seqs = {entry_id: head.log_head + n for n, (entry_id, _) in enumerate(fresh, 1)}
+            if await self._commit(conversation_id, user_id, head.log_head, fresh, seqs):
+                self._spawn_flush(conversation_id, user_id)
+                return [known.get(entry_id) or seqs[entry_id] for entry_id in ids]
+            await asyncio.sleep(_JITTER.uniform(0, CONVERSATION_APPEND_JITTER_SECONDS))
+        raise ConversationStoreError(
+            message=f"append to conversation {conversation_id} lost every conditional write",
+            why=f"the head moved under each of {CONVERSATION_APPEND_MAX_ATTEMPTS} attempts",
+            meta={"conversation_id": conversation_id},
+        )
+
+    async def flush_outbox(self, conversation_id: str, *, user_id: str) -> None:
+        """Copy every outbox entry into conversation_entries, then drop it from the head: insert first, always."""
+        # Reads only the outbox: what is committed is flushed whatever the embedded array holds.
+        with store_errors("flush"):
+            raw = await self._raw_collection().find_one(
+                {"conversation_id": conversation_id, "user_id": user_id}, {OUTBOX_FIELD: 1}
+            )
+        outbox = head_from_raw({OUTBOX_FIELD: (raw or {}).get(OUTBOX_FIELD)}).outbox
+        if not outbox:
+            return
+        with store_errors("flush"):
+            await self._insert_entries([dict(entry) for entry in outbox.values()])
+            unset = await self._raw_collection().update_one(
+                {"conversation_id": conversation_id, "user_id": user_id},
+                {"$unset": {f"{OUTBOX_FIELD}.{seq}": "" for seq in outbox}},
+            )
+            if not unset.matched_count:
+                # The conversation was deleted while this flush ran: take back what it inserted.
+                await self._entries().delete_many(
+                    {
+                        "user_id": user_id,
+                        "conversation_id": conversation_id,
+                        "seq": {"$in": list(outbox)},
+                    }
+                )
 
     async def append_messages(
-        self,
-        conversation_id: str,
-        *,
-        user_id: str,
-        messages: list[MessageModel],
-        max_messages: int | None = None,
-    ) -> list[str] | None:
-        """Append messages to a conversation, returning their ids (None if it does not exist).
+        self, conversation_id: str, *, user_id: str, messages: Sequence[MessageModel]
+    ) -> dict[str, int] | None:
+        """Append messages to a conversation, returning each id's seq in order (None if it does not exist).
 
-        One atomic update: each message takes the folded cards waiting for its id
-        into its tool_data, and those (and any a day stale) leave the waiting room.
-        max_messages caps stored history so per-workflow threads stay under 16MB;
-        pinned messages outlive the cap, up to CONVERSATION_MAX_RETAINED_PINS.
+        Each message takes the folded cards waiting for its id in the same commit.
         """
-        stored: list[dict[str, object]] = []
-        message_ids: list[str] = []
-        for message in messages:
-            data = {k: v for k, v in message.model_dump().items() if v is not None}
-            message_id = message.message_id if message.message_id is not None else str(ObjectId())
-            data["message_id"] = message_id
-            message_ids.append(message_id)
-            stored.append(_absorbing(message_id, data))
-
-        appended: dict[str, object] = {"$concatArrays": [{"$ifNull": ["$messages", []]}, stored]}
-        history = appended
-        if max_messages is not None:
-            # A pinned message is context the user chose to keep: trimming past
-            # it would delete the pin as a side effect of a length cap.
-            history = {
-                "$let": {
-                    "vars": {
-                        "cut": {
-                            "$max": [
-                                0,
-                                {"$subtract": [{"$size": appended}, max_messages]},
-                            ]
-                        }
-                    },
-                    "in": {
-                        "$cond": [
-                            {"$eq": ["$$cut", 0]},
-                            appended,
-                            {
-                                "$concatArrays": [
-                                    {
-                                        "$slice": [
-                                            {
-                                                "$filter": {
-                                                    "input": {"$slice": [appended, 0, "$$cut"]},
-                                                    "as": "message",
-                                                    "cond": {"$eq": ["$$message.pinned", True]},
-                                                }
-                                            },
-                                            -CONVERSATION_MAX_RETAINED_PINS,
-                                        ]
-                                    },
-                                    {"$slice": [appended, -max_messages]},
-                                ]
-                            },
-                        ]
-                    },
-                }
-            }
-        matched = await self._apply_pipeline_update_unfetched(
-            {"conversation_id": conversation_id},
-            [
-                {
-                    "$set": {
-                        "messages": history,
-                        "updatedAt": "$$NOW",
-                        FOLDED_CARDS_FIELD: _still_waiting(message_ids),
-                    }
-                }
-            ],
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
-        )
-        return message_ids if matched > 0 else None
+        stamped = [
+            message
+            if message.message_id is not None
+            else message.model_copy(update={"message_id": str(ObjectId())})
+            for message in messages
+        ]
+        try:
+            seqs = await self.append(conversation_id, user_id=user_id, entries=stamped)
+        except ConversationNotFoundError:
+            return None
+        return {str(message.message_id): seq for message, seq in zip(stamped, seqs, strict=True)}
 
     async def park_folded_cards(
         self,
@@ -367,66 +393,38 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     ) -> bool:
         """Leave cards for message_id until its save absorbs them; False once it is saved.
 
-        Matches only while the message is absent, in one atomic update, so a card
-        parked here is always taken by the append that saves the message.
+        Parks only at the log_head its read saw, so no commit of the message slips between.
         """
-        waiting = _waiting_for(message_id)
-        matched = await self._apply_pipeline_update_unfetched(
-            {"conversation_id": conversation_id, "messages.message_id": {"$ne": message_id}},
-            [
-                {
-                    "$set": {
-                        FOLDED_CARDS_FIELD: {
-                            "$setField": {
-                                "field": {"$literal": message_id},
-                                "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
-                                "value": {
-                                    "since": {
-                                        "$ifNull": [
-                                            {"$getField": {"field": "since", "input": waiting}},
-                                            "$$NOW",
-                                        ]
-                                    },
-                                    "cards": {
-                                        "$concatArrays": [
-                                            {
-                                                "$ifNull": [
-                                                    {
-                                                        "$getField": {
-                                                            "field": "cards",
-                                                            "input": waiting,
-                                                        }
-                                                    },
-                                                    [],
-                                                ]
-                                            },
-                                            {"$literal": [dict(entry) for entry in entries]},
-                                        ]
-                                    },
-                                },
-                            }
-                        }
-                    }
-                }
-            ],
-            # The waiting room is write-side only: no cached read shows it.
-            scope=None,
-            extra_filter={"user_id": user_id},
+        for _ in range(CONVERSATION_APPEND_MAX_ATTEMPTS):
+            head = await self._read_head_for_append(conversation_id, user_id, [message_id])
+            if head is None or message_id in head.known_seqs():
+                return False
+            with store_errors("park folded cards"):
+                matched = await self._apply_pipeline_update_unfetched(
+                    {"conversation_id": conversation_id, **at_log_head(head.log_head)},
+                    [{"$set": {FOLDED_CARDS_FIELD: parked(message_id, entries)}}],
+                    # The waiting room is write-side only: no cached read shows it.
+                    scope=None,
+                    extra_filter={"user_id": user_id},
+                )
+            if matched:
+                return True
+            await asyncio.sleep(_JITTER.uniform(0, CONVERSATION_APPEND_JITTER_SECONDS))
+        raise ConversationStoreError(
+            message=f"parking cards on conversation {conversation_id} lost every conditional write",
+            meta={"conversation_id": conversation_id},
         )
-        return matched > 0
 
     async def set_message_pinned(
         self, conversation_id: str, *, user_id: str, message_id: str, pinned: bool
     ) -> bool:
-        """Set one message's pinned flag (positional update into the messages array)."""
-        matched = await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id, "messages.message_id": message_id},
-            {"$set": {"messages.$.pinned": pinned}, "$currentDate": {"updatedAt": True}},
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
-        )
-        return matched > 0
+        """Set one message's pinned flag and advance the conversation's updatedAt."""
+        if not await self._update_entry(
+            conversation_id, user_id, {"id": message_id}, {"$set": {"pinned": pinned}}
+        ):
+            return False
+        await self._set_fields(conversation_id, user_id, {})
+        return True
 
     async def update_artifact(
         self, conversation_id: str, *, user_id: str, path: str, fields: Mapping[str, object]
@@ -486,26 +484,22 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         entries: Sequence[Mapping[str, object]],
     ) -> bool:
         """Append tool-data entries onto one message; does not advance updatedAt."""
-        matched = await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id, "messages.message_id": message_id},
-            {"$push": {"messages.$.tool_data": {"$each": entries}}},
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
+        return await self._update_entry(
+            conversation_id,
+            user_id,
+            {"id": message_id},
+            {"$push": {"tool_data": {"$each": [dict(entry) for entry in entries]}}},
         )
-        return matched > 0
 
     async def extend_subagent_group(
         self, conversation_id: str, *, user_id: str, message_id: str, group: SavedSubagentGroup
     ) -> bool:
         """Append calls to one saved subagent group in place and stamp its end; False when absent."""
-        path = "messages.$[msg].tool_data.$[group].data"
-        matched = await self._apply_raw_update_unfetched(
-            {
-                "conversation_id": conversation_id,
-                "messages.message_id": message_id,
-                "messages.tool_data.data.subagent_id": group.subagent_id,
-            },
+        path = "tool_data.$[group].data"
+        return await self._update_entry(
+            conversation_id,
+            user_id,
+            {"id": message_id, "tool_data.data.subagent_id": group.subagent_id},
             {
                 "$push": {f"{path}.tool_calls": {"$each": group.tool_calls}},
                 "$set": {
@@ -513,105 +507,135 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     f"{path}.duration_ms": group.duration_ms,
                 },
             },
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
             array_filters=[
-                {"msg.message_id": message_id},
                 {
                     "group.tool_name": SUBAGENT_GROUP_TOOL_NAME,
                     "group.data.subagent_id": group.subagent_id,
-                },
+                }
             ],
         )
-        return matched > 0
+
+    async def fill_message(
+        self, conversation_id: str, *, user_id: str, message: MessageModel
+    ) -> bool:
+        """Replace an opened entry's content with message in place, keeping its seq; False when absent.
+
+        Cards folded into the entry since it was opened stay, after message's own.
+        """
+        return await self._update_entry(
+            conversation_id, user_id, {"id": message.message_id}, filled(message)
+        )
+
+    async def fail_unfinished_replies(
+        self, *, opened_before: datetime, error: str, owners: set[tuple[str, str]]
+    ) -> int:
+        """Settle the replies in progress since before opened_before in owners' conversations as failed with error.
+
+        owners holds (user_id, conversation_id) pairs. Intentionally unscoped (a maintenance sweep).
+        """
+        if not owners:
+            return 0
+        with store_errors("unfinished reply sweep"):
+            result = await self._entries().update_many(
+                {
+                    "in_progress": True,
+                    "at": {"$lt": opened_before},
+                    "$or": [
+                        {"user_id": user_id, "conversation_id": conversation_id}
+                        for user_id, conversation_id in sorted(owners)
+                    ],
+                },
+                {"$set": {"error": error}, "$unset": {"in_progress": ""}},
+            )
+        return result.modified_count
+
+    async def list_unfinished_reply_owners(
+        self, *, opened_before: datetime
+    ) -> set[tuple[str, str]]:
+        """Return the (user_id, conversation_id) of every reply in progress since before opened_before.
+
+        Intentionally unscoped (a maintenance sweep).
+        """
+        with store_errors("unfinished reply sweep"):
+            rows = await (
+                self._entries()
+                .find(
+                    {"in_progress": True, "at": {"$lt": opened_before}},
+                    {"_id": 0, "user_id": 1, "conversation_id": 1},
+                )
+                .to_list(length=None)
+            )
+        return {(str(row["user_id"]), str(row["conversation_id"])) for row in rows}
 
     async def set_message_response(
         self, conversation_id: str, *, user_id: str, message_id: str, response: str
     ) -> bool:
         """Set a message's response text in place; does not advance updatedAt."""
-        matched = await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id, "messages.message_id": message_id},
-            {"$set": {"messages.$.response": response}},
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
+        return await self._update_entry(
+            conversation_id, user_id, {"id": message_id}, {"$set": {"response": response}}
         )
-        return matched > 0
 
     async def set_message_tool_data(
         self, conversation_id: str, *, user_id: str, message_id: str, entries: list[ToolDataEntry]
     ) -> bool:
         """Replace a message's tool_data wholesale; does not advance updatedAt."""
-        matched = await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id, "messages.message_id": message_id},
-            {"$set": {"messages.$.tool_data": entries}},
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
+        return await self._update_entry(
+            conversation_id,
+            user_id,
+            {"id": message_id},
+            {"$set": {"tool_data": [dict(entry) for entry in entries]}},
         )
-        return matched > 0
 
     async def set_message_approval_status(
         self, conversation_id: str, *, user_id: str, approval_id: str, status: str
     ) -> bool:
-        """Settle a persisted approval_request frame's status wherever it lives in the messages array.
+        """Settle a persisted approval_request frame's status on every message holding it.
 
         Returns whether the frame was there to settle. Does not advance updatedAt.
         """
-        update: dict[str, object] = {"messages.$[msg].tool_data.$[entry].data.status": status}
-        matched = await self._apply_raw_update_unfetched(
-            # The approval must also be in the match: array filters alone pick which
-            # element to write but don't narrow `matched`, so matching on the
-            # conversation alone reported success for any approval_id never held.
-            {
-                "conversation_id": conversation_id,
-                "messages.tool_data.data.approval_id": approval_id,
-            },
-            {"$set": update},
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
-            # Filter BOTH levels: `messages.$[]` would require tool_data on every
-            # message (user messages have none) and Mongo rejects the whole update.
-            array_filters=[
-                {"msg.tool_data": {"$elemMatch": {"data.approval_id": approval_id}}},
-                {"entry.data.approval_id": approval_id},
-            ],
+        return await self._update_entry(
+            conversation_id,
+            user_id,
+            {"tool_data.data.approval_id": approval_id},
+            {"$set": {"tool_data.$[entry].data.status": status}},
+            array_filters=[{"entry.data.approval_id": approval_id}],
+            every_match=True,
         )
-        return matched > 0
 
     async def set_message_follow_up_actions(
         self, conversation_id: str, *, user_id: str, message_id: str, actions: list[str]
     ) -> bool:
         """Set a message's follow-up actions; does not advance updatedAt."""
-        matched = await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id, "messages.message_id": message_id},
-            {"$set": {"messages.$.follow_up_actions": actions}},
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
+        return await self._update_entry(
+            conversation_id, user_id, {"id": message_id}, {"$set": {"follow_up_actions": actions}}
         )
-        return matched > 0
 
     # ---- targeted / projected reads ----
 
+    async def get(self, doc_id: str, *, user_id: str) -> ConversationDocument | None:
+        """Read the conversation with its full message history, oldest first."""
+        heads = await self._read_heads({"conversation_id": doc_id, "user_id": user_id})
+        if not heads:
+            return None
+        [(head, entries)] = await self._entries_for(heads)
+        return self._with_messages(head, entries)
+
     async def get_message(
         self, conversation_id: str, message_id: str, *, user_id: str
-    ) -> MessageModel | None:
-        """Read one embedded message by id via a positional projection, without loading the whole array."""
-        row = await self._find_one_projected(
-            {
-                "conversation_id": conversation_id,
-                "user_id": user_id,
-                "messages.message_id": message_id,
-            },
-            {"messages.$": 1},
-            _MessageProjectionRow,
+    ) -> ConversationEntry | None:
+        """Read one message by id, without reading the rest of the conversation."""
+        entries = await self._read_entries(
+            conversation_id, user_id=user_id, window=EntryWindow(ids=[message_id])
         )
-        if row is None or not row.messages:
-            return None
-        return row.messages[0]
+        return entries[0] if entries else None
+
+    async def list_recent_messages(
+        self, conversation_id: str, *, user_id: str, limit: int
+    ) -> list[ConversationEntry]:
+        """Return the conversation's newest limit messages, oldest first; empty when it does not exist."""
+        return await self._read_entries(
+            conversation_id, user_id=user_id, window=EntryWindow(limit=limit)
+        )
 
     async def get_source(self, conversation_id: str, *, user_id: str) -> ConversationSource | None:
         """Return the conversation's source enum, or None when it doesn't exist."""
@@ -661,32 +685,29 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         self, user_id: str, message_id: str, *, message_type: str = "bot"
     ) -> str | None:
         """Return the conversation id owning a message of message_type with this id."""
+        found = await self._find_entries(user_id, {"id": message_id, "type": message_type}, limit=1)
+        return found[0][0] if found else None
+
+    async def find_workflow_conversation_id(self, user_id: str, workflow_id: str) -> str | None:
+        """Return the id of the system-generated conversation a workflow's runs execute in."""
         row = await self._find_one_projected(
             {
                 "user_id": user_id,
-                "messages": {"$elemMatch": {"message_id": message_id, "type": message_type}},
+                "is_system_generated": True,
+                "system_purpose": SystemPurpose.WORKFLOW_EXECUTION.value,
+                "metadata.workflow_id": workflow_id,
             },
             {"_id": 0, "conversation_id": 1},
             _ConversationIdRow,
         )
         return None if row is None else row.conversation_id
 
-    async def find_workflow_conversation(
-        self, user_id: str, workflow_id: str
-    ) -> ConversationDocument | None:
-        """Return the system-generated conversation bound to a workflow execution."""
-        return await self._find_one(
-            {
-                "user_id": user_id,
-                "is_system_generated": True,
-                "system_purpose": SystemPurpose.WORKFLOW_EXECUTION.value,
-                "metadata.workflow_id": workflow_id,
-            }
-        )
-
     async def recent_for_user(self, user_id: str, *, limit: int) -> list[ConversationDocument]:
-        """Return the user's most recent conversations."""
-        return await self._find({"user_id": user_id}, sort=[("createdAt", -1)], limit=limit)
+        """Return the user's most recent conversations, each with its full message history."""
+        heads = await self._read_heads({"user_id": user_id}, sort={"createdAt": -1}, limit=limit)
+        return [
+            self._with_messages(head, entries) for head, entries in await self._entries_for(heads)
+        ]
 
     async def find_todo_conversation_id(self, user_id: str, todo_id: str) -> str | None:
         """Return the id of the chat bound to a tracked todo, or None before its first open or run."""
@@ -708,6 +729,17 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return None if row is None else row.todo_id
 
+    async def create(self, doc: ConversationDocument) -> ConversationDocument:
+        """Insert the conversation's head at an empty log; messages are appended separately."""
+        head = doc.model_dump(exclude={"id", "messages"}, exclude_none=True)
+        head[LOG_HEAD_FIELD] = 0
+        await self._raw_collection().insert_one(head)
+        await self._invalidate(doc.user_id)
+        created = await self.get(doc.conversation_id, user_id=doc.user_id)
+        if created is None:
+            raise ConversationStoreError(message="inserted conversation could not be read back")
+        return created
+
     async def try_create(self, doc: ConversationDocument) -> bool:
         """Insert the conversation; False when a unique index already holds its key.
 
@@ -720,13 +752,13 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             return False
         return True
 
+    async def delete(self, doc_id: str, *, user_id: str) -> bool:
+        """Delete the conversation and every one of its entries."""
+        return bool(await self._delete_conversations({"conversation_id": doc_id}, user_id))
+
     async def delete_for_todos(self, user_id: str, todo_ids: Sequence[str]) -> list[str]:
         """Delete the chats bound to these todos, returning their ids for checkpoint cleanup."""
-        query = _todo_chats(user_id, todo_ids)
-        ids = await self._distinct("conversation_id", query)
-        if ids:
-            await self._delete_many(query, scope=user_id)
-        return ids
+        return await self._delete_conversations(_todo_chats(user_id, todo_ids), user_id)
 
     async def retitle_todo_chats(
         self, user_id: str, todo_ids: Sequence[str], description: str
@@ -762,48 +794,43 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             conditions.append(condition)
         if not conditions:
             return []
-        return await self._find({"$or": conditions})
+        heads = await self._read_heads({"$or": conditions})
+        return [
+            self._with_messages(head, entries) for head, entries in await self._entries_for(heads)
+        ]
 
-    # ---- search / pinned aggregations ----
+    # ---- search / pinned ----
 
     async def list_pinned_messages(self, user_id: str) -> list[ConversationMessageHit]:
         """Every pinned message across the user's conversations."""
-        return await self._aggregate(
-            [
-                {"$match": {"user_id": user_id}},
-                {"$unwind": "$messages"},
-                {"$match": {"messages.pinned": True}},
-                {"$project": {"_id": 0, "conversation_id": 1, "message": "$messages"}},
-            ],
-            ConversationMessageHit,
-        )
+        return [
+            ConversationMessageHit(conversation_id=conversation_id, message=entry)
+            for conversation_id, entry in await self._find_entries(user_id, {"pinned": True})
+        ]
 
     async def search(self, user_id: str, *, pattern: str) -> ConversationSearchResults:
         """Regex search across message responses and conversation descriptions.
 
         pattern is treated as a literal — the caller passes an escaped query.
         """
-        rows = await self._aggregate(
+        regex = {"$regex": pattern, "$options": "i"}
+        # A tracked todo's chat is reached from its todo, never from search.
+        todo_chat = {"todo_id": {"$type": "string"}}
+        hits = await self._find_entries(user_id, {"response": regex}, excluding=todo_chat)
+        described = await self._aggregate(
             [
-                # A tracked todo's chat is reached from its todo, never from search.
-                {"$match": {"user_id": user_id, "todo_id": None}},
-                {
-                    "$facet": {
-                        "messages": [
-                            {"$unwind": "$messages"},
-                            {"$match": {"messages.response": {"$regex": pattern, "$options": "i"}}},
-                            {"$project": {"_id": 0, "conversation_id": 1, "message": "$messages"}},
-                        ],
-                        "conversations": [
-                            {"$match": {"description": {"$regex": pattern, "$options": "i"}}},
-                            {"$project": {"_id": 0, "conversation_id": 1, "description": 1}},
-                        ],
-                    }
-                },
+                {"$match": {"user_id": user_id, "todo_id": None, "description": regex}},
+                {"$project": {"_id": 0, "conversation_id": 1, "description": 1}},
             ],
-            ConversationSearchResults,
+            ConversationDescriptionHit,
         )
-        return rows[0] if rows else ConversationSearchResults()
+        return ConversationSearchResults(
+            messages=[
+                ConversationMessageHit(conversation_id=conversation_id, message=entry)
+                for conversation_id, entry in hits
+            ],
+            conversations=described,
+        )
 
     # ---- bulk deletes / maintenance sweeps ----
 
@@ -812,22 +839,15 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
         Callers use the ids to clean up the (non-user-scoped) checkpoint threads.
         """
-        ids = await self._distinct("conversation_id", {"user_id": user_id})
-        await self._delete_many({"user_id": user_id}, scope=user_id)
-        return ids
+        return await self._delete_conversations({}, user_id)
 
     async def delete_all_chats_for_user(self, user_id: str) -> list[str]:
         """Delete the user's chats, keeping each tracked todo's, which goes only with its todo."""
-        query = {"user_id": user_id, "todo_id": None}
-        ids = await self._distinct("conversation_id", query)
-        await self._delete_many(query, scope=user_id)
-        return ids
+        return await self._delete_conversations({"todo_id": None}, user_id)
 
     async def delete_onboarding_demos(self, user_id: str) -> int:
         """Delete the user's onboarding-demo conversations."""
-        return await self._delete_many(
-            {"user_id": user_id, "is_onboarding_demo": True}, scope=user_id
-        )
+        return len(await self._delete_conversations({"is_onboarding_demo": True}, user_id))
 
     async def all_conversation_ids(self) -> list[str]:
         """Every live conversation id across all users — the checkpoint orphan sweep's source of truth.
@@ -858,6 +878,291 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return await self._distinct("user_id", {"updatedAt": {"$gte": cutoff}})
 
     # ---- internal helpers ----
+
+    def _to_model(self, raw: Mapping[str, object]) -> ConversationDocument:
+        return super()._to_model(head_fields(raw))
+
+    def _entries(self) -> AsyncIOMotorCollection[dict[str, Any]]:
+        return self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
+
+    def _spawn_flush(self, conversation_id: str, user_id: str) -> None:
+        spawn_logged_task(
+            "conversation_flush",
+            self.flush_outbox(conversation_id, user_id=user_id),
+            conversation_id=conversation_id,
+        )
+
+    async def _read_heads(
+        self,
+        match: Mapping[str, object],
+        *,
+        sort: Mapping[str, int] | None = None,
+        limit: int = 0,
+    ) -> list[Head]:
+        """Read heads without their embedded arrays, refusing any the migration has not caught up with."""
+        pipeline: list[Mapping[str, object]] = [{"$match": dict(match)}]
+        if sort:
+            pipeline.append({"$sort": dict(sort)})
+        if limit:
+            pipeline.append({"$limit": limit})
+        pipeline += [EMBEDDED_STATE_STAGE, DROP_EMBEDDED_STAGE]
+        with store_errors("head read"):
+            raws = await self._raw_collection().aggregate(pipeline).to_list(length=None)
+        return [head_from_raw(raw) for raw in raws]
+
+    async def _read_head_for_append(
+        self, conversation_id: str, user_id: str, ids: Sequence[str]
+    ) -> Head | None:
+        """Read the head and which of ids the collection already holds, in one round trip, head first.
+
+        The $lookup runs after its head is read, so an entry flushed out of the outbox in
+        between is still seen in the collection.
+        """
+        pipeline: list[Mapping[str, object]] = [
+            {"$match": {"conversation_id": conversation_id, "user_id": user_id}},
+            EMBEDDED_STATE_STAGE,
+            {
+                "$project": {
+                    "conversation_id": 1,
+                    "user_id": 1,
+                    LOG_HEAD_FIELD: 1,
+                    OUTBOX_FIELD: 1,
+                    MIGRATED_LAST_ID_FIELD: 1,
+                    "_embedded": 1,
+                }
+            },
+            {
+                "$lookup": {
+                    "from": self._entries().name,
+                    "pipeline": [
+                        {
+                            "$match": {
+                                "user_id": user_id,
+                                "conversation_id": conversation_id,
+                                "id": {"$in": list(ids)},
+                            }
+                        },
+                        {"$project": {"_id": 0, "id": 1, "seq": 1}},
+                    ],
+                    "as": "existing",
+                }
+            },
+        ]
+        with store_errors("head read"):
+            raws = await self._raw_collection().aggregate(pipeline).to_list(length=1)
+        return head_from_raw(raws[0]) if raws else None
+
+    async def _commit(
+        self,
+        conversation_id: str,
+        user_id: str,
+        log_head: int,
+        fresh: Sequence[tuple[str, dict[str, object]]],
+        seqs: Mapping[str, int],
+    ) -> bool:
+        """Allocate seqs: the one conditional head write, absorbing each entry's folded cards with it."""
+        committed = {
+            str(seqs[entry_id]): absorbing(
+                entry_id,
+                {
+                    **data,
+                    "conversation_id": conversation_id,
+                    "user_id": user_id,
+                    "seq": seqs[entry_id],
+                },
+            )
+            for entry_id, data in fresh
+        }
+        with store_errors("append"):
+            matched = await self._apply_pipeline_update_unfetched(
+                {"conversation_id": conversation_id, **at_log_head(log_head)},
+                [
+                    {
+                        "$set": {
+                            LOG_HEAD_FIELD: log_head + len(fresh),
+                            OUTBOX_FIELD: {
+                                "$mergeObjects": [{"$ifNull": [f"${OUTBOX_FIELD}", {}]}, committed]
+                            },
+                            "updatedAt": "$$NOW",
+                            FOLDED_CARDS_FIELD: still_waiting(list(seqs)),
+                        }
+                    }
+                ],
+                scope=user_id,
+                doc_id=conversation_id,
+                extra_filter={"user_id": user_id},
+            )
+        return matched > 0
+
+    async def _insert_entries(self, entries: list[dict[str, object]]) -> None:
+        """Insert entries, treating one already at its seq as flushed; a second seq for one id is a bug."""
+        try:
+            await self._entries().insert_many(entries, ordered=False)
+        except BulkWriteError as exc:
+            conflicts = [
+                error
+                for error in exc.details.get("writeErrors", [])
+                if error.get("code") != _DUPLICATE_KEY or "seq" not in error.get("keyPattern", {})
+            ]
+            if conflicts:
+                raise ConversationStoreError(
+                    message="an outbox entry conflicts with a stored entry",
+                    why=str(conflicts[0].get("errmsg")),
+                    meta={"conflicts": len(conflicts)},
+                ) from exc
+
+    async def _read_entries(
+        self, conversation_id: str, *, user_id: str, window: EntryWindow | None = None
+    ) -> list[ConversationEntry]:
+        """Read a conversation's entries in window (all, oldest first, by default); empty when it does not exist."""
+        heads = await self._read_heads({"conversation_id": conversation_id, "user_id": user_id})
+        if not heads:
+            return []
+        [(_, entries)] = await self._entries_for(heads, window)
+        return entries
+
+    async def _entries_for(
+        self, heads: Sequence[Head], window: EntryWindow | None = None
+    ) -> list[tuple[Head, list[ConversationEntry]]]:
+        """Union each head's outbox with its collection entries, up to the log_head the head read saw."""
+        window = window or EntryWindow()
+        if not heads:
+            return []
+        clauses = [
+            {
+                "user_id": head.user_id,
+                "conversation_id": head.conversation_id,
+                "seq": window.seq_range(head.log_head),
+                **window.id_clause(),
+            }
+            for head in heads
+        ]
+        cursor = (
+            self._entries()
+            .find({"$or": clauses})
+            .sort([("seq", -1 if window.newest_first or window.limit else 1)])
+        )
+        if window.limit and len(heads) == 1:
+            cursor = cursor.limit(window.limit)
+        with store_errors("entry read"):
+            rows = await cursor.to_list(length=None)
+        stored: dict[tuple[str, str], dict[int, Mapping[str, object]]] = {}
+        for row in rows:
+            key = (str(row["user_id"]), str(row["conversation_id"]))
+            stored.setdefault(key, {})[int(row["seq"])] = row
+        result: list[tuple[Head, list[ConversationEntry]]] = []
+        for head in heads:
+            union = dict(stored.get((head.user_id, head.conversation_id), {}))
+            for seq, entry in head.outbox.items():
+                if window.admits(seq, str(entry["id"]), head.log_head):
+                    union.setdefault(seq, entry)
+            result.append((head, window.take(union)))
+        return result
+
+    async def _find_entries(
+        self,
+        user_id: str,
+        match: Mapping[str, object],
+        *,
+        excluding: Mapping[str, object] | None = None,
+        limit: int = 0,
+    ) -> list[tuple[str, ConversationEntry]]:
+        """Entries matching match across the user's conversations, outboxes first, then the collection.
+
+        excluding names the heads whose entries never count. Refuses a user with a
+        conversation the migration has not caught up with, rather than missing its messages.
+        """
+        with store_errors("entry search"):
+            if await self._count({"user_id": user_id, **UNMIGRATED_HEADS}):
+                raise unmigrated(f"user {user_id}")
+            pending = await (
+                self._raw_collection()
+                .aggregate(
+                    [
+                        {
+                            "$match": {
+                                "user_id": user_id,
+                                OUTBOX_FIELD: {"$exists": True, "$ne": {}},
+                                **({"$nor": [dict(excluding)]} if excluding else {}),
+                            }
+                        },
+                        {"$project": {"_id": 0, "entry": {"$objectToArray": f"${OUTBOX_FIELD}"}}},
+                        {"$unwind": "$entry"},
+                        {"$replaceRoot": {"newRoot": "$entry.v"}},
+                        {"$match": dict(match)},
+                    ]
+                )
+                .to_list(length=None)
+            )
+            skipped = (
+                await self._distinct("conversation_id", {"user_id": user_id, **excluding})
+                if excluding
+                else []
+            )
+            cursor = (
+                self._entries()
+                .find({"user_id": user_id, **match, "conversation_id": {"$nin": skipped}})
+                .sort([("at", 1), ("seq", 1)])
+            )
+            if limit:
+                cursor = cursor.limit(limit)
+            rows = await cursor.to_list(length=None)
+        found: dict[tuple[str, int], Mapping[str, object]] = {}
+        for row in [*pending, *rows]:
+            found.setdefault((str(row["conversation_id"]), int(row["seq"])), row)
+        ordered = sorted(found.values(), key=lambda row: (row["at"], row["seq"]))
+        hits = [(str(row["conversation_id"]), entry_from_raw(row)) for row in ordered]
+        return hits[:limit] if limit else hits
+
+    async def _update_entry(
+        self,
+        conversation_id: str,
+        user_id: str,
+        match: Mapping[str, object],
+        update: Mapping[str, object] | Sequence[Mapping[str, object]],
+        *,
+        array_filters: Sequence[Mapping[str, object]] | None = None,
+        every_match: bool = False,
+    ) -> bool:
+        """Update one stored entry (every matching one with every_match); an entry still in the outbox is flushed first.
+
+        Never writes inside the outbox: a miss flushes it and retries once.
+        """
+        query = {"user_id": user_id, "conversation_id": conversation_id, **match}
+        filters = [dict(f) for f in array_filters] if array_filters is not None else None
+        document: dict[str, object] | list[dict[str, object]] = (
+            dict(update) if isinstance(update, Mapping) else [dict(stage) for stage in update]
+        )
+        entries = self._entries()
+        for attempt in range(2):
+            with store_errors("entry update"):
+                if every_match:
+                    result = await entries.update_many(query, document, array_filters=filters)
+                else:
+                    result = await entries.update_one(query, document, array_filters=filters)
+            if result.matched_count:
+                return True
+            if attempt == 0:
+                await self.flush_outbox(conversation_id, user_id=user_id)
+        return False
+
+    async def _delete_conversations(self, match: Mapping[str, object], user_id: str) -> list[str]:
+        """Delete the user's conversations matching match and their entries, returning their ids."""
+        query = {"user_id": user_id, **match}
+        ids = await self._distinct("conversation_id", query)
+        if not ids:
+            return []
+        await self._delete_many(query, scope=user_id)
+        with store_errors("entry delete"):
+            await self._entries().delete_many({"user_id": user_id, "conversation_id": {"$in": ids}})
+        return ids
+
+    def _with_messages(
+        self, head: Head, entries: Sequence[ConversationEntry]
+    ) -> ConversationDocument:
+        doc = self._to_model(head.raw)
+        doc.messages = list(entries)
+        return doc
 
     def _listed(self) -> dict[str, object]:
         # Bot conversations live on their platform and a tracked todo's chat on its
@@ -890,9 +1195,12 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def _set_fields(
         self, conversation_id: str, user_id: str, fields: dict[str, object]
     ) -> bool:
+        update: dict[str, dict[str, object]] = {"$currentDate": {"updatedAt": True}}
+        if fields:
+            update["$set"] = fields
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id},
-            {"$set": fields, "$currentDate": {"updatedAt": True}},
+            update,
             scope=user_id,
             doc_id=conversation_id,
             extra_filter={"user_id": user_id},
@@ -910,70 +1218,3 @@ def _todo_binding(todo_id: str) -> dict[str, object]:
 
 def _todo_chats(user_id: str, todo_ids: Sequence[str]) -> dict[str, object]:
     return {"user_id": user_id, "todo_id": {"$in": list(todo_ids), "$type": "string"}}
-
-
-def _waiting_for(message_id: str) -> dict[str, object]:
-    """Read the waiting-room entry for message_id, taking the id as a literal, never a path."""
-    return {
-        "$getField": {
-            "field": {"$literal": message_id},
-            "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
-        }
-    }
-
-
-def _absorbing(message_id: str, message: Mapping[str, object]) -> dict[str, object]:
-    """Build the message as stored, with the cards waiting for its id after its own tool_data.
-
-    The message itself is a $literal, so text that starts with "$" is never read as a path.
-    """
-    waiting = {"$getField": {"field": "cards", "input": _waiting_for(message_id)}}
-    tool_data = {
-        "$concatArrays": [{"$ifNull": ["$$message.tool_data", []]}, {"$ifNull": [waiting, []]}]
-    }
-    return {
-        "$let": {
-            "vars": {"message": {"$literal": dict(message)}},
-            "in": {
-                "$mergeObjects": [
-                    "$$message",
-                    {"tool_data": {"$cond": [{"$eq": [tool_data, []]}, "$$REMOVE", tool_data]}},
-                ]
-            },
-        }
-    }
-
-
-def _still_waiting(saved_ids: list[str]) -> dict[str, object]:
-    """Keep the waiting room minus the cards these messages absorbed and any a day stale."""
-    kept = {
-        "$arrayToObject": {
-            "$filter": {
-                "input": {"$objectToArray": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]}},
-                "as": "waiting",
-                "cond": {
-                    "$and": [
-                        {"$not": [{"$in": ["$$waiting.k", {"$literal": saved_ids}]}]},
-                        {
-                            "$gt": [
-                                "$$waiting.v.since",
-                                {
-                                    "$dateSubtract": {
-                                        "startDate": "$$NOW",
-                                        "unit": "second",
-                                        "amount": FOLDED_CARDS_KEEP_SECONDS,
-                                    }
-                                },
-                            ]
-                        },
-                    ]
-                },
-            }
-        }
-    }
-    return {
-        "$let": {
-            "vars": {"kept": kept},
-            "in": {"$cond": [{"$eq": ["$$kept", {}]}, "$$REMOVE", "$$kept"]},
-        }
-    }
