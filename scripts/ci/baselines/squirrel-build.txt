@@ -2948,16 +2948,11 @@ score:URL Structure=93
 /marketplace/github	perf/dom-size/dom-total-nodes
 /marketplace/gmail	perf/dom-size/dom-max-children
 /marketplace/googlecalendar	content/keyword-stuffing/keyword-stuffing	calendar
-/marketplace/googlecalendar	content/placeholder-contact/placeholder-contact	email
 /marketplace/googledocs	content/keyword-stuffing/keyword-stuffing	document
-/marketplace/googledocs	content/placeholder-contact/placeholder-contact	email
 /marketplace/googledrive	content/keyword-stuffing/keyword-stuffing	file
 /marketplace/googledrive	perf/dom-size/dom-max-children
 /marketplace/googlemeet	content/keyword-stuffing/keyword-stuffing	conference
 /marketplace/googlesheets	content/keyword-stuffing/keyword-stuffing	spreadsheet
-/marketplace/googlesheets	content/placeholder-contact/placeholder-contact	email
-/marketplace/googlesheets	content/placeholder-contact/placeholder-contact	phone
-/marketplace/googlesheets	content/placeholder-text/placeholder-content	unrendered-template
 /marketplace/googletasks	content/keyword-stuffing/keyword-stuffing	list
 /marketplace/googletasks	content/keyword-stuffing/keyword-stuffing	task
 /marketplace/googletasks	content/keyword-stuffing/keyword-stuffing	tasks
@@ -2969,13 +2964,11 @@ score:URL Structure=93
 /marketplace/linear	content/keyword-stuffing/keyword-stuffing	issue
 /marketplace/manufact-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	server
 /marketplace/microsoft-teams	content/keyword-stuffing/keyword-stuffing	teams
-/marketplace/microsoft-teams	content/placeholder-contact/placeholder-contact	email
 /marketplace/open-web-search-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	search
 /marketplace/outlook	content/keyword-stuffing/keyword-stuffing	calendar
 /marketplace/outlook	content/keyword-stuffing/keyword-stuffing	folder
 /marketplace/outlook	content/keyword-stuffing/keyword-stuffing	use
 /marketplace/outlook	content/keyword-stuffing/keyword-stuffing	user
-/marketplace/outlook	content/placeholder-contact/placeholder-contact	email
 /marketplace/outlook	perf/dom-size/dom-max-children
 /marketplace/outlook	perf/dom-size/dom-total-nodes
 /marketplace/page/2	content/word-count/word-count
@@ -2988,10 +2981,6 @@ score:URL Structure=93
 /marketplace/prisma-mcp-developer	content/keyword-stuffing/keyword-stuffing	database
 /marketplace/prisma-mcp-developer	content/keyword-stuffing/keyword-stuffing	postgres
 /marketplace/prisma-mcp-developer	content/keyword-stuffing/keyword-stuffing	prisma
-/marketplace/pumpgtm-mcp-other	content/placeholder-text/placeholder-content	unrendered-template
-/marketplace/resend-mcp-communication	content/placeholder-contact/placeholder-contact	email
-/marketplace/resend-mcp-communication	content/placeholder-text/placeholder-content	js-artifact
-/marketplace/resend-mcp-communication	content/placeholder-text/placeholder-content	unrendered-template
 /marketplace/resend-mcp-communication	perf/dom-size/dom-max-children
 /marketplace/slack	perf/dom-size/dom-max-children
 /marketplace/todoist	content/keyword-stuffing/keyword-stuffing	need
@@ -3004,7 +2993,6 @@ score:URL Structure=93
 /marketplace/twitter	perf/dom-size/dom-max-children
 /marketplace/yelp	content/keyword-stuffing/keyword-stuffing	business
 /marketplace/zoom	content/keyword-stuffing/keyword-stuffing	meeting
-/marketplace/zoom	content/placeholder-contact/placeholder-contact	address
 /open-source-ai-assistant	perf/cache-headers/cache-control
 /pricing	perf/cache-headers/cache-control
 /privacy	perf/cache-headers/cache-control
