@@ -7,7 +7,7 @@
 // deferral Sentry alone causes ~630ms of long tasks (TBT) at page load.
 
 // Type-only import — zero runtime cost.
-import type * as SentryNs from "@sentry/nextjs";
+import type * as SentryNs from "@/lib/observability/sentryClient";
 import { DODO_RETURN_IDENTIFYING_PARAMS } from "@/features/pricing/lib/dodoReturnUrl";
 import {
   EXTENSION_URL_PATTERNS,
@@ -26,7 +26,7 @@ if (typeof window !== "undefined") {
     // Sentry (production only)
     if (process.env.NODE_ENV === "production") {
       try {
-        const Sentry = await import("@sentry/nextjs");
+        const Sentry = await import("@/lib/observability/sentryClient");
 
         Sentry.init({
           dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
