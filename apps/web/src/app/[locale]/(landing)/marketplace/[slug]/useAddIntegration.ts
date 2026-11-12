@@ -1,9 +1,7 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
-import { integrationKeys } from "@/features/integrations/api/queryKeys";
 import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
@@ -11,7 +9,6 @@ import { toast } from "@/lib/toast";
 
 export function useAddIntegration(integration: PublicIntegrationResponse) {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const [isAdding, setIsAdding] = useState(false);
   const [isAdded, setIsAdded] = useState(false);
   const { isAuthenticated, openLoginModal } = useAuth();
@@ -27,10 +24,10 @@ export function useAddIntegration(integration: PublicIntegrationResponse) {
 
   const bearer = useBearerTokenModal({
     connect: (id, token) => integrationsApi.addIntegration(id, token),
+    // No invalidate: the connect is broadcast, and /integrations?refresh=true re-reads.
     onConnected: () => {
       toast.success(`Successfully added ${integration.name}!`);
       setIsAdded(true);
-      queryClient.invalidateQueries({ queryKey: integrationKeys.all });
       goToIntegration();
     },
   });

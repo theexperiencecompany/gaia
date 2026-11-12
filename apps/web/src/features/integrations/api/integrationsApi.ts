@@ -2,7 +2,7 @@ import type {
   AddIntegrationResponse,
   UpdateIntegrationAccountRequest,
 } from "@shared/api/generated";
-import { api, type RequestOrigin } from "@/lib/api/typed";
+import { api } from "@/lib/api/typed";
 import { sanitizeRedirectUrl } from "@/lib/url-safety";
 
 import type {
@@ -38,24 +38,19 @@ export const integrationsApi = {
   getMyIntegrations: () => api.get("/api/v1/integrations/me"),
 
   /** Fast Mongo-backed catalog snapshot; status refresh is a separate request. */
-  getMyIntegrationsSnapshot: ({ background }: RequestOrigin = {}) =>
-    api.get("/api/v1/integrations/me/snapshot", { background }),
+  getMyIntegrationsSnapshot: () => api.get("/api/v1/integrations/me/snapshot"),
 
   /** Status refresh can be slow for legacy provider connections; keep it off the catalog request. */
-  getIntegrationStatuses: ({ background }: RequestOrigin = {}) =>
-    api.get("/api/v1/integrations/status", { silent: true, background }),
+  getIntegrationStatuses: () =>
+    api.get("/api/v1/integrations/status", { silent: true }),
 
   /**
    * Get the full tool list for a single integration, on demand.
    */
-  getIntegrationTools: (
-    integrationId: string,
-    { background }: RequestOrigin = {},
-  ) =>
+  getIntegrationTools: (integrationId: string) =>
     api.get("/api/v1/integrations/{integration_id}/tools", {
       path: { integration_id: integrationId },
       silent: true,
-      background,
     }),
 
   /**

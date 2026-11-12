@@ -1,15 +1,10 @@
 "use client";
 
 import { RemoveCircleIcon, Unlink04Icon } from "@icons";
-import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
-import {
-  integrationKeys,
-  toolKeys,
-} from "@/features/integrations/api/queryKeys";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
@@ -170,7 +165,6 @@ export function IntegrationActions({
   onPublish,
   onUnpublish,
 }: IntegrationActionsProps) {
-  const queryClient = useQueryClient();
   const { isOwnIntegration, isForkedIntegration } =
     useIntegrationOwnership(integration);
 
@@ -188,11 +182,9 @@ export function IntegrationActions({
   const bearer = useBearerTokenModal({
     connect: (id, token) =>
       integrationsApi.connectIntegration(id, { bearerToken: token }),
+    // The connect's integration_status_update broadcast refreshes the sidebar.
     onConnected: () => {
       toast.success(`Connected to ${integration.name}`);
-      // Refresh data in the background so the sidebar reflects the new tools.
-      queryClient.invalidateQueries({ queryKey: integrationKeys.all });
-      queryClient.invalidateQueries({ queryKey: toolKeys.all });
     },
   });
 

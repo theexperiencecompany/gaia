@@ -9,7 +9,7 @@ import { apiErrorMessage } from "@/lib/api/errorMessage";
 import { toast } from "@/lib/toast";
 import { integrationsApi } from "../api/integrationsApi";
 import { integrationQueries } from "../api/queries";
-import { integrationKeys, toolKeys } from "../api/queryKeys";
+import { integrationKeys, invalidateIntegrationCaches } from "../api/queryKeys";
 import type {
   CreateCustomIntegrationRequest,
   CreateCustomIntegrationResponse,
@@ -63,9 +63,6 @@ export interface UseIntegrationsReturn {
   deleteCustomIntegration: (integrationId: string) => Promise<void>;
   publishIntegration: (integrationId: string) => Promise<void>;
   unpublishIntegration: (integrationId: string) => Promise<void>;
-
-  // Refresh
-  refetch: () => Promise<void>;
 }
 
 /**
@@ -162,11 +159,8 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         );
 
         if (result.status === "connected") {
+          // The connect's integration_status_update broadcast refreshes the caches.
           toast.success(`Connected to ${result.name}`, { id: toastId });
-          // Invalidate (not awaited refetch) so the button/sidebar update in the
-          // background instead of blocking on the catalog + tools GETs.
-          queryClient.invalidateQueries({ queryKey: integrationKeys.all });
-          queryClient.invalidateQueries({ queryKey: toolKeys.all });
         } else if (result.status === "redirecting") {
           // OAuth redirect in progress - dismiss toast, browser will navigate
           toast.dismiss(toastId);
@@ -184,7 +178,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         throw error;
       }
     },
-    [queryClient],
+    [],
   );
 
   // Disconnect integration
@@ -194,9 +188,8 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         await integrationsApi.disconnectIntegration(integrationId);
         toast.success("Integration disconnected");
         // Invalidate (not refetch) so the UI updates in the background while
-        // the modal closes immediately.
-        queryClient.invalidateQueries({ queryKey: integrationKeys.all });
-        queryClient.invalidateQueries({ queryKey: toolKeys.all });
+        // the modal closes immediately; a disconnect is never broadcast.
+        invalidateIntegrationCaches(queryClient);
       } catch (error) {
         toast.error(
           `Failed to disconnect: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -212,11 +205,8 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   // Backend now auto-connects, so we need to refetch both integrations AND tools
   const createMutation = useMutation({
     mutationFn: integrationsApi.createCustomIntegration,
-    onSuccess: () => {
-      // Backend auto-connects and discovers tools, so refresh both caches.
-      queryClient.invalidateQueries({ queryKey: integrationKeys.all });
-      queryClient.invalidateQueries({ queryKey: toolKeys.all });
-    },
+    // The new entry exists even when its auto-connect needs auth and broadcasts nothing.
+    onSuccess: () => invalidateIntegrationCaches(queryClient),
   });
 
   const createCustomIntegration = useCallback(
@@ -229,10 +219,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   // Delete custom integration mutation
   const deleteMutation = useMutation({
     mutationFn: integrationsApi.deleteCustomIntegration,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: integrationKeys.all });
-      queryClient.invalidateQueries({ queryKey: toolKeys.all });
-    },
+    onSuccess: () => invalidateIntegrationCaches(queryClient),
   });
 
   const deleteCustomIntegration = useCallback(
@@ -300,11 +287,6 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     [queryClient],
   );
 
-  // Simple refetch all
-  const refetch = useCallback(async () => {
-    await queryClient.refetchQueries({ queryKey: integrationKeys.all });
-  }, [queryClient]);
-
   return {
     integrations,
     isLoading,
@@ -317,6 +299,5 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     deleteCustomIntegration,
     publishIntegration,
     unpublishIntegration,
-    refetch,
   };
 };

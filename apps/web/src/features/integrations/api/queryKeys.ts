@@ -1,3 +1,5 @@
+import type { QueryClient } from "@tanstack/react-query";
+
 /**
  * Canonical React Query keys for integrations and tools.
  *
@@ -29,3 +31,12 @@ export const toolKeys = {
   /** The unified workspace tools list (GET /tools). */
   available: ["tools", "available"] as const,
 };
+
+/**
+ * Refetch everything an integration change can move: the catalog, statuses,
+ * per-integration tools and the workspace tool list (the composer's '/' menu).
+ */
+export function invalidateIntegrationCaches(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: integrationKeys.all });
+  void queryClient.invalidateQueries({ queryKey: toolKeys.all });
+}

@@ -53,7 +53,7 @@ function IntegrationListSection({
   suggestedIntegrations = [],
 }: IntegrationListSectionProps) {
   const router = useRouter();
-  const { integrations, connectIntegration, refetch } = useIntegrations();
+  const { integrations, connectIntegration } = useIntegrations();
   const [connectingIds, setConnectingIds] = useState<Set<string>>(new Set());
 
   // Separate connected and not connected integrations, sorted alphabetically
@@ -84,11 +84,11 @@ function IntegrationListSection({
     try {
       const result = await integrationsApi.addIntegration(suggestion.id);
 
+      // A connect is broadcast as integration_status_update, which refreshes the list.
       if (result.status === "connected") {
         toast.success(`${suggestion.name} connected successfully`, {
           id: toastId,
         });
-        await refetch();
       } else if (result.status === "redirect" && result.redirectUrl) {
         toast.dismiss(toastId);
         window.location.href = result.redirectUrl;

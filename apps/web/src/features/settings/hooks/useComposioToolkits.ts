@@ -7,7 +7,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { integrationKeys } from "@/features/integrations/api/queryKeys";
+import { invalidateIntegrationCaches } from "@/features/integrations/api/queryKeys";
 import {
   COMPOSIO_CATALOG_PAGE_SIZE,
   composioSetupApi,
@@ -47,7 +47,7 @@ export function useComposioToolkitActions() {
   const refresh = () => {
     // The composio prefix covers the setup list and the toolkit catalog under it.
     void queryClient.invalidateQueries({ queryKey: setupKeys.composio });
-    void queryClient.invalidateQueries({ queryKey: integrationKeys.all });
+    invalidateIntegrationCaches(queryClient);
   };
 
   const enable = useMutation({

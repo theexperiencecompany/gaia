@@ -10,10 +10,7 @@ import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
-import {
-  integrationKeys,
-  toolKeys,
-} from "@/features/integrations/api/queryKeys";
+import { invalidateIntegrationCaches } from "@/features/integrations/api/queryKeys";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationsList } from "@/features/integrations/components/IntegrationsList";
 import { IntegrationsSearchInput } from "@/features/integrations/components/IntegrationsSearchInput";
@@ -24,7 +21,7 @@ import { useIntegrationDeepLink } from "@/features/integrations/hooks/useIntegra
 import { useIntegrationSearch } from "@/features/integrations/hooks/useIntegrationSearch";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { usePendingDeepLink } from "@/features/integrations/hooks/usePendingDeepLink";
-import { usePostConnectSettlePolling } from "@/features/integrations/hooks/usePostConnectSettlePolling";
+import { usePostConnectSettling } from "@/features/integrations/hooks/usePostConnectSettling";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { useHeader } from "@/hooks/layout/useHeader";
 import { usePlatform } from "@/hooks/ui/usePlatform";
@@ -46,7 +43,6 @@ export default function IntegrationsPage() {
     deleteCustomIntegration,
     publishIntegration,
     unpublishIntegration,
-    refetch,
   } = useIntegrations();
 
   // Search + category filter — page-owned, so they reset when you leave.
@@ -70,13 +66,12 @@ export default function IntegrationsPage() {
   const clearSelection = useCallback(() => setSelectedIntegrationId(null), []);
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
 
-  // Bearer-token connect modal (MCP `status=bearer_required` flow).
+  // Bearer-token connect modal (MCP `status=bearer_required` flow). The
+  // connect's integration_status_update broadcast refreshes the caches.
   const bearer = useBearerTokenModal({
     connect: (id, token) => integrationsApi.addIntegration(id, token),
     onConnected: (_id, result) => {
       toast.success(`Connected to ${result.name}`);
-      refetch();
-      queryClient.invalidateQueries({ queryKey: toolKeys.all });
     },
   });
 
@@ -118,9 +113,8 @@ export default function IntegrationsPage() {
     integrations,
     handleIntegrationClick,
   );
-  // Poll until a freshly-connected integration's tools finish discovering.
   const { beginSettling, settlingIntegrationId } =
-    usePostConnectSettlePolling(integrations);
+    usePostConnectSettling(integrations);
 
   const isSelectedSettling = selectedIntegration
     ? settlingIntegrationId === selectedIntegration.id
@@ -144,10 +138,9 @@ export default function IntegrationsPage() {
   useIntegrationDeepLink({
     onConnected: (integrationId, name) => {
       if (name) toast.success(`Connected to ${name}`);
-      refetch();
-      queryClient.invalidateQueries({ queryKey: toolKeys.all });
-      // Open the sidebar for the freshly-connected integration and poll until
-      // its tools finish discovering in the background (see the poller below).
+      // Back from an OAuth redirect: this page had no socket to hear the
+      // connect broadcast, so re-read by hand.
+      invalidateIntegrationCaches(queryClient);
       markPending(integrationId);
       beginSettling(integrationId);
     },
@@ -158,8 +151,7 @@ export default function IntegrationsPage() {
       if (refresh) {
         // Marketplace add / custom create — may not be in the cached list yet.
         markPending(integrationId);
-        queryClient.invalidateQueries({ queryKey: integrationKeys.all });
-        queryClient.invalidateQueries({ queryKey: toolKeys.all });
+        invalidateIntegrationCaches(queryClient);
       } else {
         handleIntegrationClick(integrationId);
       }

@@ -2,10 +2,10 @@
 
 import type { IntegrationStatusValue } from "@shared/types";
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 
-import { integrationKeys, toolKeys } from "../api/queryKeys";
+import { invalidateIntegrationCaches } from "../api/queryKeys";
 
 export const INTEGRATION_STATUS_UPDATE = "integration_status_update";
 
@@ -17,7 +17,7 @@ interface IntegrationStatusUpdateMessage {
   };
 }
 
-export type IntegrationStatusHandler = (message: unknown) => void;
+type IntegrationStatusHandler = (message: unknown) => void;
 
 /**
  * Refresh the integration caches when the backend says a connection changed.
@@ -33,23 +33,28 @@ export function createIntegrationStatusHandler(
     const message = msg as IntegrationStatusUpdateMessage;
     if (!message.data?.integration_id) return;
 
-    queryClient.invalidateQueries({ queryKey: integrationKeys.all });
-    queryClient.invalidateQueries({ queryKey: toolKeys.all });
+    invalidateIntegrationCaches(queryClient);
   };
 }
 
 /**
- * Subscribe to status broadcasts, returning the teardown for that exact handler.
+ * Subscribe to status broadcasts and socket (re)connects, returning the teardown
+ * for those exact handlers.
  *
- * The pairing is the point: unsubscribing a different reference leaks the
- * original, and a leaked handler multiplies invalidations on every navigation.
+ * A broadcast sent while the socket was down (an OAuth round trip, a network
+ * drop) is never replayed, so every (re)connect re-reads the caches. Unsubscribing
+ * a different reference leaks the original and multiplies invalidations.
  */
 export function subscribeToIntegrationStatus(
-  handler: IntegrationStatusHandler,
+  queryClient: QueryClient,
 ): () => void {
-  wsManager.on(INTEGRATION_STATUS_UPDATE, handler);
+  const onStatus = createIntegrationStatusHandler(queryClient);
+  const onConnect = () => invalidateIntegrationCaches(queryClient);
+  wsManager.on(INTEGRATION_STATUS_UPDATE, onStatus);
+  wsManager.onConnect(onConnect);
   return () => {
-    wsManager.off(INTEGRATION_STATUS_UPDATE, handler);
+    wsManager.off(INTEGRATION_STATUS_UPDATE, onStatus);
+    wsManager.offConnect(onConnect);
   };
 }
 
@@ -62,10 +67,6 @@ export function subscribeToIntegrationStatus(
  */
 export function useIntegrationStatusWebSocket(): void {
   const queryClient = useQueryClient();
-  const handler = useMemo(
-    () => createIntegrationStatusHandler(queryClient),
-    [queryClient],
-  );
 
-  useEffect(() => subscribeToIntegrationStatus(handler), [handler]);
+  useEffect(() => subscribeToIntegrationStatus(queryClient), [queryClient]);
 }
