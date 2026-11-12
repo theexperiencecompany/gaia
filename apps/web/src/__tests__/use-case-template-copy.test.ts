@@ -5,13 +5,11 @@ const {
   getExploreWorkflowsServer,
   getPublicWorkflowServer,
   getAllCommunityWorkflowsServer,
-  getCommunityWorkflowsServer,
   listedCommunity,
 } = vi.hoisted(() => ({
   getExploreWorkflowsServer: vi.fn(),
   getPublicWorkflowServer: vi.fn(),
   getAllCommunityWorkflowsServer: vi.fn(),
-  getCommunityWorkflowsServer: vi.fn(),
   listedCommunity: vi.fn(),
 }));
 
@@ -30,7 +28,6 @@ vi.mock("@/features/workflows/lib/serverWorkflowsApi", () => ({
   getExploreWorkflowsServer,
   getPublicWorkflowServer,
   getAllCommunityWorkflowsServer,
-  getCommunityWorkflowsServer,
 }));
 
 import { renderToStaticMarkup } from "react-dom/server";
@@ -66,9 +63,6 @@ beforeEach(() => {
   getAllCommunityWorkflowsServer
     .mockReset()
     .mockResolvedValue([copy, original]);
-  getCommunityWorkflowsServer
-    .mockReset()
-    .mockResolvedValue({ workflows: [copy, original], total: 2 });
   listedCommunity.mockReset();
   getPublicWorkflowServer
     .mockReset()
@@ -116,10 +110,6 @@ describe("community copies of an official template", () => {
     }));
     const newestFirst = [...copies, original];
     getAllCommunityWorkflowsServer.mockResolvedValue(newestFirst);
-    getCommunityWorkflowsServer.mockImplementation(async (limit: number) => ({
-      workflows: newestFirst.slice(0, limit),
-      total: newestFirst.length,
-    }));
 
     renderToStaticMarkup(await UseCasesPage());
 
