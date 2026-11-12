@@ -2089,6 +2089,7 @@ wheels = [
 name = "gaia"
 version = "0.25.0"
 source = { virtual = "apps/api" }
+default-groups = ["backend", "dev"]
 dependencies = [
     { name = "aiohttp" },
     { name = "aiolimiter" },

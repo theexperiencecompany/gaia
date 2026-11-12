@@ -220,6 +220,8 @@ gaia-shared = { workspace = true }
 
 [tool.uv]
 prerelease = "if-necessary-or-explicit"
+# The app imports the backend group at runtime, so a plain uv sync or uv run here installs it.
+default-groups = ["backend", "dev"]
 
 [project.urls]
 Homepage = "https://heygaia.io"
