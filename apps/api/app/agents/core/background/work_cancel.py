@@ -149,5 +149,5 @@ async def _broadcast_executor_cancelled(user_id: str, conversation_id: str) -> N
             user_id,
             {"type": WS_EVENT_EXECUTOR_CANCELLED, "conversation_id": conversation_id},
         )
-    except Exception as e:  # best-effort UI signal
-        log.warning(f"{LogTag.TOOL} Failed to broadcast executor.cancelled", error=str(e))
+    except Exception:  # best-effort UI signal; the warning records the error
+        log.warning(f"{LogTag.TOOL} Failed to broadcast executor.cancelled")

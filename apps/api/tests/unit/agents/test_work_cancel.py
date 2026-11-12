@@ -198,7 +198,7 @@ async def test_a_failed_broadcast_is_a_warning_and_the_stop_still_lands(
     assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}") is None
     (warning,) = event["warnings"]
     assert warning["msg"] == f"{LogTag.TOOL} Failed to broadcast executor.cancelled"
-    assert warning["error"] == "rabbitmq unavailable"
+    assert (warning["error_type"], warning["error"]) == ("RuntimeError", "rabbitmq unavailable")
 
 
 class TestCancelNamedWork:
@@ -233,8 +233,10 @@ class TestCancelNamedWork:
     ) -> None:
         await seed_live_work(CONVERSATION)
 
-        work = await cancel_named_work(CONVERSATION, USER, ["queued-task"])
+        async with captured_wide_event() as event:
+            work = await cancel_named_work(CONVERSATION, USER, ["queued-task"])
 
         assert work == WorkCancelled(executor_spared=True, pending_task_ids=["queued-task"])
+        assert event["work_cancel"]["pending"] == 1
         assert not await stream_manager.is_cancelled(EXECUTOR_STREAM)
         pending_approvals.barrier.assert_not_awaited()
