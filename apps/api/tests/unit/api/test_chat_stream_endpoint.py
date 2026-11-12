@@ -29,6 +29,13 @@ from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from tests.browser_factories import make_browser_job_state
 from tests.conftest import FAKE_USER, FAKE_USER_2
+from tests.work_cancel_fakes import (
+    BROWSER_JOB,
+    EXECUTOR_STREAM,
+    ApprovalSeams,
+    approval_seams,
+    seed_live_work,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -337,8 +344,26 @@ async def _dispatched_by_turn() -> str:
     return stream_id
 
 
-@pytest.mark.usefixtures("fake_redis")
+@pytest.fixture
+def no_approvals() -> Iterator[ApprovalSeams]:
+    yield from approval_seams(pending=False)
+
+
+@pytest.mark.usefixtures("fake_redis", "no_approvals")
 class TestCancelStream:
+    async def test_stopping_a_turn_stops_the_conversations_whole_set_of_work(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The mobile Stop names a stream; it reaches the executor and browser job like the web's."""
+        monkeypatch.setattr(job_stop, "_abort_if_started", AsyncMock(return_value=True))
+        await stream_manager.start_stream(TURN, CONVERSATION, FAKE_USER.user_id)
+        await seed_live_work(CONVERSATION)
+
+        await client.post(f"/api/v1/cancel-stream/{TURN}")
+
+        assert await stream_manager.is_cancelled(EXECUTOR_STREAM)
+        assert await job_cancel_requested(BROWSER_JOB)
+
     @pytest.mark.regression
     async def test_stopping_a_turn_stops_the_background_subagents_it_dispatched(
         self, client: AsyncClient

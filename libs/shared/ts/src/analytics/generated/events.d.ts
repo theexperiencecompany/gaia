@@ -34,6 +34,7 @@ export type ServerEventName =
   | "chat:message_submitted"
   | "chat:message_unpinned"
   | "chat:turn_reacted"
+  | "chat:work_stopped"
   | "device:approved"
   | "device:revoked"
   | "device:self_paired"
@@ -611,6 +612,17 @@ export interface EventProperties {
     "voice_mode_enabled": boolean;
     "conversation_id"?: string;
     "blocked_reason"?: "upgrade_required";
+  };
+  "chat:work_stopped": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "streams": number;
+    "executor_stopped": boolean;
+    "pending_tasks": number;
+    "subagents": number;
+    "approvals": number;
+    "browser_jobs": number;
   };
   "cta:get_started_clicked": {
     "location"?: "chat_demo";

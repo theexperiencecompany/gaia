@@ -479,6 +479,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bot/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Bot Conversation
+         * @description Stop everything the session's conversation is running, keeping the session.
+         */
+        post: operations["bot_stop_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bot/transcribe": {
         parameters: {
             query?: never;
@@ -1107,6 +1127,26 @@ export interface paths {
          */
         put: operations["conversations_star_conversation_endpoint"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conversations/{conversation_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Conversation Endpoint
+         * @description Stop everything running for a conversation: its live turn, executor, subagents, approvals and browser job.
+         */
+        post: operations["conversations_stop_conversation_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6598,6 +6638,33 @@ export interface components {
             platform_user_id: string;
         };
         /**
+         * BotSessionRequest
+         * @description Names one bot session: a platform user in a DM or in one channel.
+         */
+        BotSessionRequest: {
+            /**
+             * Channel Id
+             * @description Channel/group ID (None for DM)
+             */
+            channel_id?: string | null;
+            /**
+             * Is Dm
+             * @description Whether this conversation is a direct message. Discord and Slack DM channel ids differ from the user id, so the server cannot tell a DM from a channel without this.
+             * @default false
+             */
+            is_dm?: boolean;
+            /**
+             * Platform
+             * @description Platform name (discord, slack, etc.)
+             */
+            platform: string;
+            /**
+             * Platform User Id
+             * @description User's ID on the platform
+             */
+            platform_user_id: string;
+        };
+        /**
          * BotSettingsResponse
          * @description Response model for user settings. When authenticated=False only that field is relevant.
          */
@@ -6679,6 +6746,12 @@ export interface components {
          * @enum {string}
          */
         BrowserSessionStatus: "running" | "completed" | "failed" | "cancelled";
+        /**
+         * BrowserStopOutcome
+         * @description What a stop came to, as the job's ending of record says.
+         * @enum {string}
+         */
+        BrowserStopOutcome: "stopped" | "already_ended";
         /**
          * BrowserTaskFrame
          * @description One recap frame: a step screenshot plus what the agent was doing.
@@ -7605,6 +7678,23 @@ export interface components {
          * @enum {string}
          */
         ConversationSource: "web" | "mobile" | "desktop" | "telegram" | "discord" | "slack" | "whatsapp" | "imessage" | "workflow_system" | "background";
+        /**
+         * ConversationStopResponse
+         * @description A conversation-level Stop: the live streams it cancelled and the work it stopped.
+         */
+        ConversationStopResponse: {
+            /**
+             * Conversation Id
+             * @description The conversation stopped; None when a bot chat had none yet.
+             */
+            conversation_id: string | null;
+            /**
+             * Stream Ids
+             * @description Live streams cancelled.
+             */
+            stream_ids: string[];
+            work: components["schemas"]["WorkCancelled"];
+        };
         /**
          * ConversationSummary
          * @description The projected conversation-list row — every field the web list consumes,
@@ -13151,33 +13241,6 @@ export interface components {
             role: "user" | "assistant";
         };
         /**
-         * ResetSessionRequest
-         * @description Request model for resetting a bot session (starting a new conversation).
-         */
-        ResetSessionRequest: {
-            /**
-             * Channel Id
-             * @description Channel/group ID (None for DM)
-             */
-            channel_id?: string | null;
-            /**
-             * Is Dm
-             * @description Whether this conversation is a direct message. Discord and Slack DM channel ids differ from the user id, so the server cannot tell a DM from a channel without this.
-             * @default false
-             */
-            is_dm?: boolean;
-            /**
-             * Platform
-             * @description Platform name (discord, slack, etc.)
-             */
-            platform: string;
-            /**
-             * Platform User Id
-             * @description User's ID on the platform
-             */
-            platform_user_id: string;
-        };
-        /**
          * ResetSessionResponse
          * @description Response model for a bot session reset.
          */
@@ -15894,6 +15957,57 @@ export interface components {
             web?: components["schemas"]["SearchResultItem"][];
         };
         /**
+         * WorkCancelled
+         * @description Everything one stop cancelled; all empty when the conversation was idle.
+         */
+        WorkCancelled: {
+            /**
+             * Approval Ids
+             * @description Pending approvals closed, barrier and ledger.
+             */
+            approval_ids: string[];
+            /**
+             * Browser Jobs
+             * @description Browser jobs reached, with what each stop came to.
+             */
+            browser_jobs: {
+                [key: string]: components["schemas"]["BrowserStopOutcome"];
+            };
+            /**
+             * Executor Spared
+             * @description An executor task kept running because the stop did not name it.
+             * @default false
+             */
+            executor_spared: boolean;
+            /**
+             * Executor Stopped
+             * @description A running executor task was stopped.
+             * @default false
+             */
+            executor_stopped: boolean;
+            /**
+             * Executor Task Id
+             * @description Task id of the stopped executor run; None for a lock without one.
+             */
+            executor_task_id: string | null;
+            /**
+             * Pending Task Ids
+             * @description Queued executor requests dropped by id.
+             */
+            pending_task_ids: string[];
+            /**
+             * Pending Tasks
+             * @description Queued executor requests dropped wholesale.
+             * @default 0
+             */
+            pending_tasks: number;
+            /**
+             * Subagent Ids
+             * @description Running subagents stopped.
+             */
+            subagent_ids: string[];
+        };
+        /**
          * WorkflowCreator
          * @description The public-facing creator card built by ``format_creator``.
          *
@@ -16472,11 +16586,13 @@ export type Body_user_update_user_name = components['schemas']['Body_user_update
 export type Body_user_update_user_timezone = components['schemas']['Body_user_update_user_timezone'];
 export type BotAuthStatusResponse = components['schemas']['BotAuthStatusResponse'];
 export type BotChatRequest = components['schemas']['BotChatRequest'];
+export type BotSessionRequest = components['schemas']['BotSessionRequest'];
 export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
 export type BrowserImportRequest = components['schemas']['BrowserImportRequest'];
 export type BrowserImportResponse = components['schemas']['BrowserImportResponse'];
 export type BrowserLoginResponse = components['schemas']['BrowserLoginResponse'];
 export type BrowserSessionStatus = components['schemas']['BrowserSessionStatus'];
+export type BrowserStopOutcome = components['schemas']['BrowserStopOutcome'];
 export type BrowserTaskFrame = components['schemas']['BrowserTaskFrame'];
 export type BrowserTaskResponse = components['schemas']['BrowserTaskResponse'];
 export type BudgetWindow = components['schemas']['BudgetWindow'];
@@ -16531,6 +16647,7 @@ export type ConversationListResponse = components['schemas']['ConversationListRe
 export type ConversationMessageHit = components['schemas']['ConversationMessageHit'];
 export type ConversationModel = components['schemas']['ConversationModel'];
 export type ConversationSource = components['schemas']['ConversationSource'];
+export type ConversationStopResponse = components['schemas']['ConversationStopResponse'];
 export type ConversationSummary = components['schemas']['ConversationSummary'];
 export type ConversationSyncItem = components['schemas']['ConversationSyncItem'];
 export type ConversationSyncRow = components['schemas']['ConversationSyncRow'];
@@ -16823,7 +16940,6 @@ export type RegistrationPolicyRequest = components['schemas']['RegistrationPolic
 export type RegistrationPolicyResponse = components['schemas']['RegistrationPolicyResponse'];
 export type ReminderResponse = components['schemas']['ReminderResponse'];
 export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
-export type ResetSessionRequest = components['schemas']['ResetSessionRequest'];
 export type ResetSessionResponse = components['schemas']['ResetSessionResponse'];
 export type ResetWorkflowResponse = components['schemas']['ResetWorkflowResponse'];
 export type SandboxExecuteRequest = components['schemas']['SandboxExecuteRequest'];
@@ -16965,6 +17081,7 @@ export type VoiceOption = components['schemas']['VoiceOption'];
 export type VoiceSelectionResponse = components['schemas']['VoiceSelectionResponse'];
 export type VoiceTokenResponse = components['schemas']['VoiceTokenResponse'];
 export type WebSearchResult = components['schemas']['WebSearchResult'];
+export type WorkCancelled = components['schemas']['WorkCancelled'];
 export type WorkflowCreator = components['schemas']['WorkflowCreator'];
 export type WorkflowExecution = components['schemas']['WorkflowExecution'];
 export type WorkflowExecutionRequest = components['schemas']['WorkflowExecutionRequest'];
@@ -18079,7 +18196,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ResetSessionRequest"];
+                "application/json": components["schemas"]["BotSessionRequest"];
             };
         };
         responses: {
@@ -18158,6 +18275,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BotSettingsResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    bot_stop_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationStopResponse"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -20106,6 +20274,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StarConversationResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    conversations_stop_conversation_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationStopResponse"];
                 };
             };
             /** @description Unprocessable Entity */

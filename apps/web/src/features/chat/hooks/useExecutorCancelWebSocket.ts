@@ -10,7 +10,6 @@ import { useStreamStore } from "@/stores/streamStore";
 interface ExecutorCancelledEvent {
   type: "executor.cancelled";
   conversation_id: string;
-  cancelled?: string[];
 }
 
 /**
