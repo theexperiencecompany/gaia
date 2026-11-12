@@ -167,7 +167,7 @@ def test_two_routers_under_one_tag_share_an_id_namespace(all_routes: list[RouteC
     modules = {
         ctx.original_route.endpoint.__module__
         for ctx in all_routes
-        if ctx.tags and str(ctx.tags[0]) == "MCP"
+        if isinstance(ctx.original_route, APIRoute) and ctx.tags and str(ctx.tags[0]) == "MCP"
     }
     assert len(modules) > 1, f"the MCP routers merged; re-pin this on the survivor: {modules}"
 
