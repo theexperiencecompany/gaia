@@ -381,6 +381,16 @@ class TestTrimToContent:
         assert trimmed.size == (196 + 4 + 10, 280)
         assert trimmed.getpixel((0, 100)) == _DESK
 
+    def test_a_grayscale_capture_is_trimmed_like_a_colour_one(self) -> None:
+        gray = Image.new("L", (300, 400), 200)
+        ImageDraw.Draw(gray).rectangle((50, 70, 199, 329), fill=40)
+        out = io.BytesIO()
+        gray.save(out, format="PNG")
+
+        trimmed = Image.open(io.BytesIO(trim_to_content(out.getvalue(), 10, ImageRenderOptions())))
+
+        assert trimmed.size == (170, 280)
+
     def test_a_blank_capture_is_returned_untouched(self) -> None:
         png = _desk_with_paper((40, 40), (0, 0, 0, 0))
 
