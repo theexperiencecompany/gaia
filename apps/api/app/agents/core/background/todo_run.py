@@ -56,7 +56,7 @@ from app.helpers.agent_helpers import (
 )
 from app.models.agent_config import AgentConfigurable
 from app.models.agent_models import agent_user_context
-from app.models.message_models import TodoRunWake
+from app.models.todo_wake_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser
 from app.services.checkpoint_thread_reset import reset_conversation_threads
 from app.utils.background_tasks import spawn_background_task

@@ -3,20 +3,22 @@
 from pydantic import BaseModel, TypeAdapter, ValidationError
 import pytest
 
+from app.models.conversation_frame_models import (
+    DeltaFrame,
+    DeltaPayload,
+    OutputFrame,
+    RetractFrame,
+    StateFrame,
+)
 from app.models.conversation_log_models import (
     CommsPhase,
     ConversationDisplay,
     ConversationState,
-    DeltaFrame,
-    DeltaPayload,
     Entry,
     LiveWork,
     LoggedEntry,
-    OutputFrame,
-    ReplyEnd,
     ReplyOutcome,
-    RetractFrame,
-    StateFrame,
+    ReplySettled,
     WorkPhase,
 )
 from app.models.hil_models import HILApprovalStatus
@@ -36,7 +38,6 @@ from app.models.stream_events import (
 )
 from tests.unit.services.conversation.log_helpers import (
     T0,
-    answered,
     asked,
     barge,
     decided,
@@ -45,6 +46,7 @@ from tests.unit.services.conversation.log_helpers import (
     logged,
     notice,
     opened,
+    settled,
     started,
     stop,
     todo_woke,
@@ -63,7 +65,8 @@ _ALL_ENTRIES: list[Entry] = [
     decided("d", "ap"),
     finished("x", "t1"),
     opened("o"),
-    answered("r", ["u"], 1),
+    settled("r", ["u"], 1),
+    settled("r", [], 1, outcome=ReplyOutcome.FAILED),
 ]
 
 
@@ -83,9 +86,15 @@ def test_every_entry_kind_round_trips_through_json_as_itself(entry: Entry) -> No
     assert LoggedEntry.model_validate_json(item.model_dump_json()) == item
 
 
-def test_a_finished_reply_with_no_answers_cannot_be_constructed() -> None:
+@pytest.mark.parametrize("outcome", [ReplyOutcome.STOPPED, ReplyOutcome.FAILED])
+def test_a_stopped_or_failed_reply_may_settle_answering_nothing(outcome: ReplyOutcome) -> None:
+    assert ReplySettled(id="s", reply_id="r", outcome=outcome, answers=(), through=1).answers == ()
+
+
+@pytest.mark.parametrize("outcome", [ReplyOutcome.ANSWERED, ReplyOutcome.SILENT])
+def test_an_answered_or_silent_reply_must_name_what_it_answers(outcome: ReplyOutcome) -> None:
     with pytest.raises(ValidationError):
-        ReplyEnd(outcome=ReplyOutcome.ANSWERED, answers=(), through=1)
+        ReplySettled(id="s", reply_id="r", outcome=outcome, answers=(), through=1)
 
 
 def test_an_entry_without_an_id_cannot_be_constructed() -> None:

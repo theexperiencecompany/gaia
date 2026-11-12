@@ -52,8 +52,8 @@ from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent, TodoWakeKind
 from app.models.chat_models import ConversationSource
-from app.models.message_models import TodoRunWake
 from app.models.todo_models import TodoDocument
+from app.models.todo_wake_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services import todo_activity

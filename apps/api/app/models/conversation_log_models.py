@@ -1,4 +1,4 @@
-"""The conversation log: its entries, the state folded from them, and the frames clients read."""
+"""The conversation log: its entries, the state folded from them, and the step's decision types."""
 
 from enum import StrEnum
 from typing import Annotated, Literal
@@ -6,20 +6,9 @@ from typing import Annotated, Literal
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.chat import ConversationSource
-from app.models.chat_models import ToolDataEntry
-from app.models.message_models import TodoRunWake
-from app.models.stream_events import (
-    ApprovalRequestEntry,
-    FollowUpActionsFrame,
-    MessageBoundaryPayload,
-    ReasoningPayload,
-    ResponseFrame,
-    SubagentEndPayload,
-    SubagentStartPayload,
-    TodoProgressFrame,
-    ToolCallsDataEntry,
-    ToolOutputPayload,
-)
+from app.constants.hil import ApprovalResolution
+from app.models.todo_wake_models import TodoRunWake
+from app.models.tool_data_models import ToolDataEntry
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
@@ -38,6 +27,7 @@ class EntryKind(StrEnum):
     APPROVAL_DECIDED = "approval_decided"
     WORK_FINISHED = "work_finished"
     REPLY = "reply"
+    REPLY_SETTLED = "reply_settled"
 
 
 class StopBy(StrEnum):
@@ -65,8 +55,7 @@ class ReplyOutcome(StrEnum):
     SILENT = "silent"
 
 
-# Every way a pending approval resolves; mirrors resolution.DecisionKind, which lives in a service.
-ApprovalDecision = Literal["approve", "deny", "timeout", "abandon"]
+_MAY_ANSWER_NOTHING = frozenset({ReplyOutcome.STOPPED, ReplyOutcome.FAILED})
 
 
 class _Entry(BaseModel):
@@ -153,7 +142,7 @@ class ApprovalDecided(_Entry):
 
     kind: Literal[EntryKind.APPROVAL_DECIDED] = EntryKind.APPROVAL_DECIDED
     approval_id: str
-    decision: ApprovalDecision
+    decision: ApprovalResolution
 
 
 class WorkFinished(_Entry):
@@ -165,18 +154,8 @@ class WorkFinished(_Entry):
     report: str
 
 
-class ReplyEnd(BaseModel):
-    """How a reply finished and what it answered; through is the newest answered seq."""
-
-    model_config = _FROZEN
-
-    outcome: ReplyOutcome
-    answers: tuple[str, ...] = Field(min_length=1)
-    through: int = Field(ge=1)
-
-
 class Reply(_Entry):
-    """GAIA's reply: open while end is None, finished once end is set."""
+    """GAIA's reply, appended when the user first sees it; its content is filled in place."""
 
     kind: Literal[EntryKind.REPLY] = EntryKind.REPLY
     reply_id: str
@@ -186,7 +165,22 @@ class Reply(_Entry):
     follow_up_actions: tuple[str, ...] = ()
     # Characters of the reply the user heard before a voice barge-in.
     heard_through: int | None = Field(default=None, ge=0)
-    end: ReplyEnd | None = None
+
+
+class ReplySettled(_Entry):
+    """The open reply's attempt ended; through is the newest seq it answered."""
+
+    kind: Literal[EntryKind.REPLY_SETTLED] = EntryKind.REPLY_SETTLED
+    reply_id: str
+    outcome: ReplyOutcome
+    answers: tuple[str, ...]
+    through: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def _answers_unless_cut_short(self) -> "ReplySettled":
+        if not self.answers and self.outcome not in _MAY_ANSWER_NOTHING:
+            raise ValueError(f"a {self.outcome} reply answers at least one entry")
+        return self
 
 
 Entry = Annotated[
@@ -200,7 +194,8 @@ Entry = Annotated[
     | ApprovalRequested
     | ApprovalDecided
     | WorkFinished
-    | Reply,
+    | Reply
+    | ReplySettled,
     Field(discriminator="kind"),
 ]
 
@@ -264,6 +259,8 @@ class ConversationState(BaseModel):
     # Seqs of waking entries no reply has answered yet, ascending.
     unsettled_waking: tuple[int, ...]
     comms: CommsPhase
+    # The reply whose attempt has not settled yet: set by its Reply, cleared by its ReplySettled.
+    open_reply: str | None
     work: tuple[LiveWork, ...]
 
     @classmethod
@@ -275,6 +272,7 @@ class ConversationState(BaseModel):
             stopped_through=0,
             unsettled_waking=(),
             comms=CommsPhase.IDLE,
+            open_reply=None,
             work=(),
         )
 
@@ -349,6 +347,8 @@ class RejectReason(StrEnum):
     CAUSE_NOT_BEFORE_WORK = "cause_not_before_work"
     TASK_ALREADY_LIVE = "task_already_live"
     TASK_NOT_LIVE = "task_not_live"
+    REPLY_ALREADY_OPEN = "reply_already_open"
+    REPLY_NOT_OPEN = "reply_not_open"
     REPLY_ANSWERS_FUTURE = "reply_answers_future"
 
 
@@ -407,6 +407,16 @@ class PreemptHint(BaseModel):
     epoch: int
 
 
+class VisibleEntry(BaseModel):
+    """An entry the user can see in the conversation: a user message or a reply."""
+
+    model_config = _FROZEN
+
+    seq: int = Field(ge=1)
+    id: str
+    is_user_message: bool
+
+
 class StepClaim(BaseModel):
     """A step's exclusive claim on a conversation, fenced by epoch."""
 
@@ -415,89 +425,3 @@ class StepClaim(BaseModel):
     conversation_id: str
     user_id: str
     epoch: int
-
-
-class FrameKind(StrEnum):
-    """Discriminator of an output frame on the conversation's event stream."""
-
-    ENTRY = "entry"
-    ENTRY_UPDATED = "entry_updated"
-    DELTA = "delta"
-    RETRACT = "retract"
-    STATE = "state"
-
-
-DeltaPayload = (
-    ResponseFrame
-    | ReasoningPayload
-    | ToolCallsDataEntry
-    | ApprovalRequestEntry
-    | ToolOutputPayload
-    | MessageBoundaryPayload
-    | SubagentStartPayload
-    | SubagentEndPayload
-    | FollowUpActionsFrame
-    | TodoProgressFrame
-)
-
-
-class EntryFrame(BaseModel):
-    """A newly appended entry."""
-
-    model_config = _FROZEN
-
-    kind: Literal[FrameKind.ENTRY] = FrameKind.ENTRY
-    entry: LoggedEntry
-
-
-class EntryUpdatedFrame(BaseModel):
-    """An entry completed or changed in place, keyed by its seq."""
-
-    model_config = _FROZEN
-
-    kind: Literal[FrameKind.ENTRY_UPDATED] = FrameKind.ENTRY_UPDATED
-    entry: LoggedEntry
-
-
-class DeltaFrame(BaseModel):
-    """Streamed content of an attempt, for exactly one of a reply or a task."""
-
-    model_config = _FROZEN
-
-    kind: Literal[FrameKind.DELTA] = FrameKind.DELTA
-    attempt_id: str
-    reply_id: str | None = None
-    task_id: str | None = None
-    payload: DeltaPayload
-
-    @model_validator(mode="after")
-    def _one_target(self) -> "DeltaFrame":
-        if (self.reply_id is None) == (self.task_id is None):
-            raise ValueError("a delta targets exactly one of reply_id or task_id")
-        return self
-
-
-class RetractFrame(BaseModel):
-    """Everything an uncommitted attempt streamed is withdrawn."""
-
-    model_config = _FROZEN
-
-    kind: Literal[FrameKind.RETRACT] = FrameKind.RETRACT
-    attempt_id: str
-
-
-class StateFrame(BaseModel):
-    """The conversation's display state after an append."""
-
-    model_config = _FROZEN
-
-    kind: Literal[FrameKind.STATE] = FrameKind.STATE
-    head: int = Field(ge=0)
-    display: ConversationDisplay
-    work_phase: WorkPhase
-
-
-OutputFrame = Annotated[
-    EntryFrame | EntryUpdatedFrame | DeltaFrame | RetractFrame | StateFrame,
-    Field(discriminator="kind"),
-]

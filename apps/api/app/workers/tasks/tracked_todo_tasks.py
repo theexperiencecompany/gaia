@@ -57,7 +57,6 @@ from app.constants.todos import (
 from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_cost_budget
 from app.decorators.entitlements import capture_paywall_block, is_paid
-from app.models.message_models import TodoRunWake
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -66,6 +65,7 @@ from app.models.notification.notification_models import (
 )
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import ExternalRefSource, TodoDocument, TodoUpdate
+from app.models.todo_wake_models import TodoRunWake
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType

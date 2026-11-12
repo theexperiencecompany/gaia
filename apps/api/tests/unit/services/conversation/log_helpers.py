@@ -16,8 +16,8 @@ from app.models.conversation_log_models import (
     Notice,
     Rejected,
     Reply,
-    ReplyEnd,
     ReplyOutcome,
+    ReplySettled,
     StopBy,
     StopRequested,
     TodoWoke,
@@ -27,7 +27,7 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
-from app.models.message_models import TodoRunWake
+from app.models.todo_wake_models import TodoRunWake
 from app.services.conversation.reducer import reduce
 
 T0 = datetime(2026, 11, 12, 9, 0, tzinfo=UTC)
@@ -90,16 +90,27 @@ def opened(entry_id: str, reply_id: str = "r1") -> Reply:
     return Reply(id=entry_id, reply_id=reply_id, attempt_id="a1")
 
 
-def answered(
+def settled(
     entry_id: str,
     answers: Sequence[str],
     through: int,
     *,
     reply_id: str = "r1",
     outcome: ReplyOutcome = ReplyOutcome.ANSWERED,
-) -> Reply:
-    end = ReplyEnd(outcome=outcome, answers=tuple(answers), through=through)
-    return Reply(id=entry_id, reply_id=reply_id, attempt_id="a1", text="done", end=end)
+) -> ReplySettled:
+    return ReplySettled(
+        id=entry_id, reply_id=reply_id, outcome=outcome, answers=tuple(answers), through=through
+    )
+
+
+def replied(
+    entry_id: str, answers: Sequence[str], through: int, *, reply_id: str = "r1"
+) -> list[Entry]:
+    """Open a reply and settle it as answered: two entries, two seqs."""
+    return [
+        opened(f"{entry_id}-open", reply_id),
+        settled(entry_id, answers, through, reply_id=reply_id),
+    ]
 
 
 def fold(entries: Sequence[Entry]) -> tuple[ConversationState, list[Effect]]:

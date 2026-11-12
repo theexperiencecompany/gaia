@@ -14,6 +14,7 @@ from app.models.conversation_log_models import (
     StepClaim,
     UserMessage,
     Verdict,
+    VisibleEntry,
     WakingEntry,
     WorkFinished,
     WorkflowFired,
@@ -54,14 +55,14 @@ def verdict(
 
 
 def quote_target(
-    answers: Sequence[str], reply_seq: int, tail: Sequence[tuple[int, str]]
+    answers: Sequence[str], reply_seq: int, visible: Sequence[VisibleEntry]
 ) -> str | None:
-    """Return the newest answered entry's id when an unanswered entry sits among the reply's tail, else None."""
+    """Return the newest answered user message's id when an unanswered visible entry sits between it and the reply."""
     answered = set(answers)
-    span = [(seq, entry_id) for seq, entry_id in tail if seq < reply_seq]
-    newest = max(((seq, entry_id) for seq, entry_id in span if entry_id in answered), default=None)
-    if newest is None:
+    earlier = [item for item in visible if item.seq < reply_seq]
+    asked = [item for item in earlier if item.is_user_message and item.id in answered]
+    if not asked:
         return None
-    oldest_answered = min(seq for seq, entry_id in span if entry_id in answered)
-    interrupted = any(entry_id not in answered for seq, entry_id in span if seq > oldest_answered)
-    return newest[1] if interrupted else None
+    newest = max(asked, key=lambda item: item.seq)
+    interrupted = any(item.id not in answered for item in earlier if item.seq > newest.seq)
+    return newest.id if interrupted else None

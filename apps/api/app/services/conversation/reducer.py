@@ -17,6 +17,7 @@ from app.models.conversation_log_models import (
     Rejected,
     RejectReason,
     Reply,
+    ReplySettled,
     StartAck,
     StopRequested,
     TodoWoke,
@@ -45,17 +46,10 @@ def with_comms(state: ConversationState, phase: CommsPhase) -> ConversationState
 def _apply(state: ConversationState, seq: int, entry: Entry) -> Transition | Rejected:
     result: Transition | Rejected
     match entry:
-        case UserMessage(voice=voice, id=message_id):
-            ack: tuple[Effect, ...] = () if voice else (StartAck(message_id=message_id),)
-            result = Transition(state=_wake(state, seq), effects=(KickStep(), *ack))
+        case UserMessage() | BargeIn() | WorkflowFired():
+            result = Transition(state=_wake(state, seq), effects=_wake_effects(entry))
         case StopRequested():
             result = _stop(state, seq, entry)
-        case BargeIn(reply_id=reply_id):
-            result = Transition(
-                state=_wake(state, seq), effects=(Preempt(barge_reply_id=reply_id), KickStep())
-            )
-        case WorkflowFired():
-            result = Transition(state=_wake(state, seq), effects=(KickStep(),))
         case TodoWoke() | Notice():
             result = Transition(state=state, effects=())
         case WorkStarted():
@@ -73,8 +67,20 @@ def _apply(state: ConversationState, seq: int, entry: Entry) -> Transition | Rej
         case WorkFinished():
             result = _finish_work(state, seq, entry)
         case Reply():
-            result = _reply(state, seq, entry)
+            result = _open_reply(state, entry)
+        case ReplySettled():
+            result = _settle_reply(state, seq, entry)
     return result
+
+
+def _wake_effects(entry: UserMessage | BargeIn | WorkflowFired) -> tuple[Effect, ...]:
+    match entry:
+        case UserMessage(voice=False, id=message_id):
+            return (KickStep(), StartAck(message_id=message_id))
+        case BargeIn(reply_id=reply_id):
+            return (Preempt(barge_reply_id=reply_id), KickStep())
+        case _:
+            return (KickStep(),)
 
 
 def _wake(state: ConversationState, seq: int) -> ConversationState:
@@ -138,15 +144,23 @@ def _finish_work(state: ConversationState, seq: int, entry: WorkFinished) -> Tra
     return Transition(state=_wake(remaining, seq), effects=(KickStep(),))
 
 
-def _reply(state: ConversationState, seq: int, entry: Reply) -> Transition | Rejected:
-    if entry.end is None:
-        return Transition(state=with_comms(state, CommsPhase.ANSWERING), effects=())
-    if entry.end.through >= seq:
+def _open_reply(state: ConversationState, entry: Reply) -> Transition | Rejected:
+    if state.open_reply is not None:
+        return Rejected(reason=RejectReason.REPLY_ALREADY_OPEN)
+    opened = state.model_copy(update={"comms": CommsPhase.ANSWERING, "open_reply": entry.reply_id})
+    return Transition(state=opened, effects=())
+
+
+def _settle_reply(state: ConversationState, seq: int, entry: ReplySettled) -> Transition | Rejected:
+    if entry.reply_id != state.open_reply:
+        return Rejected(reason=RejectReason.REPLY_NOT_OPEN)
+    if entry.through >= seq:
         return Rejected(reason=RejectReason.REPLY_ANSWERS_FUTURE)
-    settled = max(state.settled_through, entry.end.through)
+    settled = max(state.settled_through, entry.through)
     finished = state.model_copy(
         update={
             "comms": CommsPhase.IDLE,
+            "open_reply": None,
             "settled_through": settled,
             "unsettled_waking": tuple(
                 waking for waking in state.unsettled_waking if waking > settled

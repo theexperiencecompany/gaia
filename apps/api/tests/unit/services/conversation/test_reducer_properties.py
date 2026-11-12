@@ -14,7 +14,6 @@ from app.models.conversation_log_models import (
 )
 from app.services.conversation.reducer import reduce
 from tests.unit.services.conversation.log_helpers import (
-    answered,
     asked,
     barge,
     decided,
@@ -23,6 +22,7 @@ from tests.unit.services.conversation.log_helpers import (
     logged,
     notice,
     opened,
+    settled,
     started,
     stop,
     todo_woke,
@@ -46,16 +46,19 @@ def _next_entry(data: st.DataObject, state: ConversationState, seq: int) -> Entr
         st.tuples(st.sampled_from([*live, "t_gone"]), st.sampled_from(list(WorkOutcome))).map(
             lambda pair: finished(entry_id, *pair)
         ),
-        st.just(opened(entry_id)),
     ]
     if state.stopped_through + 1 <= seq - 1:
         causes = st.integers(state.stopped_through + 1, seq - 1)
         options.append(causes.map(lambda cause: started(entry_id, f"t{seq}", cause)))
     if live:
         options.append(st.sampled_from(live).map(lambda task: asked(entry_id, task, f"ap{seq}")))
-    if seq > 1:
+    if state.open_reply is None:
+        options.append(st.just(opened(entry_id, f"r{seq}")))
+    else:
+        open_reply = state.open_reply
+        throughs = st.integers(1, seq - 1)
         options.append(
-            st.integers(1, seq - 1).map(lambda through: answered(entry_id, ["x"], through))
+            throughs.map(lambda through: settled(entry_id, ["x"], through, reply_id=open_reply))
         )
     return data.draw(st.one_of(options))
 
@@ -69,6 +72,7 @@ def _assert_invariants(state: ConversationState) -> None:
     assert all(a < b for a, b in pairwise(waking))
     assert all(seq > max(state.settled_through, state.stopped_through) for seq in waking)
     assert state.comms is not CommsPhase.THINKING
+    assert (state.comms is CommsPhase.ANSWERING) == (state.open_reply is not None)
 
 
 def _valid_log(data: st.DataObject) -> list[Entry]:
@@ -131,7 +135,8 @@ def test_a_rejected_entry_leaves_the_state_unchanged(data: st.DataObject) -> Non
                 started("x", "t_new", max(1, state.stopped_through)),
                 *(started("x", item.task_id, item.cause_through) for item in state.work),
                 asked("x", "t_never", "ap"),
-                answered("x", ["x"], state.head + 1),
+                settled("x", ["x"], state.head + 1),
+                opened("x"),
             ]
         )
     )

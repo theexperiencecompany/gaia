@@ -1,9 +1,8 @@
 """Request/response schemas for HIL approval + preference endpoints."""
 
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
+from app.constants.hil import ApprovalDecision
 from app.models.hil_models import ApprovalScope, HILMode, HILPreferences
 from app.schemas.common import ResponseModel
 
@@ -11,7 +10,7 @@ from app.schemas.common import ResponseModel
 class ApprovalDecisionRequest(BaseModel):
     """Body for a button approval decision (approve/deny, with scope and feedback)."""
 
-    decision: Literal["approve", "deny"]
+    decision: ApprovalDecision
     feedback: str | None = Field(None, max_length=2000)
     scope: ApprovalScope = "once"
     # Row version the client rendered. Ledger path only: a stale v refreshes
@@ -34,7 +33,7 @@ class BatchDecisionItem(BaseModel):
     """One approval's decision within a batch."""
 
     approval_id: str
-    decision: Literal["approve", "deny"]
+    decision: ApprovalDecision
     feedback: str | None = Field(None, max_length=2000)
     # Row version the client rendered; see ApprovalDecisionRequest.v.
     v: int | None = None

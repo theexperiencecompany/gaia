@@ -13,13 +13,13 @@ from app.models.conversation_log_models import (
     PreemptHint,
     StepClaim,
     Verdict,
+    VisibleEntry,
     WakingEntry,
     WorkOutcome,
 )
 from app.services.conversation.verdict import merge_group, needs_reply, quote_target, verdict
 from tests.unit.services.conversation.log_helpers import (
     T0,
-    answered,
     asked,
     barge,
     decided,
@@ -28,6 +28,7 @@ from tests.unit.services.conversation.log_helpers import (
     logged,
     notice,
     opened,
+    settled,
     started,
     stop,
     todo_woke,
@@ -136,30 +137,46 @@ def test_only_a_workflow_fire_is_background(entry: WakingEntry, group: MergeGrou
         (asked("a", "t1", "ap"), False),
         (decided("d", "ap"), False),
         (opened("o"), False),
-        (answered("r", ["u"], 1), False),
+        (settled("r", ["u"], 1), False),
     ],
 )
 def test_needs_reply(entry: Entry, expected: bool) -> None:
     assert needs_reply(entry) is expected
 
 
-def test_quote_target_is_none_when_the_answers_run_up_to_the_reply() -> None:
-    assert quote_target(["u1", "u2"], 3, [(1, "u1"), (2, "u2")]) is None
+def _msg(seq: int, entry_id: str) -> VisibleEntry:
+    return VisibleEntry(seq=seq, id=entry_id, is_user_message=True)
 
 
-def test_quote_target_names_the_newest_answer_when_an_unanswered_entry_follows_it() -> None:
-    assert quote_target(["u1"], 4, [(1, "u1"), (2, "u2"), (3, "r2")]) == "u1"
+def _reply(seq: int, entry_id: str) -> VisibleEntry:
+    return VisibleEntry(seq=seq, id=entry_id, is_user_message=False)
 
 
-def test_quote_target_names_the_newest_answer_when_an_unanswered_entry_sits_between_answers() -> (
-    None
-):
-    assert quote_target(["u1", "u3"], 4, [(1, "u1"), (2, "n2"), (3, "u3")]) == "u3"
+def test_quote_target_is_none_for_a_reply_directly_after_its_only_message() -> None:
+    assert quote_target(["u1"], 2, [_msg(1, "u1")]) is None
 
 
-def test_quote_target_ignores_entries_at_or_after_the_reply() -> None:
-    assert quote_target(["u1"], 2, [(1, "u1"), (2, "reply"), (3, "later")]) is None
+def test_quote_target_is_none_for_a_reply_after_two_answered_messages_back_to_back() -> None:
+    assert quote_target(["u1", "u2"], 3, [_msg(1, "u1"), _msg(2, "u2")]) is None
 
 
-def test_quote_target_is_none_when_nothing_in_the_tail_was_answered() -> None:
-    assert quote_target(["u9"], 3, [(1, "u1"), (2, "u2")]) is None
+def test_quote_target_quotes_the_original_request_on_a_late_result() -> None:
+    visible = [_msg(1, "u1"), _msg(3, "u3"), _reply(4, "r3")]
+    assert quote_target(["u1", "wf6"], 7, visible) == "u1"
+
+
+def test_quote_target_quotes_the_message_when_an_earlier_reply_sits_between() -> None:
+    assert quote_target(["u1"], 3, [_msg(1, "u1"), _reply(2, "r0")]) == "u1"
+
+
+def test_quote_target_is_none_when_no_user_message_was_answered() -> None:
+    assert quote_target(["wf2", "r0"], 4, [_msg(1, "u1"), _reply(2, "r0")]) is None
+
+
+def test_quote_target_ignores_visible_entries_at_or_after_the_reply() -> None:
+    assert quote_target(["u1"], 2, [_msg(1, "u1"), _reply(2, "r1"), _msg(3, "u3")]) is None
+
+
+def test_quote_target_picks_the_newest_answered_message() -> None:
+    visible = [_msg(1, "u1"), _msg(2, "u2"), _reply(3, "r2"), _msg(4, "u4"), _reply(5, "r4")]
+    assert quote_target(["u1", "u4"], 6, visible) == "u4"

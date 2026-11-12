@@ -36,7 +36,11 @@ from app.agents.core.graph_manager import GraphManager
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.subagents import spawn_agent
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
-from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME, HIL_DECIDED_UNRESUMED_GRACE_SECONDS
+from app.constants.hil import (
+    APPROVAL_REQUEST_TOOL_NAME,
+    HIL_DECIDED_UNRESUMED_GRACE_SECONDS,
+    ApprovalResolution,
+)
 from app.constants.memory import ReconcileOutcome
 from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import stream_manager
@@ -321,7 +325,7 @@ class HilWorld:
 
     async def decide(
         self,
-        kind: resolution.DecisionKind,
+        kind: ApprovalResolution,
         *,
         scope: ApprovalScope = "once",
         tool: str | None = None,
