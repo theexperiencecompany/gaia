@@ -63,7 +63,9 @@ def _workflow_meter(
     referrals: list[ReferralDocument], community_workflows: int
 ) -> ReferralWorkflowMeter:
     """Count paying workflow visitors toward the creator's next month; their names are never shown."""
-    states = Counter(r.reward_state for r in referrals if r.source is ReferralSource.WORKFLOW)
+    states = Counter(
+        r.reward_state for r in referrals if r.source is ReferralSource.WORKFLOW and not r.refunded
+    )
     months = states[ReferralRewardState.APPLIED] + states[ReferralRewardState.BANKED]
     counted = months + states[ReferralRewardState.METERED]
     return ReferralWorkflowMeter(
