@@ -277,6 +277,16 @@ async def test_a_crashed_turn_leaves_no_reply_in_progress_after_the_sweep(
     assert reply.get("in_progress") is None
 
 
+async def test_a_second_sweep_changes_nothing(real_redis, mongo_db, make_conversation) -> None:
+    conversation_id = await make_conversation(FAKE_USER.user_id)
+    await _crashed_turn(mongo_db, conversation_id)
+    assert await sweep_unfinished_replies({}) == "failed=1"
+    settled = await _entries(mongo_db, conversation_id)
+
+    assert await sweep_unfinished_replies({}) == "failed=0"
+    assert await _entries(mongo_db, conversation_id) == settled
+
+
 async def test_the_sweep_spares_a_reply_whose_turn_is_still_streaming(
     real_redis, mongo_db, make_conversation
 ) -> None:
@@ -284,7 +294,8 @@ async def test_the_sweep_spares_a_reply_whose_turn_is_still_streaming(
     await _crashed_turn(mongo_db, conversation_id)
     await stream_manager.start_stream(f"stream_{ObjectId()}", conversation_id, FAKE_USER.user_id)
 
-    await sweep_unfinished_replies({})
+    assert await sweep_unfinished_replies({}) == "failed=0"
+    assert await sweep_unfinished_replies({}) == "failed=0"
 
     assert [e.get("in_progress") for e in await _entries(mongo_db, conversation_id)] == [None, True]
 
