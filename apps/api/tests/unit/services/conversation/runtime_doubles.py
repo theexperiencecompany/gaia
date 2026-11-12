@@ -21,6 +21,7 @@ from app.models.conversation_log_models import (
     StepClaim,
     UserMessage,
 )
+from app.models.message_models import MessageDict
 from app.services.conversation.ports import (
     Appended,
     CancelReason,
@@ -483,11 +484,13 @@ class RecordingEffects:
 class ScriptedApprovals:
     decision: ApprovalDecision | None = None
     asked: list[str] = field(default_factory=list)
+    histories: list[list[MessageDict]] = field(default_factory=list)
 
     async def classify(
-        self, conversation_id: str, user_id: str, message_text: str
+        self, conversation_id: str, user_id: str, message_text: str, history: list[MessageDict]
     ) -> ApprovalDecision | None:
         self.asked.append(message_text)
+        self.histories.append(history)
         return self.decision
 
 

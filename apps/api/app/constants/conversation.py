@@ -76,6 +76,8 @@ EVENTS_BLOCK_MS = 15_000
 EVENTS_STREAM_START = "0-0"
 #: conv:work_index:{conversation_id}:{task_id}, the next work_delta index; a resumed run continues it.
 WORK_DELTA_INDEX_KEY_PREFIX = "conv:work_index:"
+# Seqs before a typed approval answer read for the turns the classifier weighs it against.
+CLASSIFIER_LOOKBACK_SEQS = 20
 # How often a running step polls its preempt hint while the model is silent.
 STEP_TICK_SECONDS = 0.25
 # Heads one sweep reads; the sweep runs every SWEEP_SECONDS, so a backlog drains over a few runs.

@@ -2,7 +2,11 @@
 
 from app.constants.hil import ApprovalDecision
 from app.constants.log_tags import LogTag
-from app.services.hil.conversational import resolve_pending_from_message
+from app.models.message_models import MessageDict
+from app.services.hil.conversational import (
+    classifier_history,
+    resolve_pending_from_message,
+)
 from shared.py.wide_events import log
 
 
@@ -10,11 +14,13 @@ class HilApprovalReplies:
     """Classifies a typed reply against the conversation's pending approvals and resolves them."""
 
     async def classify(
-        self, conversation_id: str, user_id: str, message_text: str
+        self, conversation_id: str, user_id: str, message_text: str, history: list[MessageDict]
     ) -> ApprovalDecision | None:
         """Return approve or deny; None when the reply is unrelated, nothing was pending, or classifying failed."""
         try:
-            action = await resolve_pending_from_message(conversation_id, user_id, message_text)
+            action = await resolve_pending_from_message(
+                conversation_id, user_id, message_text, classifier_history(history)
+            )
         except Exception as error:  # an unread reply is answered by a normal comms run instead
             log.error(
                 f"{LogTag.HIL} approval reply classification failed",

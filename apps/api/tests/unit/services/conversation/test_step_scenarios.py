@@ -336,6 +336,12 @@ class StepScenarios:
         await run(rt)
         assert rt.runner.calls == []
         assert rt.approvals.asked == ["yes do it"]
+        assert rt.approvals.histories == [
+            [
+                {"role": "user", "content": "text of u0"},
+                {"role": "assistant", "content": "on it"},
+            ]
+        ]
         decided = [
             item.entry for item in await rt.entries() if isinstance(item.entry, ApprovalDecided)
         ]

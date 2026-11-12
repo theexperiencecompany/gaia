@@ -21,6 +21,7 @@ from app.models.conversation_log_models import (
     StepClaim,
     UserMessage,
 )
+from app.models.message_models import MessageDict
 from app.models.tool_data_models import ToolDataEntry
 
 
@@ -211,9 +212,9 @@ class ApprovalReplies(Protocol):
     """Reads a typed reply on a button-less surface as an answer to pending approvals."""
 
     async def classify(
-        self, conversation_id: str, user_id: str, message_text: str
+        self, conversation_id: str, user_id: str, message_text: str, history: list[MessageDict]
     ) -> ApprovalDecision | None:
-        """Return the decision the message gives, or None when it is not an answer."""
+        """Return the decision the message gives, read against the turns before it; None when it is not an answer."""
         ...
 
 

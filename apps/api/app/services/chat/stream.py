@@ -40,7 +40,7 @@ from app.constants.chat import (
     TURN_REPLY_NOT_SAVED,
 )
 from app.constants.comms import CommsDirectiveKind
-from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
+from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED
 from app.constants.log_tags import LogTag
 from app.constants.reactions import REACTION_SETTLE_SECONDS
 from app.core.stream_manager import stream_manager
@@ -91,7 +91,7 @@ from app.services.conversation.reaction import (
 )
 from app.services.delivery.presence import record_turn_presence
 from app.services.files import FileService
-from app.services.hil.conversational import resolve_pending_from_message
+from app.services.hil.conversational import classifier_history, resolve_pending_from_message
 from app.services.latency_metrics import (
     observe_chat_e2e_ack,
     observe_chat_e2e_full,
@@ -493,7 +493,7 @@ def _recent_history(messages: list[MessageDict]) -> list[MessageDict]:
         last_turn: MessageDict = messages[-1]
         if last_turn.get("role") == "user":
             prior = messages[:-1]
-    return prior[-HIL_CLASSIFIER_HISTORY_TURNS:]
+    return classifier_history(prior)
 
 
 async def _resolve_pending_approval_turn(

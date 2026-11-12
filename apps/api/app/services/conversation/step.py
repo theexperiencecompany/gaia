@@ -9,6 +9,7 @@ import itertools
 from langgraph.errors import GraphRecursionError
 
 from app.constants.chat import BOT_CONVERSATION_SOURCES, EMPTY_RESPONSE_FALLBACK
+from app.constants.conversation import CLASSIFIER_LOOKBACK_SEQS
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
@@ -46,6 +47,7 @@ from app.models.conversation_log_models import (
     WorkFinished,
     WorkflowFired,
 )
+from app.models.message_models import MessageDict
 from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.log import publish_appended, state_frame
 from app.services.conversation.ports import (
@@ -260,6 +262,20 @@ def _work_cards(batch: Batch, reply_id: str) -> tuple[ToolDataEntry, ...]:
     )
 
 
+async def _turns_before(ports: RuntimePorts, claim: StepClaim, seq: int) -> list[MessageDict]:
+    """Return the user messages and shown replies logged shortly before seq, as chat turns."""
+    since = max(0, seq - 1 - CLASSIFIER_LOOKBACK_SEQS)
+    entries = await ports.log.read_after(claim.conversation_id, claim.user_id, since)
+    turns: list[MessageDict] = []
+    for logged in entries:
+        match logged.entry:
+            case UserMessage(text=text) if logged.seq < seq:
+                turns.append({"role": "user", "content": text})
+            case Reply(text=text) if logged.seq < seq and text:
+                turns.append({"role": "assistant", "content": text})
+    return turns
+
+
 async def _answered_as_approval(
     ports: RuntimePorts,
     claim: StepClaim,
@@ -276,7 +292,10 @@ async def _answered_as_approval(
         and awaiting
     ):
         return False
-    decision = await ports.approvals.classify(claim.conversation_id, claim.user_id, message.text)
+    history = await _turns_before(ports, claim, first.seq)
+    decision = await ports.approvals.classify(
+        claim.conversation_id, claim.user_id, message.text, history
+    )
     if decision is None:
         return False
     for approval_id in awaiting:
