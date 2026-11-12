@@ -11,6 +11,9 @@
 #
 # Reuses the main review's seed, inventory, states and v2 shots (hardlinked, read-only), captures the
 # candidate twice for those areas, and writes report/areas/<name>.json plus diff PNGs in the candidate dir.
+#
+# Build vs build: BEFORE_SHOTS=$REVIEW_OUT/candidates/<base>/shots/after candidate.sh <head> ... diffs the head
+# against an earlier candidate run of the base build instead of v2 (same seed, areas and states).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,13 +27,14 @@ NAME="$1"; WEB="$(cd "$2" && pwd)"; PORT="$3"; AREAS="$4"
 OUT="$MAIN/candidates/$NAME"
 APP="$WEB/.next/standalone/apps/web"
 [ -f "$APP/server.js" ] || die "no standalone build at $APP (run next build with output: standalone first)"
-[ -f "$MAIN/shots/before/run1/manifest.json" ] || die "no v2 reference in $MAIN"
+BEFORE_SHOTS="${BEFORE_SHOTS:-$MAIN/shots/before}"
+[ -f "$BEFORE_SHOTS/run1/manifest.json" ] || die "no reference capture at $BEFORE_SHOTS"
 curl -sf -o /dev/null --max-time 3 http://127.0.0.1:8100/health || die "the seeded API is not up on :8100 (stack.sh api)"
 if lsof -ti "tcp:$PORT" >/dev/null 2>&1; then die "port $PORT is taken"; fi
 
 rm -rf "$OUT"; mkdir -p "$OUT/shots"
 cp "$MAIN/seed-state.json" "$MAIN/inventory.json" "$MAIN/before.sha" "$OUT/"
-cp -Rl "$MAIN/shots/before" "$OUT/shots/before"
+cp -Rl "$BEFORE_SHOTS" "$OUT/shots/before"
 ln -s "$MAIN/netcache" "$OUT/netcache"
 git -C "$WEB" rev-parse HEAD > "$OUT/after.sha"
 
