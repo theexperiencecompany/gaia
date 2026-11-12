@@ -135,6 +135,31 @@ class TestTheRetryDoesNotReplayAPoisonedHistory:
         assert isinstance(notice, HumanMessage)
         assert notice not in handler.requests[0].messages
 
+    async def test_block_replies_lose_only_their_edge_breaks(self):
+        """A reasoning block keeps its text; only a text block's edges are trimmed."""
+        reasoning = {
+            "type": "reasoning",
+            "text": f"{NEW_MESSAGE_BREAKER}think{NEW_MESSAGE_BREAKER}",
+        }
+        reply = AIMessage(
+            content=[
+                "plain",
+                reasoning,
+                {"type": "text", "text": f"{NEW_MESSAGE_BREAKER}sure{NEW_MESSAGE_BREAKER * 2}"},
+            ]
+        )
+        handler = _ScriptedHandler(EMPTY, ANSWER)
+
+        await EmptyCompletionRetryMiddleware().awrap_model_call(
+            _request().override(messages=[reply, HumanMessage(content="and?")]), handler
+        )
+
+        assert handler.requests[1].messages[0].content == [
+            "plain",
+            reasoning,
+            {"type": "text", "text": "sure"},
+        ]
+
     async def test_the_first_call_is_sent_the_history_untouched(self):
         handler = _ScriptedHandler(ANSWER)
 

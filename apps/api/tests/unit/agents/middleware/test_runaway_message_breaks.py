@@ -8,10 +8,11 @@ into a real comms graph run.
 
 from __future__ import annotations
 
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from langchain.agents.middleware.types import ModelRequest, ModelResponse
+from langchain_core.language_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from langchain_core.outputs import ChatGenerationChunk
 import pytest
@@ -23,6 +24,7 @@ from app.agents.middleware.empty_completion import (
 )
 from app.constants.chat import EMPTY_COMPLETION_RETRY_NOTICE, MAX_LEADING_MESSAGE_BREAKS
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.log_tags import LogTag
 
 ANSWER = AIMessage(content="you have two meetings.")
 
@@ -57,6 +59,20 @@ class TestTheGuardStopsARunawayAtTheBound:
 
         assert stopped.value.breaks == MAX_LEADING_MESSAGE_BREAKS + 1
         assert stopped.value.chars == len(NEW_MESSAGE_BREAKER) * (MAX_LEADING_MESSAGE_BREAKS + 1)
+        assert str(stopped.value) == (
+            f"model streamed {MAX_LEADING_MESSAGE_BREAKS + 1} bubble breaks and no text"
+        )
+
+    async def test_block_tokens_with_no_chunk_still_count(self):
+        """A model that streams list content without a chunk passes its blocks as the token."""
+        guard = RunawayBreaksGuard()
+        run = uuid4()
+        block: list[str | dict[str, object]] = [{"type": "text", "text": NEW_MESSAGE_BREAKER}]
+        for _ in range(MAX_LEADING_MESSAGE_BREAKS):
+            await guard.on_llm_new_token(block, run_id=run)
+
+        with pytest.raises(RunawayMessageBreaksError):
+            await guard.on_llm_new_token(block, run_id=run)
 
     async def test_breaks_split_across_tokens_still_count(self):
         """A provider streams a sentinel as "<", "NEW", "_MESSAGE", ...; a lone "<" must not read as text."""
@@ -109,7 +125,7 @@ class TestAStoppedCallIsAnEmptyCompletion:
 
         async def always_runaway(request: ModelRequest) -> ModelResponse:
             calls.append(request)
-            raise RunawayMessageBreaksError(breaks=9, chars=171, message_id=None)
+            raise RunawayMessageBreaksError(breaks=9, chars=171, message_id="m-1")
 
         response = await EmptyCompletionRetryMiddleware().awrap_model_call(
             _request(), always_runaway
@@ -119,6 +135,24 @@ class TestAStoppedCallIsAnEmptyCompletion:
         [message] = response.result
         assert isinstance(message, AIMessage)
         assert message.content == ""
+        assert message.id == "m-1"
+
+    async def test_a_real_streaming_model_call_is_stopped_by_the_guard(self):
+        """The guard reaches the model through a configure hook, not through the handler's callbacks."""
+        runaway = " ".join([NEW_MESSAGE_BREAKER] * 4000)
+        model = GenericFakeChatModel(messages=iter([AIMessage(content=runaway), ANSWER]))
+
+        async def stream_the_model(request: ModelRequest) -> ModelResponse:
+            chunks = [chunk async for chunk in model.astream(request.messages)]
+            return ModelResponse(result=[AIMessage(content="".join(c.text for c in chunks))])
+
+        with patch("app.agents.middleware.empty_completion.log") as log:
+            response = await EmptyCompletionRetryMiddleware().awrap_model_call(
+                _request(), stream_the_model
+            )
+
+        assert log.set.call_args.kwargs["empty_completion_runaway_stops"] == 1
+        assert [message.text for message in response.result] == [ANSWER.text]
 
     async def test_the_stopped_message_keeps_the_id_it_streamed_under(self):
         """LangGraph re-emits a node's output under an unstreamed id, which would show the user a placeholder."""
@@ -139,15 +173,23 @@ class TestAStoppedCallIsAnEmptyCompletion:
                 raise RunawayMessageBreaksError(breaks=9, chars=171, message_id=None)
             return ModelResponse(result=[ANSWER])
 
-        with patch("app.agents.middleware.empty_completion.log") as log:
+        clock = MagicMock()
+        clock.monotonic.side_effect = [10.0, 10.0123456, 20.0, 20.0]
+        with (
+            patch("app.agents.middleware.empty_completion.log") as log,
+            patch("app.agents.middleware.empty_completion.time", clock),
+        ):
             await EmptyCompletionRetryMiddleware().awrap_model_call(_request(), runaway_then_answer)
 
         stop = log.warning.call_args_list[0]
+        assert stop.args == (
+            f"{LogTag.AGENT} Model streamed only message breaks; stopped the call",
+        )
         assert stop.kwargs == {
             "agent_name": "comms_agent",
             "runaway_breaks": 9,
             "runaway_chars": 171,
-            "elapsed_ms": ANY,
+            "elapsed_ms": 12.35,
         }
         assert log.set.call_args.kwargs["empty_completion_runaway_stops"] == 1
 

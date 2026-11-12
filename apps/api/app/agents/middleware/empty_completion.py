@@ -56,8 +56,8 @@ class RunawayBreaksGuard(AsyncCallbackHandler):
     run_inline = True
 
     def __init__(self) -> None:
-        self._text_by_run: dict[UUID, str] = {}
-        self._runs_with_text: set[UUID] = set()
+        # None once a run has streamed real text: it is a reply, and no longer watched.
+        self._text_by_run: dict[UUID, str | None] = {}
 
     async def on_llm_new_token(
         self,
@@ -69,14 +69,12 @@ class RunawayBreaksGuard(AsyncCallbackHandler):
         **_kwargs: object,
     ) -> None:
         """Raise RunawayMessageBreaksError once this run's breaks-only text passes the bound."""
-        if run_id in self._runs_with_text:
+        so_far = self._text_by_run.get(run_id, "")
+        if so_far is None:
             return
-        # A chat model passes its content as token, a list for block content; chunk.text is the text.
-        piece = chunk.text if chunk is not None else token if isinstance(token, str) else ""
-        text = self._text_by_run.get(run_id, "") + piece
+        text = so_far + (chunk.text if chunk is not None else extract_text_content(token))
         if not is_only_message_breaks(text):
-            self._runs_with_text.add(run_id)
-            self._text_by_run.pop(run_id, None)
+            self._text_by_run[run_id] = None
             return
         self._text_by_run[run_id] = text
         breaks = count_message_breaks(text)
