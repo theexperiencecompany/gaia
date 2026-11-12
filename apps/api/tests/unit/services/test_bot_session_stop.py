@@ -10,7 +10,8 @@ from app.db.repositories.bot_sessions import bot_session_repository
 from app.models.bot_models import BotSessionDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.work_cancel_models import WorkCancelled
-from app.services import bot_session_stop, conversation_stop_service
+from app.services import conversation_stop_service
+from app.services.bot_service import BotService
 from app.services.bot_session_stop import reset_bot_session, stop_bot_session
 from app.services.browser.job_stop import RequesterChat
 from shared.py.analytics.catalog.chat import ChatWorkStopped
@@ -125,7 +126,7 @@ class TestReset:
     ) -> None:
         """/new leaves the old conversation; work left running there keeps reporting into it."""
         reset = AsyncMock(return_value="conv-new")
-        monkeypatch.setattr(bot_session_stop.BotService, "reset_session", reset)
+        monkeypatch.setattr(BotService, "reset_session", reset)
 
         new_id = await reset_bot_session("slack", "user123", "channel789", USER)
 
@@ -141,9 +142,7 @@ class TestReset:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """One action, one event: /new is counted by bot:session_reset, never as a Stop too."""
-        monkeypatch.setattr(
-            bot_session_stop.BotService, "reset_session", AsyncMock(return_value="conv-new")
-        )
+        monkeypatch.setattr(BotService, "reset_session", AsyncMock(return_value="conv-new"))
 
         await reset_bot_session("slack", "user123", "channel789", USER)
 
