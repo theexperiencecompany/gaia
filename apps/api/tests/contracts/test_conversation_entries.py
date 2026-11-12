@@ -3,55 +3,26 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine, Iterator
 from datetime import UTC, datetime
 from typing import Any
 import uuid
 
 import pytest
 
-from app.db.repositories import conversations as conversations_module
 from app.db.repositories.conversation_entries import EntryWindow
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import MessageModel
 from app.models.conversation_models import ConversationDocument
 from app.utils.errors import ConversationNotFoundError, UnmigratedConversationError
+from tests.contracts.conftest import HeldFlushes
 
 # Every test here writes entries, so each needs the collection with its unique indexes.
 pytestmark = pytest.mark.usefixtures("entries_collection")
 
 
-class _HeldFlushes:
-    """Stands in for the flush spawner: keeps each flush coroutine until the test runs or drops it."""
-
-    def __init__(self) -> None:
-        self.held: list[Coroutine[Any, Any, Any]] = []
-
-    def __call__(self, operation: str, coro: Coroutine[Any, Any, Any], **_: object) -> None:
-        self.held.append(coro)
-
-    async def run_all(self) -> None:
-        held, self.held = self.held, []
-        for coro in held:
-            await coro
-
-    def drop_all(self) -> None:
-        held, self.held = self.held, []
-        for coro in held:
-            coro.close()
-
-
 @pytest.fixture
 def repo(raw_collection: Any) -> ConversationRepository:
     return ConversationRepository()
-
-
-@pytest.fixture
-def held(monkeypatch: pytest.MonkeyPatch) -> Iterator[_HeldFlushes]:
-    flushes = _HeldFlushes()
-    monkeypatch.setattr(conversations_module, "spawn_logged_task", flushes)
-    yield flushes
-    flushes.drop_all()
 
 
 @pytest.fixture
@@ -83,7 +54,7 @@ async def _outbox(raw_collection: Any, doc: ConversationDocument) -> dict[str, A
 
 
 async def test_concurrent_appends_take_every_seq_once_in_order(
-    repo: ConversationRepository, conversation: ConversationDocument, held: _HeldFlushes
+    repo: ConversationRepository, conversation: ConversationDocument, held: HeldFlushes
 ) -> None:
     async def producer(task: int) -> list[int]:
         seqs: list[int] = []
@@ -107,7 +78,7 @@ async def test_concurrent_appends_take_every_seq_once_in_order(
 
 
 async def test_an_entry_is_read_the_moment_append_returns(
-    repo: ConversationRepository, conversation: ConversationDocument, held: _HeldFlushes
+    repo: ConversationRepository, conversation: ConversationDocument, held: HeldFlushes
 ) -> None:
     [seq] = await repo.append(
         conversation.conversation_id, user_id=conversation.user_id, entries=[_message("m1")]
@@ -120,7 +91,7 @@ async def test_an_entry_is_read_the_moment_append_returns(
 async def test_a_flush_that_never_ran_is_finished_by_the_next_append_or_flush_outbox(
     repo: ConversationRepository,
     conversation: ConversationDocument,
-    held: _HeldFlushes,
+    held: HeldFlushes,
     raw_collection: Any,
     entries_collection: Any,
 ) -> None:
@@ -152,7 +123,7 @@ async def test_a_flush_that_never_ran_is_finished_by_the_next_append_or_flush_ou
 
 
 async def test_the_same_id_appended_twice_is_one_entry_with_one_seq(
-    repo: ConversationRepository, conversation: ConversationDocument, held: _HeldFlushes
+    repo: ConversationRepository, conversation: ConversationDocument, held: HeldFlushes
 ) -> None:
     cid, uid = conversation.conversation_id, conversation.user_id
     first = await repo.append(cid, user_id=uid, entries=[_message("same")])
@@ -171,7 +142,7 @@ async def test_the_same_id_appended_twice_is_one_entry_with_one_seq(
 
 
 async def test_a_batch_with_one_known_id_appends_only_the_new_ones(
-    repo: ConversationRepository, conversation: ConversationDocument, held: _HeldFlushes
+    repo: ConversationRepository, conversation: ConversationDocument, held: HeldFlushes
 ) -> None:
     cid, uid = conversation.conversation_id, conversation.user_id
     await repo.append(cid, user_id=uid, entries=[_message("a"), _message("known")])
@@ -189,7 +160,7 @@ async def test_a_batch_with_one_known_id_appends_only_the_new_ones(
 async def test_an_update_to_an_entry_still_in_the_outbox_is_applied(
     repo: ConversationRepository,
     conversation: ConversationDocument,
-    held: _HeldFlushes,
+    held: HeldFlushes,
     raw_collection: Any,
 ) -> None:
     cid, uid = conversation.conversation_id, conversation.user_id
@@ -207,7 +178,7 @@ async def test_an_update_to_an_entry_still_in_the_outbox_is_applied(
 async def test_a_read_between_insert_and_unset_sees_the_entry_once(
     repo: ConversationRepository,
     conversation: ConversationDocument,
-    held: _HeldFlushes,
+    held: HeldFlushes,
     raw_collection: Any,
     entries_collection: Any,
 ) -> None:
@@ -227,7 +198,7 @@ async def test_a_read_between_insert_and_unset_sees_the_entry_once(
 
 
 async def test_reads_racing_flushes_never_miss_or_duplicate(
-    repo: ConversationRepository, conversation: ConversationDocument, held: _HeldFlushes
+    repo: ConversationRepository, conversation: ConversationDocument, held: HeldFlushes
 ) -> None:
     cid, uid = conversation.conversation_id, conversation.user_id
     expected: list[tuple[int, str]] = []
@@ -244,7 +215,7 @@ async def test_reads_racing_flushes_never_miss_or_duplicate(
 
 
 async def test_the_last_n_messages_take_the_highest_seqs_across_both_stores(
-    repo: ConversationRepository, conversation: ConversationDocument, held: _HeldFlushes
+    repo: ConversationRepository, conversation: ConversationDocument, held: HeldFlushes
 ) -> None:
     cid, uid = conversation.conversation_id, conversation.user_id
     await repo.append(cid, user_id=uid, entries=[_message(f"m{n}") for n in range(1, 5)])
@@ -268,7 +239,7 @@ async def test_the_last_n_messages_take_the_highest_seqs_across_both_stores(
 
 async def test_append_to_a_missing_conversation_raises_and_writes_nothing(
     repo: ConversationRepository,
-    held: _HeldFlushes,
+    held: HeldFlushes,
     raw_collection: Any,
     entries_collection: Any,
 ) -> None:
@@ -281,7 +252,7 @@ async def test_append_to_a_missing_conversation_raises_and_writes_nothing(
 
 
 async def test_an_unmigrated_conversation_is_refused_by_name(
-    repo: ConversationRepository, raw_collection: Any, held: _HeldFlushes
+    repo: ConversationRepository, raw_collection: Any, held: HeldFlushes
 ) -> None:
     await raw_collection.insert_one(
         {
@@ -302,7 +273,7 @@ async def test_an_unmigrated_conversation_is_refused_by_name(
 
 
 async def test_deleting_conversations_deletes_their_entries(
-    repo: ConversationRepository, held: _HeldFlushes, entries_collection: Any
+    repo: ConversationRepository, held: HeldFlushes, entries_collection: Any
 ) -> None:
     async def seeded(user_id: str, **fields: object) -> str:
         doc = ConversationDocument.model_validate(
@@ -350,7 +321,7 @@ async def _chat(repo: ConversationRepository, user_id: str, **fields: object) ->
 
 
 async def test_cross_conversation_reads_see_flushed_and_outbox_entries(
-    repo: ConversationRepository, held: _HeldFlushes
+    repo: ConversationRepository, held: HeldFlushes
 ) -> None:
     uid = f"u-{uuid.uuid4().hex}"
     flushed = await _chat(repo, uid)
@@ -385,7 +356,7 @@ async def test_cross_conversation_reads_see_flushed_and_outbox_entries(
 
 
 async def test_search_skips_a_todos_chat_and_cross_reads_refuse_unmigrated_data(
-    repo: ConversationRepository, held: _HeldFlushes, raw_collection: Any
+    repo: ConversationRepository, held: HeldFlushes, raw_collection: Any
 ) -> None:
     uid = f"u-{uuid.uuid4().hex}"
     todo_chat = await _chat(repo, uid, todo_id="todo-1")

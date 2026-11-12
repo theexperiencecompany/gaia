@@ -22,6 +22,7 @@ from pymongo import ReplaceOne
 from app.db.repositories.conversation_entries import (
     EMBEDDED_LAST_ID,
     LOG_HEAD_FIELD,
+    MESSAGES_ONLY,
     MIGRATED_LAST_ID_FIELD,
     MIGRATION_HASH_FIELD,
     OUTBOX_FIELD,
@@ -281,7 +282,13 @@ class ConversationEntriesMigration(ConversationRepository):
         with store_errors("migration read"):
             rows = (
                 await self._entries()
-                .find({"user_id": ref.user_id, "conversation_id": ref.conversation_id})
+                .find(
+                    {
+                        "user_id": ref.user_id,
+                        "conversation_id": ref.conversation_id,
+                        **MESSAGES_ONLY,
+                    }
+                )
                 .sort("seq", 1)
                 .to_list(length=None)
             )

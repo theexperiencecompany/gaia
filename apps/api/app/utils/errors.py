@@ -122,6 +122,13 @@ class ConversationNotFoundError(AppError):
 
 
 @dataclass
+class ConversationEntryNotFoundError(AppError):
+    """The log entry a write named is not in the conversation, or is another kind."""
+
+    status_code: int = 404
+
+
+@dataclass
 class UnmigratedConversationError(AppError):
     """A conversation still keeps its messages only in the embedded array the entries migration replaces."""
 

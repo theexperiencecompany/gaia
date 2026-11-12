@@ -37,8 +37,12 @@ from app.db.repositories.conversation_entries import (
     DROP_EMBEDDED_STAGE,
     EMBEDDED_STATE_STAGE,
     LOG_HEAD_FIELD,
+    MESSAGES_ONLY,
     MIGRATED_LAST_ID_FIELD,
     OUTBOX_FIELD,
+    RUNNER_EPOCH_FIELD,
+    RUNNER_FIELD,
+    STATE_FIELD,
     UNMIGRATED_HEADS,
     EntryWindow,
     Head,
@@ -928,6 +932,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     LOG_HEAD_FIELD: 1,
                     OUTBOX_FIELD: 1,
                     MIGRATED_LAST_ID_FIELD: 1,
+                    STATE_FIELD: 1,
+                    RUNNER_FIELD: 1,
+                    RUNNER_EPOCH_FIELD: 1,
                     "_embedded": 1,
                 }
             },
@@ -1024,8 +1031,16 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def _entries_for(
         self, heads: Sequence[Head], window: EntryWindow | None = None
     ) -> list[tuple[Head, list[ConversationEntry]]]:
+        """Each head's messages in window, read through _union_for."""
+        return [
+            (head, [entry_from_raw(row) for row in rows])
+            for head, rows in await self._union_for(heads, window or EntryWindow())
+        ]
+
+    async def _union_for(
+        self, heads: Sequence[Head], window: EntryWindow
+    ) -> list[tuple[Head, list[Mapping[str, object]]]]:
         """Union each head's outbox with its collection entries, up to the log_head the head read saw."""
-        window = window or EntryWindow()
         if not heads:
             return []
         clauses = [
@@ -1033,7 +1048,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 "user_id": head.user_id,
                 "conversation_id": head.conversation_id,
                 "seq": window.seq_range(head.log_head),
-                **window.id_clause(),
+                **window.clauses(),
             }
             for head in heads
         ]
@@ -1050,11 +1065,11 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         for row in rows:
             key = (str(row["user_id"]), str(row["conversation_id"]))
             stored.setdefault(key, {})[int(row["seq"])] = row
-        result: list[tuple[Head, list[ConversationEntry]]] = []
+        result: list[tuple[Head, list[Mapping[str, object]]]] = []
         for head in heads:
             union = dict(stored.get((head.user_id, head.conversation_id), {}))
             for seq, entry in head.outbox.items():
-                if window.admits(seq, str(entry["id"]), head.log_head):
+                if window.admits(seq, entry, head.log_head):
                     union.setdefault(seq, entry)
             result.append((head, window.take(union)))
         return result
@@ -1089,7 +1104,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                         {"$project": {"_id": 0, "entry": {"$objectToArray": f"${OUTBOX_FIELD}"}}},
                         {"$unwind": "$entry"},
                         {"$replaceRoot": {"newRoot": "$entry.v"}},
-                        {"$match": dict(match)},
+                        {"$match": {**match, **MESSAGES_ONLY}},
                     ]
                 )
                 .to_list(length=None)
@@ -1101,7 +1116,14 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             )
             cursor = (
                 self._entries()
-                .find({"user_id": user_id, **match, "conversation_id": {"$nin": skipped}})
+                .find(
+                    {
+                        "user_id": user_id,
+                        **match,
+                        **MESSAGES_ONLY,
+                        "conversation_id": {"$nin": skipped},
+                    }
+                )
                 .sort([("at", 1), ("seq", 1)])
             )
             if limit:
@@ -1124,11 +1146,12 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         array_filters: Sequence[Mapping[str, object]] | None = None,
         every_match: bool = False,
     ) -> bool:
-        """Update one stored entry (every matching one with every_match); an entry still in the outbox is flushed first.
+        """Update one stored message (every matching one with every_match); one still in the outbox is flushed first.
 
-        Never writes inside the outbox: a miss flushes it and retries once.
+        A match that names a kind updates that kind instead. Never writes inside the outbox:
+        a miss flushes it and retries once.
         """
-        query = {"user_id": user_id, "conversation_id": conversation_id, **match}
+        query = {"user_id": user_id, "conversation_id": conversation_id, **MESSAGES_ONLY, **match}
         filters = [dict(f) for f in array_filters] if array_filters is not None else None
         document: dict[str, object] | list[dict[str, object]] = (
             dict(update) if isinstance(update, Mapping) else [dict(stage) for stage in update]

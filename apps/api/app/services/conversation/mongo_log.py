@@ -1,0 +1,293 @@
+"""The ConversationLog port on Mongo (the head and conversation_entries) and Redis (liveness and the hint).
+
+The head's conditional writes are the truth: seq order, the fold, and the epoch fence. Redis
+holds what may lapse: an epoch's alive key proves its holder lives, and the hint is the
+advisory preempt view, rebuilt from the head whenever it is missing.
+"""
+
+import asyncio
+from collections.abc import Callable, Mapping, Sequence
+from datetime import datetime
+import random
+
+from redis.exceptions import RedisError
+
+from app.constants.chat import CONVERSATION_APPEND_JITTER_SECONDS, CONVERSATION_APPEND_MAX_ATTEMPTS
+from app.constants.conversation import (
+    HINT_KEY_PREFIX,
+    HINT_TTL_SECONDS,
+    RUNNER_ALIVE_KEY_PREFIX,
+    RUNNER_ALIVE_TTL_SECONDS,
+    HintField,
+)
+from app.constants.log_tags import LogTag
+from app.db.redis import redis_cache
+from app.db.repositories.conversation_log import ConversationLogRepository, LogHead
+from app.models.conversation_log_models import (
+    BargeIn,
+    CommsPhase,
+    ConversationState,
+    Entry,
+    LoggedEntry,
+    PreemptHint,
+    Rejected,
+    Reply,
+    StepClaim,
+    UserMessage,
+)
+from app.services.conversation.ports import Appended, ClaimLost, EntryRejected
+from app.services.conversation.reducer import reduce
+from app.utils.errors import (
+    ConversationEntryNotFoundError,
+    ConversationNotFoundError,
+    ConversationStoreError,
+)
+from shared.py.wide_events import log
+
+_JITTER = random.SystemRandom()
+# Raises the hint only past what it already holds, so a slower write of an older value never lands over a newer one.
+_RAISE_HINT = """
+local held = tonumber(redis.call('HGET', KEYS[1], ARGV[1]))
+if held and held >= tonumber(ARGV[2]) then return 0 end
+redis.call('HSET', KEYS[1], ARGV[1], ARGV[2], unpack(ARGV, 4))
+redis.call('EXPIRE', KEYS[1], ARGV[3])
+return 1
+"""
+_HINT_REQUIRED = (HintField.HEAD, HintField.STOP, HintField.EPOCH)
+
+
+class MongoConversationLog:
+    """The ConversationLog port over the conversation repository, stamping entries with clock."""
+
+    def __init__(
+        self, repository: ConversationLogRepository, clock: Callable[[], datetime]
+    ) -> None:
+        self._repository = repository
+        self._clock = clock
+
+    async def append(self, conversation_id: str, user_id: str, entry: Entry) -> Appended:
+        """Store entry at the next seq; the same id again returns the first result as a duplicate."""
+        return await self._append(conversation_id, user_id, entry, epoch=None)
+
+    async def append_fenced(self, claim: StepClaim, entry: Entry) -> Appended:
+        """Append only while claim holds the current epoch; raise ClaimLost otherwise."""
+        return await self._append(claim.conversation_id, claim.user_id, entry, epoch=claim.epoch)
+
+    async def amend(self, claim: StepClaim, entry: Reply | UserMessage) -> LoggedEntry:
+        """Replace the stored entry with entry's id in place at its next revision, fenced."""
+        # The entry is its own document, so the fence is a read of the head just before the write.
+        if (await self._head(claim.conversation_id, claim.user_id)).holder != claim.epoch:
+            raise ClaimLost
+        amended = await self._repository.amend_log_entry(
+            claim.conversation_id, user_id=claim.user_id, entry=entry
+        )
+        if amended is None:
+            raise ConversationEntryNotFoundError(
+                message=f"no {entry.kind} entry {entry.id} in conversation {claim.conversation_id}",
+                meta={"conversation_id": claim.conversation_id, "entry_id": entry.id},
+            )
+        return amended
+
+    async def read_after(
+        self, conversation_id: str, user_id: str, seq: int
+    ) -> Sequence[LoggedEntry]:
+        """Return the entries after seq in order, with their current content."""
+        entries = await self._repository.read_log(conversation_id, user_id=user_id, after_seq=seq)
+        if entries is None:
+            raise _not_found(conversation_id)
+        return entries
+
+    async def state(self, conversation_id: str, user_id: str) -> ConversationState:
+        """Return the conversation's current state."""
+        return (await self._head(conversation_id, user_id)).state
+
+    async def claim(self, conversation_id: str, user_id: str) -> StepClaim | None:
+        """Take the step with a new epoch, or None while another holder is alive."""
+        client = redis_cache.client
+        for _ in range(CONVERSATION_APPEND_MAX_ATTEMPTS):
+            head = await self._head(conversation_id, user_id)
+            if head.holder is not None and await client.exists(
+                _alive_key(conversation_id, user_id, head.holder)
+            ):
+                return None
+            epoch = head.runner_epoch + 1
+            alive_key = _alive_key(conversation_id, user_id, epoch)
+            # Taken before the head names it, so no reader sees a holder without its key; NX lets one claimer per epoch through.
+            if not await client.set(alive_key, str(epoch), ex=RUNNER_ALIVE_TTL_SECONDS, nx=True):
+                return None
+            if await self._repository.take_runner(
+                conversation_id,
+                user_id=user_id,
+                runner_epoch=head.runner_epoch,
+                alive_key=alive_key,
+            ):
+                await _raise_hint(conversation_id, user_id, HintField.EPOCH, epoch, {})
+                return StepClaim(conversation_id=conversation_id, user_id=user_id, epoch=epoch)
+            await client.delete(alive_key)
+        return None
+
+    async def release_if_caught_up(self, claim: StepClaim) -> bool:
+        """Release when nothing waking is unsettled; atomic with append; ClaimLost on a stale epoch."""
+        if await self._repository.release_runner(
+            claim.conversation_id, user_id=claim.user_id, epoch=claim.epoch
+        ):
+            await redis_cache.client.delete(
+                _alive_key(claim.conversation_id, claim.user_id, claim.epoch)
+            )
+            return True
+        if (await self._head(claim.conversation_id, claim.user_id)).holder != claim.epoch:
+            raise ClaimLost
+        return False
+
+    async def set_comms(self, claim: StepClaim, phase: CommsPhase) -> ConversationState:
+        """Write the comms phase, fenced, and return the new state."""
+        state = await self._repository.set_log_comms(
+            claim.conversation_id, user_id=claim.user_id, epoch=claim.epoch, phase=phase
+        )
+        if state is None:
+            raise ClaimLost
+        return state
+
+    async def hint(self, conversation_id: str, user_id: str) -> PreemptHint:
+        """Return the preempt view; barge_reply_id is set only while that reply is open."""
+        held = await redis_cache.client.hgetall(_hint_key(conversation_id, user_id))
+        if not all(field in held for field in _HINT_REQUIRED):
+            head = await self._head(conversation_id, user_id)
+            return PreemptHint(
+                head=head.log_head, stop_through=head.state.stopped_through, epoch=head.runner_epoch
+            )
+        barge = held.get(HintField.BARGE) or None
+        return PreemptHint(
+            head=int(held[HintField.HEAD]),
+            stop_through=int(held[HintField.STOP]),
+            barge_reply_id=barge if barge == held.get(HintField.OPEN) else None,
+            epoch=int(held[HintField.EPOCH]),
+        )
+
+    async def beat(self, claim: StepClaim) -> bool:
+        """Renew the claim's liveness; False once its key lapsed or was released, which nothing renews."""
+        key = _alive_key(claim.conversation_id, claim.user_id, claim.epoch)
+        return bool(await redis_cache.client.expire(key, RUNNER_ALIVE_TTL_SECONDS))
+
+    async def _append(
+        self, conversation_id: str, user_id: str, entry: Entry, *, epoch: int | None
+    ) -> Appended:
+        for _ in range(CONVERSATION_APPEND_MAX_ATTEMPTS):
+            head = await self._head(conversation_id, user_id, entry.id)
+            if epoch is not None and head.holder != epoch:
+                raise ClaimLost
+            seq = head.known.get(entry.id)
+            if seq is not None:
+                return await self._first_result(conversation_id, user_id, seq)
+            logged = LoggedEntry(seq=head.log_head + 1, at=self._clock(), entry=entry)
+            result = reduce(head.state, logged)
+            if isinstance(result, Rejected):
+                raise EntryRejected(result.reason)
+            if await self._repository.commit_log_entry(head, logged, result.state, epoch=epoch):
+                await _publish_hint(conversation_id, user_id, logged, result.state)
+                return Appended(
+                    logged=logged,
+                    previous=head.state,
+                    state=result.state,
+                    effects=result.effects,
+                    duplicate=False,
+                )
+            await asyncio.sleep(_JITTER.uniform(0, CONVERSATION_APPEND_JITTER_SECONDS))
+        raise ConversationStoreError(
+            message=f"append to conversation {conversation_id} lost every conditional write",
+            why=f"the head moved under each of {CONVERSATION_APPEND_MAX_ATTEMPTS} attempts",
+            meta={"conversation_id": conversation_id},
+        )
+
+    async def _first_result(self, conversation_id: str, user_id: str, seq: int) -> Appended:
+        """Replay the log through seq: what the append that stored it returned, as a duplicate."""
+        entries = await self._repository.read_log(conversation_id, user_id=user_id, through_seq=seq)
+        if not entries or entries[-1].seq != seq:
+            raise ConversationStoreError(
+                message=f"seq {seq} of conversation {conversation_id} holds a message, not a log entry",
+                meta={"conversation_id": conversation_id, "seq": seq},
+            )
+        return _replay(entries)
+
+    async def _head(
+        self, conversation_id: str, user_id: str, entry_id: str | None = None
+    ) -> LogHead:
+        head = await self._repository.read_log_head(
+            conversation_id, user_id=user_id, entry_id=entry_id
+        )
+        if head is None:
+            raise _not_found(conversation_id)
+        return head
+
+
+def _replay(entries: Sequence[LoggedEntry]) -> Appended:
+    """Fold entries from the empty state, returning the last one's append; seqs between them hold messages."""
+    state = ConversationState.empty()
+    appended: Appended | None = None
+    for logged in entries:
+        previous = state.model_copy(update={"head": logged.seq - 1})
+        result = reduce(previous, logged)
+        if isinstance(result, Rejected):
+            raise ConversationStoreError(
+                message=f"stored entry at seq {logged.seq} no longer reduces",
+                why=result.reason.value,
+            )
+        state = result.state
+        appended = Appended(
+            logged=logged, previous=previous, state=state, effects=result.effects, duplicate=True
+        )
+    if appended is None:
+        raise ConversationStoreError(message="replay of an empty log")
+    return appended
+
+
+def _not_found(conversation_id: str) -> ConversationNotFoundError:
+    return ConversationNotFoundError(
+        message=f"conversation {conversation_id} does not exist for this user",
+        meta={"conversation_id": conversation_id},
+    )
+
+
+def _alive_key(conversation_id: str, user_id: str, epoch: int) -> str:
+    return f"{RUNNER_ALIVE_KEY_PREFIX}{user_id}:{conversation_id}:{epoch}"
+
+
+def _hint_key(conversation_id: str, user_id: str) -> str:
+    return f"{HINT_KEY_PREFIX}{user_id}:{conversation_id}"
+
+
+async def _publish_hint(
+    conversation_id: str, user_id: str, logged: LoggedEntry, state: ConversationState
+) -> None:
+    """Raise the hint to the committed head; it is advisory, so a Redis failure is logged, never raised."""
+    fields: dict[str, object] = {
+        HintField.STOP: state.stopped_through,
+        HintField.OPEN: state.open_reply or "",
+    }
+    if isinstance(logged.entry, BargeIn):
+        fields[HintField.BARGE] = logged.entry.reply_id
+    try:
+        await _raise_hint(conversation_id, user_id, HintField.HEAD, logged.seq, fields)
+    except RedisError as exc:
+        log.error(
+            f"{LogTag.STORAGE} Could not raise a conversation's preempt hint",
+            conversation_id=conversation_id,
+            seq=logged.seq,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+
+
+async def _raise_hint(
+    conversation_id: str, user_id: str, guard: HintField, value: int, fields: Mapping[str, object]
+) -> None:
+    pairs = [str(item) for pair in fields.items() for item in pair]
+    await redis_cache.client.eval(
+        _RAISE_HINT,
+        1,
+        _hint_key(conversation_id, user_id),
+        guard,
+        str(value),
+        str(HINT_TTL_SECONDS),
+        *pairs,
+    )

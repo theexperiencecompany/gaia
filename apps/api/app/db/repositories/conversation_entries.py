@@ -1,7 +1,8 @@
 """The stored shape of a conversation entry and the head expressions the append protocol commits with.
 
-An entry is one message as stored today, keyed by (user_id, conversation_id, seq)
-and (user_id, conversation_id, id); id is the message's message_id. The head is the
+An entry is one message as stored today, or one conversation log entry told apart by its
+kind (is_log_entry), keyed by (user_id, conversation_id, seq) and (user_id,
+conversation_id, id); a message's id is its message_id. The head is the
 conversations document: log_head is the highest committed seq and outbox holds the
 committed entries not yet copied into conversation_entries.
 """
@@ -20,11 +21,16 @@ from app.constants.chat import (
     FOLDED_CARDS_KEEP_SECONDS,
 )
 from app.models.chat_models import MessageModel
+from app.models.conversation_log_models import EntryKind
 from app.models.conversation_models import ConversationEntry
 from app.utils.errors import ConversationStoreError, UnmigratedConversationError
 
 LOG_HEAD_FIELD = "log_head"
 OUTBOX_FIELD = "outbox"
+#: The conversation log's fold, its step holder {epoch, alive_key} and the last epoch handed out.
+STATE_FIELD = "state"
+RUNNER_FIELD = "runner"
+RUNNER_EPOCH_FIELD = "runner_epoch"
 #: The message_id the migration last copied from the embedded array, so a later write by the old build shows.
 MIGRATED_LAST_ID_FIELD = "migrated_last_id"
 #: On a migrated entry: the hash of the embedded element it was copied from (verify compares it).
@@ -35,10 +41,17 @@ HEAD_INTERNAL_FIELDS = (
     "messages",
     LOG_HEAD_FIELD,
     OUTBOX_FIELD,
+    STATE_FIELD,
+    RUNNER_FIELD,
+    RUNNER_EPOCH_FIELD,
     MIGRATED_LAST_ID_FIELD,
     _EMBEDDED_FIELD,
 )
 _ENTRY_KEY_FIELDS = ("_id", "conversation_id", "user_id", "seq", "id", "at", MIGRATION_HASH_FIELD)
+#: The kinds the conversation log appends; a stored entry with any other kind, or none, is a message.
+LOG_KINDS: list[str] = [kind.value for kind in EntryKind]
+MESSAGES_ONLY: dict[str, object] = {"kind": {"$nin": LOG_KINDS}}
+LOG_ENTRIES_ONLY: dict[str, object] = {"kind": {"$in": LOG_KINDS}}
 
 #: The last embedded message_id, as the migration records it; missing when the array holds none.
 EMBEDDED_LAST_ID: dict[str, object] = {
@@ -84,6 +97,11 @@ class Head:
     def known_seqs(self) -> dict[str, int]:
         """Every entry id this head's reads saw, outbox and collection both, by seq."""
         return {**self.existing, **{str(e["id"]): seq for seq, e in self.outbox.items()}}
+
+
+def is_log_entry(raw: Mapping[str, object]) -> bool:
+    """Whether a stored entry is one the conversation log appended rather than a message."""
+    return raw.get("kind") in LOG_KINDS
 
 
 def head_from_raw(raw: Mapping[str, object]) -> Head:
@@ -291,30 +309,36 @@ def at_log_head(log_head: int) -> dict[str, object]:
 
 @dataclass(frozen=True)
 class EntryWindow:
-    """Which entries of a conversation a read asks for: a seq range, the newest limit, or these ids."""
+    """Which entries of a conversation a read asks for: a seq range, the newest limit, or these ids.
+
+    A window reads messages, or with log the conversation log's own entries; never both.
+    """
 
     after_seq: int = 0
     before_seq: int | None = None
     limit: int | None = None
     newest_first: bool = False
     ids: Sequence[str] | None = None
+    log: bool = False
 
     def seq_range(self, log_head: int) -> dict[str, int]:
         upper = log_head if self.before_seq is None else min(log_head, self.before_seq - 1)
         return {"$gt": self.after_seq, "$lte": upper}
 
-    def id_clause(self) -> dict[str, object]:
-        return {} if self.ids is None else {"id": {"$in": list(self.ids)}}
+    def clauses(self) -> dict[str, object]:
+        kinds = LOG_ENTRIES_ONLY if self.log else MESSAGES_ONLY
+        return {**kinds, **({} if self.ids is None else {"id": {"$in": list(self.ids)}})}
 
-    def admits(self, seq: int, entry_id: str, log_head: int) -> bool:
+    def admits(self, seq: int, entry: Mapping[str, object], log_head: int) -> bool:
         bounds = self.seq_range(log_head)
         in_range = bounds["$gt"] < seq <= bounds["$lte"]
-        return in_range and (self.ids is None or entry_id in self.ids)
+        wanted = is_log_entry(entry) is self.log
+        return in_range and wanted and (self.ids is None or str(entry["id"]) in self.ids)
 
-    def take(self, union: Mapping[int, Mapping[str, object]]) -> list[ConversationEntry]:
+    def take(self, union: Mapping[int, Mapping[str, object]]) -> list[Mapping[str, object]]:
         seqs = sorted(union, reverse=True)
         if self.limit:
             seqs = seqs[: self.limit]
         if not self.newest_first:
             seqs.reverse()
-        return [entry_from_raw(union[seq]) for seq in seqs]
+        return [union[seq] for seq in seqs]

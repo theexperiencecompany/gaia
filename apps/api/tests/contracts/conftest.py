@@ -14,9 +14,10 @@ Isolation, so the default -n 4 xdist run is safe:
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Coroutine, Iterator
 from datetime import UTC
 import os
+from typing import Any
 import uuid
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
@@ -25,6 +26,7 @@ from redis.asyncio import Redis
 
 from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.db.mongodb.indexes import CONVERSATION_ENTRY_INDEXES
+from app.db.repositories import conversations as conversations_module
 from shared.py.wide_events import _spawned_tasks
 from tests.helpers import worker_mongo_db_name, worker_redis_url
 
@@ -121,3 +123,32 @@ async def redis(redis_url: str, monkeypatch: pytest.MonkeyPatch) -> AsyncIterato
 
     await client.flushdb()
     await client.aclose()
+
+
+class HeldFlushes:
+    """Stands in for the flush spawner: keeps each flush coroutine until the test runs or drops it."""
+
+    def __init__(self) -> None:
+        self.held: list[Coroutine[Any, Any, Any]] = []
+
+    def __call__(self, operation: str, coro: Coroutine[Any, Any, Any], **_: object) -> None:
+        self.held.append(coro)
+
+    async def run_all(self) -> None:
+        held, self.held = self.held, []
+        for coro in held:
+            await coro
+
+    def drop_all(self) -> None:
+        held, self.held = self.held, []
+        for coro in held:
+            coro.close()
+
+
+@pytest.fixture
+def held(monkeypatch: pytest.MonkeyPatch) -> Iterator[HeldFlushes]:
+    """Hold every conversation flush until the test runs or drops it."""
+    flushes = HeldFlushes()
+    monkeypatch.setattr(conversations_module, "spawn_logged_task", flushes)
+    yield flushes
+    flushes.drop_all()
