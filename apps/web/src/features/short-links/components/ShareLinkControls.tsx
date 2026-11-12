@@ -5,6 +5,7 @@ import { Dropdown, DropdownMenu, DropdownTrigger } from "@heroui/dropdown";
 import { Share08Icon } from "@icons";
 import type { KeyboardEvent, MouseEvent } from "react";
 
+import { ShareLinkSettingsModal } from "@/features/short-links/components/ShareLinkSettingsModal";
 import { shareLinkMenuItems } from "@/features/short-links/components/shareLinkMenuItems";
 import { useShareLink } from "@/features/short-links/hooks/useShareLink";
 import type { ShortLinkTargetType } from "@/types/features/shortLinkTypes";
@@ -24,7 +25,7 @@ function stopPropagation(event: MouseEvent | KeyboardEvent) {
 
 /**
  * One "Share" menu for an artifact's public heygaia.link: copy it (sharing it
- * if it isn't yet), or stop sharing it once it is. Stops press propagation so
+ * if it isn't yet), change who it opens for, or stop sharing it once it is. Stops press propagation so
  * it can sit inside a pressable card or row without also opening it.
  */
 export function ShareLinkControls({
@@ -63,6 +64,7 @@ export function ShareLinkControls({
           {shareLinkMenuItems(share, stopWarning)}
         </DropdownMenu>
       </Dropdown>
+      <ShareLinkSettingsModal share={share} />
     </span>
   );
 }

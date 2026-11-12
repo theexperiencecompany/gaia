@@ -1,33 +1,58 @@
 import { API_BASE } from "@/lib/api/baseUrl";
 import { api } from "@/lib/api/typed";
-import type { ShortLinkTargetType } from "@/types/features/shortLinkTypes";
+import type {
+  LinkSettings,
+  LinkSettingsUpdate,
+  ShortLinkResponse,
+  ShortLinkTargetType,
+} from "@/types/features/shortLinkTypes";
 
 /**
  * Share an artifact the signed-in user owns: its heygaia.link, minted on first
- * use. The same target returns the same link until sharing is stopped; sharing
- * again after that turns it back on with a new link.
+ * use with the given settings. While a link is live the same link comes back
+ * unchanged, settings ignored; sharing again after stopping mints a new one.
  */
 export async function createShortLink(
   targetType: ShortLinkTargetType,
   targetId: string,
-): Promise<string> {
-  const { url } = await api.post("/api/v1/l", {
-    body: { target_type: targetType, target_id: targetId },
+  settings?: LinkSettings,
+): Promise<ShortLinkResponse> {
+  return api.post("/api/v1/l", {
+    body: { target_type: targetType, target_id: targetId, settings },
     errorMessage: "Couldn't create a link",
   });
-  return url;
 }
 
 /** The owner's live heygaia.link for an artifact, or null when it isn't shared. Never mints one. */
 export async function fetchShareState(
   targetType: ShortLinkTargetType,
   targetId: string,
-): Promise<string | null> {
-  const { url } = await api.get("/api/v1/l/state", {
+): Promise<ShortLinkResponse | null> {
+  const { link } = await api.get("/api/v1/l/state", {
     query: { target_type: targetType, target_id: targetId },
     errorMessage: "Couldn't check whether this is shared",
   });
-  return url;
+  return link;
+}
+
+/** Change who a live link opens for, or when it expires; an omitted field keeps its value. */
+export async function updateLinkSettings(
+  slug: string,
+  change: LinkSettingsUpdate,
+): Promise<ShortLinkResponse> {
+  return api.patch("/api/v1/l/{slug}", {
+    path: { slug },
+    body: change,
+    errorMessage: "Couldn't save the share settings",
+  });
+}
+
+/** Replace a live link with a new URL carrying the same settings; the old URL stops opening. */
+export async function rotateLink(slug: string): Promise<ShortLinkResponse> {
+  return api.post("/api/v1/l/{slug}/rotate", {
+    path: { slug },
+    errorMessage: "Couldn't get a new link",
+  });
 }
 
 /**

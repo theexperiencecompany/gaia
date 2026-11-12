@@ -10,11 +10,15 @@ import type {
 } from "@shared/api/generated";
 
 export type {
+  LinkAccess,
+  LinkSettings,
+  LinkSettingsUpdate,
   PublicBriefing,
   PublicOpenUIArtifact,
   PublicSessionArtifact,
   PublicTodoDeliverable,
   PublicWorkflowRun,
+  ShortLinkResponse,
   ShortLinkTargetType,
 } from "@shared/api/generated";
 
