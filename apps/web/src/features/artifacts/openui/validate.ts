@@ -105,33 +105,34 @@ function stringsIn(value: unknown): string[] {
 
 /** A table prints its cells as written, so a slot there would reach the reader as braces. */
 function tableSlotProblems(nodes: GroundNode[]): string[] {
-  return nodes
-    .filter((node) => node.typeName === "DataTable")
-    .flatMap((node) =>
-      stringsIn(node.props)
-        .filter(containsSlot)
-        .map(
-          (cell) =>
-            `${node.statementId} = DataTable(...): "${cell}" holds a {slot}, which a table prints as text; type the figure as the source states it`,
+  return nodes.flatMap((node) =>
+    node.typeName !== "DataTable"
+      ? []
+      : stringsIn(node.props).flatMap((cell) =>
+          containsSlot(cell)
+            ? [
+                `${node.statementId} = DataTable(...): "${cell}" holds a {slot}, which a table prints as text; type the figure as the source states it`,
+              ]
+            : [],
         ),
-    );
+  );
 }
 
 /** A series with a different count of values than labels would draw a gap as zero. */
 function seriesLengthProblems(nodes: GroundNode[]): string[] {
-  return nodes
-    .filter((node) => CHART_TYPES.has(node.typeName ?? ""))
-    .flatMap((node) => {
-      const labels = (node.props?.labels as unknown[] | undefined) ?? [];
-      const series =
-        (node.props?.series as [string, unknown[]][] | undefined) ?? [];
-      return series
-        .filter(([, values]) => values.length !== labels.length)
-        .map(
-          ([name, values]) =>
+  return nodes.flatMap((node) => {
+    if (!CHART_TYPES.has(node.typeName ?? "")) return [];
+    const labels = (node.props?.labels as unknown[] | undefined) ?? [];
+    const series =
+      (node.props?.series as [string, unknown[]][] | undefined) ?? [];
+    return series.flatMap(([name, values]) =>
+      values.length === labels.length
+        ? []
+        : [
             `${node.statementId} = ${node.typeName}(...): series "${name}" has ${values.length} values for ${labels.length} labels; give each label exactly one value`,
-        );
-    });
+          ],
+    );
+  });
 }
 
 interface GroundingScope {
@@ -209,18 +210,17 @@ function htmlArtifactProblems(
   nodes: GroundNode[],
   interactive: boolean,
 ): string[] {
-  return nodes
-    .filter((node) => node.typeName === HTML_ARTIFACT)
-    .flatMap((node) => {
-      const label = `${node.statementId ?? HTML_ARTIFACT} = ${HTML_ARTIFACT}(...)`;
-      if (!interactive) {
-        return [
-          `${label}: the request asks for nothing to interact with; use the other components`,
-        ];
-      }
-      const html = typeof node.props?.html === "string" ? node.props.html : "";
-      return htmlProblems(html).map((problem) => `${label}: ${problem}`);
-    });
+  return nodes.flatMap((node) => {
+    if (node.typeName !== HTML_ARTIFACT) return [];
+    const label = `${node.statementId ?? HTML_ARTIFACT} = ${HTML_ARTIFACT}(...)`;
+    if (!interactive) {
+      return [
+        `${label}: the request asks for nothing to interact with; use the other components`,
+      ];
+    }
+    const html = typeof node.props?.html === "string" ? node.props.html : "";
+    return htmlProblems(html).map((problem) => `${label}: ${problem}`);
+  });
 }
 
 export interface ValidationOptions {

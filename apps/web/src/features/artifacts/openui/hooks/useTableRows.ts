@@ -51,12 +51,12 @@ export function useTableRows(props: TableProps) {
 
   const rows = useMemo(() => {
     const needle = query.toLowerCase();
-    const matching = props.rows
-      .map((cells, source) => ({ cells, source }))
-      .filter(
-        ({ cells }) =>
-          !needle || cells.join(" ").toLowerCase().includes(needle),
-      );
+    const matching: { cells: (typeof props.rows)[number]; source: number }[] =
+      [];
+    props.rows.forEach((cells, source) => {
+      if (!needle || cells.join(" ").toLowerCase().includes(needle))
+        matching.push({ cells, source });
+    });
     if (sort) {
       const column = Number(sort.column);
       const numeric = props.numeric?.includes(column) ?? false;

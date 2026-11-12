@@ -1,8 +1,6 @@
-import { createContext, Fragment, useContext } from "react";
-import { type GroundingIndex, resolveText } from "./grounding";
-
-/** The parsed program's statements, so text can fill its {slots} from their data. */
-export const GroundingContext = createContext<GroundingIndex>(new Map());
+import { Fragment, useContext } from "react";
+import { GroundingContext } from "./GroundingContext";
+import { resolveText } from "./grounding";
 
 const BOLD = /(\*\*[^*]+\*\*)/g;
 

@@ -5,7 +5,7 @@ import { createTheme, ThemeProvider } from "@openuidev/react-ui/ThemeProvider";
 import { useCallback, useState } from "react";
 import { OpenUIErrorBoundary } from "@/config/openui/OpenUIErrorBoundary";
 import "@/config/openui/openui.css";
-import { GroundingContext } from "./GroundedText";
+import { GroundingContext } from "./GroundingContext";
 import { buildIndex, type GroundingIndex } from "./grounding";
 import { artifactLibrary } from "./library";
 import {

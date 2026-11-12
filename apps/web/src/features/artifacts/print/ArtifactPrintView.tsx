@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useSyncExternalStore } from "react";
 import { ArtifactRenderer } from "../openui/ArtifactRenderer";
 
 declare global {
@@ -11,8 +11,16 @@ declare global {
 }
 
 /** The paper copy the PDF export prints: light, no page chrome, the program handed in. */
+const subscribeNever = () => () => undefined;
+const programFromWindow = () => window.__GAIA_ARTIFACT_PROGRAM__ ?? "";
+const noProgramOnServer = () => "";
+
 export function ArtifactPrintView() {
-  const [program] = useState(() => window.__GAIA_ARTIFACT_PROGRAM__ ?? "");
+  const program = useSyncExternalStore(
+    subscribeNever,
+    programFromWindow,
+    noProgramOnServer,
+  );
   return (
     <main data-artifact-print className="light min-h-dvh bg-white">
       <ArtifactRenderer program={program} appearance="light" />

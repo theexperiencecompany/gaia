@@ -84,8 +84,8 @@ export const KIND_COMPONENTS: Record<ArtifactKind, readonly string[]> = {
     "Sources",
   ],
   document: [
-    ...ARTIFACT_COMPONENT_SPECS.map((spec) => spec.name).filter(
-      (name) => name !== "Artifact",
+    ...ARTIFACT_COMPONENT_SPECS.flatMap((spec) =>
+      spec.name === "Artifact" ? [] : [spec.name],
     ),
     ...REACT_UI_ARTIFACT_COMPONENTS,
   ],
