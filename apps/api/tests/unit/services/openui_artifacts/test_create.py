@@ -1,10 +1,14 @@
 """create_openui_artifact: one repair at most, fail loud with nothing stored, analytics on the outcome."""
 
+import asyncio
 from collections.abc import Iterator
+import hashlib
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.llm import ARTIFACT_MODEL_NAME
 from app.models.openui_artifact_models import (
     ArtifactFailureReason,
     ArtifactKind,
@@ -19,6 +23,7 @@ from app.services.openui_artifacts.generate import (
 from app.services.openui_artifacts.validate import ArtifactValidation
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.artifacts import ArtifactCreated, ArtifactFailed
+from tests.helpers import captured_wide_event
 
 _SVC = "app.services.openui_artifacts.create"
 USER_ID = "6ad86cdfb9e7ae0b43a0efea"
@@ -125,4 +130,164 @@ async def test_a_refusal_fails_loud_without_a_retry(capture: MagicMock, repo: Ma
     assert raised.value.reason is ArtifactFailureReason.REFUSED
     capture.assert_called_once_with(
         UserId(USER_ID), ArtifactFailed(kind="dashboard", reason="refused", problem_count=0)
+    )
+
+
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+_INTERACTIVE = ArtifactRequest(
+    kind=ArtifactKind.DASHBOARD,
+    brief="Sign-ups 1,840",
+    user_id=USER_ID,
+    conversation_id="c1",
+    interactive=True,
+)
+
+
+async def test_the_draft_is_written_for_the_request_and_checked_against_its_brief(
+    capture: MagicMock, repo: MagicMock
+) -> None:
+    sink = AsyncMock()
+    with (
+        patch(f"{_SVC}.write_program", AsyncMock(return_value=_reply("draft"))) as write,
+        patch(f"{_SVC}.validate_program", AsyncMock(return_value=_verdict("draft", []))) as check,
+    ):
+        await create_openui_artifact(_INTERACTIVE, "Atlas", sink)
+
+    write.assert_awaited_once_with(_INTERACTIVE, sink)
+    check.assert_awaited_once_with("draft", "Sign-ups 1,840", interactive=True)
+
+
+async def test_the_repair_is_given_the_problems_and_its_answer_is_checked_the_same_way(
+    capture: MagicMock, repo: MagicMock
+) -> None:
+    verdicts = [_verdict("draft", ["p1"]), _verdict("fixed", [])]
+    with (
+        patch(f"{_SVC}.write_program", AsyncMock(return_value=_reply("draft"))),
+        patch(f"{_SVC}.repair_program", AsyncMock(return_value=_reply("fixed"))) as repair,
+        patch(f"{_SVC}.validate_program", AsyncMock(side_effect=verdicts)) as check,
+    ):
+        async with captured_wide_event() as event:
+            await create_openui_artifact(_INTERACTIVE, "Atlas", AsyncMock())
+
+    repair.assert_awaited_once_with(_INTERACTIVE, "draft", ["p1"])
+    assert check.await_args_list[1].args == ("fixed", "Sign-ups 1,840")
+    assert check.await_args_list[1].kwargs == {"interactive": True}
+    assert event["artifact"]["first_problems"] == ["p1"]
+
+
+async def test_the_stored_artifact_records_who_what_and_how_it_was_made(
+    capture: MagicMock, repo: MagicMock
+) -> None:
+    with (
+        patch(f"{_SVC}.write_program", AsyncMock(return_value=_reply("root = A"))),
+        patch(f"{_SVC}.validate_program", AsyncMock(return_value=_verdict("root = A", []))),
+    ):
+        await create_openui_artifact(REQUEST, "Atlas", AsyncMock())
+
+    stored: OpenUIArtifact = repo.create.await_args.args[0]
+    assert (stored.user_id, stored.conversation_id, stored.kind) == (
+        USER_ID,
+        "c1",
+        ArtifactKind.DASHBOARD,
+    )
+    assert (stored.brief_hash, stored.model) == (_sha("Sign-ups 1,840"), ARTIFACT_MODEL_NAME)
+
+
+async def test_the_success_is_counted_and_logged_with_its_timings(
+    capture: MagicMock, repo: MagicMock
+) -> None:
+    with (
+        patch(f"{_SVC}.write_program", AsyncMock(return_value=_reply("root = A"))),
+        patch(f"{_SVC}.validate_program", AsyncMock(return_value=_verdict("root = A", []))),
+        patch(f"{_SVC}.time.perf_counter", side_effect=[10.0, 10.5]),
+    ):
+        async with captured_wide_event() as event:
+            await create_openui_artifact(REQUEST, "Atlas", AsyncMock())
+
+    assert capture.call_args.args[1] == ArtifactCreated(
+        kind="dashboard",
+        components=3,
+        repairs=0,
+        output_tokens=50,
+        first_component_ms=900.0,
+        total_ms=500.0,
+        model=ARTIFACT_MODEL_NAME,
+    )
+    assert event["artifact"] == {
+        "kind": "dashboard",
+        "brief_hash": _sha("Sign-ups 1,840"),
+        "id": "a1",
+        "status": "created",
+        "repairs": 0,
+        "components": 3,
+        "first_component_ms": 900.0,
+        "total_ms": 500.0,
+    }
+
+
+async def test_repairs_stop_at_the_limit_and_the_last_problems_are_reported(
+    capture: MagicMock, repo: MagicMock
+) -> None:
+    problems = [f"p{i}" for i in range(25)]
+    with (
+        patch(f"{_SVC}.ARTIFACT_MAX_REPAIRS", 2),
+        patch(f"{_SVC}.write_program", AsyncMock(return_value=_reply("draft"))),
+        patch(f"{_SVC}.repair_program", AsyncMock(return_value=_reply("draft"))) as repair,
+        patch(f"{_SVC}.validate_program", AsyncMock(return_value=_verdict("draft", problems))),
+        pytest.raises(ArtifactCreationError) as raised,
+    ):
+        async with captured_wide_event() as event:
+            await create_openui_artifact(REQUEST, "Atlas", AsyncMock())
+
+    assert repair.await_count == 2
+    assert raised.value.message == "the artifact could not be made (validation)"
+    assert raised.value.meta == {"problems": problems[:20]}
+    assert raised.value.problems == problems
+    assert capture.call_args.args[1].problem_count == 25
+    assert event["artifact"]["status"] == "failed"
+    assert event["artifact"]["reason"] == "validation"
+    assert event["artifact"]["problems"] == problems[:20]
+    assert event["artifact"]["first_problems"] == problems[:20]
+
+
+async def test_a_refusal_keeps_the_whole_request_in_the_log_for_reading(
+    capture: MagicMock, repo: MagicMock
+) -> None:
+    with (
+        patch(f"{_SVC}.write_program", AsyncMock(side_effect=ArtifactRefusedError(message="no"))),
+        pytest.raises(ArtifactCreationError),
+    ):
+        async with captured_wide_event() as event:
+            await create_openui_artifact(REQUEST, "Atlas", AsyncMock())
+
+    [warning] = event["warnings"]
+    assert warning["msg"] == "artifact.refused"
+    assert warning["kind"] == "dashboard"
+    assert warning["prompt_hash"] == _sha("dashboard")
+    assert warning["input_hash"] == _sha("Sign-ups 1,840")
+    assert warning["request_body"] == "Sign-ups 1,840"
+    assert (event["artifact"]["status"], event["artifact"]["reason"]) == ("failed", "refused")
+
+
+async def test_a_generation_past_its_time_limit_fails_as_a_timeout(
+    capture: MagicMock, repo: MagicMock
+) -> None:
+    async def never(*_: Any) -> GeneratedReply:
+        await asyncio.sleep(30)
+        raise AssertionError("unreachable")
+
+    with (
+        patch(f"{_SVC}.ARTIFACT_GENERATION_TIMEOUT_SECONDS", 0.05),
+        patch(f"{_SVC}.write_program", never),
+        pytest.raises(ArtifactCreationError) as raised,
+    ):
+        await asyncio.wait_for(create_openui_artifact(REQUEST, "Atlas", AsyncMock()), timeout=5)
+
+    assert raised.value.reason is ArtifactFailureReason.TIMEOUT
+    repo.create.assert_not_awaited()
+    capture.assert_called_once_with(
+        UserId(USER_ID), ArtifactFailed(kind="dashboard", reason="timeout", problem_count=0)
     )

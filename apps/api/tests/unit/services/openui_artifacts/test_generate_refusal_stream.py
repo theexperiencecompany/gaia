@@ -45,9 +45,11 @@ async def test_a_prompt_flagged_mid_stream_is_a_refusal() -> None:
     client = _client(_stream_failing_with("invalid_prompt"))
     with (
         patch("app.services.openui_artifacts.generate._client", AsyncMock(return_value=client)),
-        pytest.raises(ArtifactRefusedError),
+        pytest.raises(ArtifactRefusedError) as refused,
     ):
         await generate_reply(REQUEST, "input")
+
+    assert refused.value.message == "the provider refused the artifact request"
 
 
 async def test_any_other_stream_error_still_raises_as_itself() -> None:
