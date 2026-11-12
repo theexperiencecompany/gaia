@@ -3,6 +3,7 @@
 import { Button, Chip } from "@heroui/react";
 import type { DesktopPermissionStatus } from "@shared/desktop-tools";
 import { useCallback, useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { getElectronAPI } from "@/lib/electron/api";
 import { toast } from "@/lib/toast";
@@ -155,14 +156,14 @@ export function DesktopPermissions() {
                 </Button>
               )}
               {needsRestart && (
-                <Button
+                <GaiaButton
+                  variant="accent-soft"
                   size="sm"
-                  variant="tertiary"
                   className="rounded-xl"
                   onPress={() => getElectronAPI()?.relaunchDesktopApp()}
                 >
                   Restart GAIA
-                </Button>
+                </GaiaButton>
               )}
             </div>
           </SettingsRow>

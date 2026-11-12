@@ -1,6 +1,7 @@
-import { type ButtonVariants, buttonVariants } from "@heroui/react";
 import NextLink from "next/link";
 import type { ComponentProps } from "react";
+
+import { type ButtonVariants, buttonVariants } from "./buttonVariants";
 
 type LinkButtonProps = Omit<ComponentProps<typeof NextLink>, "className"> &
   ButtonVariants & { className?: string };

@@ -1,4 +1,4 @@
-import { Button, Kbd, TextArea, Tooltip } from "@heroui/react";
+import { Kbd, TextArea, Tooltip } from "@heroui/react";
 import {
   ArrowRight01Icon,
   ArrowUp02Icon,
@@ -9,6 +9,7 @@ import {
 import { twMerge } from "cn";
 import type React from "react";
 import { useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { Button as ShadcnButton } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -90,7 +91,8 @@ const DummyComposer: React.FC<{
         </div>
         {/* Integration Banner - uses searchbar class to match composer width */}
         {!hideIntegrationBanner && (
-          <Button
+          <GaiaButton
+            variant="default-solid"
             className="searchbar absolute -top-4 z-0 flex h-fit rounded-full bg-zinc-800/40 px-4 py-2 pb-8 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400"
             onPress={handleIntegrationsClick}
             aria-label="Connect your tools to GAIA"
@@ -116,7 +118,7 @@ const DummyComposer: React.FC<{
                 <ArrowRight01Icon width={18} height={18} className="ml-3" />
               </div>
             </div>
-          </Button>
+          </GaiaButton>
         )}
 
         {/* Main Composer */}

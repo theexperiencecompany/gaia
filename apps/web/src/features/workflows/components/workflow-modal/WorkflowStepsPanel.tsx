@@ -1,5 +1,6 @@
 import { Button, Dropdown, Skeleton } from "@heroui/react";
 import { AlertCircleIcon, RedoIcon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronDown } from "@/components/shared/icons";
 import type { Workflow } from "../../api/workflowApi";
 import { REGENERATION_REASONS } from "../../constants/regeneration";
@@ -56,8 +57,8 @@ export default function WorkflowStepsPanel({
             Generate a plan for this workflow
           </p>
         </div>
-        <Button
-          variant="tertiary"
+        <GaiaButton
+          variant="accent-soft"
           size="sm"
           isPending={isRegenerating}
           isDisabled={isRegenerating}
@@ -65,7 +66,7 @@ export default function WorkflowStepsPanel({
         >
           {!isRegenerating && <RedoIcon className="h-4 w-4" />}
           Generate steps
-        </Button>
+        </GaiaButton>
       </div>
     );
   }

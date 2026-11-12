@@ -8,7 +8,7 @@ import {
   Share08Icon,
 } from "@icons";
 import { Focusable } from "react-aria-components";
-
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
 import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
@@ -133,16 +133,16 @@ export function ConnectedActions({
 
       {integration.isPublic && (
         <Tooltip>
-          <Button
+          <GaiaButton
+            variant="default-solid"
             isIconOnly={useIconOnly}
             className="w-full"
             onPress={onShare}
             aria-label="Share"
-            variant="primary"
           >
             <Share08Icon width={18} height={18} />
             {!useIconOnly && "Share"}
-          </Button>
+          </GaiaButton>
           <Tooltip.Content>Copy share link to clipboard</Tooltip.Content>
         </Tooltip>
       )}

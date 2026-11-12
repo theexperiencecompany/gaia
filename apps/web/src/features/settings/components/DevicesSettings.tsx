@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import { PlusSignIcon } from "@icons";
 import { useRouter } from "next/navigation";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { DevicesManager } from "@/features/devices/components/DevicesManager";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 
@@ -25,15 +26,15 @@ export default function DevicesSettings() {
             to instantly cut its access.
           </p>
         </div>
-        <Button
+        <GaiaButton
+          variant="accent-soft"
           size="sm"
-          variant="tertiary"
           className="shrink-0"
           onPress={() => router.push("/settings/devices/approve")}
         >
           <PlusSignIcon className="size-4" />
           Add device
-        </Button>
+        </GaiaButton>
       </div>
       <DevicesManager />
     </SettingsPage>

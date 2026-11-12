@@ -2,7 +2,7 @@ import { Button, Input, Popover, Tooltip } from "@heroui/react";
 import { PlusSignIcon, Search01Icon } from "@icons";
 import { useMemo, useState } from "react";
 import { type Control, useController } from "react-hook-form";
-
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_WORKFLOW_ICON_COLOR,
@@ -142,7 +142,8 @@ export default function WorkflowIconPicker({
 
           <div className="flex items-center justify-between gap-1">
             {WORKFLOW_ICON_COLORS.map((swatch) => (
-              <Button
+              <GaiaButton
+                variant="default-solid"
                 key={swatch}
                 isIconOnly
                 aria-label={`Use color ${swatch}`}

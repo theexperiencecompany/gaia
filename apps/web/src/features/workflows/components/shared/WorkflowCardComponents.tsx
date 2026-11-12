@@ -18,6 +18,7 @@ import {
 } from "@icons";
 import Image from "next/image";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import {
@@ -27,7 +28,6 @@ import {
 import { cn } from "@/lib/utils";
 import type { IntegrationRef } from "@/types/features/workflowTypes";
 import type { ContentCreator } from "@/types/shared/contentTypes";
-
 import { missingIntegrationsMessage } from "./workflowCardHelpers";
 
 // Reusable Trigger Icon Component
@@ -318,17 +318,22 @@ export function MissingIntegrationsAlert({
         </Button>
       ) : (
         <ButtonGroup size="sm">
-          <Button
+          <GaiaButton
+            variant="default-solid"
             isPending={!!connectingId}
             isDisabled={!!connectingId}
             onPress={() => setIsDropdownOpen((o) => !o)}
           >
             Connect Apps
-          </Button>
+          </GaiaButton>
           <Dropdown isOpen={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
-            <Button isIconOnly isDisabled={!!connectingId}>
+            <GaiaButton
+              variant="default-solid"
+              isIconOnly
+              isDisabled={!!connectingId}
+            >
               <ArrowDown01Icon className="size-3.5" />
-            </Button>
+            </GaiaButton>
             <Dropdown.Popover placement="bottom end">
               <Menu aria-label="Missing integrations to connect">
                 {missingIntegrations.map((integration) => {

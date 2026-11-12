@@ -166,6 +166,7 @@
     "sileo": "^0.1.4",
     "streamdown": "^2.5.0",
     "styled-components": "^6.4.3",
+    "tailwind-variants": "3.3.1",
     "tailwindcss": "^4.3.3",
     "tailwindcss-animate": "^1.0.7",
     "tinycolor2": "^1.6.0",

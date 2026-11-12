@@ -11,6 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import type React from "react";
 import { useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { authApi } from "@/features/auth/api/authApi";
 import {
   patchCurrentUser,
@@ -137,7 +138,8 @@ export default function AccountSection({
                 >
                   {isLoading ? "Saving..." : "Save Changes"}
                 </Button>
-                <Button
+                <GaiaButton
+                  variant="default-solid"
                   fullWidth
                   size="sm"
                   onPress={() => {
@@ -146,7 +148,7 @@ export default function AccountSection({
                   }}
                 >
                   Cancel
-                </Button>
+                </GaiaButton>
               </div>
             </div>
           ) : (

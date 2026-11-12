@@ -12,6 +12,7 @@ import {
 import { AlertCircleIcon, TaskAddIcon } from "@icons";
 import { format } from "date-fns";
 import { useEffect, useMemo } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
@@ -26,7 +27,6 @@ import {
   type TodoCreate,
   type TodoUpdate,
 } from "@/types/features/todoTypes";
-
 import RecurrenceFieldChip from "./fields/RecurrenceFieldChip";
 import ScheduledFieldChip from "./fields/ScheduledFieldChip";
 import SubtaskManager from "./shared/SubtaskManager";
@@ -265,16 +265,16 @@ function TodoModalTrigger({
 }: TodoModalTriggerProps) {
   return (
     <Tooltip>
-      <Button
+      <GaiaButton
+        variant="accent-soft"
         className={buttonClassName}
         size="sm"
-        variant="tertiary"
         onPress={onOpen}
         data-keyboard-shortcut="create-todo"
       >
         <TaskAddIcon className="h-4 w-4 outline-0" />
         {buttonText}
-      </Button>
+      </GaiaButton>
       <Tooltip.Content placement="right">
         <span className="flex items-center gap-2">
           {buttonText}

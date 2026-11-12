@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, Kbd, Spinner, Tooltip, useOverlayState } from "@heroui/react";
+import { Kbd, Spinner, Tooltip, useOverlayState } from "@heroui/react";
 import { ZapIcon } from "@icons";
 import { useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import CreateWorkflowModal from "@/features/workflows/components/CreateWorkflowModal";
 import WorkflowIcons from "@/features/workflows/components/shared/WorkflowIcons";
 import WorkflowModal from "@/features/workflows/components/WorkflowModal";
@@ -29,17 +30,17 @@ export default function WorkflowsSidebar() {
     <>
       <div className="flex flex-col gap-3">
         <Tooltip>
-          <Button
+          <GaiaButton
+            variant="accent-soft"
             size="sm"
             fullWidth
             className="mb-2 flex justify-start text-sm font-medium text-primary"
-            variant="tertiary"
             onPress={open}
             data-keyboard-shortcut="create-workflow"
           >
             <ZapIcon width={18} height={18} />
             New Workflow
-          </Button>
+          </GaiaButton>
           <Tooltip.Content placement="right">
             <span className="flex items-center gap-2">
               New Workflow

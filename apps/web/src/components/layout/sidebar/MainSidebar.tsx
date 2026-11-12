@@ -43,12 +43,12 @@ export default function Sidebar() {
       <div className="flex w-full justify-center">
         <Tooltip>
           <LinkButton
+            variant="accent-soft"
             href="/c"
             onClick={prepareNewChat}
             size="sm"
             fullWidth
             className="mb-4 flex justify-start text-sm font-medium text-primary"
-            variant="tertiary"
             data-keyboard-shortcut="create-chat"
           >
             <BubbleChatAddIcon width={18} height={18} />
