@@ -6,6 +6,7 @@ import type { DesktopServerFormReason } from "@shared/desktop-tools";
 import Image from "next/image";
 import { RedirectType, redirect, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ArrowUpRight } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { authApi } from "@/features/auth/api/authApi";
@@ -246,14 +247,15 @@ export function DesktopLoginClient({
                     unreachable={false}
                   />
                 ) : (
-                  <Button
+                  <GaiaButton
+                    shape="pill"
                     variant="ghost"
                     size="sm"
-                    className="rounded-full text-zinc-400"
+                    className="text-zinc-400"
                     onPress={() => setShowServerForm(true)}
                   >
                     Use my own server
-                  </Button>
+                  </GaiaButton>
                 )}
               </div>
             </>

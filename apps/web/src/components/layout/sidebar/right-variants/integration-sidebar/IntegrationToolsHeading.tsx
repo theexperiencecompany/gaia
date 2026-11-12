@@ -2,6 +2,7 @@
 
 import { Button, Chip } from "@heroui/react";
 import { Settings01Icon } from "@icons";
+import { shapeVariants } from "@/components/shared/shape";
 
 interface IntegrationToolsHeadingProps {
   toolCount: number;
@@ -38,7 +39,10 @@ export function IntegrationToolsHeading({
           <Chip
             size="sm"
             variant="secondary"
-            className="h-5 min-w-5 rounded-full px-0"
+            className={shapeVariants({
+              shape: "pill",
+              className: "h-5 min-w-5 px-0",
+            })}
           >
             <Chip.Label className="px-1.5 text-xs">{toolCount}</Chip.Label>
           </Chip>

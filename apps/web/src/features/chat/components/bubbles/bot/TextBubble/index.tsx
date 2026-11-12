@@ -1,4 +1,4 @@
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import { Alert01Icon, RedoIcon } from "@icons";
 import {
   APPROVAL_REQUEST_TOOL_NAME,
@@ -8,6 +8,7 @@ import { parseOpenUISegments, splitMessageByBreaks } from "@shared/utils";
 import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
@@ -107,7 +108,8 @@ function FailedResponse({
   isRetrying?: boolean;
 }>) {
   const retryButton = onRetry && (
-    <Button
+    <GaiaButton
+      shape="pill"
       className="h-7 min-w-0 shrink-0 px-2 text-xs"
       isDisabled={isRetrying}
       onPress={onRetry}
@@ -118,7 +120,7 @@ function FailedResponse({
         <RedoIcon height={13} width={13} />
       </div>
       Retry
-    </Button>
+    </GaiaButton>
   );
 
   if (partial) {

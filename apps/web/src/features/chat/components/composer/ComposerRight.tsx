@@ -160,9 +160,10 @@ export default function RightSide({
         <Tooltip>
           <GaiaButton
             variant="default-solid"
+            shape="pill"
             isIconOnly
             aria-label="Voice Mode"
-            className="h-9 min-h-9 w-9 max-w-9 min-w-9 rounded-full"
+            className="h-9 min-h-9 w-9 max-w-9 min-w-9"
             type="button"
             onMouseEnter={onVoiceModeHover}
             onPress={() => setvoiceModeActive()}

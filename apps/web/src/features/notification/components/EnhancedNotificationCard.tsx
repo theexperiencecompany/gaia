@@ -148,8 +148,10 @@ export const EnhancedNotificationCard = ({
                     <GaiaButton
                       variant="default-solid"
                       key={action.id}
-                      disabled={buttonProps.disabled || isLoading || isExecuted}
-                      onClick={() => handleActionClick(action.id)}
+                      isDisabled={
+                        buttonProps.disabled || isLoading || isExecuted
+                      }
+                      onPress={() => handleActionClick(action.id)}
                       className={`gap-1.5 rounded-lg px-4 text-xs font-normal transition ${
                         action.style === "primary"
                           ? "bg-primary/10 text-primary hover:bg-primary/20"

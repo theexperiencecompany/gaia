@@ -1,7 +1,8 @@
 "use client";
 
-import { Button, Tooltip, useOverlayState } from "@heroui/react";
+import { Tooltip, useOverlayState } from "@heroui/react";
 import { BubbleChatQuestionIcon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 
 export default function ContactSupport() {
@@ -11,7 +12,8 @@ export default function ContactSupport() {
     <>
       <div className="flex w-full justify-center">
         <Tooltip>
-          <Button
+          <GaiaButton
+            shape="pill"
             variant="tertiary"
             fullWidth
             className="text-left flex justify-center text-zinc-300 h-7"
@@ -20,7 +22,7 @@ export default function ContactSupport() {
           >
             <BubbleChatQuestionIcon width={17} height={17} />
             Contact Support
-          </Button>
+          </GaiaButton>
           <Tooltip.Content>
             Need support or want a new feature? Talk to us!
           </Tooltip.Content>

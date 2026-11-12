@@ -4,6 +4,7 @@ import { Checkbox } from "@heroui/react";
 import { isTrackedTodo } from "@shared/todos";
 import { memo, useEffect, useRef } from "react";
 import { ChevronRight } from "@/components/shared/icons";
+import { shapeVariants } from "@/components/shared/shape";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useTodoItem } from "@/features/todo/hooks/useTodoItem";
 import { cn } from "@/lib/utils";
@@ -123,6 +124,7 @@ export default memo(function TodoItem({
       <div className="pointer-events-none relative z-20 flex h-full items-start gap-2">
         <div className="pointer-events-auto">
           <Checkbox
+            className={shapeVariants({ shape: "pill" })}
             isSelected={todo.completed}
             onChange={(isSelected) => {
               onUpdate(todo.id, { completed: isSelected });

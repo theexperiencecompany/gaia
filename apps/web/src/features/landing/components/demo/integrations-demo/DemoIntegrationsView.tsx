@@ -14,6 +14,7 @@ import {
 } from "@icons";
 import { useEffect, useMemo, useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { shapeVariants } from "@/components/shared/shape";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   CATEGORY_LABELS,
@@ -227,7 +228,10 @@ function DemoIntegrationSidebar({
                     key={tool}
                     variant="soft"
                     size="sm"
-                    className="font-light text-zinc-300"
+                    className={shapeVariants({
+                      shape: "pill",
+                      className: "font-light text-zinc-300",
+                    })}
                   >
                     {tool}
                   </Chip>

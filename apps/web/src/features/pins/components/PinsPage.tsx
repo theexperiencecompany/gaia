@@ -3,6 +3,7 @@
 import { SearchField } from "@heroui/react";
 import { PinIcon } from "@icons";
 import { useEffect, useMemo, useState } from "react";
+import { shapeVariants } from "@/components/shared/shape";
 import Spinner from "@/components/ui/spinner";
 import { PinCard } from "@/features/pins/components/PinCard";
 import { usePins } from "@/features/pins/hooks/usePins";
@@ -72,12 +73,12 @@ export default function Pins() {
           <SearchField
             autoFocus
             aria-label="Filter pins"
-            className="w-full"
+            className={shapeVariants({ shape: "pill", className: "w-full" })}
             variant="secondary"
             value={searchQuery}
             onChange={setSearchQuery}
           >
-            <SearchField.Group className="h-12 rounded-full border-2 border-default-200 pr-1 text-medium">
+            <SearchField.Group className="h-12 border-2 border-default-200 pr-1 text-medium">
               <SearchField.Input placeholder="Enter a message to filter pins" />
               <SearchField.ClearButton />
             </SearchField.Group>

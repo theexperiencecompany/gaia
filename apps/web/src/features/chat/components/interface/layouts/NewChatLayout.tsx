@@ -1,6 +1,6 @@
-import { Button } from "@heroui/react";
 import type React from "react";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronUp } from "@/components/shared/icons";
 import { NewChatSection } from "@/features/chat/components/interface/sections/NewChatSection";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
@@ -41,13 +41,14 @@ export const NewChatLayout: React.FC<NewChatLayoutProps> = ({
         />
 
         {!showUseCases && (
-          <Button
+          <GaiaButton
+            shape="pill"
             className="font-medium text-zinc-300"
             variant="tertiary"
             onPress={() => setShowUseCases(true)}
           >
             Explore Use Cases <ChevronUp />
-          </Button>
+          </GaiaButton>
         )}
 
         {showUseCases && (

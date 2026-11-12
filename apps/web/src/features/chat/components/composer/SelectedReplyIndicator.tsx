@@ -153,6 +153,7 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
               {onRemove && (
                 <GaiaButton
                   variant="default-solid"
+                  shape="pill"
                   type="button"
                   onPress={onRemove}
                   isIconOnly

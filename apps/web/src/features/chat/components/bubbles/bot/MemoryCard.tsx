@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Chip, Separator } from "@heroui/react";
+import { Chip, Separator } from "@heroui/react";
 import {
   BookOpen01Icon,
   BrainIcon,
@@ -13,6 +13,7 @@ import {
 import type { MemoryEntry } from "@shared/api/generated";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { MemoryData } from "@/config/registries/toolRegistry";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { CORE_DOCUMENTS } from "@/features/memory/constants";
@@ -276,14 +277,15 @@ function DocumentSection({
           hideCodeToolbar
         />
         {hasMore && (
-          <Button
+          <GaiaButton
+            shape="pill"
             size="sm"
             variant="ghost"
             onPress={() => setExpanded((v) => !v)}
             className="mt-2 h-auto min-w-0 px-2 py-1 text-xs text-zinc-500 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300"
           >
             {expanded ? "Show less" : "Show more"}
-          </Button>
+          </GaiaButton>
         )}
       </div>
     </div>

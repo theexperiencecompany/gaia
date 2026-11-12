@@ -1,10 +1,10 @@
 "use client";
 
-import { Button, Popover } from "@heroui/react";
+import { Popover } from "@heroui/react";
 import { EditIcon } from "@icons";
 import { useLocalParticipant } from "@livekit/components-react";
 import { useCallback } from "react";
-
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { VoiceTable } from "@/features/settings/components/VoiceTable";
 
 /**
@@ -42,13 +42,14 @@ export function VoiceCustomizePopover() {
 
   return (
     <Popover>
-      <Button
+      <GaiaButton
+        shape="pill"
         variant="tertiary"
         className="bg-zinc-900/80 text-zinc-200 shadow-lg backdrop-blur-md hover:bg-zinc-800"
       >
         <EditIcon className="h-4 w-4" />
         Customise voice
-      </Button>
+      </GaiaButton>
       <Popover.Content
         placement="top end"
         offset={12}

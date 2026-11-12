@@ -1,6 +1,7 @@
 import { Chip } from "@heroui/react";
 import { SquareLock01Icon } from "@icons";
 import type React from "react";
+import { shapeVariants } from "@/components/shared/shape";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 
 interface CategoryIntegrationStatusProps {
@@ -36,7 +37,10 @@ export const CategoryIntegrationStatus: React.FC<
         size="sm"
         variant="soft"
         color="danger"
-        className="flex aspect-square w-fit items-center justify-center"
+        className={shapeVariants({
+          shape: "pill",
+          className: "flex aspect-square w-fit items-center justify-center",
+        })}
       >
         <SquareLock01Icon className="h-3 w-3" />
       </Chip>

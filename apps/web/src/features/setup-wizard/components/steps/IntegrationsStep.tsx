@@ -179,10 +179,11 @@ export function IntegrationsStep({ status, catalog }: IntegrationsStepProps) {
       </div>
 
       <LinkButton
+        shape="pill"
         href="/integrations"
         variant="ghost"
         size="sm"
-        className="self-start rounded-full text-zinc-400"
+        className="self-start text-zinc-400"
       >
         Browse all integrations
         <CircleArrowUpRight02Icon className="size-4" />

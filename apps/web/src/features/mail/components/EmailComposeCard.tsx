@@ -22,6 +22,7 @@ import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight, Gmail } from "@/components/shared/icons";
 import { Separator } from "@/components/ui/separator";
 import { mailApi } from "@/features/mail/api/mailApi";
@@ -640,7 +641,8 @@ export default function EmailComposeCard({
                 onEdit={handleEditClick}
               />
               <div className="flex justify-end px-6 pb-5">
-                <Button
+                <GaiaButton
+                  shape="pill"
                   onPress={handleSend}
                   isPending={isSending}
                   isDisabled={recipients.to.length === 0}
@@ -652,7 +654,7 @@ export default function EmailComposeCard({
                     : emailData.draft_id
                       ? "Send Draft"
                       : "Send"}
-                </Button>
+                </GaiaButton>
               </div>
             </m.div>
           )}

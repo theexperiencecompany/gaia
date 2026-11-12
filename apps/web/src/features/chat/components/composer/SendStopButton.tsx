@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { ArrowUp02Icon, Clock01Icon, StopIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -104,21 +103,24 @@ export default function SendStopButton({
   const stopCursor = showStop ? "cursor-pointer" : "";
   const shapeClass = showQueue
     ? "h-9 min-h-9 gap-1.5 rounded-xl px-3"
-    : `${className} rounded-full ${stopCursor}`;
+    : `${className} ${stopCursor}`;
 
-  const buttonProps = {
-    isIconOnly: !showQueue,
-    "aria-label": MODE_ARIA_LABEL[mode],
-    className: `transition-all duration-300 ${contentColor} ${shapeClass}`,
-    // Stop (abort the stream) is always pressable; send/queue is gated on
-    // readiness — there must be content AND no in-flight upload, otherwise the
-    // submit is dropped by the composer's uploading guard.
-    isDisabled: !showStop && (!hasContent || isUploading),
-    // In stop mode the button aborts the stream rather than submitting, so it
-    // must not trigger the composer form. Only send/queue submit.
-    type: showStop ? ("button" as const) : ("submit" as const),
-    onPress: handlePress,
-    children: (
+  return (
+    <GaiaButton
+      variant={bg === "primary" ? "primary" : "default-solid"}
+      shape="pill"
+      isIconOnly={!showQueue}
+      aria-label={MODE_ARIA_LABEL[mode]}
+      className={`transition-all duration-300 ${contentColor} ${shapeClass}`}
+      // Stop (abort the stream) is always pressable; send/queue is gated on
+      // readiness — there must be content AND no in-flight upload, otherwise the
+      // submit is dropped by the composer's uploading guard.
+      isDisabled={!showStop && (!hasContent || isUploading)}
+      // In stop mode the button aborts the stream rather than submitting, so it
+      // must not trigger the composer form. Only send/queue submit.
+      type={showStop ? "button" : "submit"}
+      onPress={handlePress}
+    >
       <AnimatePresence mode="wait" initial={false}>
         <m.span
           key={mode}
@@ -131,12 +133,6 @@ export default function SendStopButton({
           {renderModeContent(mode)}
         </m.span>
       </AnimatePresence>
-    ),
-  };
-
-  return bg === "primary" ? (
-    <Button variant="primary" {...buttonProps} />
-  ) : (
-    <GaiaButton variant="default-solid" {...buttonProps} />
+    </GaiaButton>
   );
 }

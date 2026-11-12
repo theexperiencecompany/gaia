@@ -9,6 +9,7 @@ import { Button, Dropdown, Modal } from "@heroui/react";
 import { Logout02Icon, RedoIcon, UserCircleIcon } from "@icons";
 import * as m from "motion/react-m";
 import { memo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 
 interface OnboardingProgressProps {
@@ -78,7 +79,8 @@ function OnboardingProgressImpl({
       })}
 
       <Dropdown>
-        <Button
+        <GaiaButton
+          shape="pill"
           size="sm"
           variant="tertiary"
           isPending={isRestarting}
@@ -96,7 +98,7 @@ function OnboardingProgressImpl({
             : isRestarting
               ? "Restarting…"
               : (email ?? "Account")}
-        </Button>
+        </GaiaButton>
         <Dropdown.Popover placement={isMobile ? "bottom end" : "top end"}>
           <Dropdown.Menu aria-label="Account">
             <Dropdown.Item

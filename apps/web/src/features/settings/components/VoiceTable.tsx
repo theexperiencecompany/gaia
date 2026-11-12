@@ -2,7 +2,6 @@
 
 import {
   Avatar,
-  Button,
   Chip,
   type Selection,
   Spinner,
@@ -17,6 +16,7 @@ import {
   StarIcon,
 } from "@icons";
 import { useCallback, useDeferredValue, useMemo } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
 import { GenderIcon } from "@/features/settings/components/VoiceFilters";
 import { useVoicePreview } from "@/features/settings/hooks/useVoicePreview";
@@ -113,7 +113,8 @@ function VoiceCell({
             onPointerUp={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
           >
-            <Button
+            <GaiaButton
+              shape="pill"
               isIconOnly
               size="sm"
               variant="ghost"
@@ -127,7 +128,7 @@ function VoiceCell({
               onPress={() => onToggleStar(voice)}
             >
               <StarIcon className="h-4 w-4" />
-            </Button>
+            </GaiaButton>
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
@@ -208,7 +209,8 @@ function VoiceCell({
           onPointerUp={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
         >
-          <Button
+          <GaiaButton
+            shape="pill"
             isIconOnly
             size="sm"
             variant="tertiary"
@@ -222,7 +224,7 @@ function VoiceCell({
             onPress={() => onTogglePreview(voice)}
           >
             <PreviewIcon className="h-4 w-4" />
-          </Button>
+          </GaiaButton>
         </div>
       );
     }

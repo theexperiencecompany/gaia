@@ -1374,4 +1374,23 @@ html {
     height: var(--gaia-checkbox-size);
     margin-inline-end: var(--gaia-checkbox-gap);
   }
+
+  /* shape="pill" (components/shared/shape.ts): v2's radius="full", one class for
+     every control. Field controls round through their own --radius-field. */
+  .gaia-pill {
+    --radius-field: var(--gaia-radius-pill);
+  }
+  .button.gaia-pill,
+  .chip.gaia-pill,
+  .button-group.gaia-pill,
+  .gaia-pill .tabs__list,
+  .gaia-pill .tabs__tab,
+  .gaia-pill .tabs__indicator,
+  .tabs__list.gaia-pill,
+  .checkbox.gaia-pill .checkbox__control {
+    border-radius: var(--gaia-radius-pill);
+  }
+  .button-group.gaia-pill {
+    overflow: hidden;
+  }
 }
