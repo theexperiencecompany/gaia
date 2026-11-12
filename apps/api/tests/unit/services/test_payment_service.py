@@ -597,6 +597,22 @@ class TestCreateSubscription:
         gift_checkout.capture.assert_not_called()
 
     @pytest.mark.usefixtures("mock_redis_cache", "mock_checkout_session_repository")
+    async def test_a_winning_code_dodo_refuses_is_a_502_and_renews_no_gift(
+        self, payment_service, gift_checkout
+    ):
+        gift_checkout.find.return_value = _discount(basis_points=4000, cycles=None)
+        gift_checkout.create.side_effect = _refused()
+
+        with pytest.raises(HTTPException) as failed:
+            await payment_service.create_subscription(
+                FAKE_USER_ID, MONTHLY_PRODUCT, discount_code="FOUNDER"
+            )
+
+        assert failed.value.status_code == 502
+        assert self._applied(gift_checkout.create) == [("FOUNDER", True)]
+        gift_checkout.renew.assert_not_awaited()
+
+    @pytest.mark.usefixtures("mock_redis_cache", "mock_checkout_session_repository")
     async def test_a_code_that_cannot_apply_to_the_plan_loses_to_the_gift(
         self, payment_service, gift_checkout
     ):
@@ -645,12 +661,20 @@ class TestCreateSubscription:
         opened = gift_checkout.create.return_value
         gift_checkout.create.side_effect = [_refused(), opened]
 
-        await payment_service.create_subscription(FAKE_USER_ID, MONTHLY_PRODUCT)
+        async with captured_wide_event() as event:
+            await payment_service.create_subscription(FAKE_USER_ID, MONTHLY_PRODUCT)
 
         assert self._applied(gift_checkout.create) == [("GIFT1", False), ("GIFT2", False)]
         gift_checkout.renew.assert_awaited_once_with(
             gift_checkout.dodo, gift_checkout.referral, _gift("GIFT1"), PRO_PLANS
         )
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.PAYMENT} Dodo refused the stored referral gift; renewing it",
+                "error": "discount code is not valid",
+                "user_id": FAKE_USER_ID,
+            }
+        ]
 
     @pytest.mark.usefixtures("mock_redis_cache", "mock_checkout_session_repository")
     async def test_a_renewed_gift_refused_too_opens_checkout_with_the_callers_code(
@@ -670,6 +694,14 @@ class TestCreateSubscription:
             ("FOUNDER", True),
         ]
         assert event["payment"]["referral_gift_applied"] is False
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.PAYMENT} Referral gift could not be renewed; checkout opens without it",
+                "error": "discount code is not valid",
+                "error_type": "UnprocessableEntityError",
+                "user_id": FAKE_USER_ID,
+            }
+        ]
         gift_checkout.capture.assert_called_once_with(
             UserId(FAKE_USER_ID), ReferralGiftMintFailed(reason="provider_rejected")
         )
@@ -786,6 +818,8 @@ class TestCreateSubscription:
         # rides along under Dodo's ``subscription_data`` key.
         create_kwargs = mock_dodo_client.checkout_sessions.create.call_args.kwargs
         assert create_kwargs["subscription_data"] == {}
+        # The webhook resolves the paying user from this metadata.
+        assert create_kwargs["metadata"] == {"user_id": FAKE_USER_ID, "product_id": "prod_abc123"}
         # The checkout session is recorded verbatim — the verify fallback
         # resolves the purchase against Dodo through this record.
         recorded = mock_checkout_session_repository.create.call_args.args[0]

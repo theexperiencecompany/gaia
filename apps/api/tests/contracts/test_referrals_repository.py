@@ -138,7 +138,8 @@ class TestReferralsRepository:
             "pay_first", reason=ReferralRevokeReason.DISPUTE, at=NOW + timedelta(days=1)
         )
 
-        assert asked is not None and asked.revoke_reason is ReferralRevokeReason.REFUND
+        assert asked is not None
+        assert (asked.revoke_reason, asked.revoked_at) == (ReferralRevokeReason.REFUND, NOW)
         assert asked.revocation_owed
         assert again is None
         assert (
@@ -222,3 +223,14 @@ class TestReferralsRepository:
         await repo.update("d", ReferralUpdate(reward_state=ReferralRewardState.APPLIED))
 
         assert await repo.list_referrers_unsettled(NOW - timedelta(minutes=15), limit=10) == ["r1"]
+
+    async def test_the_sweep_takes_the_longest_pending_months_first_up_to_its_limit(
+        self, repo: ReferralsRepository
+    ) -> None:
+        for friend, minutes in (("newest", 20), ("oldest", 60), ("middle", 40)):
+            await repo.attribute(_referral(friend, referrer=f"r-{friend}"))
+            await repo.mark_paid(
+                friend, payment_id=f"pay_{friend}", paid_at=NOW - timedelta(minutes=minutes)
+            )
+
+        assert await repo.list_referrers_unsettled(NOW, limit=2) == ["r-oldest", "r-middle"]
