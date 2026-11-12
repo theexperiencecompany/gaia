@@ -1,8 +1,10 @@
 import type { MessageReaction, TodoRunWake } from "@shared/api/generated";
+import type { LoggedEntry } from "@shared/conversation";
 import Dexie, { type IndexableType, type Table } from "dexie";
 import { EventEmitter } from "events";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import type { SystemPurpose } from "@/features/chat/api/chatApi";
+import type { LocalSend } from "@/features/chat/live/liveConversationStore";
 import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type {
@@ -95,6 +97,13 @@ export interface IMessage {
   reaction?: MessageReaction | null;
 }
 
+/** A conversation's log as this device last saw it, and the sends it made into it. */
+export interface IConversationLog {
+  conversationId: string;
+  entries: LoggedEntry[];
+  sends: Record<string, LocalSend>;
+}
+
 class MessageQueue {
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -154,6 +163,7 @@ export const dbEventEmitter = new DBEventEmitter();
 class ChatDexie extends Dexie {
   public conversations!: Table<IConversation, string>;
   public messages!: Table<IMessage, string>;
+  public conversationLogs!: Table<IConversationLog, string>;
 
   /**
    * Whether IndexedDB persistence is usable this session — iOS Safari refuses
@@ -187,8 +197,12 @@ class ChatDexie extends Dexie {
         await messages.bulkDelete(removedIds);
       });
 
+    // v4: the conversation event stream's log, so a reload shows it before the stream reconnects.
+    this.version(4).stores({ conversationLogs: "conversationId" });
+
     this.conversations = this.table("conversations");
     this.messages = this.table("messages");
+    this.conversationLogs = this.table("conversationLogs");
   }
 
   /**
@@ -235,6 +249,18 @@ class ChatDexie extends Dexie {
 
   public getConversation(id: string): Promise<IConversation | undefined> {
     return this.run(undefined, () => this.conversations.get(id));
+  }
+
+  public getConversationLog(
+    conversationId: string,
+  ): Promise<IConversationLog | undefined> {
+    return this.run(undefined, () => this.conversationLogs.get(conversationId));
+  }
+
+  public async putConversationLog(log: IConversationLog): Promise<void> {
+    await this.run(undefined, () =>
+      messageQueue.enqueue(() => this.conversationLogs.put(log)),
+    );
   }
 
   public getAllConversations(): Promise<IConversation[]> {
@@ -364,13 +390,13 @@ class ChatDexie extends Dexie {
       messageQueue.enqueue(() =>
         (this as Dexie).transaction(
           "rw",
-          this.conversations,
-          this.messages,
+          [this.conversations, this.messages, this.conversationLogs],
           async () => {
             await this.messages
               .where("conversationId")
               .equals(conversationId)
               .delete();
+            await this.conversationLogs.delete(conversationId);
             await this.conversations.delete(conversationId);
           },
         ),
@@ -391,8 +417,7 @@ class ChatDexie extends Dexie {
       messageQueue.enqueue(() =>
         (this as Dexie).transaction(
           "rw",
-          this.conversations,
-          this.messages,
+          [this.conversations, this.messages, this.conversationLogs],
           async () => {
             // Delete all messages for these conversations in one indexed
             // query — same rw transaction, no sequential await loop.
@@ -400,6 +425,7 @@ class ChatDexie extends Dexie {
               .where("conversationId")
               .anyOf(conversationIds)
               .delete();
+            await this.conversationLogs.bulkDelete(conversationIds);
             // Delete the conversations themselves
             await this.conversations.bulkDelete(conversationIds);
           },
@@ -532,10 +558,10 @@ class ChatDexie extends Dexie {
         const ids = await this.conversations.toCollection().primaryKeys();
         await (this as Dexie).transaction(
           "rw",
-          this.conversations,
-          this.messages,
+          [this.conversations, this.messages, this.conversationLogs],
           async () => {
             await this.messages.clear();
+            await this.conversationLogs.clear();
             await this.conversations.clear();
           },
         );

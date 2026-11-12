@@ -7,6 +7,8 @@ import type {
   ConversationSummary,
   ConversationSyncItem,
   ConversationSyncRow,
+  MessageAccepted,
+  SendMessageRequest,
   SystemPurpose as SystemPurposeLiteral,
 } from "@shared/api/generated";
 
@@ -74,6 +76,15 @@ export class SubscriptionRequiredError extends Error {
   }
 }
 
+/** The events stream refused a conversation the server does not hold yet: its first send has not landed. */
+export class ConversationNotFoundError extends Error {
+  constructor(conversationId: string) {
+    super(`Conversation ${conversationId} does not exist yet`);
+    this.name = "ConversationNotFoundError";
+  }
+}
+
+const HTTP_NOT_FOUND = 404;
 const HTTP_CONFLICT = 409;
 const HTTP_PAYMENT_REQUIRED = 402;
 const HTTP_GONE = 410;
@@ -497,6 +508,74 @@ export const chatApi = {
         throw err; // stops retry attempts
       },
     });
+  },
+
+  /** Accept a message into a conversation; the server creates the conversation on its first message. */
+  sendConversationMessage: (
+    conversationId: string,
+    body: SendMessageRequest,
+  ): Promise<MessageAccepted> =>
+    api.post("/api/v1/conversations/{conversation_id}/messages", {
+      path: { conversation_id: conversationId },
+      body,
+      silent: true,
+    }),
+
+  /**
+   * Follow a conversation's event stream from the log after seq `after`; resolves when
+   * the server closes it. Each `data:` line is handed over raw for the caller to parse.
+   */
+  subscribeToConversationEvents: async (
+    conversationId: string,
+    after: number,
+    onData: (raw: string) => void,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await fetchEventSource(
+      `${apiBaseUrl}/conversations/${encodeURIComponent(conversationId)}/events?after=${after}`,
+      {
+        method: "GET",
+        openWhenHidden: true,
+        headers: {
+          Accept: "text/event-stream",
+          ...clientHeaders(),
+          ...requestOriginHeaders(true),
+        },
+        credentials: "include",
+        signal,
+        async onopen(response) {
+          if (response.status === HTTP_NOT_FOUND) {
+            throw new ConversationNotFoundError(conversationId);
+          }
+          if (
+            !response.ok ||
+            !response.headers.get("content-type")?.includes("text/event-stream")
+          ) {
+            throw new Error(
+              `Unexpected conversation events response (${response.status})`,
+            );
+          }
+        },
+        onmessage(event) {
+          streamLog("sse", "frame", {
+            conversationId,
+            detail: { raw: event.data },
+          });
+          onData(event.data);
+        },
+        onclose() {
+          streamLog("sse", "connection-closed", { conversationId });
+        },
+        onerror(err) {
+          streamLogError("sse", "connection-error", {
+            conversationId,
+            detail: { message: err.message },
+          });
+          // The caller owns reconnecting, from the log, with its own backoff.
+          throw err;
+        },
+      },
+    );
   },
 
   /**
