@@ -26,7 +26,8 @@ import type {
   Reply,
 } from "../../conversation/types";
 import { applyFrame, EMPTY_CONVERSATION_VIEW } from "../../conversation/view";
-import { formatBotError, PLATFORM_MARKDOWN } from "../utils/formatters";
+import { REPLY_FAILURE_LINE } from "../utils/error-lines";
+import { PLATFORM_MARKDOWN } from "../utils/formatters";
 import { createBotLogger } from "../utils/logger";
 import { REACTION_OUTCOME } from "../utils/reaction-outcome";
 import type {
@@ -40,8 +41,6 @@ const logger = createBotLogger("shared", "conversation-follower");
 
 type UserMessageEntry = Extract<Entry, { kind: "user_message" }>;
 type ReplySettledEntry = Extract<Entry, { kind: "reply_settled" }>;
-
-const REPLY_OUTCOME_FAILED = "failed";
 
 /** Display states during which the user should see GAIA typing. */
 const TYPING_DISPLAYS: ReadonlySet<string> = new Set([
@@ -229,15 +228,15 @@ export class ConversationFollower {
       if (delivery.opened) await delivery.boundary(true);
       await delivery.text(saved);
     }
-    if (
-      !saved &&
-      !delivery.opened &&
-      settled.outcome === REPLY_OUTCOME_FAILED
-    ) {
-      await delivery.text(formatBotError(null, this.options.platform));
-    }
     await delivery.end();
     if (delivery.opened) this.summary.repliesDelivered += 1;
+    if (settled.failure) {
+      const { platform } = this.options;
+      await this.surface.send(
+        PLATFORM_MARKDOWN[platform](REPLY_FAILURE_LINE[settled.failure]),
+        null,
+      );
+    }
   }
 
   private savedReply(replyId: string): Reply | null {

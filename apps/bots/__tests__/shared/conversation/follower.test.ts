@@ -344,6 +344,50 @@ describe("a late result's native quote", () => {
   });
 });
 
+describe.each([
+  ["editing", EDITING],
+  ["non-editing", NON_EDITING],
+])("a failed reply on a %s platform", (_family, options) => {
+  const failed = (
+    failure: "model_error" | "step_limit" | "server_restart",
+    partial: string,
+  ): ConversationFrame[] => [
+    entryFrame(1, inbound("u1", "11")),
+    stateFrame(1, "thinking"),
+    entryFrame(2, replyEntry("r1", "a-r1")),
+    ...(partial ? [replyDelta("a-r1", "r1", 0, partial)] : []),
+    entryUpdatedFrame(2, replyEntry("r1", "a-r1", partial, 1)),
+    entryFrame(3, replySettled("r1", [], 1, null, "failed", failure)),
+    stateFrame(3, "idle"),
+  ];
+
+  it.each([
+    ["model_error", "❌ Something went wrong. Please try again later."],
+    ["step_limit", "❌ Something went wrong. Please try again later."],
+    ["server_restart", "🔌 Connection interrupted. Please try again."],
+  ] as const)("says why for %s", async (failure, line) => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(0, options, surface);
+    follower.expect(1);
+    await feed(follower, failed(failure, ""));
+
+    expect(screen(calls)).toEqual([line]);
+    expect(follower.finished).toBe(true);
+  });
+
+  it("keeps what was said before the failure and adds the failure line", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(0, options, surface);
+    follower.expect(1);
+    await feed(follower, failed("model_error", "Let me look"));
+
+    expect(screen(calls)).toEqual([
+      "Let me look",
+      "❌ Something went wrong. Please try again later.",
+    ]);
+  });
+});
+
 describe("history the follow started after", () => {
   it("renders nothing for a reply settled before the posted message", async () => {
     const { surface, calls } = recorder();
