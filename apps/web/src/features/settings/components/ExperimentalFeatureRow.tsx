@@ -39,7 +39,13 @@ export function ExperimentalFeatureRow({
           isDisabled={!feature.available || isSaving}
           onChange={(enabled) => setEnabled(feature.key, enabled)}
           aria-label={`Turn ${feature.label} ${feature.enabled ? "off" : "on"}`}
-        />
+        >
+          <Switch.Content>
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
+          </Switch.Content>
+        </Switch>
       </div>
     </SettingsRow>
   );

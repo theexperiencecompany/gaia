@@ -190,52 +190,42 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
       </div>
       <div className="absolute right-2 bottom-2 flex flex-col items-center gap-1">
         <Tooltip>
-          <Tooltip.Trigger>
-            <Button size="sm" onPress={handleZoomOut} isIconOnly>
-              <ZoomOutAreaIcon size={18} />
-            </Button>
-          </Tooltip.Trigger>
+          <Button size="sm" onPress={handleZoomOut} isIconOnly>
+            <ZoomOutAreaIcon size={18} />
+          </Button>
           <Tooltip.Content>Zoom Out</Tooltip.Content>
         </Tooltip>
         <Tooltip>
-          <Tooltip.Trigger>
-            <Button size="sm" onPress={resetZoom} isIconOnly>
-              <RedoIcon width={18} height={18} />
-            </Button>
-          </Tooltip.Trigger>
+          <Button size="sm" onPress={resetZoom} isIconOnly>
+            <RedoIcon width={18} height={18} />
+          </Button>
           <Tooltip.Content>Reset Zoom</Tooltip.Content>
         </Tooltip>
         <Tooltip>
-          <Tooltip.Trigger>
-            <Button size="sm" onPress={handleZoomIn} isIconOnly>
-              <ZoomInAreaIcon size={18} />
-            </Button>
-          </Tooltip.Trigger>
+          <Button size="sm" onPress={handleZoomIn} isIconOnly>
+            <ZoomInAreaIcon size={18} />
+          </Button>
           <Tooltip.Content>Zoom In</Tooltip.Content>
         </Tooltip>
 
         <Tooltip>
-          <Tooltip.Trigger>
-            <Button
-              size="sm"
-              onPress={() => {
-                resetPan();
-                resetZoom();
-              }}
-              isIconOnly
-            >
-              <MoveIcon size={18} />
-            </Button>
-          </Tooltip.Trigger>
+          <Button
+            size="sm"
+            onPress={() => {
+              resetPan();
+              resetZoom();
+            }}
+            isIconOnly
+          >
+            <MoveIcon size={18} />
+          </Button>
           <Tooltip.Content>Reset Pan &amp; Zoom</Tooltip.Content>
         </Tooltip>
 
         <Tooltip>
-          <Tooltip.Trigger>
-            <Button size="sm" onPress={handleDownload} isIconOnly>
-              <Download01Icon size={18} />
-            </Button>
-          </Tooltip.Trigger>
+          <Button size="sm" onPress={handleDownload} isIconOnly>
+            <Download01Icon size={18} />
+          </Button>
           <Tooltip.Content>Download Flowchart (.svg)</Tooltip.Content>
         </Tooltip>
       </div>

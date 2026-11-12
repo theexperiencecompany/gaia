@@ -142,15 +142,13 @@ export function AgentControlBar({
             <MicStateIcon className="h-6 w-6" />
           </Button>
           <Dropdown onOpenChange={(open) => open && refreshDevices()}>
-            <Dropdown.Trigger>
-              <Button
-                isIconOnly
-                aria-label="Select microphone"
-                className="h-12 w-9 bg-zinc-800 text-zinc-400 transition-colors hover:bg-zinc-700"
-              >
-                <ArrowDown01Icon className="h-4 w-4" />
-              </Button>
-            </Dropdown.Trigger>
+            <Button
+              isIconOnly
+              aria-label="Select microphone"
+              className="h-12 w-9 bg-zinc-800 text-zinc-400 transition-colors hover:bg-zinc-700"
+            >
+              <ArrowDown01Icon className="h-4 w-4" />
+            </Button>
             <Dropdown.Popover placement="top end">
               <Menu
                 aria-label="Audio input devices"

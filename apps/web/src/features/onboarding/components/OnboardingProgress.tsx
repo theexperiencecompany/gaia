@@ -78,27 +78,25 @@ function OnboardingProgressImpl({
       })}
 
       <Dropdown>
-        <Dropdown.Trigger>
-          <Button
-            size="sm"
-            variant="tertiary"
-            isPending={isRestarting}
-            isDisabled={isRestarting}
-            isIconOnly={isMobile}
-            // A phone has no spare bottom edge (the composer lives there), so
-            // the menu is a small icon in the top-right corner instead.
-            className={
-              isMobile ? "fixed top-3 right-3 z-20" : "fixed right-3 bottom-3"
-            }
-            aria-label="Account"
-          >
-            {isMobile
-              ? !isRestarting && <UserCircleIcon size={16} />
-              : isRestarting
-                ? "Restarting…"
-                : (email ?? "Account")}
-          </Button>
-        </Dropdown.Trigger>
+        <Button
+          size="sm"
+          variant="tertiary"
+          isPending={isRestarting}
+          isDisabled={isRestarting}
+          isIconOnly={isMobile}
+          // A phone has no spare bottom edge (the composer lives there), so
+          // the menu is a small icon in the top-right corner instead.
+          className={
+            isMobile ? "fixed top-3 right-3 z-20" : "fixed right-3 bottom-3"
+          }
+          aria-label="Account"
+        >
+          {isMobile
+            ? !isRestarting && <UserCircleIcon size={16} />
+            : isRestarting
+              ? "Restarting…"
+              : (email ?? "Account")}
+        </Button>
         <Dropdown.Popover placement={isMobile ? "bottom end" : "top end"}>
           <Dropdown.Menu aria-label="Account">
             <Dropdown.Item

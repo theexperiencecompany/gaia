@@ -42,7 +42,13 @@ export function MembersSettings() {
                 onChange={(open: boolean) =>
                   members.setPolicy(open ? "open" : "invite_only")
                 }
-              />
+              >
+                <Switch.Content>
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                </Switch.Content>
+              </Switch>
             </SettingsRow>
           </SettingsSection>
 

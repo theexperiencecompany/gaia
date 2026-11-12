@@ -117,7 +117,13 @@ export function SkillRow({
           isSelected={skill.enabled}
           onChange={(enabled) => onToggle(skill, enabled)}
           aria-label={`${skill.enabled ? "Disable" : "Enable"} ${skill.name}`}
-        />
+        >
+          <Switch.Content>
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
+          </Switch.Content>
+        </Switch>
       </div>
     </div>
   );

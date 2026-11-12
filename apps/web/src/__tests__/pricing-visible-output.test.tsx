@@ -212,7 +212,7 @@ function subscribed(
 }
 
 /** HeroUI's Skeleton base class: what a loading price renders instead of a figure. */
-const SKELETON = ".bg-content3";
+const SKELETON = ".skeleton";
 
 /** What a reader sees: the rendered text, minus injected styles, whitespace collapsed. */
 function visibleText(container: HTMLElement): string {

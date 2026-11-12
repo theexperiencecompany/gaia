@@ -91,16 +91,15 @@ export default function DemoNotificationsPopover({
                       {n.unread && (
                         <div className="flex shrink-0 items-center gap-1">
                           <Tooltip>
-                            <Tooltip.Trigger aria-label="Mark as read">
-                              <Button
-                                variant="tertiary"
-                                size="sm"
-                                isIconOnly
-                                aria-label="Mark as read"
-                              >
-                                <CheckmarkBadge01Icon className="h-3.5 w-3.5" />
-                              </Button>
-                            </Tooltip.Trigger>
+                            <Button
+                              variant="tertiary"
+                              size="sm"
+                              isIconOnly
+                              aria-label="Mark as read"
+                            >
+                              <CheckmarkBadge01Icon className="h-3.5 w-3.5" />
+                            </Button>
+
                             <Tooltip.Content>Mark as read</Tooltip.Content>
                           </Tooltip>
                         </div>

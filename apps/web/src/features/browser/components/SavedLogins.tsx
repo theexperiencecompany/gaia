@@ -272,16 +272,14 @@ export function SavedLogins() {
             </SearchField>
           )}
           <Dropdown>
-            <Dropdown.Trigger>
-              <Button
-                isIconOnly
-                aria-label="Saved sites actions"
-                size="sm"
-                variant="tertiary"
-              >
-                <MoreVerticalIcon className="size-4" />
-              </Button>
-            </Dropdown.Trigger>
+            <Button
+              isIconOnly
+              aria-label="Saved sites actions"
+              size="sm"
+              variant="tertiary"
+            >
+              <MoreVerticalIcon className="size-4" />
+            </Button>
             <Dropdown.Popover placement="bottom end">
               <Dropdown.Menu
                 aria-label="Saved sites actions"

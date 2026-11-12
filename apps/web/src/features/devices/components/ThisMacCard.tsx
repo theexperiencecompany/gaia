@@ -53,17 +53,15 @@ function ServerStateIndicator({
   if (state === "error")
     return (
       <Tooltip>
-        <Tooltip.Trigger>
-          <Button
-            size="sm"
-            variant="secondary"
-            isDisabled={disabled}
-            onPress={onRetry}
-          >
-            <RedoIcon width={14} height={14} />
-            Retry
-          </Button>
-        </Tooltip.Trigger>
+        <Button
+          size="sm"
+          variant="secondary"
+          isDisabled={disabled}
+          onPress={onRetry}
+        >
+          <RedoIcon width={14} height={14} />
+          Retry
+        </Button>
         <Tooltip.Content>{error ?? "Failed to connect"}</Tooltip.Content>
       </Tooltip>
     );
@@ -168,7 +166,13 @@ export function ThisMacCard({
               isDisabled={busy === "toggle"}
               onChange={(next) => void setRunning(next)}
               aria-label={`Keep ${noun} connected`}
-            />
+            >
+              <Switch.Content>
+                <Switch.Control>
+                  <Switch.Thumb />
+                </Switch.Control>
+              </Switch.Content>
+            </Switch>
           </div>
         ) : (
           <Button

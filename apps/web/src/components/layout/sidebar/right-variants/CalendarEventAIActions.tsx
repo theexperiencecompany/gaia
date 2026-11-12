@@ -92,11 +92,9 @@ export default function CalendarEventAIActions({
         {currentAction.label}
       </Button>
       <Dropdown>
-        <Dropdown.Trigger>
-          <Button isIconOnly>
-            <ArrowDown01Icon className="size-4" />
-          </Button>
-        </Dropdown.Trigger>
+        <Button isIconOnly>
+          <ArrowDown01Icon className="size-4" />
+        </Button>
         <Dropdown.Popover placement="bottom end">
           <Dropdown.Menu
             disallowEmptySelection

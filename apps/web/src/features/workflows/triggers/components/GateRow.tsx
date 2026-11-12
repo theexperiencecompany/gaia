@@ -27,18 +27,14 @@ export function GateRow({ saved, watchesMail, ...rule }: GateRowProps) {
 
   return (
     <Popover>
-      <Popover.Trigger>
-        <Button {...PANEL_ROW_BUTTON_PROPS}>
-          <PanelRowContent
-            icon={FilterHorizontalIcon}
-            label={rule.enabled ? gateSentence(rule.condition) : copy.off}
-            isMuted={!rule.enabled}
-            end={
-              rule.enabled && skippedCount > 0 && gateSkipCount(skippedCount)
-            }
-          />
-        </Button>
-      </Popover.Trigger>
+      <Button {...PANEL_ROW_BUTTON_PROPS}>
+        <PanelRowContent
+          icon={FilterHorizontalIcon}
+          label={rule.enabled ? gateSentence(rule.condition) : copy.off}
+          isMuted={!rule.enabled}
+          end={rule.enabled && skippedCount > 0 && gateSkipCount(skippedCount)}
+        />
+      </Button>
       <Popover.Content placement="bottom" offset={6}>
         <Popover.Dialog className="w-80 rounded-2xl bg-zinc-900 p-0 shadow-xl">
           <GateDetail

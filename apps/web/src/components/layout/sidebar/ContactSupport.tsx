@@ -11,18 +11,16 @@ export default function ContactSupport() {
     <>
       <div className="flex w-full justify-center">
         <Tooltip>
-          <Tooltip.Trigger>
-            <Button
-              variant="tertiary"
-              fullWidth
-              className="text-left flex justify-center text-zinc-300 h-7"
-              size="sm"
-              onPress={open}
-            >
-              <BubbleChatQuestionIcon width={17} height={17} />
-              Contact Support
-            </Button>
-          </Tooltip.Trigger>
+          <Button
+            variant="tertiary"
+            fullWidth
+            className="text-left flex justify-center text-zinc-300 h-7"
+            size="sm"
+            onPress={open}
+          >
+            <BubbleChatQuestionIcon width={17} height={17} />
+            Contact Support
+          </Button>
           <Tooltip.Content>
             Need support or want a new feature? Talk to us!
           </Tooltip.Content>

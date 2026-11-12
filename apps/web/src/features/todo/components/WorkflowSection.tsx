@@ -310,17 +310,15 @@ export default function WorkflowSection({
             )}
             {hasWorkflow && (
               <Tooltip>
-                <Tooltip.Trigger>
-                  <Button
-                    variant="tertiary"
-                    size="sm"
-                    onPress={handleRun}
-                    isDisabled={isGenerating}
-                    isIconOnly
-                  >
-                    <PlayIcon className="h-4 w-4" />
-                  </Button>
-                </Tooltip.Trigger>
+                <Button
+                  variant="tertiary"
+                  size="sm"
+                  onPress={handleRun}
+                  isDisabled={isGenerating}
+                  isIconOnly
+                >
+                  <PlayIcon className="h-4 w-4" />
+                </Button>
                 <Tooltip.Content placement="bottom">
                   Run workflow
                 </Tooltip.Content>

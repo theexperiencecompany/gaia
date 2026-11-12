@@ -265,18 +265,16 @@ function TodoModalTrigger({
 }: TodoModalTriggerProps) {
   return (
     <Tooltip>
-      <Tooltip.Trigger>
-        <Button
-          className={buttonClassName}
-          size="sm"
-          variant="tertiary"
-          onPress={onOpen}
-          data-keyboard-shortcut="create-todo"
-        >
-          <TaskAddIcon className="h-4 w-4 outline-0" />
-          {buttonText}
-        </Button>
-      </Tooltip.Trigger>
+      <Button
+        className={buttonClassName}
+        size="sm"
+        variant="tertiary"
+        onPress={onOpen}
+        data-keyboard-shortcut="create-todo"
+      >
+        <TaskAddIcon className="h-4 w-4 outline-0" />
+        {buttonText}
+      </Button>
       <Tooltip.Content placement="right">
         <span className="flex items-center gap-2">
           {buttonText}

@@ -16,6 +16,7 @@ import { heroStatus, type Period } from "./heroStatus";
 import { severityColor } from "./severityColor";
 import { ActivityBadge, UsageHeatmap } from "./UsageHeatmap";
 import { CARD, HEALTHY, InfoTip, NEAR } from "./usageChrome";
+import { USAGE_TAB_CLASSES } from "./usageTabs";
 
 // recharts is heavy, so it loads on demand instead of shipping eagerly with
 // the settings page. The shared promise means every chart here triggers a
@@ -217,20 +218,14 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
           onSelectionChange={(k) => setWin(k as Period)}
           className="absolute right-4 top-4"
         >
-          <Tabs.List className="bg-zinc-800/80 p-0.5">
-            <Tabs.Tab
-              id="month"
-              className="h-6 px-3 text-xs font-medium text-zinc-500 data-[selected]:text-zinc-100"
-            >
+          <Tabs.List className={USAGE_TAB_CLASSES.list}>
+            <Tabs.Tab id="month" className={cn(USAGE_TAB_CLASSES.tab, "px-3")}>
               Month
-              <Tabs.Indicator className="bg-zinc-700" />
+              <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
-            <Tabs.Tab
-              id="day"
-              className="h-6 px-3 text-xs font-medium text-zinc-500 data-[selected]:text-zinc-100"
-            >
+            <Tabs.Tab id="day" className={cn(USAGE_TAB_CLASSES.tab, "px-3")}>
               Today
-              <Tabs.Indicator className="bg-zinc-700" />
+              <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
           </Tabs.List>
           <Tabs.Panel id="month">{null}</Tabs.Panel>
@@ -736,20 +731,14 @@ function Tools({
           selectedKey={period}
           onSelectionChange={(k) => onPeriod(k as Period)}
         >
-          <Tabs.List className="bg-zinc-800/80 p-0.5">
-            <Tabs.Tab
-              id="day"
-              className="h-6 px-3 text-xs font-medium text-zinc-500 data-[selected]:text-zinc-100"
-            >
+          <Tabs.List className={USAGE_TAB_CLASSES.list}>
+            <Tabs.Tab id="day" className={cn(USAGE_TAB_CLASSES.tab, "px-3")}>
               Today
-              <Tabs.Indicator className="bg-zinc-700" />
+              <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
-            <Tabs.Tab
-              id="month"
-              className="h-6 px-3 text-xs font-medium text-zinc-500 data-[selected]:text-zinc-100"
-            >
+            <Tabs.Tab id="month" className={cn(USAGE_TAB_CLASSES.tab, "px-3")}>
               Month
-              <Tabs.Indicator className="bg-zinc-700" />
+              <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
           </Tabs.List>
           <Tabs.Panel id="month">{null}</Tabs.Panel>

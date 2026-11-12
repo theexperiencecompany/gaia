@@ -80,12 +80,21 @@ export function UpgradeModal() {
         if (!isOpen && dismissible) closeModal();
       }}
     >
-      <Modal.Backdrop isDismissable={dismissible}>
+      <Modal.Backdrop
+        isDismissable={dismissible}
+        isKeyboardDismissDisabled={!dismissible}
+      >
         <Modal.Container
           size={dismissible ? "full" : "lg"}
           className={dismissible ? "overflow-hidden" : undefined}
         >
           <Modal.Dialog className={`outline-none${dismissible ? "" : " p-4"}`}>
+            {dismissible && (
+              <Modal.CloseTrigger
+                aria-label="Close"
+                className="top-3 right-3 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+              />
+            )}
             {dismissible ? (
               <UpgradeModalPlanPicker
                 offerMessage={offerMessage}

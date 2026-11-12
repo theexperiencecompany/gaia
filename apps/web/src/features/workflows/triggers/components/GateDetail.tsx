@@ -88,7 +88,7 @@ export function GateDetail({
       ) : (
         <div className="flex flex-col gap-2">
           <TextArea
-            aria-label="Gate condition"
+            aria-label={GATE_EDIT_LABEL}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onKeyDown}

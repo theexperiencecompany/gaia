@@ -138,7 +138,13 @@ export default function SubtaskManager({
                 isSelected={subtask.completed}
                 onChange={() => handleToggleSubtask(subtask.id)}
                 className="flex-shrink-0"
-              />
+              >
+                <Checkbox.Content>
+                  <Checkbox.Control>
+                    <Checkbox.Indicator />
+                  </Checkbox.Control>
+                </Checkbox.Content>
+              </Checkbox>
 
               {editingSubtaskId === subtask.id ? (
                 <div className="flex flex-1 gap-2">

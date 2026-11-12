@@ -67,18 +67,16 @@ export default function ChatBubble_Actions_Image({
         </Button>
       ) : null}
       <Tooltip>
-        <Tooltip.Trigger>
-          <Button
-            className={`w-fit ${fullWidth ? "px-3 py-2" : "bg-transparent p-0 text-zinc-500 data-[hover=true]:bg-transparent"} h-fit rounded-lg`}
-            isIconOnly={!fullWidth}
-            style={{ minWidth: "22px" }}
-            variant={fullWidth ? "primary" : "ghost"}
-            onPress={downloadFromSrc}
-          >
-            <DownloadSquare01Icon className={`cursor-pointer`} height="22" />
-            <span className="text-black">{fullWidth ? "Download" : ""}</span>
-          </Button>
-        </Tooltip.Trigger>
+        <Button
+          className={`w-fit ${fullWidth ? "px-3 py-2" : "bg-transparent p-0 text-zinc-500 data-[hover=true]:bg-transparent"} h-fit rounded-lg`}
+          isIconOnly={!fullWidth}
+          style={{ minWidth: "22px" }}
+          variant={fullWidth ? "primary" : "ghost"}
+          onPress={downloadFromSrc}
+        >
+          <DownloadSquare01Icon className={`cursor-pointer`} height="22" />
+          <span className="text-black">{fullWidth ? "Download" : ""}</span>
+        </Button>
         <Tooltip.Content
           className={fullWidth ? "hidden" : ""}
           placement="right"

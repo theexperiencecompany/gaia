@@ -33,21 +33,19 @@ function IconGrid({ icons, selectedName, onPick }: IconGridProps) {
     <div className="grid grid-cols-8 gap-1">
       {icons.map((def) => (
         <Tooltip key={def.name} delay={300} closeDelay={0}>
-          <Tooltip.Trigger>
-            <Button
-              isIconOnly
-              size="sm"
-              variant="tertiary"
-              aria-label={workflowIconLabel(def.name)}
-              className={cn(
-                "text-zinc-300",
-                selectedName === def.name && "bg-zinc-700",
-              )}
-              onPress={() => onPick(def)}
-            >
-              <def.Icon size={18} />
-            </Button>
-          </Tooltip.Trigger>
+          <Button
+            isIconOnly
+            size="sm"
+            variant="tertiary"
+            aria-label={workflowIconLabel(def.name)}
+            className={cn(
+              "text-zinc-300",
+              selectedName === def.name && "bg-zinc-700",
+            )}
+            onPress={() => onPick(def)}
+          >
+            <def.Icon size={18} />
+          </Button>
           <Tooltip.Content>{workflowIconLabel(def.name)}</Tooltip.Content>
         </Tooltip>
       ))}
@@ -110,24 +108,22 @@ export default function WorkflowIconPicker({
         if (!open) setQuery("");
       }}
     >
-      <Popover.Trigger>
-        <Button
-          isIconOnly
-          variant="tertiary"
-          aria-label={selected ? "Change workflow icon" : "Add workflow icon"}
-          className={cn(
-            "-mt-0.5 size-10 min-w-10 shrink-0",
-            !selected && "bg-zinc-800",
-          )}
-          style={selected ? tintedBg : undefined}
-        >
-          {selected ? (
-            <selected.Icon size={20} style={{ color }} />
-          ) : (
-            <PlusSignIcon className="size-5 text-zinc-500" />
-          )}
-        </Button>
-      </Popover.Trigger>
+      <Button
+        isIconOnly
+        variant="tertiary"
+        aria-label={selected ? "Change workflow icon" : "Add workflow icon"}
+        className={cn(
+          "-mt-0.5 size-10 min-w-10 shrink-0",
+          !selected && "bg-zinc-800",
+        )}
+        style={selected ? tintedBg : undefined}
+      >
+        {selected ? (
+          <selected.Icon size={20} style={{ color }} />
+        ) : (
+          <PlusSignIcon className="size-5 text-zinc-500" />
+        )}
+      </Button>
       <Popover.Content
         placement="bottom start"
         className="w-80 bg-zinc-800 p-3"

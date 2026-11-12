@@ -10,6 +10,7 @@ import { useRecharts } from "@/components/ui/chart-loader";
 import { cn } from "@/lib/utils";
 import { tokenComparisons } from "./tokenScale";
 import { ACCENT, CARD, HEALTHY, InfoTip } from "./usageChrome";
+import { USAGE_TAB_CLASSES } from "./usageTabs";
 
 // recharts is heavy, so it loads on demand instead of shipping eagerly with
 // the settings page. The shared promise means every chart here triggers a
@@ -334,20 +335,14 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
           onSelectionChange={(k) => setMetric(k as Metric)}
           className="shrink-0"
         >
-          <Tabs.List aria-label="Metric" className="bg-zinc-800/80 p-0.5">
-            <Tabs.Tab
-              id="actions"
-              className="h-6 px-2.5 text-xs font-medium text-zinc-500 data-[selected]:text-zinc-100"
-            >
+          <Tabs.List aria-label="Metric" className={USAGE_TAB_CLASSES.list}>
+            <Tabs.Tab id="actions" className={USAGE_TAB_CLASSES.tab}>
               Actions
-              <Tabs.Indicator className="bg-zinc-700" />
+              <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
-            <Tabs.Tab
-              id="tokens"
-              className="h-6 px-2.5 text-xs font-medium text-zinc-500 data-[selected]:text-zinc-100"
-            >
+            <Tabs.Tab id="tokens" className={USAGE_TAB_CLASSES.tab}>
               Tokens
-              <Tabs.Indicator className="bg-zinc-700" />
+              <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
           </Tabs.List>
           <Tabs.Panel id="actions">{null}</Tabs.Panel>
@@ -366,15 +361,15 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
           onSelectionChange={(k) => setRange(k as RangeKey)}
           className="shrink-0"
         >
-          <Tabs.List aria-label="Range" className="bg-zinc-800/80 p-0.5">
+          <Tabs.List aria-label="Range" className={USAGE_TAB_CLASSES.list}>
             {RANGES.map((r) => (
               <Tabs.Tab
                 key={r.key}
                 id={r.key}
-                className="h-6 px-2.5 text-xs font-medium text-zinc-500 data-[selected]:text-zinc-100"
+                className={USAGE_TAB_CLASSES.tab}
               >
                 {r.label}
-                <Tabs.Indicator className="bg-zinc-700" />
+                <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
               </Tabs.Tab>
             ))}
           </Tabs.List>

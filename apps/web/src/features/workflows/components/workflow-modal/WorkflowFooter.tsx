@@ -46,17 +46,15 @@ export default function WorkflowFooter({
       <div className="flex items-center gap-2">
         {isExisting && (
           <Tooltip>
-            <Tooltip.Trigger>
-              <Button
-                variant="secondary"
-                onPress={onRunWorkflow}
-                isDisabled={!hasSteps}
-                className="active:scale-[0.97] transition-transform duration-150"
-              >
-                <PlayIcon className="h-4 w-4" />
-                Run
-              </Button>
-            </Tooltip.Trigger>
+            <Button
+              variant="secondary"
+              onPress={onRunWorkflow}
+              isDisabled={!hasSteps}
+              className="active:scale-[0.97] transition-transform duration-150"
+            >
+              <PlayIcon className="h-4 w-4" />
+              Run
+            </Button>
             <Tooltip.Content placement="top">
               {!hasSteps
                 ? "Generate steps before running"
@@ -67,16 +65,14 @@ export default function WorkflowFooter({
 
         {isExisting && !isPublic && onPublish && (
           <Tooltip>
-            <Tooltip.Trigger>
-              <Button
-                variant="tertiary"
-                onPress={onPublish}
-                className="active:scale-[0.97] transition-transform duration-150"
-              >
-                <Share01Icon className="h-4 w-4" />
-                Publish
-              </Button>
-            </Tooltip.Trigger>
+            <Button
+              variant="tertiary"
+              onPress={onPublish}
+              className="active:scale-[0.97] transition-transform duration-150"
+            >
+              <Share01Icon className="h-4 w-4" />
+              Publish
+            </Button>
             <Tooltip.Content placement="top">
               Share to the marketplace
             </Tooltip.Content>
@@ -87,15 +83,13 @@ export default function WorkflowFooter({
       {/* Right: cancel + primary save */}
       <div className="flex items-center gap-2">
         <Tooltip>
-          <Tooltip.Trigger>
-            <Button
-              variant="tertiary"
-              onPress={onCancel}
-              className="active:scale-[0.97] transition-transform duration-150"
-            >
-              Cancel
-            </Button>
-          </Tooltip.Trigger>
+          <Button
+            variant="tertiary"
+            onPress={onCancel}
+            className="active:scale-[0.97] transition-transform duration-150"
+          >
+            Cancel
+          </Button>
           <Tooltip.Content placement="top">
             <Kbd>
               <Kbd.Abbr keyValue="escape" />
@@ -103,17 +97,15 @@ export default function WorkflowFooter({
           </Tooltip.Content>
         </Tooltip>
         <Tooltip isDisabled={isCreating || isDisabled}>
-          <Tooltip.Trigger>
-            <Button
-              onPress={onSave}
-              isPending={isCreating}
-              isDisabled={isDisabled}
-              className="active:scale-[0.97] transition-transform duration-150"
-              variant="primary"
-            >
-              {buttonText}
-            </Button>
-          </Tooltip.Trigger>
+          <Button
+            onPress={onSave}
+            isPending={isCreating}
+            isDisabled={isDisabled}
+            className="active:scale-[0.97] transition-transform duration-150"
+            variant="primary"
+          >
+            {buttonText}
+          </Button>
           <Tooltip.Content placement="top">
             <Kbd>
               <Kbd.Abbr keyValue={modifierKeyName} />

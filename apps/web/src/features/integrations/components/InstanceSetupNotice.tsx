@@ -14,21 +14,20 @@ export function InstanceSetupNotice() {
   if (role === "admin") {
     return (
       <Tooltip>
-        <Tooltip.Trigger className="shrink-0">
-          <Button
-            render={(props) => (
-              <Link
-                {...(props as unknown as ComponentProps<"a">)}
-                href={COMPOSIO_SETUP_PATH}
-              />
-            )}
-            size="sm"
-            variant="secondary"
-            className="text-xs"
-          >
-            Set up
-          </Button>
-        </Tooltip.Trigger>
+        <Button
+          render={(props) => (
+            <Link
+              {...(props as unknown as ComponentProps<"a">)}
+              href={COMPOSIO_SETUP_PATH}
+            />
+          )}
+          size="sm"
+          variant="secondary"
+          className="shrink-0 text-xs"
+        >
+          Set up
+        </Button>
+
         <Tooltip.Content>Not set up on this instance yet</Tooltip.Content>
       </Tooltip>
     );

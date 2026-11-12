@@ -95,69 +95,61 @@ export default function ChatBubble_Actions({
       {!loading && (
         <div className="flex w-fit items-center">
           <Tooltip>
-            <Tooltip.Trigger>
-              <Button
-                isIconOnly
-                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-                variant="tertiary"
-                onPress={handleReply}
-              >
-                <LinkBackwardIcon
-                  className="cursor-pointer"
-                  height="18"
-                  width="18"
-                />
-              </Button>
-            </Tooltip.Trigger>
+            <Button
+              isIconOnly
+              className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+              variant="tertiary"
+              onPress={handleReply}
+            >
+              <LinkBackwardIcon
+                className="cursor-pointer"
+                height="18"
+                width="18"
+              />
+            </Button>
             <Tooltip.Content placement="bottom">Reply</Tooltip.Content>
           </Tooltip>
 
           <Tooltip>
-            <Tooltip.Trigger>
-              <Button
-                isIconOnly
-                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-                variant="tertiary"
-                onPress={copyToClipboard}
-              >
-                <Copy01Icon className="cursor-pointer" height="20" width="20" />
-              </Button>
-            </Tooltip.Trigger>
+            <Button
+              isIconOnly
+              className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+              variant="tertiary"
+              onPress={copyToClipboard}
+            >
+              <Copy01Icon className="cursor-pointer" height="20" width="20" />
+            </Button>
             <Tooltip.Content placement="bottom">
               Copy to clipboard
             </Tooltip.Content>
           </Tooltip>
 
           <Tooltip>
-            <Tooltip.Trigger>
-              <Button
-                isIconOnly
-                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-                variant="tertiary"
-                onPress={handlePinToggle}
-              >
-                <PinIcon className={`cursor-pointer`} height="20" width="20" />
-              </Button>
-            </Tooltip.Trigger>
+            <Button
+              isIconOnly
+              className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+              variant="tertiary"
+              onPress={handlePinToggle}
+            >
+              <PinIcon className={`cursor-pointer`} height="20" width="20" />
+            </Button>
             <Tooltip.Content placement="bottom">Pin message</Tooltip.Content>
           </Tooltip>
 
           {messageRole === "assistant" && (
             <Tooltip>
-              <Tooltip.Trigger>
-                <Button
-                  isIconOnly
-                  className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-                  variant="tertiary"
-                  onPress={handleThumbsUp}
-                >
-                  <ThumbsUpIcon
-                    className={`cursor-pointer`}
-                    height="20"
-                    width="20"
-                  />
-                </Button>
-              </Tooltip.Trigger>
+              <Button
+                isIconOnly
+                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+                variant="tertiary"
+                onPress={handleThumbsUp}
+              >
+                <ThumbsUpIcon
+                  className={`cursor-pointer`}
+                  height="20"
+                  width="20"
+                />
+              </Button>
               <Tooltip.Content placement="bottom">
                 Helpful response
               </Tooltip.Content>
@@ -166,43 +158,35 @@ export default function ChatBubble_Actions({
 
           {messageRole === "assistant" && (
             <Tooltip>
-              <Tooltip.Trigger>
-                <Button
-                  isIconOnly
-                  className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-                  variant="tertiary"
-                  onPress={handleThumbsDown}
-                >
-                  <ThumbsDownIcon
-                    className={`cursor-pointer`}
-                    height="20"
-                    width="20"
-                  />
-                </Button>
-              </Tooltip.Trigger>
+              <Button
+                isIconOnly
+                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+                variant="tertiary"
+                onPress={handleThumbsDown}
+              >
+                <ThumbsDownIcon
+                  className={`cursor-pointer`}
+                  height="20"
+                  width="20"
+                />
+              </Button>
               <Tooltip.Content placement="bottom">Not helpful</Tooltip.Content>
             </Tooltip>
           )}
 
           {onRetry && (
             <Tooltip>
-              <Tooltip.Trigger>
-                <Button
-                  isIconOnly
-                  isDisabled={isRetrying}
-                  className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-                  variant="tertiary"
-                  onPress={onRetry}
-                >
-                  <div className={isRetrying ? "animate-spin" : ""}>
-                    <RedoIcon
-                      className="cursor-pointer"
-                      height="18"
-                      width="18"
-                    />
-                  </div>
-                </Button>
-              </Tooltip.Trigger>
+              <Button
+                isIconOnly
+                isDisabled={isRetrying}
+                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+                variant="tertiary"
+                onPress={onRetry}
+              >
+                <div className={isRetrying ? "animate-spin" : ""}>
+                  <RedoIcon className="cursor-pointer" height="18" width="18" />
+                </div>
+              </Button>
               <Tooltip.Content placement="bottom">Retry</Tooltip.Content>
             </Tooltip>
           )}

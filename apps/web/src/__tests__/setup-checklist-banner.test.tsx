@@ -134,7 +134,7 @@ describe("SetupChecklistBanner", () => {
     renderBanner();
 
     expect(screen.getByText("Create the admin account")).toBeTruthy();
-    const action = screen.getByRole("button", { name: "Create" });
+    const action = screen.getByRole("link", { name: "Create" });
     expect(action.getAttribute("href")).toBe("/signup");
     expect(screen.queryByText(/setup steps left/)).toBeNull();
   });
@@ -149,7 +149,7 @@ describe("SetupChecklistBanner", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show" }));
 
     const hrefs = ["Connect", "Create", "Set up"].map((name) =>
-      screen.getByRole("button", { name }).getAttribute("href"),
+      screen.getByRole("link", { name }).getAttribute("href"),
     );
     expect(hrefs).toEqual([
       "/setup",

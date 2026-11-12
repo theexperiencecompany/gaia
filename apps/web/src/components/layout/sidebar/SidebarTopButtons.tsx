@@ -127,39 +127,37 @@ export default function SidebarTopButtons() {
           return (
             <div key={route + label} className="relative">
               <Tooltip delay={0} closeDelay={0}>
-                <Tooltip.Trigger>
-                  <Button
-                    size="sm"
-                    variant={isRouteActive(route) ? "secondary" : "ghost"}
-                    className={`group-topbtns focus-visible:outline-none w-full justify-start text-sm ${isRouteActive(route) ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
-                    render={(props) => (
-                      <Link
-                        {...(props as unknown as React.ComponentProps<"a">)}
-                        href={route}
-                      />
-                    )}
-                    onPress={() => {
-                      track("navigation:sidebar_clicked", {
-                        destination: route,
-                        label,
-                      });
-                    }}
-                  >
-                    <div className="flex w-full items-center gap-2">
-                      <div className="flex w-[17px] min-w-[17px] items-center justify-center">
-                        <span className="group-topbtns-hover:text-white text-xs">
-                          {React.cloneElement(icon, {
-                            width: 18,
-                            height: 18,
-                          })}
-                        </span>
-                      </div>
-                      <span className="w-[calc(100%-45px)] max-w-[200px] truncate text-left">
-                        {label}
+                <Button
+                  size="sm"
+                  variant={isRouteActive(route) ? "secondary" : "ghost"}
+                  className={`group-topbtns focus-visible:outline-none w-full justify-start text-sm ${isRouteActive(route) ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
+                  render={(props) => (
+                    <Link
+                      {...(props as unknown as React.ComponentProps<"a">)}
+                      href={route}
+                    />
+                  )}
+                  onPress={() => {
+                    track("navigation:sidebar_clicked", {
+                      destination: route,
+                      label,
+                    });
+                  }}
+                >
+                  <div className="flex w-full items-center gap-2">
+                    <div className="flex w-[17px] min-w-[17px] items-center justify-center">
+                      <span className="group-topbtns-hover:text-white text-xs">
+                        {React.cloneElement(icon, {
+                          width: 18,
+                          height: 18,
+                        })}
                       </span>
                     </div>
-                  </Button>
-                </Tooltip.Trigger>
+                    <span className="w-[calc(100%-45px)] max-w-[200px] truncate text-left">
+                      {label}
+                    </span>
+                  </div>
+                </Button>
                 <Tooltip.Content
                   placement="right"
                   offset={1}

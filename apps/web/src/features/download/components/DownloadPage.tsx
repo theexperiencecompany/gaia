@@ -236,11 +236,9 @@ function DesktopDownloadButton({
     <ButtonGroup>
       {mainButton}
       <Dropdown>
-        <Dropdown.Trigger>
-          <Button isIconOnly variant={buttonVariant}>
-            <ChevronDown width={17} height={17} />
-          </Button>
-        </Dropdown.Trigger>
+        <Button isIconOnly variant={buttonVariant}>
+          <ChevronDown width={17} height={17} />
+        </Button>
         <Dropdown.Popover placement="bottom end">
           <Menu
             disallowEmptySelection

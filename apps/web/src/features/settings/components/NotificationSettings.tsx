@@ -108,7 +108,13 @@ export default function NotificationSettings() {
                 }
                 onChange={(enabled) => handleToggle(platform, enabled)}
                 aria-label={`Enable ${label} notifications`}
-              />
+              >
+                <Switch.Content>
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                </Switch.Content>
+              </Switch>
             </SettingsRow>
           );
         })}

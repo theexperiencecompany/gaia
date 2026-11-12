@@ -36,8 +36,8 @@ export function ProviderFeatureList({
       {groups.map((group) => {
         const state = featureState(group, catalog);
         return (
-          <Accordion.Item key={group.key} id={featureAnchorId(group.key)}>
-            <Accordion.Heading>
+          <Accordion.Item key={group.key} id={group.key}>
+            <Accordion.Heading id={featureAnchorId(group.key)}>
               <Accordion.Trigger className="text-sm">
                 <span className="flex flex-col items-start gap-0.5">
                   <span className="flex items-center gap-2">

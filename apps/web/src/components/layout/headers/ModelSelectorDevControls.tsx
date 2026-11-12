@@ -100,23 +100,19 @@ export default function ModelSelectorDevControls() {
 
   return (
     <Popover>
-      <Popover.Trigger>
-        <Button
-          isIconOnly
-          size="sm"
-          variant="tertiary"
-          aria-label="Dev model selector"
-          // Tint primary when a non-default model is pinned, so it's obvious at a
-          // glance that the dev override is active.
-          className={
-            useDefaultModels
-              ? "text-zinc-400 hover:text-primary"
-              : "text-primary"
-          }
-        >
-          <CpuIcon width={20} height={20} />
-        </Button>
-      </Popover.Trigger>
+      <Button
+        isIconOnly
+        size="sm"
+        variant="tertiary"
+        aria-label="Dev model selector"
+        // Tint primary when a non-default model is pinned, so it's obvious at a
+        // glance that the dev override is active.
+        className={
+          useDefaultModels ? "text-zinc-400 hover:text-primary" : "text-primary"
+        }
+      >
+        <CpuIcon width={20} height={20} />
+      </Button>
       <Popover.Content
         placement="bottom end"
         offset={8}

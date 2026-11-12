@@ -133,36 +133,34 @@ export default function ComposerLeft({
       {/* Tools Button */}
       {onOpenSlashCommandDropdown && (
         <Tooltip>
-          <Tooltip.Trigger>
-            <Button
-              size="icon"
-              className={cn(
-                "group relative flex h-9 w-9 items-center justify-center rounded-full border-none bg-zinc-700 fill-zinc-400 p-0 text-zinc-400 hover:bg-zinc-600/90",
-                isMainResponseStreaming ? "cursor-wait!" : "",
-                isSlashCommandDropdownOpen &&
-                  "border-primary/50 bg-primary/20 text-primary hover:bg-primary/40",
-              )}
-              disabled={isMainResponseStreaming}
-              onClick={() => {
-                track("chat:tools_button_clicked", {
-                  is_open: isSlashCommandDropdownOpen,
-                });
-                onOpenSlashCommandDropdown?.();
-              }}
-            >
-              <ToolsIcon
-                className="min-h-[23px] min-w-[23px]"
-                width={30}
-                height={30}
+          <Button
+            size="icon"
+            className={cn(
+              "group relative flex h-9 w-9 items-center justify-center rounded-full border-none bg-zinc-700 fill-zinc-400 p-0 text-zinc-400 hover:bg-zinc-600/90",
+              isMainResponseStreaming ? "cursor-wait!" : "",
+              isSlashCommandDropdownOpen &&
+                "border-primary/50 bg-primary/20 text-primary hover:bg-primary/40",
+            )}
+            disabled={isMainResponseStreaming}
+            onClick={() => {
+              track("chat:tools_button_clicked", {
+                is_open: isSlashCommandDropdownOpen,
+              });
+              onOpenSlashCommandDropdown?.();
+            }}
+          >
+            <ToolsIcon
+              className="min-h-[23px] min-w-[23px]"
+              width={30}
+              height={30}
+            />
+            {isSlashCommandDropdownOpen && (
+              <span
+                className="absolute top-0 right-0 h-2 w-2 rounded-full bg-primary transition"
+                aria-hidden="true"
               />
-              {isSlashCommandDropdownOpen && (
-                <span
-                  className="absolute top-0 right-0 h-2 w-2 rounded-full bg-primary transition"
-                  aria-hidden="true"
-                />
-              )}
-            </Button>
-          </Tooltip.Trigger>
+            )}
+          </Button>
           <Tooltip.Content placement="right" showArrow>
             <div className="flex items-center gap-2">
               Browse all tools

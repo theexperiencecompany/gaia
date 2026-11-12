@@ -157,19 +157,17 @@ export default function RightSide({
     <div className="ml-2 flex items-center gap-2">
       {isVoiceAvailable && (
         <Tooltip>
-          <Tooltip.Trigger>
-            <Button
-              isIconOnly
-              aria-label="Voice Mode"
-              className="h-9 min-h-9 w-9 max-w-9 min-w-9 rounded-full"
-              type="button"
-              onMouseEnter={onVoiceModeHover}
-              onPress={() => setvoiceModeActive()}
-              variant="secondary"
-            >
-              <AudioWave01Icon className="text-zinc-400" />
-            </Button>
-          </Tooltip.Trigger>
+          <Button
+            isIconOnly
+            aria-label="Voice Mode"
+            className="h-9 min-h-9 w-9 max-w-9 min-w-9 rounded-full"
+            type="button"
+            onMouseEnter={onVoiceModeHover}
+            onPress={() => setvoiceModeActive()}
+            variant="secondary"
+          >
+            <AudioWave01Icon className="text-zinc-400" />
+          </Button>
           <Tooltip.Content placement="left" showArrow>
             Voice Mode
           </Tooltip.Content>

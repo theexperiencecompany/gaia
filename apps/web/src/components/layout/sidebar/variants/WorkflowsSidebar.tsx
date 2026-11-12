@@ -29,19 +29,17 @@ export default function WorkflowsSidebar() {
     <>
       <div className="flex flex-col gap-3">
         <Tooltip>
-          <Tooltip.Trigger>
-            <Button
-              size="sm"
-              fullWidth
-              className="mb-2 flex justify-start text-sm font-medium text-primary"
-              variant="tertiary"
-              onPress={open}
-              data-keyboard-shortcut="create-workflow"
-            >
-              <ZapIcon width={18} height={18} />
-              New Workflow
-            </Button>
-          </Tooltip.Trigger>
+          <Button
+            size="sm"
+            fullWidth
+            className="mb-2 flex justify-start text-sm font-medium text-primary"
+            variant="tertiary"
+            onPress={open}
+            data-keyboard-shortcut="create-workflow"
+          >
+            <ZapIcon width={18} height={18} />
+            New Workflow
+          </Button>
           <Tooltip.Content placement="right">
             <span className="flex items-center gap-2">
               New Workflow

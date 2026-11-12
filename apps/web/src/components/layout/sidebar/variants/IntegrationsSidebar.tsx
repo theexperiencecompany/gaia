@@ -114,18 +114,16 @@ export default function IntegrationsSidebar() {
         </RightSidebarPanel>
       )}
       <Tooltip>
-        <Tooltip.Trigger>
-          <Button
-            className="w-full justify-start text-sm text-primary"
-            size="sm"
-            variant="tertiary"
-            onPress={openIntegrationModal}
-            data-keyboard-shortcut="create-integration"
-          >
-            <PuzzleIcon className="h-4 w-4 outline-0" />
-            Create Integration
-          </Button>
-        </Tooltip.Trigger>
+        <Button
+          className="w-full justify-start text-sm text-primary"
+          size="sm"
+          variant="tertiary"
+          onPress={openIntegrationModal}
+          data-keyboard-shortcut="create-integration"
+        >
+          <PuzzleIcon className="h-4 w-4 outline-0" />
+          Create Integration
+        </Button>
         <Tooltip.Content placement="right">
           <span className="flex items-center gap-2">
             Create Integration

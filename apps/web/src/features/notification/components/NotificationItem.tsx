@@ -61,16 +61,14 @@ export const NotificationItem = ({
         {isUnread && (
           <div className="flex shrink-0 items-center gap-1">
             <Tooltip>
-              <Tooltip.Trigger>
-                <Button
-                  variant="tertiary"
-                  size="sm"
-                  isIconOnly
-                  onPress={() => onMarkAsRead(notification.id)}
-                >
-                  <CheckmarkCircle02Icon className="h-[18px] w-[18px]" />
-                </Button>
-              </Tooltip.Trigger>
+              <Button
+                variant="tertiary"
+                size="sm"
+                isIconOnly
+                onPress={() => onMarkAsRead(notification.id)}
+              >
+                <CheckmarkCircle02Icon className="h-[18px] w-[18px]" />
+              </Button>
               <Tooltip.Content>Mark as Read</Tooltip.Content>
             </Tooltip>
           </div>

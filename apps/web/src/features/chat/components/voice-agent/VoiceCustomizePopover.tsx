@@ -42,15 +42,13 @@ export function VoiceCustomizePopover() {
 
   return (
     <Popover>
-      <Popover.Trigger>
-        <Button
-          variant="tertiary"
-          className="bg-zinc-900/80 text-zinc-200 shadow-lg backdrop-blur-md hover:bg-zinc-800"
-        >
-          <EditIcon className="h-4 w-4" />
-          Customise voice
-        </Button>
-      </Popover.Trigger>
+      <Button
+        variant="tertiary"
+        className="bg-zinc-900/80 text-zinc-200 shadow-lg backdrop-blur-md hover:bg-zinc-800"
+      >
+        <EditIcon className="h-4 w-4" />
+        Customise voice
+      </Button>
       <Popover.Content
         placement="top end"
         offset={12}

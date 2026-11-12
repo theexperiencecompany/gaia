@@ -260,11 +260,9 @@ const EditorToolbar = ({
           isOpen={isColorPickerOpen}
           onOpenChange={onColorPickerOpenChange}
         >
-          <Popover.Trigger>
-            <Button isIconOnly variant="tertiary" aria-label="Color Picker">
-              <ColorSwatch color={color} />
-            </Button>
-          </Popover.Trigger>
+          <Button isIconOnly variant="tertiary" aria-label="Color Picker">
+            <ColorSwatch color={color} />
+          </Button>
           <Popover.Content placement="top" className="w-auto bg-zinc-800 p-4">
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
@@ -321,30 +319,26 @@ const EditorToolbar = ({
     </Tooltip>
 
     <Tooltip>
-      <Tooltip.Trigger>
-        <Button
-          isIconOnly
-          variant="tertiary"
-          onPress={onRandomize}
-          aria-label="Randomize"
-        >
-          <Dices size={20} />
-        </Button>
-      </Tooltip.Trigger>
+      <Button
+        isIconOnly
+        variant="tertiary"
+        onPress={onRandomize}
+        aria-label="Randomize"
+      >
+        <Dices size={20} />
+      </Button>
       <Tooltip.Content placement="top">Randomize colors</Tooltip.Content>
     </Tooltip>
 
     <Tooltip>
-      <Tooltip.Trigger>
-        <Button
-          isIconOnly
-          variant="tertiary"
-          onPress={onDownload}
-          aria-label="Download"
-        >
-          <Download01Icon size={20} />
-        </Button>
-      </Tooltip.Trigger>
+      <Button
+        isIconOnly
+        variant="tertiary"
+        onPress={onDownload}
+        aria-label="Download"
+      >
+        <Download01Icon size={20} />
+      </Button>
       <Tooltip.Content placement="top">Download your card</Tooltip.Content>
     </Tooltip>
   </ButtonGroup>

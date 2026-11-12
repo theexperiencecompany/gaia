@@ -111,7 +111,13 @@ export const PermissionToolList = ({
                   isSelected={permissions.asks(tool)}
                   onChange={(next) => permissions.toggle(tool, next)}
                   aria-label={`Ask before running ${tool.label}`}
-                />
+                >
+                  <Switch.Content>
+                    <Switch.Control>
+                      <Switch.Thumb />
+                    </Switch.Control>
+                  </Switch.Content>
+                </Switch>
               </div>
             ))}
           </div>

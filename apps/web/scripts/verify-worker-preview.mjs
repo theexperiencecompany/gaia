@@ -2,17 +2,8 @@
 /**
  * Refuse to score a preview that is not the real Cloudflare worker.
  *
- * `scripts/ci/smoke-web.sh audit-build` starts `next start`, which never runs
- * `cf:build` and therefore never runs `inline-worker-css.mjs`. Squirrel then
- * measures a site that does not exist in production: no inlined CSS, no nonce
- * CSP, no worker-served HTML. That produced scores that could not be
- * reproduced against the deploy.
- *
- * The honest target is `pnpm preview` (opennextjs-cloudflare preview): same
- * worker bundle, same asset pass-through, same CSP as production. This asserts
- * the preview really is that, and exits non-zero with the reason if not, so a
- * number is never reported for the wrong build.
- *
+ * `next start` skips cf:build (no inlined CSS, no nonce CSP), so only `pnpm preview`
+ * matches production; this exits non-zero with the reason when the target is not that.
  * Usage: node scripts/verify-worker-preview.mjs [base-url]
  */
 const BASE = process.argv[2] ?? process.env.SMOKE_BASE_URL ?? "http://localhost:8788";

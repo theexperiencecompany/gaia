@@ -42,25 +42,23 @@ export default function Sidebar() {
     <div>
       <div className="flex w-full justify-center">
         <Tooltip>
-          <Tooltip.Trigger>
-            <Button
-              size="sm"
-              fullWidth
-              render={(props) => (
-                <Link
-                  {...(props as unknown as React.ComponentProps<"a">)}
-                  href="/c"
-                  onClick={prepareNewChat}
-                />
-              )}
-              className="mb-4 flex justify-start text-sm font-medium text-primary"
-              variant="tertiary"
-              data-keyboard-shortcut="create-chat"
-            >
-              <BubbleChatAddIcon width={18} height={18} />
-              New Chat
-            </Button>
-          </Tooltip.Trigger>
+          <Button
+            size="sm"
+            fullWidth
+            render={(props) => (
+              <Link
+                {...(props as unknown as React.ComponentProps<"a">)}
+                href="/c"
+                onClick={prepareNewChat}
+              />
+            )}
+            className="mb-4 flex justify-start text-sm font-medium text-primary"
+            variant="tertiary"
+            data-keyboard-shortcut="create-chat"
+          >
+            <BubbleChatAddIcon width={18} height={18} />
+            New Chat
+          </Button>
           <Tooltip.Content placement="right">
             <span className="flex items-center gap-2">
               New Chat

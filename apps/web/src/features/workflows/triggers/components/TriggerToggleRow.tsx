@@ -31,7 +31,13 @@ export function TriggerToggleRow({
         isSelected={isSelected}
         onChange={onValueChange}
         aria-label={label}
-      />
+      >
+        <Switch.Content>
+          <Switch.Control>
+            <Switch.Thumb />
+          </Switch.Control>
+        </Switch.Content>
+      </Switch>
     </div>
   );
 }

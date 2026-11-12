@@ -331,11 +331,9 @@ export function MissingIntegrationsAlert({
             Connect Apps
           </Button>
           <Dropdown isOpen={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
-            <Dropdown.Trigger>
-              <Button isIconOnly isDisabled={!!connectingId}>
-                <ArrowDown01Icon className="size-3.5" />
-              </Button>
-            </Dropdown.Trigger>
+            <Button isIconOnly isDisabled={!!connectingId}>
+              <ArrowDown01Icon className="size-3.5" />
+            </Button>
             <Dropdown.Popover placement="bottom end">
               <Menu aria-label="Missing integrations to connect">
                 {missingIntegrations.map((integration) => {

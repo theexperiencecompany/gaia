@@ -196,7 +196,13 @@ export default function WorkflowModalFormView({
                   }
                   isDisabled={isPreview}
                   aria-label="Notify when runs finish"
-                />
+                >
+                  <Switch.Content>
+                    <Switch.Control>
+                      <Switch.Thumb />
+                    </Switch.Control>
+                  </Switch.Content>
+                </Switch>
               </div>
             </div>
           </fieldset>

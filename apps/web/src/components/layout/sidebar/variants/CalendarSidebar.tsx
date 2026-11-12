@@ -30,19 +30,17 @@ export default function CalendarSidebar() {
   return (
     <div className="flex flex-col gap-3">
       <Tooltip>
-        <Tooltip.Trigger>
-          <Button
-            size="sm"
-            fullWidth
-            onPress={handleCreateEvent}
-            className="mb-4 flex justify-start text-sm font-medium text-primary"
-            variant="tertiary"
-            data-keyboard-shortcut="create-event"
-          >
-            <CalendarAdd01Icon width={18} height={18} />
-            New Event
-          </Button>
-        </Tooltip.Trigger>
+        <Button
+          size="sm"
+          fullWidth
+          onPress={handleCreateEvent}
+          className="mb-4 flex justify-start text-sm font-medium text-primary"
+          variant="tertiary"
+          data-keyboard-shortcut="create-event"
+        >
+          <CalendarAdd01Icon width={18} height={18} />
+          New Event
+        </Button>
         <Tooltip.Content placement="right">
           <span className="flex items-center gap-2">
             New Event

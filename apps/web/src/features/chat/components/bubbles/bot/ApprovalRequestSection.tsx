@@ -215,17 +215,15 @@ export default function ApprovalRequestSection({
         </Button>
         {!data.always_asks && (
           <Dropdown>
-            <Dropdown.Trigger>
-              <Button
-                isIconOnly
-                size="sm"
-                variant="tertiary"
-                isDisabled={locked}
-                aria-label="More approval options"
-              >
-                <MoreHorizontalIcon width={18} />
-              </Button>
-            </Dropdown.Trigger>
+            <Button
+              isIconOnly
+              size="sm"
+              variant="tertiary"
+              isDisabled={locked}
+              aria-label="More approval options"
+            >
+              <MoreHorizontalIcon width={18} />
+            </Button>
             <Dropdown.Popover placement="bottom end">
               <Menu aria-label="Approval options">
                 <Menu.Item

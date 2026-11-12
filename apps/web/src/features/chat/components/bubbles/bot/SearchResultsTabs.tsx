@@ -206,36 +206,34 @@ function SourcesButton({ web }: SourcesButtonProps) {
   return (
     <div className="flex justify-start">
       <Popover>
-        <Popover.Trigger>
-          <Button variant="tertiary" size="sm">
-            <div className="flex -space-x-3">
-              {web.slice(0, 4).map((result) => {
-                const host = safeUrl(result.url)?.hostname;
-                return (
-                  <div
-                    key={result.url + result.title}
-                    className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-zinc-900 bg-zinc-700"
-                  >
-                    {host && (
-                      <Image
-                        src={`https://www.google.com/s2/favicons?domain=${host}&sz=64`}
-                        alt={`${host} favicon`}
-                        width={16}
-                        height={16}
-                        className="h-full w-full rounded-full"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.style.display = "none";
-                        }}
-                      />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            <span className="font-medium text-zinc-300">Search Results</span>
-          </Button>
-        </Popover.Trigger>
+        <Button variant="tertiary" size="sm">
+          <div className="flex -space-x-3">
+            {web.slice(0, 4).map((result) => {
+              const host = safeUrl(result.url)?.hostname;
+              return (
+                <div
+                  key={result.url + result.title}
+                  className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-zinc-900 bg-zinc-700"
+                >
+                  {host && (
+                    <Image
+                      src={`https://www.google.com/s2/favicons?domain=${host}&sz=64`}
+                      alt={`${host} favicon`}
+                      width={16}
+                      height={16}
+                      className="h-full w-full rounded-full"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = "none";
+                      }}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <span className="font-medium text-zinc-300">Search Results</span>
+        </Button>
         <Popover.Content
           placement="top"
           className="bg-transparent p-0! shadow-none"

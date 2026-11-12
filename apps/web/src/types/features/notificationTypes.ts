@@ -30,59 +30,6 @@ export {
   NotificationStatus,
 } from "@shared/types";
 
-export interface ModalProps {
-  // Base modal props
-  open?: boolean;
-  isOpen?: boolean;
-  onOpenChange?: (open: boolean) => void;
-  onClose?: () => void;
-
-  // Entity data
-  todoId?: string;
-  emailId?: string;
-  email_id?: string; // Alternative naming for email ID
-  calendarEventId?: string;
-  noteId?: string;
-
-  // Action contexts
-  mode?: "create" | "edit" | "view" | "delete";
-  defaultValues?: Record<string, string | number | boolean>;
-  actionId?: string; // Action ID for tracking which action triggered the modal
-  notificationId?: string; // Notification ID for tracking which notification triggered the modal
-
-  // Email-specific props for EmailPreviewModal
-  subject?: string;
-  body?: string;
-  recipients?: string[];
-
-  // Component-specific data
-  todo?: {
-    id: string;
-    title: string;
-    description?: string;
-    priority: "high" | "medium" | "low";
-    due_date?: string;
-    project_id?: string;
-  };
-
-  email?: {
-    id: string;
-    subject: string;
-    to: string[];
-    body?: string;
-    attachments?: Array<{ name: string; url: string }>;
-  };
-
-  calendar?: {
-    id: string;
-    title: string;
-    start: string;
-    end: string;
-    description?: string;
-    location?: string;
-  };
-}
-
 export type NotificationAction = NotificationActionView;
 
 export interface NotificationMetadata {
