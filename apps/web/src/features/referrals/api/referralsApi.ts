@@ -52,7 +52,10 @@ export const referralsApi = {
 
   /** Spends this week's referral nudge when show is true; ask only where the card would appear. */
   claimWeeklyCard: () =>
-    api.post("/api/v1/referrals/nudges/weekly-card", { silent: true }),
+    api.post("/api/v1/referrals/nudges/weekly-card", {
+      silent: true,
+      expectedErrorCodes: NOT_A_REFERRER_CODES,
+    }),
 
   dismissWeeklyCard: () =>
     api.post("/api/v1/referrals/nudges/weekly-card/dismissal", {
