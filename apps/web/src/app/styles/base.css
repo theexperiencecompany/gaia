@@ -5,6 +5,7 @@
 @layer theme, base, openui, components, utilities;
 @import "tailwindcss" source(none);
 @import "@heroui/styles/themes/default" layer(theme);
+@import "@heroui/styles/base" layer(base);
 @import "./theme.css";
 @import "@heroui/styles/utilities";
 @import "@heroui/styles/variants";
@@ -1256,6 +1257,34 @@
   --border: hsl(216 34% 17%);
   /* v2's accordion/dividers rendered as a #262626 hairline on black */
   --separator: hsl(0 0% 15%);
+}
+
+/* v2 semantic colours and its `flat` tint: v2 painted a flat chip or button as
+   the colour at 20% behind the colour itself, where v3's soft step is 12-15%
+   with the text mixed toward --foreground. --default-soft is v2's flat default,
+   its zinc-700 default at 40%. */
+:root,
+.dark {
+  --success: #17c964;
+  --warning: #f5a524;
+  --danger: #f31260;
+  --accent-soft: color-mix(in oklab, var(--accent) 20%, transparent);
+  --accent-soft-foreground: var(--accent);
+  --accent-soft-hover: color-mix(in oklab, var(--accent) 30%, transparent);
+  --success-soft: color-mix(in oklab, var(--success) 20%, transparent);
+  --success-soft-foreground: var(--success);
+  --success-soft-hover: color-mix(in oklab, var(--success) 30%, transparent);
+  --warning-soft: color-mix(in oklab, var(--warning) 20%, transparent);
+  --warning-soft-foreground: var(--warning);
+  --warning-soft-hover: color-mix(in oklab, var(--warning) 30%, transparent);
+  --danger-soft: color-mix(in oklab, var(--danger) 20%, transparent);
+  --danger-soft-foreground: var(--danger);
+  --danger-soft-hover: color-mix(in oklab, var(--danger) 30%, transparent);
+}
+
+.dark {
+  --default-soft: color-mix(in oklab, #3f3f46 40%, transparent);
+  --default-soft-hover: color-mix(in oklab, #3f3f46 60%, transparent);
 }
 
 html {
