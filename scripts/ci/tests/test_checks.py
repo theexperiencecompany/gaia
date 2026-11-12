@@ -248,11 +248,12 @@ UV_STUB = """\
 printf '%s\\n' "$*" >> "$REC/uv.log"
 mkdir -p apps/api && printf '%s' "$FAKE_OPENAPI" > apps/api/openapi.json
 """
+# The codegen toolchain's install, faked: it puts the codegen stub where pnpm would.
 PNPM_STUB = """\
 #!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$REC/pnpm.log"
-mkdir -p libs/shared/ts/src/api/generated
-printf '%s' "$FAKE_TYPES" > libs/shared/ts/src/api/generated/schema.d.ts
+mkdir -p tools/api-codegen/node_modules/.bin
+cp "$CODEGEN_STUB" tools/api-codegen/node_modules/.bin/openapi-typescript
 """
 
 
@@ -313,7 +314,8 @@ def _stub_generators(tmp_path: Path, openapi: str, types: str) -> dict[str, str]
         "FAKE_OPENAPI": openapi,
         "FAKE_TYPES": types,
         "CHANGED_FILES": "",
-        "GAIA_OPENAPI_TS": str(bin_dir / "openapi-typescript"),
+        "GAIA_OPENAPI_TS": str(codegen),
+        "CODEGEN_STUB": str(codegen),
     }
 
 
@@ -361,6 +363,21 @@ def test_api_schema_write_regenerates_without_judging(tmp_path: Path) -> None:
 
     assert process.returncode == 0, process.stdout + process.stderr
     assert (repo / OPENAPI_JSON).read_text() == '{"paths": {"/changed": {}}}'
+
+
+def test_api_schema_installs_the_codegen_toolchain_a_fresh_checkout_lacks(tmp_path: Path) -> None:
+    repo = _repo_beside_stubs(tmp_path)
+    _commit(repo, OPENAPI_JSON, '{"paths": {}}')
+    _commit(repo, GENERATED_TYPES, "export interface paths {}\n")
+    env = _stub_generators(tmp_path, '{"paths": {}}', "export interface paths {}\n")
+    del env["GAIA_OPENAPI_TS"]
+
+    process = _run_env(repo, env, "api-schema")
+
+    assert process.returncode == 0, process.stdout + process.stderr
+    install = (tmp_path / "rec" / "pnpm.log").read_text()
+    assert "tools/api-codegen install --frozen-lockfile --ignore-workspace" in install
+    assert (tmp_path / "rec" / "codegen.log").exists()
 
 
 def _schema_repo(tmp_path: Path) -> Path:
