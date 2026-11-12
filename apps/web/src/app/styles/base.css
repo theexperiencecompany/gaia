@@ -1300,6 +1300,7 @@ html {
    once here (DESIGN.md lists them). The `gaia` layer sits above `components`, so
    these win over HeroUI's sheets whichever area bundle loads them. */
 :root {
+  --gaia-radius-xs: 0.125rem;
   --gaia-radius-sm: 0.5rem;
   --gaia-radius-md: 0.75rem;
   --gaia-radius-lg: 0.875rem;
@@ -1863,6 +1864,10 @@ html {
   .tabs__list.gaia-pill,
   .checkbox.gaia-pill .checkbox__control {
     border-radius: var(--gaia-radius-pill);
+  }
+  .button.gaia-sharp,
+  .chip.gaia-sharp {
+    border-radius: var(--gaia-radius-xs);
   }
   .button-group.gaia-pill {
     overflow: hidden;
