@@ -15,7 +15,7 @@ import pytest
 from app.db.repositories import conversations as conversations_module
 from app.db.repositories.conversation_entries import EMBEDDED_FINGERPRINT, EntryWindow
 from app.db.repositories.conversations import ConversationRepository
-from app.models.chat_models import MessageModel, ToolDataEntry
+from app.models.chat_models import ConversationSyncItem, MessageModel, ToolDataEntry
 from app.models.conversation_models import ConversationDescriptionHit, ConversationDocument
 from app.utils.errors import (
     ConversationNotFoundError,
@@ -842,6 +842,37 @@ async def test_a_deleted_conversations_leftover_entries_never_reach_search_or_pi
     assert [(h.conversation_id, h.message.message_id) for h in found.messages] == [(live, "live-1")]
     assert await repo.list_pinned_messages(uid) == []
     assert await repo.find_owner_of_message(uid, "old-1") is None
+
+
+async def test_whole_conversation_reads_return_only_the_newest_window(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    held: _HeldFlushes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(conversations_module, "CONVERSATION_READ_LIMIT", 3)
+    cid, uid = conversation.conversation_id, conversation.user_id
+    other = await _chat(repo, uid)
+    await repo.append(cid, user_id=uid, entries=[_message(f"m{n}") for n in range(1, 5)])
+    await held.run_all()
+    await repo.append(cid, user_id=uid, entries=[_message("m5")])
+    await repo.append(other, user_id=uid, entries=[_message("o1")])
+    held.drop_all()
+
+    doc = await repo.get(cid, user_id=uid)
+    assert doc is not None
+    assert [m.message_id for m in doc.messages] == ["m3", "m4", "m5"]
+    synced = await repo.find_updated_since(
+        uid,
+        [
+            ConversationSyncItem(conversation_id=cid, last_updated=None),
+            ConversationSyncItem(conversation_id=other, last_updated=None),
+        ],
+    )
+    windows = {d.conversation_id: [m.message_id for m in d.messages] for d in synced}
+    assert windows == {cid: ["m3", "m4", "m5"], other: ["o1"]}
+    [recent, _] = await repo.recent_for_user(uid, limit=2)
+    assert len(recent.messages) <= 3
 
 
 @pytest.mark.parametrize("flushed", [False, True])

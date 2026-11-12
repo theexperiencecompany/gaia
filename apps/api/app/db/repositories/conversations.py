@@ -26,6 +26,7 @@ from app.constants.chat import (
     CONVERSATION_APPEND_JITTER_SECONDS,
     CONVERSATION_APPEND_MAX_ATTEMPTS,
     CONVERSATION_ENTRIES_COLLECTION,
+    CONVERSATION_READ_LIMIT,
     SUBAGENT_GROUP_TOOL_NAME,
     USER_MESSAGE_TYPE,
 )
@@ -572,11 +573,11 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     # ---- targeted / projected reads ----
 
     async def get(self, doc_id: str, *, user_id: str) -> ConversationDocument | None:
-        """Read the conversation with its full message history, oldest first."""
+        """Read the conversation with its newest CONVERSATION_READ_LIMIT messages, oldest first."""
         heads = await self._read_heads({"conversation_id": doc_id, "user_id": user_id})
         if not heads:
             return None
-        [(head, entries)] = await self._entries_for(heads)
+        [(head, entries)] = await self._entries_for(heads, _newest_window())
         return self._with_messages(head, entries)
 
     async def get_message(
@@ -663,10 +664,11 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return None if row is None else row.conversation_id
 
     async def recent_for_user(self, user_id: str, *, limit: int) -> list[ConversationDocument]:
-        """Return the user's most recent conversations, each with its full message history."""
+        """Return the user's most recent conversations, each with its newest messages."""
         heads = await self._read_heads({"user_id": user_id}, sort={"createdAt": -1}, limit=limit)
         return [
-            self._with_messages(head, entries) for head, entries in await self._entries_for(heads)
+            self._with_messages(head, entries)
+            for head, entries in await self._entries_for(heads, _newest_window())
         ]
 
     async def find_todo_conversation_id(self, user_id: str, todo_id: str) -> str | None:
@@ -746,7 +748,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def find_updated_since(
         self, user_id: str, items: list[ConversationSyncItem]
     ) -> list[ConversationDocument]:
-        """Batch-fetch conversations updated since each item's last-seen timestamp (the client-sync read).
+        """Batch-fetch conversations updated since each item's last-seen timestamp, with their newest messages.
 
         A missing/unparseable timestamp includes that conversation unconditionally.
         """
@@ -770,7 +772,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             return []
         heads = await self._read_heads({"$or": conditions})
         return [
-            self._with_messages(head, entries) for head, entries in await self._entries_for(heads)
+            self._with_messages(head, entries)
+            for head, entries in await self._entries_for(heads, _newest_window())
         ]
 
     # ---- search / pinned ----
@@ -1176,6 +1179,11 @@ def _backoff() -> float:
     """Return how long a writer that lost the conditional write waits before rereading the head."""
     # Any short wait is correct, so its bounds are not behaviour a test can pin.
     return _JITTER.uniform(0, CONVERSATION_APPEND_JITTER_SECONDS)  # pragma: no mutate
+
+
+def _newest_window() -> EntryWindow:
+    # Read at call time, so the limit stays one constant a test can lower.
+    return EntryWindow(limit=CONVERSATION_READ_LIMIT)
 
 
 def _refuse_other_content(

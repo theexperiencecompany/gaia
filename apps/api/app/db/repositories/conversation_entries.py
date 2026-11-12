@@ -327,14 +327,21 @@ class EntryWindow:
     def upper(self, log_head: int) -> int:
         return log_head if self.before_seq is None else min(log_head, self.before_seq - 1)
 
+    def lower(self, log_head: int) -> int:
+        # Seqs are dense, so the newest limit entries are the top limit seqs: a read of many heads
+        # bounds each one in the query instead of fetching all and trimming.
+        if self.limit and self.ids is None:
+            return max(self.after_seq, self.upper(log_head) - self.limit)
+        return self.after_seq
+
     def seq_range(self, log_head: int) -> dict[str, int]:
-        return {"$gt": self.after_seq, "$lte": self.upper(log_head)}
+        return {"$gt": self.lower(log_head), "$lte": self.upper(log_head)}
 
     def id_clause(self) -> dict[str, object]:
         return {} if self.ids is None else {"id": {"$in": list(self.ids)}}
 
     def admits(self, entry: ConversationEntry, log_head: int) -> bool:
-        in_range = self.after_seq < entry.seq <= self.upper(log_head)
+        in_range = self.lower(log_head) < entry.seq <= self.upper(log_head)
         return in_range and (self.ids is None or entry.message.message_id in self.ids)
 
     def take(self, union: Mapping[int, ConversationEntry]) -> list[ConversationEntry]:

@@ -66,9 +66,10 @@ async def _legacy(
 
 
 async def _read_ids(ref: HeadRef) -> list[str]:
-    doc = await ConversationRepository().get(ref.conversation_id, user_id=ref.user_id)
-    assert doc is not None
-    return [str(m.message_id) for m in doc.messages]
+    """Read every entry's id, oldest first, past the window a whole-conversation get returns."""
+    assert await ConversationRepository().exists(ref.conversation_id, user_id=ref.user_id)
+    entries = await ConversationRepository()._read_entries(ref.conversation_id, user_id=ref.user_id)
+    return [str(entry.message.message_id) for entry in entries]
 
 
 async def test_every_shape_of_history_is_copied_in_order_and_verifies(
