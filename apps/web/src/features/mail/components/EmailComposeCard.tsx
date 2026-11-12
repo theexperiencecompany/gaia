@@ -22,6 +22,7 @@ import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
+import { modalVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight, Gmail } from "@/components/shared/icons";
 import { Separator } from "@/components/ui/separator";
@@ -299,7 +300,12 @@ function EditEmailModal({
         }}
       >
         <Modal.Container size="lg">
-          <Modal.Dialog className="w-full max-w-md">
+          <Modal.Dialog
+            className={modalVariants({
+              size: "2xl",
+              className: "w-full max-w-md",
+            })}
+          >
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Body>
               <div className="pt-2 text-sm font-medium">Edit Email</div>

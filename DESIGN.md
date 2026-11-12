@@ -599,6 +599,17 @@ Buttons use font-weight 400.
 
 Corner shape is one closed dimension, `shape: "default" | "pill"` (`components/shared/shape.ts`). `default` is the radius above; `pill` fully rounds the control and means the same on Button (`GaiaButton shape="pill"`, `LinkButton shape="pill"`), Chip, Tabs, text fields, Checkbox and ButtonGroup (`className={shapeVariants({ shape: "pill" })}`). Never put a `rounded-*` class on a HeroUI control.
 
+Other control options, each one class in the gaia layer and one variant function (never a per-site class):
+
+| Option | Function | Use |
+|---|---|---|
+| Field label inside (v2 default) | `fieldVariants({ labelPlacement: "inside" })` on TextField / Select / ComboBox | 56px field, label 12px zinc-400 top-left, value below |
+| Selected chip | `chipVariants({ isSelected })` | the chosen chip in a picker lifts on a shadow tinted by its fill |
+| Bordered avatar | `avatarVariants({ bordered: true })` | contributor and member stacks: a 2px zinc-700 ring outside a 2px gap |
+| Accent tabs | `tabsVariants({ color: "accent" })` | a segmented switch whose selected tab is the accent with dark text |
+
+Field placeholders are zinc-500 at normal weight everywhere (`--field-placeholder`).
+
 ### Overlay Hierarchy
 
 | Use case | Component |

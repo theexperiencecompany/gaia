@@ -13,6 +13,10 @@ import {
 } from "@heroui/react";
 import { Github01Icon } from "@icons";
 import { useState } from "react";
+import {
+  modalVariants,
+  tabsVariants,
+} from "@/components/shared/controlVariants";
 import { shapeVariants } from "@/components/shared/shape";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { toast } from "@/lib/toast";
@@ -293,7 +297,10 @@ function SkillEditorForm({
           <Tabs
             selectedKey={mode}
             onSelectionChange={(key) => setMode(key as "write" | "import")}
-            className={shapeVariants({ shape: "pill", className: "mb-1" })}
+            className={tabsVariants({
+              color: "accent",
+              className: shapeVariants({ shape: "pill", className: "mb-1" }),
+            })}
           >
             <Tabs.ListContainer>
               <Tabs.List aria-label="Skill source">
@@ -344,7 +351,9 @@ export function SkillEditorModal({
     <Modal isOpen={isOpen} onOpenChange={(open) => !open && onClose()}>
       <Modal.Backdrop>
         <Modal.Container size="lg">
-          <Modal.Dialog className="max-w-2xl">
+          <Modal.Dialog
+            className={modalVariants({ size: "2xl", className: "max-w-2xl" })}
+          >
             <Modal.CloseTrigger aria-label="Close" />
             <SkillEditorForm
               key={formKey}

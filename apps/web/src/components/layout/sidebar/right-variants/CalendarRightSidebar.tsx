@@ -12,6 +12,7 @@ import {
 import { Delete02Icon, RepeatIcon, UserCircleIcon } from "@icons";
 import React, { useEffectEvent } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import {
   Accordion,
   AccordionContent,
@@ -27,7 +28,6 @@ import { formatRecurrence } from "@/features/calendar/utils/recurrenceUtils";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import type { CalendarItem } from "@/types/api/calendarApiTypes";
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
-
 import CalendarEventAIActions from "./CalendarEventAIActions";
 
 const WEEKDAYS = [
@@ -172,6 +172,7 @@ const RecurrenceSelector: React.FC<RecurrenceSelectorProps> = ({
 }) => (
   <div className="space-y-3">
     <Select
+      className={fieldVariants({ labelPlacement: "inside" })}
       selectedKey={recurrenceType || null}
       onSelectionChange={(key) => {
         if (key != null) onRecurrenceTypeChange(String(key));
@@ -248,6 +249,7 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
 }) => (
   <div className="space-y-3">
     <Select
+      className={fieldVariants({ labelPlacement: "inside" })}
       selectedKey={selectedCalendarId || null}
       onSelectionChange={(key) => {
         if (key != null) onCalendarChange(String(key));

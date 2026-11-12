@@ -3,6 +3,7 @@
 import { Chip, ListBox, SearchField, Select } from "@heroui/react";
 import { SearchIcon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { INTEGRATION_CATEGORIES } from "@/features/integrations/constants/categories";
 import { cn } from "@/lib/utils";
 
@@ -120,7 +121,10 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
             onSelectionChange={(key) => {
               if (typeof key === "string") handleSortChange(key);
             }}
-            className="w-40"
+            className={fieldVariants({
+              labelPlacement: "inside",
+              className: "w-40",
+            })}
             aria-label="Sort by"
           >
             <Select.Trigger>

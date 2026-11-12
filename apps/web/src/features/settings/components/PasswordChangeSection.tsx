@@ -3,6 +3,7 @@
 import { Button, Input, Label, TextField } from "@heroui/react";
 import { type FormEvent, useState } from "react";
 import { FormError } from "@/components/shared/FormError";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { SecretInput } from "@/components/shared/SecretInput";
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
 import { MIN_PASSWORD_LENGTH } from "@/features/auth/constants";
@@ -87,6 +88,7 @@ export function PasswordChangeSection() {
           isDisabled={isSubmitting}
         />
         <TextField
+          className={fieldVariants({ labelPlacement: "inside" })}
           value={newPassword}
           onChange={setNewPassword}
           isRequired
@@ -100,6 +102,7 @@ export function PasswordChangeSection() {
           />
         </TextField>
         <TextField
+          className={fieldVariants({ labelPlacement: "inside" })}
           value={confirmPassword}
           onChange={setConfirmPassword}
           isRequired

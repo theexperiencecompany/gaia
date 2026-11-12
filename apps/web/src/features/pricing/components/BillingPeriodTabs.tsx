@@ -60,8 +60,6 @@ export function BillingPeriodTabs({
           </Tabs.Tab>
         </Tabs.List>
       </Tabs.ListContainer>
-      <Tabs.Panel id="monthly">{null}</Tabs.Panel>
-      <Tabs.Panel id="yearly">{null}</Tabs.Panel>
     </Tabs>
   );
 }

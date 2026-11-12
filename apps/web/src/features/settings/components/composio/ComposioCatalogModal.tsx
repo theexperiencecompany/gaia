@@ -10,6 +10,8 @@ import {
 } from "@heroui/react";
 import { Search01Icon } from "@icons";
 import { useDeferredValue, useState } from "react";
+import { modalVariants } from "@/components/shared/controlVariants";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { COMPOSIO_APP_COUNT } from "@/features/settings/api/composioSetupApi";
 import { ComposioKeyMissing } from "@/features/settings/components/composio/ComposioKeyMissing";
 import { ComposioToolkitDetail } from "@/features/settings/components/composio/ComposioToolkitDetail";
@@ -47,7 +49,12 @@ export function ComposioCatalogModal({
     <Modal isOpen={isOpen} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <Modal.Backdrop variant="blur">
         <Modal.Container placement="center" scroll="inside" size="lg">
-          <Modal.Dialog className="max-w-4xl rounded-2xl shadow-none">
+          <Modal.Dialog
+            className={modalVariants({
+              size: "4xl",
+              className: "max-w-4xl rounded-2xl shadow-none",
+            })}
+          >
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Header className="flex flex-col gap-1">
               <Modal.Heading className="text-xl font-semibold">
@@ -80,7 +87,10 @@ export function ComposioCatalogModal({
                     <Select
                       aria-label="Category"
                       placeholder="All categories"
-                      className="w-56"
+                      className={fieldVariants({
+                        labelPlacement: "inside",
+                        className: "w-56",
+                      })}
                       selectedKey={category}
                       onSelectionChange={(key) =>
                         setCategory(key === null ? null : String(key))

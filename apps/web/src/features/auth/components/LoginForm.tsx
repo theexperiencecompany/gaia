@@ -5,6 +5,7 @@ import { ArrowRight02Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { FormError } from "@/components/shared/FormError";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { SecretInput } from "@/components/shared/SecretInput";
 import CopyButton from "@/components/ui/CopyButton";
@@ -56,6 +57,7 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
       <TextField
+        className={fieldVariants({ labelPlacement: "inside" })}
         value={email}
         onChange={setEmail}
         isRequired
