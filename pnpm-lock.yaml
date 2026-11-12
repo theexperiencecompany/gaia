@@ -1102,7 +1102,7 @@ importers:
         specifier: ^2.18.1
         version: 2.18.1
       server-only:
-        specifier: 0.0.1
+        specifier: ^0.0.1
         version: 0.0.1
       sharp:
         specifier: ^0.35.5
