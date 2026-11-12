@@ -41,8 +41,18 @@ describe("relatedUseCases", () => {
 
   it("gives a community workflow the curated featured use cases first", () => {
     expect(
-      slugs(relatedUseCases({ slug: "my-own-workflow" }, EXPLORE, 3)),
-    ).toEqual(["inbox-triage", "morning-briefing", "follow-up-reminders"]);
+      slugs(relatedUseCases({ slug: "my-own-workflow" }, EXPLORE, 4)),
+    ).toEqual([
+      "inbox-triage",
+      "morning-briefing",
+      "auto-draft-replies",
+      "rent-reminder",
+    ]);
+  });
+
+  it("keeps half the links outside its own category, so one topic does not repeat down the page", () => {
+    const related = relatedUseCases({ slug: "auto-draft-replies" }, EXPLORE, 2);
+    expect(slugs(related)).toEqual(["follow-up-reminders", "rent-reminder"]);
   });
 
   it("links every curated use case from at least two other pages", () => {
