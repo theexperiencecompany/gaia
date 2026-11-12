@@ -5,6 +5,7 @@ from datetime import datetime
 
 from app.constants.briefing import (
     GAIA_APP_NAME,
+    NO_CALENDAR_CONNECTED,
 )
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import BriefBlock, SectionBlock
@@ -118,11 +119,11 @@ class CalendarSpan:
 
 TODAY = CalendarSpan(
     heading="Today's calendar",
-    empty="The user's calendar has nothing today (or no calendar is connected).",
+    empty="The user's calendar has nothing today.",
 )
 WEEK_AHEAD = CalendarSpan(
     heading="The week ahead",
-    empty="The user's calendar has nothing in the week ahead (or no calendar is connected).",
+    empty="The user's calendar has nothing in the week ahead.",
 )
 
 
@@ -136,6 +137,7 @@ class FactSources:
     artifacts: dict[str, ArtifactFact]
     open_todos: int
     calendar: list[BriefingEvent]
+    calendar_connected: bool
     #: The pool id of each calendar event, in calendar order.
     event_ids: list[int]
     span: CalendarSpan
@@ -194,7 +196,7 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
     fact_lines += voiced_block_lines(sources.blocks)
     if sources.todos_note is not None:
         fact_lines.append(sources.todos_note)
-    fact_lines.append(_calendar_note(events, sources.span, clock))
+    fact_lines.append(_calendar_note(events, sources, clock))
     return Facts(
         sections=chosen.sections,
         block="\n".join(fact_lines),
@@ -232,15 +234,17 @@ def _event_slot(fact_id: int, time: str | None) -> str:
 
 
 def _calendar_note(
-    events: list[tuple[int, BriefingEvent]], span: CalendarSpan, clock: UserClock
+    events: list[tuple[int, BriefingEvent]], sources: FactSources, clock: UserClock
 ) -> str:
+    if not sources.calendar_connected:
+        return NO_CALENDAR_CONNECTED
     if not events:
-        return span.empty
+        return sources.span.empty
     lines = [
         f"- fact {fact_id} | {_event_slot(fact_id, event_time(e, clock.date_str))}: {e.title}"
         for fact_id, e in events
     ]
-    return f"{span.heading}:\n" + "\n".join(lines)
+    return f"{sources.span.heading}:\n" + "\n".join(lines)
 
 
 def user_todos_note(open_count: int, open_titles: list[str]) -> str:

@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.constants.error_codes import BRIEFS_OFF
 from app.constants.trigger_gates import GateAuthor
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.workflows import WorkflowDelivery
@@ -57,7 +58,7 @@ from app.utils.errors import AppError
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.triggers import TriggerGateEdited
-from tests.helpers import UNKNOWN_USER_ID, users_get
+from tests.helpers import UNKNOWN_USER_ID, briefs_off_users_get, users_get
 
 # ---------------------------------------------------------------------------
 # Shared helpers / constants
@@ -634,6 +635,54 @@ class TestCreateWorkflow:
 # ===========================================================================
 # WorkflowService.get_workflow tests
 # ===========================================================================
+
+
+class TestBriefDeliveryWhileBriefsOff:
+    """With briefs off, a workflow may not send its results to a brief that never comes."""
+
+    @pytest.fixture(autouse=True)
+    def _briefs_are_off(self):
+        with patch("app.utils.auth_utils.user_repository.get", new=briefs_off_users_get):
+            yield
+
+    @patch(f"{_REPO}.create", new_callable=AsyncMock)
+    async def test_creating_a_brief_workflow_is_refused_before_the_write(self, mock_create):
+        request = _make_create_request().model_copy(update={"delivery": WorkflowDelivery.BRIEF})
+
+        with pytest.raises(AppError) as refused:
+            await WorkflowService.create_workflow(request, USER_ID)
+
+        assert (refused.value.status_code, refused.value.code) == (409, BRIEFS_OFF)
+        mock_create.assert_not_awaited()
+
+    @patch("app.services.workflow.service.WorkflowService.get_workflow", new_callable=AsyncMock)
+    @patch(f"{_REPO}.update_for_user", new_callable=AsyncMock)
+    async def test_moving_a_workflow_onto_the_brief_is_refused_before_the_write(
+        self, mock_update, mock_get
+    ):
+        mock_get.return_value = _make_workflow()
+
+        with pytest.raises(AppError) as refused:
+            await WorkflowService.update_workflow(
+                WORKFLOW_ID, UpdateWorkflowRequest(delivery=WorkflowDelivery.BRIEF), USER_ID
+            )
+
+        assert (refused.value.status_code, refused.value.code) == (409, BRIEFS_OFF)
+        mock_update.assert_not_awaited()
+
+    @patch("app.services.workflow.service.WorkflowService.get_workflow", new_callable=AsyncMock)
+    @patch(f"{_REPO}.update_for_user", new_callable=AsyncMock)
+    async def test_moving_a_workflow_off_the_brief_still_goes_through(self, mock_update, mock_get):
+        wf = _make_workflow()
+        mock_get.side_effect = [wf, wf]
+        mock_update.return_value = _make_workflow_doc(wf)
+
+        result = await WorkflowService.update_workflow(
+            WORKFLOW_ID, UpdateWorkflowRequest(delivery=WorkflowDelivery.SILENT), USER_ID
+        )
+
+        assert result is not None
+        mock_update.assert_awaited_once()
 
 
 class TestGetWorkflow:

@@ -38,6 +38,7 @@ from app.constants.briefing import (
     IDLE_DORMANT_DAYS,
     MAX_BRIEF_HEADLINE_CHARS,
     MAX_VOICE_ATTEMPTS,
+    NO_CALENDAR_CONNECTED,
     WEEKLY_KICKER,
     WINBACK_THRESHOLD,
     ArtFamily,
@@ -570,6 +571,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     monkeypatch.setattr(compose, "ainvoke_structured", w.composer)
     monkeypatch.setattr(composition_headings, "ainvoke_structured", w.headings)
     _seam(monkeypatch, w, context, "read_calendar", AsyncMock(return_value=[]))
+    _seam(monkeypatch, w, context, "calendar_connected", AsyncMock(return_value=True))
     for repository, read in (
         (todo_repository, "list_completed_since"),
         (todo_repository, "list_external_ref_activity_since"),
@@ -2217,10 +2219,23 @@ class TestTheFactsTheModelVoices:
 
         _seam(monkeypatch, world, context, "gather_calendar", AsyncMock(return_value=[]))
         await daily.run_daily_briefing(_USER)
-        assert (
-            "is empty.\nThe user's calendar has nothing today (or no calendar is connected)."
-            "\n\n## YESTERDAY"
-        ) in _prompt(world)
+        assert ("is empty.\nThe user's calendar has nothing today.\n\n## YESTERDAY") in _prompt(
+            world
+        )
+
+    async def test_with_no_calendar_connected_no_prompt_calls_the_calendar_empty(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: every brief for a user with no calendar said their calendar was empty."""
+        _seam(monkeypatch, world, context, "gather_calendar", AsyncMock(return_value=[]))
+        _seam(monkeypatch, world, context, "calendar_connected", AsyncMock(return_value=False))
+
+        await daily.run_daily_briefing(_USER)
+
+        composed = world.composer.await_args.args[1]
+        assert f"is empty.\n{NO_CALENDAR_CONNECTED}\n\n## YESTERDAY" in _prompt(world)
+        assert NO_CALENDAR_CONNECTED in composed
+        assert "Nothing on the calendar" not in composed
 
     async def test_a_held_result_with_a_blank_report_shows_only_its_source(
         self, world: World

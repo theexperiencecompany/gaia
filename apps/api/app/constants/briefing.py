@@ -113,6 +113,11 @@ UNNAMED_READER: Final[str] = "the user"
 # The span each kind of brief reads the calendar over, as its composition is told.
 TODAY_SPAN: Final[str] = "today"
 WEEK_AHEAD_SPAN: Final[str] = "in the week ahead"
+#: What the brief is told when no calendar is connected, so it never calls the user's day empty.
+NO_CALENDAR_CONNECTED: Final[str] = (
+    "No calendar is connected, so nothing is known about the user's schedule: "
+    "never say it is empty, open or clear."
+)
 # Longest render that fits (Chromium, real renderers, worst of 20 skin seeds): headline 3 lines
 # of gradient's 46px h1, the tightest family; lede 3 lines, caption 1, of the classic edition.
 MAX_BRIEF_HEADLINE_CHARS: Final[int] = 52
