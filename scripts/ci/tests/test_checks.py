@@ -380,6 +380,31 @@ def test_api_schema_installs_the_codegen_toolchain_a_fresh_checkout_lacks(tmp_pa
     assert (tmp_path / "rec" / "codegen.log").exists()
 
 
+ANALYTICS_CATALOG = "libs/shared/ts/src/analytics/generated/analytics-catalog.json"
+
+
+def test_analytics_catalog_needs_no_node_modules(tmp_path: Path) -> None:
+    """Regression: without node_modules the hook died on `pnpm exec biome` and left the JSON rewritten."""
+    repo = _repo_beside_stubs(tmp_path)
+    catalog = '{\n  "events": [\n    "chat:message_submitted"\n  ]\n}\n'
+    _commit(repo, ANALYTICS_CATALOG, catalog)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stubs = {
+        "uv": f"#!/usr/bin/env bash\nprintf '%s' '{catalog}' > {ANALYTICS_CATALOG}\n",
+        "pnpm": "#!/usr/bin/env bash\necho 'Command \"biome\" not found' >&2\nexit 254\n",
+    }
+    for name, body in stubs.items():
+        (bin_dir / name).write_text(body)
+        (bin_dir / name).chmod(0o755)
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "CHANGED_FILES": ""}
+
+    process = _run_env(repo, env, "analytics-catalog")
+
+    assert process.returncode == 0, process.stdout + process.stderr
+    assert (repo / ANALYTICS_CATALOG).read_text() == catalog
+
+
 def _schema_repo(tmp_path: Path) -> Path:
     repo = _repo(tmp_path)
     _commit(repo, OPENAPI_JSON, '{"components": {"schemas": {"TodoResponse": {}, "Todo": {}}}}')

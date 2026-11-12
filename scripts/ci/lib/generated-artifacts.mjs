@@ -11,7 +11,6 @@ import { join, resolve } from "node:path";
 export const OPENAPI_JSON = "apps/api/openapi.json";
 const GENERATED_TYPES = "libs/shared/ts/src/api/generated/schema.d.ts";
 const ANALYTICS_GENERATED_DIR = "libs/shared/ts/src/analytics/generated";
-const ANALYTICS_CATALOG_JSON = `${ANALYTICS_GENERATED_DIR}/analytics-catalog.json`;
 const CLI_CONFIG_SCHEMA = "packages/cli/src/lib/api-config-schema.generated.json";
 const DEPLOY_TEMPLATES = [
   "deploy/coolify/gaia.yaml",
@@ -110,11 +109,6 @@ export function cmdAnalyticsCatalog(argv) {
       "shared.py.analytics.codegen",
     ],
     { ...opts, env: QUIET_ENV },
-  );
-  execFileSync(
-    "pnpm",
-    ["exec", "biome", "format", "--write", ANALYTICS_CATALOG_JSON],
-    opts,
   );
   failOnDrift(argv, [ANALYTICS_GENERATED_DIR], {
     drift: "Analytics catalog drifted — run `mise analytics:types` and commit",
