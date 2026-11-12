@@ -16,6 +16,7 @@ from app.services.briefing.render import (
     TRIM_ALPHA_THRESHOLD,
     TRIM_THRESHOLD,
     ImageRenderOptions,
+    background_run,
     render_html_to_image,
     trim_to_content,
 )
@@ -315,6 +316,17 @@ class TestClipSelector:
             }
         ]
 
+    async def test_the_bleed_grows_the_box_on_every_side(self, browser: Harness) -> None:
+        browser.page.boxes[".paper"] = {"x": 100.0, "y": 50.0, "width": 400.0, "height": 300.0}
+        browser.page.scroll = [5.0, 700.0]
+
+        await render_html_to_image(
+            "<html>hi</html>", ImageRenderOptions(clip_selector=".paper", clip_bleed_px=20)
+        )
+
+        [screenshot] = browser.page.screenshot_calls
+        assert screenshot["clip"] == {"x": 85.0, "y": 730.0, "width": 440.0, "height": 340.0}
+
     async def test_a_selector_matching_nothing_fails_loud_instead_of_shipping_uncropped(
         self, browser: Harness
     ) -> None:
@@ -485,6 +497,22 @@ class TestTrimToContent:
         )
 
         assert trimmed.size == (170, 280)
+
+    def test_a_paletted_capture_keeps_its_transparent_index_clear(self) -> None:
+        paletted = Image.new("P", (300, 400), 0)
+        paletted.putpalette([0, 0, 0, *_PAPER])
+        ImageDraw.Draw(paletted).rectangle((50, 70, 199, 329), fill=1)
+        paletted.info["transparency"] = 0
+
+        trimmed = Image.open(
+            io.BytesIO(trim_to_content(_saved(paletted, format="PNG"), 10, ImageRenderOptions()))
+        )
+
+        assert trimmed.size == (170, 280)
+
+    def test_a_walk_over_an_image_that_is_not_premultiplied_fails_loud(self) -> None:
+        with pytest.raises(ValueError, match="zip"):
+            background_run(Image.new("L", (4, 4)))
 
     def test_a_transparent_capture_saved_as_jpeg_is_flattened(self) -> None:
         png = _saved(_clear_with_paper(), format="PNG")

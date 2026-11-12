@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from app.constants.briefing import GAIA_SOURCE
 from app.models.brief_candidate_models import BriefCandidate
@@ -134,7 +134,7 @@ async def gather_candidates(
     candidates = [
         *waiting_candidates(work),
         *await approval_candidates(user_id, now, open_todo_ids),
-        *await reminder_candidates(user_id, day_start, day_start + timedelta(days=1)),
+        *await reminder_candidates(user_id, day_start, day_start_utc(clock, days_ago=-1)),
         *await failed_run_candidates(user_id, since),
         *app_signal_candidates(sources.scouts.remembered, now),
         *await held_candidates(user_id, sources.held),

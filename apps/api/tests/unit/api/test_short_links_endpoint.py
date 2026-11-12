@@ -116,6 +116,20 @@ class TestRecordOpen:
             response = await unauthed_client.post(f"{BASE}/{SLUG}/opened")
 
         assert response.status_code == 404
+        assert response.json()["message"] == "Short link not found"
+
+    @pytest.mark.asyncio
+    async def test_a_viewer_sending_no_user_agent_is_counted_with_an_empty_one(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        del unauthed_client.headers["user-agent"]
+        with patch(
+            f"{_ENDPOINT}.record_open", AsyncMock(return_value=LinkViewerKind.RECIPIENT)
+        ) as record:
+            await unauthed_client.post(f"{BASE}/{SLUG}/opened")
+
+        ((_, viewer), _) = record.await_args
+        assert viewer.user_agent == ""
 
 
 class TestResolveStorageOutage:
@@ -353,6 +367,7 @@ class TestShareState:
         live.assert_awaited_once_with(
             FAKE_USER.user_id, ShortLinkTargetType.SESSION_ARTIFACT, "conv-1/a.html"
         )
+        assert event["user"] == {"id": FAKE_USER.user_id}
         assert event["short_link"] == {
             "operation": "share_state",
             "target_type": "session_artifact",

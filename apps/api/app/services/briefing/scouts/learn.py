@@ -39,6 +39,7 @@ from app.services.workflow.playbook.parser import validate_playbook
 from app.services.workflow.playbook.tool_graph import run_tool_graph
 from app.utils.errors import AppError
 from app.utils.markdown_utils import model_from_reply
+from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
 
@@ -158,7 +159,9 @@ async def learn_scout(
     bound = await bound_tools(tools)
     now = datetime.now(UTC)
     prompt = SCOUT_LEARN_PROMPT.format(
-        app=integration.name, today=now.date().isoformat(), timezone=user.timezone
+        app=integration.name,
+        today=Timezone.parse(user.timezone).localize(now).date().isoformat(),
+        timezone=user.timezone,
     )
     text, calls = await _run_agent(user_id, integration, bound, prompt)
     report = _parse_report(text, integration)
