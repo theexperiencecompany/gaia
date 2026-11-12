@@ -187,7 +187,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
               <GaiaButton
                 size="sm"
                 variant="default-soft"
-                className="font-medium text-zinc-200"
+                className="font-medium"
                 onPress={handleOpen}
               >
                 Open

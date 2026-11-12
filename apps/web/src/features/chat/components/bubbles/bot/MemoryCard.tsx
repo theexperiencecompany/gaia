@@ -282,7 +282,8 @@ function DocumentSection({
             size="sm"
             variant="ghost"
             onPress={() => setExpanded((v) => !v)}
-            className="mt-2 h-auto min-w-0 px-2 py-1 text-xs text-zinc-500 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300"
+            tone="faint"
+            className="mt-2 min-w-0 text-xs"
           >
             {expanded ? "Show less" : "Show more"}
           </GaiaButton>

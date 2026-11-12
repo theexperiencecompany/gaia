@@ -53,7 +53,8 @@ function DismissButton({
       variant="ghost"
       aria-label={label}
       onPress={onDismiss}
-      className="shrink-0 text-zinc-500"
+      tone="faint"
+      className="shrink-0"
     >
       <Cancel01Icon size={14} />
     </GaiaButton>

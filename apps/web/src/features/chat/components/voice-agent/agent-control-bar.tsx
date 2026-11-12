@@ -183,7 +183,8 @@ export function AgentControlBar({
             aria-label="End voice session"
             onPress={onLeave}
             isDisabled={isDisconnecting}
-            className="h-12 w-14 bg-red-500/15 transition-colors hover:bg-red-500/20 active:bg-red-500/25"
+            variant="danger-soft"
+            className="h-12 w-14 transition-colors"
           >
             <CallEnd04Icon className="h-6 w-6 text-red-400" />
           </GaiaButton>

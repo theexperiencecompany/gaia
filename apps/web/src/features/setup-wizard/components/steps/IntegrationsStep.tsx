@@ -183,7 +183,8 @@ export function IntegrationsStep({ status, catalog }: IntegrationsStepProps) {
         href="/integrations"
         variant="ghost"
         size="sm"
-        className="self-start text-zinc-400"
+        tone="muted"
+        className="self-start"
       >
         Browse all integrations
         <CircleArrowUpRight02Icon className="size-4" />

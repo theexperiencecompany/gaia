@@ -52,7 +52,8 @@ export function LivePreview({
             isIconOnly
             size="sm"
             variant="ghost"
-            className="ml-auto size-6 min-w-6 text-zinc-400"
+            tone="muted"
+            className="ml-auto size-6 min-w-6"
             aria-label="Open in side panel"
             onPress={surface.openPanel}
           >
@@ -65,7 +66,8 @@ export function LivePreview({
             isIconOnly
             size="sm"
             variant="ghost"
-            className="ml-auto size-6 min-w-6 text-zinc-400"
+            tone="muted"
+            className="ml-auto size-6 min-w-6"
             aria-label="Full screen live preview"
             onPress={() => setFullscreen(true)}
           >
@@ -88,7 +90,8 @@ export function LivePreview({
             shape="pill"
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-xs text-zinc-400"
+            tone="muted"
+            className="h-7 text-xs"
             onPress={surface.openPanel}
           >
             <SidebarRight01Icon className="size-3.5" />
@@ -105,7 +108,8 @@ export function LivePreview({
             rel="noopener noreferrer"
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-xs text-zinc-400"
+            tone="muted"
+            className="h-7 text-xs"
           >
             <SquareArrowUpRight02Icon className="size-3.5" />
             Open full browser

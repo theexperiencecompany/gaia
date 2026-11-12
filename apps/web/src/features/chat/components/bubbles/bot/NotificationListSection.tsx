@@ -177,7 +177,7 @@ export default function NotificationListSection({
                     variant="default-soft"
                     onPress={handleMarkAllAsRead}
                     isPending={isMarkingAllRead}
-                    className="text-zinc-300"
+                    tone="dim"
                   >
                     Mark all read
                   </GaiaButton>

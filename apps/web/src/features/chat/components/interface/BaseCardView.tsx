@@ -102,7 +102,8 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
             <GaiaButton
               size="sm"
               variant="default-soft"
-              className="text-xs text-zinc-400"
+              tone="muted"
+              className="text-xs"
             >
               Ask GAIA
               <ArrowUpRight01Icon className="h-3.5 w-3.5" />

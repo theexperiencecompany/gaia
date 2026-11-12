@@ -128,8 +128,9 @@ function ImageResults({ images }: ImageResultsProps) {
       {validImages.length > MAX_VISIBLE && (
         <GaiaButton
           onPress={cycleNext}
-          className="relative z-10 flex h-32 w-32 shrink-0 flex-col items-center justify-center gap-1.5 rounded-2xl bg-zinc-800/80 text-zinc-300 shadow-sm backdrop-blur-sm transition-colors hover:bg-zinc-700/80 hover:text-white"
-          variant="default-soft"
+          className="relative z-10 flex h-32 w-32 shrink-0 flex-col items-center justify-center gap-1.5 shadow-sm backdrop-blur-sm transition-colors"
+          variant="tertiary"
+          tone="dim"
           style={{
             rotate: displayImages.length % 2 === 0 ? "8deg" : "-8deg",
           }}

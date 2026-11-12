@@ -41,7 +41,7 @@ export function DoneActions({ hasLlm }: DoneActionsProps) {
             variant="ghost"
             fullWidth
             size="sm"
-            className="text-zinc-400"
+            tone="muted"
           >
             Continue to chat anyway
           </LinkButton>

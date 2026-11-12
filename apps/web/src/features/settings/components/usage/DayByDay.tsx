@@ -194,7 +194,8 @@ function TokenScaleLine({ tokens }: { tokens: number }) {
           isIconOnly
           size="sm"
           variant="ghost"
-          className="size-6 min-w-6 shrink-0 text-zinc-500 data-[hover=true]:text-zinc-200"
+          tone="faint"
+          className="size-6 min-w-6 shrink-0"
           aria-label="Show another comparison"
           onPress={next}
         >

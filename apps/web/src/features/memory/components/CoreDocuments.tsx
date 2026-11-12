@@ -202,7 +202,7 @@ export function CoreDocuments() {
                 <GaiaButton
                   size="sm"
                   variant="default-soft"
-                  className="shrink-0 rounded-xl"
+                  className="shrink-0"
                   onPress={() => setDraft(document.content)}
                 >
                   <PencilEdit02Icon className="size-4" />

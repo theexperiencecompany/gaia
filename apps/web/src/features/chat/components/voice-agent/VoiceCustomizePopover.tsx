@@ -45,7 +45,7 @@ export function VoiceCustomizePopover() {
       <GaiaButton
         shape="pill"
         variant="default-soft"
-        className="bg-zinc-900/80 text-zinc-200 shadow-lg backdrop-blur-md hover:bg-zinc-800"
+        className="bg-zinc-900/80 shadow-lg backdrop-blur-md hover:bg-zinc-800"
       >
         <EditIcon className="h-4 w-4" />
         Customise voice

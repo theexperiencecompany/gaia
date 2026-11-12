@@ -86,7 +86,8 @@ export function NotificationConnectBanner({
               size="sm"
               onPress={dismiss}
               aria-label="Dismiss"
-              className="h-6 w-6 min-w-6 text-zinc-500 hover:text-white"
+              tone="faint"
+              className="h-6 w-6 min-w-6"
             >
               <Cancel01Icon className="h-3 w-3" />
             </GaiaButton>
@@ -105,7 +106,8 @@ export function NotificationConnectBanner({
         size="sm"
         onPress={dismiss}
         aria-label="Dismiss"
-        className="absolute top-2 right-2 h-6 w-6 min-w-6 text-zinc-500 hover:text-white"
+        tone="faint"
+        className="absolute top-2 right-2 h-6 w-6 min-w-6"
       >
         <Cancel01Icon className="h-3 w-3" />
       </GaiaButton>

@@ -139,10 +139,10 @@ function IdentitySettingsSection({
         <div className="flex items-center gap-2">
           <GaiaButton
             size="sm"
-            variant="default-soft"
+            variant="tertiary"
+            tone="dim"
             onPress={handleAutoDetectTimezone}
             isDisabled={isUpdating}
-            className="border-zinc-700 bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700/50"
           >
             Auto Detect
           </GaiaButton>

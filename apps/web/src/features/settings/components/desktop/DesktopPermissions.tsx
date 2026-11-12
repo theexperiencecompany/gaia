@@ -147,7 +147,6 @@ export function DesktopPermissions() {
                 <GaiaButton
                   size="sm"
                   variant="default-soft"
-                  className="rounded-xl"
                   onPress={() => {
                     handleRequest(row);
                   }}
@@ -159,7 +158,6 @@ export function DesktopPermissions() {
                 <GaiaButton
                   variant="accent-soft"
                   size="sm"
-                  className="rounded-xl"
                   onPress={() => getElectronAPI()?.relaunchDesktopApp()}
                 >
                   Restart GAIA
