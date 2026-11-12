@@ -547,7 +547,7 @@ function PlatformChips({
         return (
           <Chip
             key={p.id}
-            variant={isActive ? "primary" : "tertiary"}
+            variant={isActive ? "primary" : "soft"}
             color={isActive ? "accent" : "default"}
             size="lg"
             role="tab"

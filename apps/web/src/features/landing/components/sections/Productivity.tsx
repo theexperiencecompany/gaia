@@ -35,13 +35,13 @@ export default function UseCasesSectionLanding() {
               className="rounded-xl before:rounded-xl hover:scale-105 gap-1"
               color="#00bbff"
             >
-              AI workflow use cases
+              View More
             </RaisedButton>
           </SiteLink>
           <GetStartedButton
             btnColor="#ffffff"
             classname="px-1 hover:scale-105"
-            text="AI assistant by role"
+            text="Who it's for"
             href="/for"
           />
           {/* <Button variant="flat">Who it's for</Button> */}

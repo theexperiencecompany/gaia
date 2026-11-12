@@ -140,7 +140,7 @@ const DummyComposer: React.FC<{
                 ref={textareaRef}
                 autoFocus
                 rows={1}
-                className="w-full resize-none border-0 bg-transparent p-0 font-light shadow-none outline-none focus:ring-0"
+                className="field-sizing-content max-h-[17rem] w-full resize-none border-0 bg-transparent p-0 font-light shadow-none outline-none focus:ring-0"
                 placeholder="What can I do for you today?"
                 value={message}
                 onChange={(e) => handleInputChange(e.target.value)}

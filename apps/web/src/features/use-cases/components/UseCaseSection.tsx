@@ -130,7 +130,7 @@ function CategoryChip({
       }}
     >
       <Chip
-        variant={isSelected ? "primary" : "tertiary"}
+        variant={isSelected ? "primary" : "soft"}
         color={isSelected ? "accent" : "default"}
         className={`cursor-pointer capitalize ${isSelected ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
         size="lg"

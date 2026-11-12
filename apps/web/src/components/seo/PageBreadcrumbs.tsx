@@ -2,6 +2,8 @@
 
 import { useLocale } from "next-intl";
 
+import { ChevronRight } from "@/components/shared/icons";
+
 import { getPathname } from "@/i18n/navigation";
 import { isTranslatedPath } from "@/i18n/translatedRoutes";
 
@@ -33,14 +35,7 @@ export function PageBreadcrumbs({
           const isLast = index === items.length - 1;
 
           return (
-            <li
-              key={crumb.label}
-              className={
-                isLast
-                  ? "flex items-center"
-                  : "flex items-center after:ml-1.5 after:text-zinc-600 after:content-['/']"
-              }
-            >
+            <li key={crumb.label} className="flex items-center">
               {crumb.href ? (
                 <a href={localize(crumb.href)} className={LINK_CLASSES}>
                   {crumb.label}
@@ -52,6 +47,12 @@ export function PageBreadcrumbs({
                 >
                   {crumb.label}
                 </span>
+              )}
+              {!isLast && (
+                <ChevronRight
+                  aria-hidden="true"
+                  className="mx-1.5 size-3 text-zinc-600"
+                />
               )}
             </li>
           );
