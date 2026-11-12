@@ -7,7 +7,7 @@ for every tool in the app.
 """
 
 from enum import StrEnum
-from typing import Final, Literal
+from typing import Literal
 
 from app.constants.cache import EXECUTOR_BUSY_TTL
 from app.constants.general import FINISH_TASK_NAME
@@ -92,15 +92,6 @@ class ReplyChoice(StrEnum):
     UNRELATED = "unrelated"
 
 
-# The only statuses a `Command(resume=...)` payload may carry. Anything else
-# is treated as a denial. "abandoned" is absent: resolution.py maps it to a deny before sending.
-HIL_RESUMABLE_STATUSES: frozenset[str] = frozenset({"approved", "denied", "timeout"})
-
-# Statuses meaning "decided, so the paused run must be re-dispatched" — the
-# sweep's crashed-resume pass matches on these. "auto_approved" is absent: it
-# never paused, so it has no run to resume.
-HIL_UNRESUMED_SWEEP_STATUSES: tuple[str, ...] = ("approved", "denied", "timeout", "abandoned")
-
 # The classifier reading a chat reply to a pending approval gets richer context
 # than the card summary: recent turns + the full (bounded) args. TOTAL budget
 # is the real ceiling; the per-value clip only stops one pathological arg from eating it all.
@@ -111,41 +102,11 @@ HIL_CLASSIFIER_HISTORY_TURNS = 4  # recent {role, content} turns of context
 
 # Marks a synthetic ToolMessage the gate produced (rather than a real tool result).
 HIL_STATUS_KWARG = "hil_status"
-HILToolMessageStatus = Literal["denied", "timeout", "error", "already_ran", "pending"]
+HILToolMessageStatus = Literal["denied", "error", "pending"]
 
-# How long an approval may sit unanswered before the sweep resolves it as a
-# timeout. Set by how long a human plausibly takes to answer a push
-# notification, NOT infrastructure — HIL gates irreversible, third-party-visible actions.
-HIL_APPROVAL_TIMEOUT_SECONDS = 6 * 60 * 60
-
-# TTL the executor busy lock is re-armed to when a run parks on an approval. A
-# paused run's lock TTL started when the run BEGAN, not when it paused; if it
-# lapses first, the next call_executor discards the pending interrupt and orphans the user's card.
-HIL_PAUSED_LOCK_TTL_SECONDS = HIL_APPROVAL_TIMEOUT_SECONDS + EXECUTOR_BUSY_TTL
-
-# How long unread executor inbox work lives: as long as the longest hold that can keep
-# a reader from it (a run parked on an approval), so nothing handed over during a park
-# lapses before the resumed run reads it. A park re-arms it from its own start.
-EXECUTOR_INBOX_TTL = HIL_PAUSED_LOCK_TTL_SECONDS
-
-# A decided record with no resumed_at stamp older than this is a crashed
-# resume dispatch; the sweep re-dispatches it from the record's resume_item.
-HIL_DECIDED_UNRESUMED_GRACE_SECONDS = 120
-
-# The key LangGraph puts a paused run's Interrupt objects under in an "updates"
-# stream event. Mirrored here because langgraph.constants.INTERRUPT went private
-# in v1 (deprecated, slated for removal in v2).
-LANGGRAPH_INTERRUPT_KEY = "__interrupt__"
-
-# configurable flag set only on a resume re-dispatch. spawn_subagent probes
-# the spawn's thread checkpoint for a parked interrupt ONLY when this is
-# set, so fresh runs (the ~100% case) skip that per-spawn Postgres read.
-HIL_RESUME_CONFIG_KEY: Final = "hil_resume_replay"
-
-# configurable key a background subagent run carries its own rebuild recipe
-# under, so the gate files it on every approval the run raises and a decision
-# can resume the parked thread from any process.
-SUBAGENT_RESUME_CONFIG_KEY: Final = "subagent_resume"
+# How long unread executor inbox work lives: six hours past the busy lock's own TTL,
+# so a ticket or verdict handed over while a run is busy is still there when it reads.
+EXECUTOR_INBOX_TTL = 6 * 60 * 60 + EXECUTOR_BUSY_TTL
 
 # Keyed by stream_id (unique per turn), so this only suppresses re-asks within
 # the same turn — a genuinely new request in a later turn still prompts.

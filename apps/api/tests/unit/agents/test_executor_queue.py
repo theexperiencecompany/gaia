@@ -3,7 +3,7 @@
 There is no queue any more: work handed to a busy executor goes to that
 conversation's inbox (executor_channel) and the live run absorbs it. What
 remains in executor_queue is the per-conversation busy lock and
-prepare_run_from_item — the path a HIL resume rebuilds its run through.
+prepare_run_from_item — the path every detached run starts through.
 
 Redis is real (fakeredis) here on purpose. The lock's whole job is atomic
 ownership under SET NX with a TTL, and a mock that returns whatever the test
@@ -27,13 +27,11 @@ from app.agents.core.background import executor_queue as eq, session as sess
 from app.agents.core.background.executor_queue import (
     QUEUED_STREAM_ID_PREFIX,
     ExecutorRunItem,
-    LockClaim,
     LockState,
     adopt_lock,
     break_holder_lock,
     build_lock_value,
     build_run_item,
-    extend_lock_if_owned,
     get_lock_holder,
     get_lock_state,
     hold_run_alive,
@@ -287,19 +285,6 @@ class TestLockOwnership:
 
         assert await redis.get(BUSY_KEY) == build_lock_value("other", "t9")
 
-    async def test_extend_re_arms_our_own_lock(self, redis) -> None:
-        """A run parked on a HIL approval outlives its lock's original TTL; if the lock lapses a new run takes the thread and discards the checkpoint."""
-        await redis.set(BUSY_KEY, build_lock_value("s1", "t1"), ex=5)
-
-        assert await extend_lock_if_owned(CONVERSATION, "s1", "t1", 900) is True
-        assert await redis.ttl(BUSY_KEY) == 900
-
-    async def test_extend_refuses_a_foreign_lock(self, redis) -> None:
-        await redis.set(BUSY_KEY, build_lock_value("other", "t9"), ex=5)
-
-        assert await extend_lock_if_owned(CONVERSATION, "s1", "t1", 900) is False
-        assert await redis.ttl(BUSY_KEY) == 5
-
 
 class TestWithoutRedis:
     """How each answer degrades when Redis cannot be reached.
@@ -316,10 +301,6 @@ class TestWithoutRedis:
         with _no_redis():
             assert await get_lock_state(CONVERSATION, "s1", "t1") is LockState.OURS
 
-    async def test_extend_reports_that_it_did_not_re_arm(self) -> None:
-        with _no_redis():
-            assert await extend_lock_if_owned(CONVERSATION, "s1", "t1", 900) is False
-
     async def test_adopting_a_reservation_allows_execution(self) -> None:
         with _no_redis():
             assert await adopt_lock(CONVERSATION, "fire-1", "s1:t1") is True
@@ -330,24 +311,12 @@ class TestWithoutRedis:
 
     async def test_preparing_a_run_yields_nothing(self, stream_side) -> None:
         with _no_redis():
-            assert await prepare_run_from_item(CONVERSATION, _item(), claim=LockClaim.SEIZE) is None
+            assert await prepare_run_from_item(CONVERSATION, _item()) is None
         stream_side.stream_manager.start_stream.assert_not_awaited()
 
 
 class TestBuildRunItem:
-    """build_run_item is the single serialized shape a detached run is rebuilt from — fields must default so an ordinary item never accidentally carries resume-only identity."""
-
-    def test_omits_bot_message_id_by_default(self) -> None:
-        item = build_run_item(task="do it", configurable={"user_id": "u1"}, identity=_identity())
-        assert item["bot_message_id"] is None
-
-    def test_carries_bot_message_id_when_a_pause_supplies_it(self) -> None:
-        item = build_run_item(
-            task="do it",
-            configurable={"user_id": "u1"},
-            identity=_identity(bot_message_id="orig-msg-1"),
-        )
-        assert item["bot_message_id"] == "orig-msg-1"
+    """build_run_item is the single serialized shape a detached run is rebuilt from."""
 
     def test_the_stored_configurable_is_the_serializable_subset(self) -> None:
         item = build_run_item(
@@ -371,7 +340,7 @@ class TestBuildRunItem:
 
 
 class TestSafeConfigurable:
-    """What survives a HIL resume.
+    """What survives into a detached run.
 
     A dropped key does not make the re-dispatched run smaller — it makes it a
     *different* run than the one the user started, with no signal that it changed.
@@ -402,9 +371,8 @@ class TestSafeConfigurable:
             # The per-request token ceiling keys on this; a fresh id resets the
             # ceiling mid-conversation.
             "root_request_id": "rr-1",
-            # The HIL intent judge grounds gated tool calls against these. A
-            # resumed run that lost them judges against nothing — on the one path
-            # where HIL is the whole point.
+            # The HIL intent judge grounds gated tool calls against these; a
+            # detached run that lost them judges against nothing.
             "user_messages": ["send the invoice to bob"],
             "langfuse_trace_id": "tr-1",
         }
@@ -417,11 +385,6 @@ class TestSafeConfigurable:
             "checkpoint_ns": "ns",
             "__pregel_runtime": object(),
         }
-
-        assert safe_configurable(cast(AgentConfigurable, configurable)) == {"thread_id": "t"}
-
-    def test_drops_the_run_scoped_hil_replay_flag(self) -> None:
-        configurable = {"thread_id": "t", "hil_resume_replay": True}
 
         assert safe_configurable(cast(AgentConfigurable, configurable)) == {"thread_id": "t"}
 
@@ -439,15 +402,14 @@ class TestSafeConfigurable:
 class TestPrepareRunFromItem:
     """Materializing a DETACHED run — one that owns its own stream instead of sharing a comms turn's.
 
-    The HIL approval resume SEIZES the lock its paused owner still holds; deliver_to_executor
-    ACQUIRES it, starting only on a conversation nobody holds.
+    It takes the lock only on a conversation nobody holds.
     """
 
-    async def test_seizes_the_lock_in_the_form_its_owner_reads_back(
+    async def test_takes_the_lock_in_the_form_its_owner_reads_back(
         self, redis, stream_side
     ) -> None:
         """Written with the RAW client, not redis_cache.set: the wrapper JSON-encodes the string, and the quoted value never matches the raw read in get_lock_state — so the new run reads its OWN lock as foreign and leaves it wedged until the TTL."""
-        prepared = await prepare_run_from_item(CONVERSATION, _item(), claim=LockClaim.SEIZE)
+        prepared = await prepare_run_from_item(CONVERSATION, _item())
 
         assert prepared is not None
         run = prepared.run
@@ -458,13 +420,12 @@ class TestPrepareRunFromItem:
     async def test_a_rebuilt_run_is_the_same_analytics_fact_as_the_one_stored(
         self, redis, stream_side
     ) -> None:
-        """A queue pop or HIL resume re-sends the run's lifecycle events as the same PostHog rows."""
+        """A queue pop re-sends the run's lifecycle events as the same PostHog rows."""
         dispatched_at = datetime(2026, 10, 8, 6, 30, tzinfo=UTC)
 
         prepared = await prepare_run_from_item(
             CONVERSATION,
             _item(identity=_identity(dispatched_at=dispatched_at)),
-            claim=LockClaim.SEIZE,
         )
 
         assert prepared is not None
@@ -478,7 +439,7 @@ class TestPrepareRunFromItem:
         del item["dispatched_at"]
         before = datetime.now(UTC)
 
-        prepared = await prepare_run_from_item(CONVERSATION, item, claim=LockClaim.SEIZE)
+        prepared = await prepare_run_from_item(CONVERSATION, item)
 
         assert prepared is not None
         assert prepared.run.dispatched_at.tzinfo is UTC
@@ -491,7 +452,7 @@ class TestPrepareRunFromItem:
         held = build_lock_value("live-stream", "task-0")
         await redis.set(BUSY_KEY, held)
 
-        prepared = await prepare_run_from_item(CONVERSATION, _item(), claim=LockClaim.ACQUIRE)
+        prepared = await prepare_run_from_item(CONVERSATION, _item())
 
         assert prepared is None
         assert await redis.get(BUSY_KEY) == held
@@ -500,7 +461,7 @@ class TestPrepareRunFromItem:
         stream_side.websocket.broadcast_to_user.assert_not_awaited()
 
     async def test_acquire_takes_a_free_conversation(self, redis, stream_side) -> None:
-        prepared = await prepare_run_from_item(CONVERSATION, _item(), claim=LockClaim.ACQUIRE)
+        prepared = await prepare_run_from_item(CONVERSATION, _item())
 
         assert prepared is not None
         assert await redis.get(BUSY_KEY) == build_lock_value(prepared.run.stream_id, "task-7")
@@ -509,24 +470,16 @@ class TestPrepareRunFromItem:
     async def test_a_run_without_a_task_id_owns_the_lock_it_took(self, redis, stream_side) -> None:
         item = _item(identity=_identity(task_id=None))
 
-        prepared = await prepare_run_from_item(CONVERSATION, item, claim=LockClaim.ACQUIRE)
+        prepared = await prepare_run_from_item(CONVERSATION, item)
 
         assert prepared is not None
         state = await get_lock_state(CONVERSATION, prepared.run.stream_id, prepared.run.task_id)
         assert state is LockState.OURS
 
-    async def test_takes_the_lock_over_from_the_run_that_is_gone(self, redis, stream_side) -> None:
-        await redis.set(BUSY_KEY, build_lock_value("dead-stream", "task-0"))
-
-        prepared = await prepare_run_from_item(CONVERSATION, _item(), claim=LockClaim.SEIZE)
-
-        assert prepared is not None
-        assert await redis.get(BUSY_KEY) == build_lock_value(prepared.run.stream_id, "task-7")
-
     async def test_mints_a_fresh_stream_and_overrides_the_items_stale_one(
         self, redis, stream_side
     ) -> None:
-        prepared = await prepare_run_from_item(CONVERSATION, _item(), claim=LockClaim.SEIZE)
+        prepared = await prepare_run_from_item(CONVERSATION, _item())
 
         assert prepared is not None
         assert prepared.run.stream_id.startswith(QUEUED_STREAM_ID_PREFIX)
@@ -536,7 +489,7 @@ class TestPrepareRunFromItem:
 
     async def test_registers_a_session_pre_marked_spawned(self, redis, stream_side) -> None:
         """Nothing else registers one for a detached run — no chat_service turn owns it — and an unspawned session reads as "the executor never ran"."""
-        prepared = await prepare_run_from_item(CONVERSATION, _item(), claim=LockClaim.SEIZE)
+        prepared = await prepare_run_from_item(CONVERSATION, _item())
 
         assert prepared is not None
         session = get_session(prepared.run.stream_id)
@@ -548,7 +501,7 @@ class TestPrepareRunFromItem:
     async def test_starts_the_stream_and_tells_the_client_to_subscribe(
         self, redis, stream_side
     ) -> None:
-        prepared = await prepare_run_from_item(CONVERSATION, _item(), claim=LockClaim.SEIZE)
+        prepared = await prepare_run_from_item(CONVERSATION, _item())
 
         assert prepared is not None
         stream_side.stream_manager.start_stream.assert_awaited_once_with(
@@ -572,9 +525,7 @@ class TestPrepareRunFromItem:
     async def test_an_item_with_no_user_still_prepares_but_announces_nothing(
         self, redis, stream_side
     ) -> None:
-        prepared = await prepare_run_from_item(
-            CONVERSATION, _item(configurable={}), claim=LockClaim.SEIZE
-        )
+        prepared = await prepare_run_from_item(CONVERSATION, _item(configurable={}))
 
         assert prepared is not None
         stream_side.websocket.broadcast_to_user.assert_not_awaited()
@@ -594,7 +545,6 @@ class TestPrepareRunFromItem:
                     "workflow_notify_on_completion": False,
                 }
             ),
-            claim=LockClaim.SEIZE,
         )
 
         assert prepared is not None
@@ -609,19 +559,8 @@ class TestPrepareRunFromItem:
         # No comms consumer attaches this run's cards, so it self-persists.
         assert run.executor_owns_tool_data is True
 
-    async def test_bot_message_id_threads_into_the_resumed_run(self, redis, stream_side) -> None:
-        """A HIL resume continues the ORIGINAL turn's message: the resumed run and the browser both need that id, or the client opens a second placeholder and renders its own tool accordion beside the first."""
-        item = _item(identity=_identity(bot_message_id="orig-msg-1"))
-
-        prepared = await prepare_run_from_item(CONVERSATION, item, claim=LockClaim.SEIZE)
-
-        assert prepared is not None
-        assert prepared.run.bot_message_id == "orig-msg-1"
-        event = stream_side.websocket.broadcast_to_user.await_args.args[1]
-        assert event["bot_message_id"] == "orig-msg-1"
-
-    async def test_an_item_without_a_pause_has_no_bot_message_id(self, redis, stream_side) -> None:
-        prepared = await prepare_run_from_item(CONVERSATION, _item(), claim=LockClaim.SEIZE)
+    async def test_a_detached_run_has_no_bot_message_id(self, redis, stream_side) -> None:
+        prepared = await prepare_run_from_item(CONVERSATION, _item())
 
         assert prepared is not None
         assert prepared.run.bot_message_id is None
@@ -631,9 +570,8 @@ class TestPrepareRunFromItem:
 class TestRunItemCarriesWorkflowExecution:
     """The execution id exists only on the workflow task's wide event.
 
-    A HIL resume rebuilds the run in some OTHER context (the approval request, the previous run's
-    finalize), so the stored item has to carry it or the resumed run's calls are unattributable to
-    the run.
+    A detached run is prepared in some OTHER context (the previous run's finalize), so the stored
+    item has to carry it or the run's calls are unattributable to the execution.
     """
 
     async def test_the_item_records_the_execution_in_flight(self) -> None:
@@ -649,7 +587,7 @@ class TestRunItemCarriesWorkflowExecution:
 
         assert item["workflow_execution_id"] == "exec-42"
 
-    def test_a_run_supplies_its_own_execution_id_when_pausing(self) -> None:
+    def test_a_run_supplies_its_own_execution_id(self) -> None:
         item = build_run_item(
             task="do it",
             configurable={"user_id": "u1", "workflow_id": "wf-9"},
@@ -659,7 +597,7 @@ class TestRunItemCarriesWorkflowExecution:
 
         assert item["workflow_execution_id"] == "exec-42"
 
-    async def test_a_resume_outside_any_boundary_still_knows_its_execution(
+    async def test_a_run_prepared_outside_any_boundary_still_knows_its_execution(
         self, redis, stream_side
     ) -> None:
         item = build_run_item(
@@ -669,9 +607,8 @@ class TestRunItemCarriesWorkflowExecution:
             workflow_execution_id="exec-42",
         )
 
-        # No wide-event boundary here on purpose: this is the approval
-        # request's context, where the workflow task's stamp never existed.
-        prepared = await prepare_run_from_item(CONVERSATION, item, claim=LockClaim.SEIZE)
+        # No wide-event boundary here on purpose: the workflow task's stamp never existed.
+        prepared = await prepare_run_from_item(CONVERSATION, item)
 
         assert prepared is not None
         assert prepared.run.workflow_id == "wf-9"
@@ -728,11 +665,6 @@ class TestReclaimDeadLock:
 
     async def test_no_lock_is_free(self, redis) -> None:
         assert await reclaim_dead_lock(CONVERSATION) is True
-
-    async def test_a_parked_runs_liveness_lasts_its_park(self, redis) -> None:
-        await hold_run_alive(CONVERSATION, "s1:t1", 9000)
-
-        assert 8990 < await redis.ttl(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:s1:t1") <= 9000
 
     async def test_a_holder_kept_alive_keeps_its_lock_until_it_lets_go(self, redis) -> None:
         """Every holder, a run or a workflow's reservation, stays live only while it renews."""
@@ -830,7 +762,7 @@ class TestLivenessRenewal:
         """One Redis blip once ended renewal for good, and the live run's lock later read as dead."""
         writes: list[str] = []
 
-        async def _hold(conversation_id: str, lock_value: str, ttl_seconds: int = 0) -> None:
+        async def _hold(conversation_id: str, lock_value: str) -> None:
             writes.append(lock_value)
             if len(writes) in (2, 4):
                 raise ConnectionError("redis blip")
@@ -856,7 +788,7 @@ class TestLivenessRenewal:
         writes: list[str] = []
         clock = iter([100.0, 112.345, 100.0 + EXECUTOR_ALIVE_GIVE_UP_SECONDS])
 
-        async def _hold(conversation_id: str, lock_value: str, ttl_seconds: int = 0) -> None:
+        async def _hold(conversation_id: str, lock_value: str) -> None:
             writes.append(lock_value)
             if len(writes) > 1:
                 raise ConnectionError("redis down")
@@ -920,9 +852,3 @@ class TestReadExecutorActivity:
         assert await eq.read_executor_activity(CONVERSATION) == eq.ExecutorActivitySnapshot(
             eq.ExecutorActivity.DEAD, "t1", "s1:t1"
         )
-
-    async def test_extend_names_a_run_without_a_task_id_by_its_stream(self, redis) -> None:
-        await redis.set(BUSY_KEY, "s1:", ex=5)
-
-        assert await eq.extend_lock_if_owned(CONVERSATION, "s1", None, 99) is True
-        assert await redis.ttl(BUSY_KEY) > 5

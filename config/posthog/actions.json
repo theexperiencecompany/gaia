@@ -212,7 +212,7 @@
     },
     {
       "name": "Approval decided (continuous)",
-      "description": "approval:decided (the barrier path) or hil:decision_submitted (the approval ledger). Not a rename: the HIL_LEDGER flag routes each decision to exactly one path and both are still live, so neither name is date-bounded.",
+      "description": "approval:decided (the retired interrupt path; historical events only) or hil:decision_submitted (the approval ledger, the only path since the interrupt path was deleted).",
       "tags": ["canonical"],
       "steps": [
         {

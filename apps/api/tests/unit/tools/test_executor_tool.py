@@ -229,14 +229,6 @@ def release_lock_on_attempt(
 def closed_approvals(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     """List which conversations had their approvals closed (the Mongo-backed HIL boundary)."""
     mock = AsyncMock(return_value=[])
-    monkeypatch.setattr(work_cancel, "cancel_conversation_approvals", mock)
-    return mock
-
-
-@pytest.fixture(autouse=True)
-def closed_ledger_approvals(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-    """List which conversations had their ledger approvals closed."""
-    mock = AsyncMock(return_value=[])
     monkeypatch.setattr(work_cancel, "cancel_ledger_approvals", mock)
     return mock
 
@@ -977,7 +969,6 @@ class TestCancelEverythingIsTheConversationStop:
         fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
         closed_approvals: AsyncMock,
-        closed_ledger_approvals: AsyncMock,
     ) -> None:
         await seed_live_work(CONVERSATION_ID)
 
@@ -992,7 +983,6 @@ class TestCancelEverythingIsTheConversationStop:
         assert await fake_redis.get(LOCK_KEY) is None
         assert await job_cancel_requested(BROWSER_JOB)
         closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
-        closed_ledger_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
 
     async def test_the_models_stop_is_not_the_users_and_emits_no_event(
         self,
@@ -1022,11 +1012,9 @@ class TestCancelEverythingIsTheConversationStop:
 
 
 class TestCancelClosesHilApprovals:
-    """A parked run's approval card is a live way back into the run.
+    """A pending approval outlives the run that asked for it.
 
-    The record outlives both the busy lock and the stream cancel flag, and a resume
-    runs under a fresh stream id the cancel never covered — so a still-pending
-    approval re-dispatches exactly the run the user asked to stop.
+    Left pending, a later Approve wakes exactly the work the user asked to stop.
     """
 
     async def test_stopping_the_running_task_closes_its_pending_approvals(
@@ -1043,27 +1031,11 @@ class TestCancelClosesHilApprovals:
 
         closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
 
-    async def test_stopping_the_running_task_closes_ledger_approvals_too(
-        self,
-        fake_redis: AsyncRedisCommands,
-        broadcast: AsyncMock,
-        closed_ledger_approvals: AsyncMock,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        # Ledger PENDING rows outlive the run exactly like barrier records: a
-        # later Approve must not re-animate work the user stopped.
-        monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
-        await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
-
-        await run_cancel_executor(config=config_for(), task_ids=[])
-
-        closed_ledger_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
-
     async def test_a_userless_stop_still_closes_ledger_approvals_for_the_conversation(
         self,
         fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
-        closed_ledger_approvals: AsyncMock,
+        closed_approvals: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
@@ -1073,7 +1045,7 @@ class TestCancelClosesHilApprovals:
 
         await run_cancel_executor(config=config, task_ids=[])
 
-        closed_ledger_approvals.assert_awaited_once_with(CONVERSATION_ID, "")
+        closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "")
 
     async def test_sparing_the_running_task_leaves_its_approvals_alone(
         self,

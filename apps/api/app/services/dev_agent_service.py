@@ -14,7 +14,6 @@ from typing import cast
 from uuid import uuid4
 
 from app.agents.core.subagents.subagent_runner import (
-    SubagentOutcome,
     execute_subagent_stream,
     prepare_executor_execution,
 )
@@ -68,22 +67,6 @@ async def _dev_base_configurable(
     return cast(AgentConfigurable, config["configurable"]), user_id, cid
 
 
-def _reject_pause(outcome: SubagentOutcome, agent_name: str) -> None:
-    """Fail loud when a direct run parks on a HIL approval.
-
-    A direct run has no stream and therefore no approval channel to answer the
-    interrupt on, so outcome.text is meaningless — returning it would hand
-    back an empty message as if it were the agent's answer.
-    """
-    if outcome.paused:
-        raise create_error(
-            message=f"{agent_name} paused for approval",
-            why="A direct run has no approval channel to resume the HIL interrupt on",
-            fix="Drive the run through the chat endpoint, or use a task that gates no tools",
-            status_code=409,
-        )
-
-
 async def run_executor_direct(
     email: str, task: str, conversation_id: str | None = None, model: str | None = None
 ) -> DevAgentRunResponse:
@@ -99,7 +82,6 @@ async def run_executor_direct(
             status_code=503,
         )
     outcome = await execute_subagent_stream(ctx)
-    _reject_pause(outcome, ctx.agent_name)
     log.info(
         f"{LogTag.DEV} ran executor directly",
         email=email,

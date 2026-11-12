@@ -9,16 +9,15 @@ plain HTTP, with nothing simulated:
    and tool overrides are per-user, so a shared identity would leak one case's
    always_tool write into the next case's policy;
 2. arm the gate (PUT /api/v1/approvals/preferences with mode and
-   tool_overrides). This matters: HIL_DEFAULT_MODE is always_allow
-   (app/models/hil_models.py), so HIL is OFF until a user turns it on — a
-   suite that skipped this step would prove nothing and pass everything;
+   tool_overrides), so the case pins the mode it tests instead of inheriting
+   HIL_DEFAULT_MODE (app/models/hil_models.py);
 3. send the turn to POST /api/v1/chat-stream. When a gated call is reached,
-   services/hil/gate.decide_tool_call raises LangGraph's interrupt();
-   bridge.publish_approval_request puts an approval_request card on the
-   turn's stream, and the pause signals the executor done — so the SSE response
-   ends with the card in it and nothing executed;
-4. answer it (POST /api/v1/approvals/{approval_id}/decision), which resumes
-   the run on a NEW queued_* stream;
+   services/hil/gate.decide_tool_call registers it PENDING in the approval
+   ledger and bridge.publish_ledger_request holds an approval_request card that
+   goes out when the run ends — so the SSE response ends with the card in it and
+   nothing executed;
+4. answer it (POST /api/v1/approvals/{approval_id}/decision), which wakes the
+   executor with a ticket it redeems on a NEW queued_* stream;
 5. re-read GET /api/v1/conversations/{id} until the card settles, and read the
    REAL effect back from the domain API (GET /api/v1/todos,
    GET /api/v1/notifications).
@@ -371,7 +370,7 @@ class HilTransport:
 
         The resumed run publishes on a queued_* stream whose id is announced
         over WebSocket only, so Mongo — re-read through the conversations API — is
-        the observable an HTTP client has. publish_decision writes the settled
+        the observable an HTTP client has. The decision writes the settled
         card onto that run's session, and the executor drain persists it.
         """
         deadline = time.monotonic() + RESUME_TIMEOUT_S

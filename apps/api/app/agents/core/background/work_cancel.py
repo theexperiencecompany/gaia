@@ -17,7 +17,6 @@ from app.db.redis import redis_cache
 from app.models.work_cancel_models import WorkCancelled
 from app.services.browser.job_stop import RequesterChat, stop_chat_jobs
 from app.services.hil.ledger_decide import cancel_ledger_approvals
-from app.services.hil.resolution import cancel_conversation_approvals
 from shared.py.wide_events import log
 
 # A placeholder stream id some lock writers use; it names no stream to cancel.
@@ -40,7 +39,7 @@ async def cancel_all_work(
     lock_value = await _held_lock(conversation_id)
     task_id = await _stop_running_executor(conversation_id, lock_value) if lock_value else None
     subagents = await RunningSubagents(conversation_id).stop_all()
-    approvals = await _close_approvals(conversation_id, user_id)
+    approvals = await cancel_ledger_approvals(conversation_id, user_id)
     pending = await inbox.clear()
     # After the clear: a stopped job's notice lands in the inbox and must survive it.
     browser_jobs = await stop_chat_jobs(conversation_id, requester)
@@ -71,7 +70,7 @@ async def cancel_named_work(
     if named and lock_value is not None:
         await _stop_running_executor(conversation_id, lock_value)
     # Only once the RUNNING task is gone: a spared run is still waiting on its approvals.
-    approvals = await _close_approvals(conversation_id, user_id) if named else []
+    approvals = await cancel_ledger_approvals(conversation_id, user_id) if named else []
     work = WorkCancelled(
         executor_stopped=named,
         executor_task_id=running_task_id if named else None,
@@ -105,13 +104,6 @@ async def _stop_running_executor(conversation_id: str, lock_value: str) -> str:
         conversation_id=conversation_id,
     )
     return task_id
-
-
-async def _close_approvals(conversation_id: str, user_id: str) -> list[str]:
-    """Close the conversation's pending approvals in both stores, so no Approve revives stopped work."""
-    barrier = await cancel_conversation_approvals(conversation_id, user_id)
-    ledger = await cancel_ledger_approvals(conversation_id, user_id)
-    return [*barrier, *ledger]
 
 
 async def _settle(

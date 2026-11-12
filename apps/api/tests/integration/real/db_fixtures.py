@@ -73,23 +73,6 @@ async def mongo_db(mongodb_url: str, monkeypatch):
 
 
 @pytest.fixture
-async def hil_approvals_collection(mongo_db):
-    """Real hil_approvals collection, emptied around each test.
-
-    Not autouse here — suites that stream chat on every turn (see the
-    tests/integration/real conftest) re-register it autouse so approval
-    records can be asserted on exactly; suites that only read it once opt in
-    explicitly (see tests/e2e/conftest.py).
-    """
-    coll = mongo_db["hil_approvals"]
-    await coll.delete_many({})
-
-    yield coll
-
-    await coll.delete_many({})
-
-
-@pytest.fixture
 async def real_redis(redis_url: str, monkeypatch):
     """Real Redis connection, patched into the app's redis_cache singleton so StreamManager uses real Redis.
 

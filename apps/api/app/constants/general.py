@@ -65,8 +65,8 @@ CHECKPOINT_PRUNE_MIN_CHECKPOINTS = 2
 CHECKPOINT_ORPHAN_SWEEP_MAX_THREADS = 2000
 
 # How long a finished spawn's thread is kept before the nightly sweep reclaims it.
-# It only has to outlive its parent turn's replay window, and HIL_APPROVAL_TIMEOUT_SECONDS
-# caps a pause at hours — days of margin buys post-hoc inspection of what a spawn did.
+# It only has to outlive its parent turn; days of margin buy post-hoc inspection
+# of what a spawn did.
 CHECKPOINT_SPAWN_THREAD_RETENTION_DAYS = 7
 # Upper bound on stale spawn threads swept per run.
 CHECKPOINT_SPAWN_SWEEP_MAX_THREADS = 2000

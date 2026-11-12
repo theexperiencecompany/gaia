@@ -212,31 +212,6 @@ JEV_REPLY_CRITERIA: dict[ReplyChoice, str] = {
 
 # --- what a blocked call tells the agent -----------------------------------------------
 
-# A decline ENDS the run and its final text reaches the user as a completed result, so
-# the template forces a CLOSED report (never a question or half-done "let me redo it").
-# Feedback is carried only as NEXT-turn context, since there's no channel to reply now.
-DENIED_TEMPLATE = (
-    "The user declined to run `{tool}`. The action was NOT performed.{feedback} "
-    "This ends the run. Do not retry the same call, and do not use another tool to produce "
-    "the same effect. A decline is not an obstacle to route around. Give a final report, "
-    "not a question: state plainly that the action did not happen, include anything you did "
-    "complete or prepare, and if they said what they wanted changed, note it as the open "
-    "item for next time. Do not ask the user for more input or pose a follow-up question. "
-    "This run cannot receive a reply, so a question would just hang unanswered."
-)
-
-# An expiry is not a dead end, so this nudges toward surfacing real work already done —
-# but preparing the REVERSIBLE version (a draft) is help, while producing the same
-# irreversible effect through another (still-gated) tool routes around the gate.
-TIMEOUT_TEMPLATE = (
-    "The approval request for `{tool}` expired. The user did not respond within {waited}. "
-    "The action was NOT performed. Do not retry it unchanged, and do not use another tool "
-    "to produce the same effect. This needs the user's approval, not a workaround. Report "
-    "whatever you did complete or prepare; preparing a reversible version (leaving a draft "
-    "rather than sending) is fine. Say how long you waited, what is left, and that it only "
-    "needs their go-ahead."
-)
-
 # A gate that cannot determine whether a call is safe must not run it — but the refusal
 # has to read as a system failure, never as a decision the user made. The model must not
 # tell the user they declined something they were never shown.
@@ -245,25 +220,6 @@ GATE_ERROR_TEMPLATE = (
     "action was NOT performed and the user was NOT asked. Tell the user a system "
     "error prevented the action and they can retry."
 )
-
-# A node replay reached a call auto mode already RAN in an earlier pass of the same
-# node (a sibling paused, so LangGraph re-ran it). This is the one refusal that must
-# NOT read as "did not happen" — the model must be told it already ran, or it repeats it.
-ALREADY_RAN_TEMPLATE = (
-    "`{tool}` already ran earlier in this turn and was not run a second time. The action "
-    "WAS performed. Treat it as done and carry on from there. Do not call it again, and "
-    "do not use another tool to repeat it."
-)
-
-# A gated call reached a run that cannot pause for approval (a background subagent,
-# workflow, or scheduled run), so it is refused rather than executed unapproved; the
-# recovery is for the action to run later where a user can actually confirm it.
-UNPAUSABLE_DENIAL_TEMPLATE = (
-    "`{tool}` requires the user's approval before it can run, and this run cannot "
-    "pause to ask them. The action was NOT performed. Report that this action needs "
-    "the user's approval so it can be run where they can confirm it. Do not retry it here."
-)
-
 
 # --- the LLM reply classifier (a bot user's chat answer to pending approvals) ----------
 

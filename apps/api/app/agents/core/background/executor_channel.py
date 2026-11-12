@@ -125,10 +125,6 @@ class RedisInbox:
         """How much work is waiting. Cheap enough to ask before every decision."""
         return await redis_cache.client.llen(self._key) if redis_cache.client else 0
 
-    async def keep_for(self, seconds: int) -> None:
-        """Keep what is waiting for at least seconds from now: a hold that long may keep its reader away."""
-        await redis_cache.client.expire(self._key, seconds)
-
 
 class ExecutorInbox(RedisInbox):
     """Pending messages for one conversation's executor.

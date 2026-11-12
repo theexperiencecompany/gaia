@@ -67,35 +67,11 @@
         - "After approval the action is carried out and the assistant confirms it naturally."
     score: {gates: [end_state]}
 
-# FAILING ON PURPOSE — the defect this suite found, reproduced deliberately.
-# Root cause traced 2026-08-08 against the live dev API:
-#
-#   A resumed run that PAUSES AGAIN never persists its tool_data, so a card the
-#   user already decided stays "pending" in the conversation forever.
-#
-# executor_runner._finalize_paused_run (executor_runner.py:311-347) is explicit:
-# "Deliberately does NOT deliver a result, drain the queue, or release the busy
-# lock." A HIL resume is dispatched as RunKind.QUEUED, and for a queued run
-# session.executor_owns_tool_data is True — no comms stream attaches its cards,
-# so `deliver_result` (executor_runner.py:379) is the ONLY writer. Pause before
-# it and the session's tool_events — including the settled `approved` card that
-# bridge.publish_decision just appended (bridge.py:101-121, :241-253) — are
-# dropped. `hil_approvals` and the conversation then disagree permanently.
-#
-# First observed accidentally: an open-ended "notify my phone" made the agent
-# ask which channel (a gated send), then send for real (a second gated send).
-# Measured on that run:
-#   hil_approvals 52ff4d30 = approved  | conversation card 52ff4d30 = pending
-#   hil_approvals 47861988 = pending   | absent from the conversation entirely
-# So the user sees a stale card for a finished action and NO card for the
-# approval actually holding their conversation's busy lock (6h TTL).
-#
-# This case forces it: two tools, both gated, one turn. Approving the first
-# resumes into the second gate, and the first card must still have settled.
-# `cards: [approved]` stays as written — weakening it deletes the only signal.
+# Two tools, both gated, one turn: each registers its own approval, and deciding
+# the first must settle its card whatever happens to the second.
 - id: hil-double-gate-first-card-persists
   ticket: "Two gated actions in one turn: deciding the first must still settle its card."
-  tags: [gate, approve, known-defect]
+  tags: [gate, approve]
   prompt: "create a tracked task called 'water the plants' and then send me an in-app notification that it's been created"
   setup:
     hil:
@@ -104,8 +80,7 @@
     decision: {kind: approve}
   expected:
     category: gate
-    # The decided card must reach the conversation even though the run parked
-    # again on the second gated call. Today it does not.
+    # The decided card must reach the conversation while the second call still waits.
     end_state: {cards: [approved]}
     judge:
       criteria:
@@ -225,8 +200,8 @@
   expected:
     category: gate
     # The intent judge finds the user's own words authorize the send, so the
-    # card is published already settled as auto_approved and the action runs.
-    end_state: {cards: [auto_approved], notifications_containing: 1}
+    # action runs with no card at all.
+    end_state: {cards: [], notifications_containing: 1}
     judge:
       criteria:
         - "auto mode carries out an action the user plainly asked for, without a pause."

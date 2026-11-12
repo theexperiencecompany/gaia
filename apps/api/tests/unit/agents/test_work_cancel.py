@@ -21,9 +21,7 @@ from tests.work_cancel_fakes import (
     BROWSER_JOB,
     EXECUTOR_STREAM,
     EXECUTOR_TASK,
-    LEDGER_APPROVAL,
     SUBAGENT_STREAM,
-    ApprovalSeams,
     approval_seams,
     seed_live_work,
 )
@@ -35,12 +33,12 @@ USER = "user-1"
 
 
 @pytest.fixture
-def pending_approvals() -> Iterator[ApprovalSeams]:
+def pending_approvals() -> Iterator[AsyncMock]:
     yield from approval_seams(pending=True)
 
 
 @pytest.fixture
-def no_approvals() -> Iterator[ApprovalSeams]:
+def no_approvals() -> Iterator[AsyncMock]:
     yield from approval_seams(pending=False)
 
 
@@ -58,7 +56,7 @@ def broadcast(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
 async def test_one_stop_cancels_the_run_its_inbox_subagents_approvals_and_browser_job(
     fake_redis: fakeredis.aioredis.FakeRedis,
-    pending_approvals: ApprovalSeams,
+    pending_approvals: AsyncMock,
     broadcast: AsyncMock,
 ) -> None:
     await seed_live_work(CONVERSATION)
@@ -70,20 +68,19 @@ async def test_one_stop_cancels_the_run_its_inbox_subagents_approvals_and_browse
         executor_task_id=EXECUTOR_TASK,
         pending_tasks=1,
         subagent_ids=["s1"],
-        approval_ids=[APPROVAL, LEDGER_APPROVAL],
+        approval_ids=[APPROVAL],
         browser_jobs={BROWSER_JOB: BrowserStopOutcome.STOPPED},
     )
     assert await stream_manager.is_cancelled(EXECUTOR_STREAM)
     assert await stream_manager.is_cancelled(SUBAGENT_STREAM)
     assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}") is None
     assert await job_cancel_requested(BROWSER_JOB)
-    pending_approvals.barrier.assert_awaited_once_with(CONVERSATION, USER)
-    pending_approvals.ledger.assert_awaited_once_with(CONVERSATION, USER)
+    pending_approvals.assert_awaited_once_with(CONVERSATION, USER)
     broadcast.assert_awaited_once()
 
 
 async def test_the_next_run_is_told_the_work_was_stopped_and_what_to_do_instead(
-    no_approvals: ApprovalSeams, broadcast: AsyncMock
+    no_approvals: AsyncMock, broadcast: AsyncMock
 ) -> None:
     await seed_live_work(CONVERSATION)
 
@@ -99,18 +96,18 @@ async def test_the_next_run_is_told_the_work_was_stopped_and_what_to_do_instead(
 
 
 async def test_approvals_close_even_when_no_run_holds_the_lock(
-    pending_approvals: ApprovalSeams, broadcast: AsyncMock
+    pending_approvals: AsyncMock, broadcast: AsyncMock
 ) -> None:
     """A parked approval outlives the busy lock; left pending, Approve revives the stopped work."""
     work = await cancel_all_work(CONVERSATION, USER, None)
 
-    assert work.approval_ids == [APPROVAL, LEDGER_APPROVAL]
-    pending_approvals.barrier.assert_awaited_once_with(CONVERSATION, USER)
+    assert work.approval_ids == [APPROVAL]
+    pending_approvals.assert_awaited_once_with(CONVERSATION, USER)
 
 
 async def test_an_idle_conversation_returns_an_empty_summary_and_touches_nothing(
     fake_redis: fakeredis.aioredis.FakeRedis,
-    no_approvals: ApprovalSeams,
+    no_approvals: AsyncMock,
     broadcast: AsyncMock,
 ) -> None:
     work = await cancel_all_work(CONVERSATION, USER, None)
@@ -123,7 +120,7 @@ async def test_an_idle_conversation_returns_an_empty_summary_and_touches_nothing
 
 
 async def test_a_second_stop_finds_nothing_left(
-    no_approvals: ApprovalSeams, broadcast: AsyncMock
+    no_approvals: AsyncMock, broadcast: AsyncMock
 ) -> None:
     await seed_live_work(CONVERSATION)
     await cancel_all_work(CONVERSATION, USER, None)

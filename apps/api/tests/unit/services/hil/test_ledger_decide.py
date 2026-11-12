@@ -23,8 +23,12 @@ from app.models.execute_models import DispatchError, DispatchErrorKind
 from app.models.hil_models import ApprovalLedgerDocument, LedgerState
 from app.models.user_models import AuthenticatedUser
 from app.schemas.hil_schemas import ApprovalDecisionRequest, BatchDecisionItem, BatchDecisionOutcome
-from app.services.hil import ledger_decide, resolution
+from app.services.hil import errors, ledger_decide
 from app.services.hil.describe import describe_call
+from app.services.hil.errors import (
+    ApprovalRequestForbiddenError,
+    ApprovalRequestNotFoundError,
+)
 from app.services.hil.ledger_decide import (
     STALLED_EXECUTING_MINUTES,
     LedgerDecision,
@@ -37,10 +41,6 @@ from app.services.hil.ledger_decide import (
     reconcile_conversation_ledger,
     redeem_approved,
     revoke_ticket,
-)
-from app.services.hil.resolution import (
-    ApprovalRequestForbiddenError,
-    ApprovalRequestNotFoundError,
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilDecisionSubmitted, HilRevoked
@@ -222,8 +222,8 @@ class TestDecideLedger:
         assert outcome.state.value == "approved"
 
     async def test_unknown_id_raises_not_found(self) -> None:
+        from app.services.hil.errors import ApprovalRequestNotFoundError
         from app.services.hil.ledger_decide import decide_ledger
-        from app.services.hil.resolution import ApprovalRequestNotFoundError
 
         with (
             patch(f"{MODULE}.approval_ledger_repository", new=_repo(None)),
@@ -379,8 +379,8 @@ class TestConversationFlagSync:
     async def test_refused_revoke_syncs_nothing(self) -> None:
         """A revoke that changed nothing must not touch the flag — the row's state (and any flag it implies) is exactly as it was."""
         from app.services.hil import ledger_decide
+        from app.services.hil.errors import ApprovalRequestForbiddenError
         from app.services.hil.ledger_decide import revoke_ticket
-        from app.services.hil.resolution import ApprovalRequestForbiddenError
 
         repo = _repo(_row())
         with (
@@ -403,8 +403,8 @@ class TestConversationFlagSync:
 @pytest.mark.unit
 class TestDecideHardening:
     async def test_empty_owner_never_matches_any_user(self) -> None:
+        from app.services.hil.errors import ApprovalRequestForbiddenError
         from app.services.hil.ledger_decide import decide_ledger
-        from app.services.hil.resolution import ApprovalRequestForbiddenError
 
         repo = _repo(_row(user_id=""))
         with (
@@ -824,8 +824,8 @@ class TestRevokeTicket:
 
     async def test_revoke_cross_user_forbidden(self) -> None:
         from app.services.hil import ledger_decide
+        from app.services.hil.errors import ApprovalRequestForbiddenError
         from app.services.hil.ledger_decide import revoke_ticket
-        from app.services.hil.resolution import ApprovalRequestForbiddenError
 
         repo = _repo(_row())
         with (
@@ -1031,8 +1031,8 @@ class TestApproveResumesBackgroundOwner:
     async def test_redeem_wrong_conversation_looks_absent(self) -> None:
         """No existence leak across conversations — mirrors revoke_tool."""
         from app.services.hil import ledger_decide
+        from app.services.hil.errors import ApprovalRequestNotFoundError
         from app.services.hil.ledger_decide import redeem_approved
-        from app.services.hil.resolution import ApprovalRequestNotFoundError
 
         repo = _repo(_row(state=LedgerState.APPROVED))
         with (
@@ -1278,7 +1278,6 @@ class TestRevokeSettlesSessionFrame:
                         ),
                         auto_reason=None,
                         asked_at=datetime.now(UTC),
-                        expires_at=datetime.now(UTC),
                     ),
                 )
             row = _row(proposing_run_id=stream_id, state=LedgerState.REVOKED)
@@ -2248,7 +2247,7 @@ class TestDecideLedgerAlwaysToolScope:
 
     async def test_a_disconnect_refuses_the_always_scope_by_its_arguments_alone(self) -> None:
         repo = _repo(_row(tool_name="manage_linked_account", args={"action": "disconnect"}))
-        with tools_that_always_ask(), pytest.raises(resolution.ToolAlwaysAsksError):
+        with tools_that_always_ask(), pytest.raises(errors.ToolAlwaysAsksError):
             await self._decide(repo, decision="approve", scope="always_tool")
         repo.transition.assert_not_awaited()
 
@@ -2259,7 +2258,7 @@ class TestDecideLedgerAlwaysToolScope:
         repo = _repo(_row(tool_name="update_preferences"))
         with (
             tools_that_always_ask("update_preferences"),
-            pytest.raises(resolution.ToolAlwaysAsksError),
+            pytest.raises(errors.ToolAlwaysAsksError),
         ):
             await self._decide(repo, decision="approve", scope="always_tool")
         repo.transition.assert_not_awaited()

@@ -114,7 +114,7 @@ async def test_gate_threads_never_auto_prefs_into_the_judge() -> None:
             new=AsyncMock(return_value=IntentDecision(outcome="ask", reason="x")),
         ) as judge,
     ):
-        await gate._judge(request, context, unpack_tool_call(request), None, "s")
+        await gate._judge(request, context, unpack_tool_call(request), "s")
     assert judge.await_args.args[0].never_auto is True
 
 
@@ -135,7 +135,7 @@ async def _never_auto_for(request: ToolCallRequest, never_auto_tools: list[str])
             new=AsyncMock(return_value=IntentDecision(outcome="ask", reason="x")),
         ) as judge,
     ):
-        await gate._judge(request, context, unpack_tool_call(request), None, "s")
+        await gate._judge(request, context, unpack_tool_call(request), "s")
     return bool(judge.await_args.args[0].never_auto)
 
 
@@ -174,7 +174,7 @@ async def test_unreadable_prefs_do_not_take_the_judge_down() -> None:
             new=AsyncMock(return_value=IntentDecision(outcome="ask", reason="x")),
         ) as judge,
     ):
-        await gate._judge(request, context, unpack_tool_call(request), None, "s")
+        await gate._judge(request, context, unpack_tool_call(request), "s")
     assert judge.await_args.args[0].never_auto is False
 
 
@@ -215,7 +215,6 @@ def _forbidden_jev_decision() -> IntentDecision:
 async def test_a_forbidden_verdict_asks_with_the_plain_note_on_the_ledger_path() -> None:
     ledger = _auto_ledger()
     with (
-        patch("app.services.hil.gate.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
         patch("app.services.hil.gate.resolve_policy", new=AsyncMock(return_value="auto")),
         patch("app.services.hil.gate.approval_ledger_repository", new=ledger),
         patch(
@@ -226,8 +225,6 @@ async def test_a_forbidden_verdict_asks_with_the_plain_note_on_the_ledger_path()
             "app.services.hil.gate._judge", new=AsyncMock(return_value=_forbidden_jev_decision())
         ),
         patch("app.services.hil.gate.publish_ledger_request", new=AsyncMock()) as pub,
-        patch("app.services.hil.gate.remember_declined_call", new=AsyncMock()) as remember,
-        patch("app.services.hil.gate.interrupt") as intr,
     ):
         result = await gate.decide_tool_call(_auto_request())
 
@@ -235,8 +232,6 @@ async def test_a_forbidden_verdict_asks_with_the_plain_note_on_the_ledger_path()
     assert result.additional_kwargs[HIL_STATUS_KWARG] == "pending"
     ledger.register.assert_awaited_once()
     assert pub.await_args.kwargs["auto_reason"] == AUTO_ASK_NOTE
-    remember.assert_not_awaited()
-    intr.assert_not_called()
 
 
 async def test_a_throwing_judge_fails_closed_to_ask() -> None:
@@ -264,7 +259,6 @@ async def test_ask_carries_auto_mode_reason_to_card_and_model() -> None:
     # auto mode was unsure and why — never a bare "needs your decision".
     ledger = _auto_ledger()
     with (
-        patch("app.services.hil.gate.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
         patch("app.services.hil.gate.resolve_policy", new=AsyncMock(return_value="auto")),
         patch("app.services.hil.gate.approval_ledger_repository", new=ledger),
         patch(
@@ -276,7 +270,6 @@ async def test_ask_carries_auto_mode_reason_to_card_and_model() -> None:
             new=AsyncMock(return_value=IntentDecision(outcome="ask", reason="vague scope")),
         ),
         patch("app.services.hil.gate.publish_ledger_request", new=AsyncMock()) as pub,
-        patch("app.services.hil.gate.interrupt") as intr,
     ):
         result = await gate.decide_tool_call(_auto_request())
 
@@ -284,4 +277,3 @@ async def test_ask_carries_auto_mode_reason_to_card_and_model() -> None:
     assert result.additional_kwargs[HIL_STATUS_KWARG] == "pending"
     assert "Auto mode wasn't sure: vague scope" in result.content
     assert pub.await_args.kwargs["auto_reason"] == AUTO_ASK_NOTE
-    intr.assert_not_called()

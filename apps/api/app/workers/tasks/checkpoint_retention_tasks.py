@@ -206,10 +206,9 @@ async def sweep_stale_spawn_threads(
 ) -> dict[str, int]:
     """Delete spawned-subagent threads whose newest checkpoint has gone stale.
 
-    Outlives its run so a sibling's approval replay can see it finished;
-    HIL_APPROVAL_TIMEOUT_SECONDS caps that window, so pending writes are NOT
-    spared here (unlike the version prune) — an expired-approval spawn is
-    exactly the leak this collects.
+    Outlives its run for post-hoc inspection; pending writes are NOT spared
+    here (unlike the version prune) — an abandoned spawn is exactly the leak
+    this collects.
     """
     cutoff = datetime.now(UTC) - timedelta(days=CHECKPOINT_SPAWN_THREAD_RETENTION_DAYS)
     async with pool.connection() as conn, conn.cursor() as cur:

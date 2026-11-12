@@ -33,14 +33,16 @@ from app.models.hil_models import (
     BatchItemDecision,
     DecisionAction,
     DecisionResult,
-    HILApprovalRecord,
     LedgerState,
 )
 from app.models.message_models import MessageDict
 from app.services.feature_flags import is_jev_reply_enabled
-from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.hil.bridge import build_action_detail
 from app.services.hil.describe import describe_call
+from app.services.hil.errors import (
+    ApprovalRequestForbiddenError,
+    ApprovalRequestNotFoundError,
+)
 from app.services.hil.jev_reply import ask_jev_reply, settle_reply
 from app.services.hil.ledger_decide import LedgerDecision, decide_ledger
 from app.services.hil.prompts import (
@@ -48,17 +50,10 @@ from app.services.hil.prompts import (
     CONVERSATIONAL_CONTEXT_BLOCK,
     CONVERSATIONAL_REPLY_PROMPT,
 )
-from app.services.hil.resolution import (
-    ApprovalRequestForbiddenError,
-    ApprovalRequestNotFoundError,
-    resolve_approval,
-)
 from app.utils.general_utils import clip_text
 from shared.py.wide_events import log
 
-# Ground truth for a settled ledger row in the bot reply's words. Lives here, not
-# result_delivery (which only knows barrier statuses), so the bot path can narrate
-# executed/failed/unknown/revoked without depending on that module.
+# Ground truth for a settled ledger row, in the words the bot path narrates.
 LEDGER_OUTCOME_TEXT: dict[LedgerState, str] = {
     LedgerState.APPROVED: "approved by the user; the agent runs it from the ticket",
     LedgerState.DENIED: "denied by the user; the action did NOT run",
@@ -68,8 +63,6 @@ LEDGER_OUTCOME_TEXT: dict[LedgerState, str] = {
     LedgerState.REVOKED: "withdrawn by the agent; the action did NOT run",
     LedgerState.CANCELLED: "cancelled when the user stopped the run; the action did NOT run",
 }
-
-_PendingRecord = HILApprovalRecord | ApprovalLedgerDocument
 
 
 @dataclass(frozen=True)
@@ -106,19 +99,17 @@ async def resolve_pending_from_message(
     return await _resolve_batch(pending, user_id, message, history)
 
 
-async def list_pending_for_reply(
-    conversation_id: str,
-) -> list[HILApprovalRecord] | list[ApprovalLedgerDocument]:
+async def list_pending_for_reply(conversation_id: str) -> list[ApprovalLedgerDocument]:
     """List the approvals a chat reply decides, in the order the bot prompt numbers them, oldest first."""
-    pending = await list_pending_for_conversation(conversation_id)
-    if pending:
-        return pending
-    # Barrier store empty: ledger-enabled users' rows live in approval_ledger.
-    return await _list_pending_ledger(conversation_id)
+    return [
+        row
+        for row in await approval_ledger_repository.list_open(conversation_id)
+        if row.state is LedgerState.PENDING
+    ]
 
 
 async def _resolve_single(
-    record: _PendingRecord,
+    record: ApprovalLedgerDocument,
     user_id: str,
     message: str,
     history: list[MessageDict] | None,
@@ -135,21 +126,20 @@ async def _resolve_single(
         return ReplyOutcome(action="unrelated")
 
     action, feedback = no_arg_edit(result.action, result.feedback)
-    await _decide_record(record, user_id, action, feedback)
+    await _safe_resolve_ledger(record.approval_id, user_id, action, feedback)
     return ReplyOutcome(action=action, decided=(_describe(record),))
 
 
 async def _resolve_batch(
-    pending: list[HILApprovalRecord] | list[ApprovalLedgerDocument],
+    pending: list[ApprovalLedgerDocument],
     user_id: str,
     message: str,
     history: list[MessageDict] | None,
 ) -> ReplyOutcome | None:
     """Apply a per-item classification of message to the pending batch.
 
-    Decisions dispatch through resolve_approval (barrier) or decide_ledger
-    (ledger) one by one; the per-conversation resume slot ensures only the first
-    actually re-dispatches the executor — the join round it wakes collects the rest.
+    Decisions commit through decide_ledger one by one; each wakes the agent with its
+    own ticket or verdict.
     """
     action_details = [build_action_detail(r.summary, r.args) for r in pending]
     result = await interpret_batch_decision_message(
@@ -168,39 +158,25 @@ async def _resolve_batch(
 
 
 async def _apply_decisions(
-    pending: list[HILApprovalRecord] | list[ApprovalLedgerDocument],
+    pending: list[ApprovalLedgerDocument],
     user_id: str,
     decisions: list[BatchItemDecision],
-) -> tuple[list[_PendingRecord], list[_PendingRecord]]:
+) -> tuple[list[ApprovalLedgerDocument], list[ApprovalLedgerDocument]]:
     """Dispatch every in-range decision onto its pending item; returns (approved, denied)."""
-    approved: list[_PendingRecord] = []
-    denied: list[_PendingRecord] = []
+    approved: list[ApprovalLedgerDocument] = []
+    denied: list[ApprovalLedgerDocument] = []
     for decision in decisions:
         if decision.action == "leave" or not 1 <= decision.index <= len(pending):
             continue
         record = pending[decision.index - 1]
         action, feedback = no_arg_edit(decision.action, decision.feedback)
-        await _decide_record(record, user_id, action, feedback)
+        await _safe_resolve_ledger(record.approval_id, user_id, action, feedback)
         (approved if action == "approve" else denied).append(record)
     return approved, denied
 
 
-async def _decide_record(
-    record: _PendingRecord,
-    user_id: str,
-    action: Literal["approve", "deny"],
-    feedback: str | None,
-) -> None:
-    if isinstance(record, ApprovalLedgerDocument):
-        await _safe_resolve_ledger(record.approval_id, user_id, action, feedback)
-    else:
-        await _safe_resolve(record.approval_id, user_id, action, feedback)
-
-
-def _describe(record: _PendingRecord) -> ApprovalDescription:
-    if isinstance(record, ApprovalLedgerDocument):
-        return describe_call(record.tool_name, record.args, None, record.account)
-    return describe_call(record.tool_name, record.args, record.integration_name)
+def _describe(record: ApprovalLedgerDocument) -> ApprovalDescription:
+    return describe_call(record.tool_name, record.args, None, record.account)
 
 
 async def interpret_batch_decision_message(
@@ -363,29 +339,6 @@ def _log_jev_fallback(error: Exception) -> None:
         error=str(error),
         error_type=type(error).__name__,
     )
-
-
-async def _safe_resolve(
-    approval_id: str, user_id: str, decision: Literal["approve", "deny"], feedback: str | None
-) -> None:
-    """Apply one decision, tolerating an already-resolved/expired approval."""
-    with contextlib.suppress(ApprovalRequestNotFoundError, ApprovalRequestForbiddenError):
-        await resolve_approval(
-            approval_id=approval_id,
-            user_id=user_id,
-            kind=decision,
-            feedback=feedback,
-            scope="once",
-        )
-
-
-async def _list_pending_ledger(conversation_id: str) -> list[ApprovalLedgerDocument]:
-    """Ledger-enabled users' decidable rows: list_open covers live states, only PENDING decides here."""
-    return [
-        row
-        for row in await approval_ledger_repository.list_open(conversation_id)
-        if row.state is LedgerState.PENDING
-    ]
 
 
 async def _safe_resolve_ledger(

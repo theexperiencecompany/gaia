@@ -21584,7 +21584,7 @@
         "description": "Everything one stop cancelled; all empty when the conversation was idle.",
         "properties": {
           "approval_ids": {
-            "description": "Pending approvals closed, barrier and ledger.",
+            "description": "Pending approvals closed.",
             "items": {
               "type": "string"
             },
@@ -22635,7 +22635,7 @@
   "paths": {
     "/api/v1/approvals/batch-decision": {
       "post": {
-        "description": "Decide several pending approvals in one submission (the batch review).\n\nPer-item outcomes: one already-decided or expired approval never fails the\nrest. Only the first resolvable decision dispatches the paused executor; the\njoin round it wakes collects the remaining decisions durably.",
+        "description": "Decide several pending approvals in one submission (the batch review).\n\nPer-item outcomes: each item commits exactly once on the ledger, and one\nalready-decided approval never fails the rest.",
         "operationId": "approvals_post_batch_decision",
         "requestBody": {
           "content": {
@@ -22946,7 +22946,7 @@
     },
     "/api/v1/approvals/{approval_id}/decision": {
       "post": {
-        "description": "Apply a button decision and resume the paused run.\n\n``resolve_approval`` raises :class:`ApprovalRequestNotFoundError` (410) or\n:class:`ApprovalRequestForbiddenError` (403) \u2014 both ``AppError`` subclasses \u2014 so\nlate/duplicate or cross-user deliveries can't double-resolve a request.",
+        "description": "Commit a card's decision on the approval ledger and wake the agent.\n\nRaises ApprovalRequestNotFoundError (410) or ApprovalRequestForbiddenError (403),\nso late/duplicate or cross-user deliveries can't double-resolve a request.",
         "operationId": "approvals_post_approval_decision",
         "parameters": [
           {

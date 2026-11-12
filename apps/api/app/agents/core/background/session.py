@@ -99,14 +99,13 @@ class RunIdentity:
     #: The ORIGINAL live turn's bot message id — see ``ExecutorRun.bot_message_id``.
     bot_message_id: str | None = None
     #: ``perf_counter`` stamped by ``call_executor`` at dispatch. Run start
-    #: minus this is the queue wait. ``None`` on pre-stamp runs; cleared on
-    #: HIL pause re-record (the resume's wait was user time, not queue time).
+    #: minus this is the queue wait. ``None`` on pre-stamp runs.
     t_dispatch_perf: float | None = None
     #: Whether the run waited on the per-conversation busy-lock queue before it
-    #: started. Metric-only: a HIL resume is ``RunKind.QUEUED`` (it runs on its
-    #: own stream) but never queued on the lock, so it must not label as queued.
+    #: started. Metric-only: a detached run is ``RunKind.QUEUED`` (it runs on its
+    #: own stream) without having queued on the lock.
     queued: bool = False
-    #: Wall-clock dispatch time, kept across a queue pop and a HIL resume so a
+    #: Wall-clock dispatch time, kept across a queue pop so a
     #: rerun of the same task re-sends its lifecycle events as the same rows.
     dispatched_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -140,9 +139,8 @@ class ExecutorRun:
     kind: RunKind
     task_id: str | None
     user_message_id: str | None
-    #: The ORIGINAL live turn's bot message id, present only for a HIL
-    #: pause/resume (see ``executor_runner._record_pause``); a plain queued
-    #: dispatch mints a fresh message keyed on ``task_id`` instead.
+    #: The live turn's bot message id the run renders into; a queued dispatch
+    #: mints a fresh message keyed on ``task_id`` instead.
     bot_message_id: str | None = None
     workflow_id: str | None = None
     #: The workflow execution this run belongs to. Read off the workflow task's

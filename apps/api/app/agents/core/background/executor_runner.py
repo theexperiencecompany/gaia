@@ -13,13 +13,12 @@ The executor:busy Redis key prevents concurrent executor spawns per
 conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 import time
 from typing import NamedTuple
 from uuid import uuid4
 
 from langgraph.errors import GraphRecursionError
-from langgraph.types import Command
 from langsmith import traceable
 
 from app.agents.core.background.comms_narrator import record_executor_cancellation
@@ -31,13 +30,10 @@ from app.agents.core.background.executor_capture import (
 from app.agents.core.background.executor_channel import ExecutorInbox, decide_drain
 from app.agents.core.background.executor_progress import ProgressRecorder
 from app.agents.core.background.executor_queue import (
-    LockClaim,
     PreparedQueuedTask,
     build_lock_value,
     build_run_item,
     close_detached_stream,
-    extend_lock_if_owned,
-    hold_run_alive,
     keep_alive,
     prepare_run_from_item,
     reclaim_dead_lock,
@@ -56,26 +52,20 @@ from app.agents.core.outcome_review import review_run
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     execute_subagent_stream,
-    paused_approval_ids,
     prepare_executor_execution,
     thread_messages,
 )
 from app.agents.prompts.comms_prompts import outcome_delivery_note
 from app.constants.agents import NON_WAKING_TAGS, AgentTag, OutcomeState
 from app.constants.executor import (
-    EXECUTOR_APPROVAL_LOST_MESSAGE,
     EXECUTOR_CARRY_TASK,
     EXECUTOR_CRASH_MESSAGE,
-    EXECUTOR_ERROR_APPROVAL_LOST,
-    EXECUTOR_ERROR_MALFORMED_APPROVAL,
     EXECUTOR_ERROR_NO_ANSWER,
     EXECUTOR_ERROR_PREP_FAILED,
-    EXECUTOR_PAUSED,
     EXECUTOR_STEP_LIMIT_MESSAGE,
     MESSAGE_ID_KEY,
     VOICE_TTS_KEY,
 )
-from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS, HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.models.agent_models import (
@@ -87,8 +77,6 @@ from app.models.chat_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
 from app.services.browser.job_stop import stop_browser_job
-from app.services.hil.approvals_store import set_resume_item
-from app.services.hil.resume_slot import release_resume_dispatch
 from app.services.latency_metrics import (
     observe_executor_active,
     observe_executor_e2e,
@@ -113,24 +101,20 @@ async def run_executor_background(
     run: ExecutorRun,
     task: str,
     configurable: AgentConfigurable,
-    resume: Command | None = None,
 ) -> None:
-    """Run (or resume) the executor agent in background and hand its result to delivery.
+    """Run the executor agent in background and hand its result to delivery.
 
     Never raises — exceptions route through comms as an <executor_error> message.
-    A paused run (resume continuing a HIL approval) keeps the busy lock instead of
-    delivering, since the thread has pending work until the approval resolves.
-    Attributed to the turn that started the run tree, wherever it is resumed.
+    Attributed to the turn that started the run tree.
     """
     with analytics_context(run_analytics_context(configurable)):
-        await _run_executor(run, task, configurable, resume)
+        await _run_executor(run, task, configurable)
 
 
 async def _run_executor(
     run: ExecutorRun,
     task: str,
     configurable: AgentConfigurable,
-    resume: Command | None,
 ) -> None:
     # This task outlives the spawning request/turn, so it needs its own
     # wide-event boundary or every log.set() (LLM accounting included) is
@@ -184,7 +168,7 @@ async def _run_executor(
             )
             try:
                 with span() as elapsed_active:
-                    result = await _execute_executor(task, configurable, run, resume)
+                    result = await _execute_executor(task, configurable, run)
                 active_ms = round(elapsed_active() * 1000.0, 2)
                 result_text, result_type, run_ctx = result.text, result.type, result.ctx
                 stopped = result.stopped
@@ -194,17 +178,8 @@ async def _run_executor(
                     observe_executor_ttft(ttft_ms / 1000.0, queued=queued)
                 timing_fields = _timing_fields(queue_wait_ms, ttft_ms, active_ms)
                 log.set(executor={"queued": queued, **timing_fields})
-                if result.paused_on and not await _record_pause(
-                    run, task, configurable, result.paused_on
-                ):
-                    # Recording failed, so no decision can ever resume this thread; finalizing
-                    # as paused would hold the busy lock for its full TTL waiting for a resume
-                    # that can't come. Fail instead: the lock releases and the sweep closes it.
-                    result_text, result_type = EXECUTOR_APPROVAL_LOST_MESSAGE, "error"
-                    error_type = EXECUTOR_ERROR_APPROVAL_LOST
-                # Cancellation and the pause-record outcome are only known here, so
-                # read both after the pause decision: the span must carry the same
-                # status finalize records, not the pre-pause guess.
+                # Cancellation is only known here: the span must carry the same
+                # status finalize records.
                 run_cancelled = bool(run.stream_id) and await StreamManager.is_cancelled(
                     run.stream_id
                 )
@@ -221,7 +196,6 @@ async def _run_executor(
                 lifecycle.queue_wait_ms = queue_wait_ms
                 lifecycle.executor_ttft_ms = ttft_ms
                 lifecycle.executor_active_ms = active_ms
-                lifecycle.paused = result_type == EXECUTOR_PAUSED
                 if result_type == "error":
                     lifecycle.failure_reason = error_type
             finally:
@@ -229,11 +203,6 @@ async def _run_executor(
                 await _finalize_executor_run(
                     run, task, result_text, result_type, run_ctx, stopped=stopped
                 )
-                if resume is not None:
-                    # This run held the conversation's resume slot (claimed at dispatch).
-                    # Freeing it AFTER finalize means the next decision can dispatch only
-                    # once this run's pause/completion bookkeeping is fully written.
-                    await release_resume_dispatch(run.conversation_id)
 
 
 def _run_props(run: ExecutorRun) -> AgentRunStarted:
@@ -285,43 +254,7 @@ def _active_status(result_type: str, cancelled: bool) -> str:
     """Label the active span with the same statuses finalize records."""
     if result_type == "error":
         return "error"
-    if result_type == EXECUTOR_PAUSED:
-        return "paused"
     return "cancelled" if cancelled else "success"
-
-
-async def _record_pause(
-    run: ExecutorRun, task: str, configurable: AgentConfigurable, approval_ids: tuple[str, ...]
-) -> bool:
-    """Attach this run's re-dispatch context to every approval it paused on.
-
-    Each paused approval gets the same resume context so whichever decision lands
-    first can re-dispatch the run. Returns whether every write landed — it is the only thing that makes
-    the pause resumable, so a failure is not something the run can carry on
-    through: the caller fails the run rather than parking it forever.
-    """
-    try:
-        item = build_run_item(
-            task=task,
-            configurable=configurable,
-            # A pause re-dispatch is a new incarnation: drop the original stamp
-            # so the resumed run measures no queue wait for user decision time,
-            # and clear the queue origin — it did not wait on the busy lock.
-            identity=replace(run.identity, t_dispatch_perf=None, queued=False),
-            workflow_execution_id=run.workflow_execution_id,
-        )
-        for approval_id in approval_ids:
-            await set_resume_item(approval_id, item)
-        return True
-    except Exception as e:  # a lost pause must fail the run, not the process
-        log.error(
-            f"{LogTag.HIL} Could not record resume context; failing the paused run",
-            approval_ids=list(approval_ids),
-            stream_id=run.stream_id,
-            task_id=run.task_id,
-            error=str(e),
-        )
-        return False
 
 
 def _executor_ttft_ms(run: ExecutorRun, run_start: float) -> float | None:
@@ -342,8 +275,7 @@ def _executor_ttft_ms(run: ExecutorRun, run_start: float) -> float | None:
 class _ExecutorResult(NamedTuple):
     """One executor run's terminal shape.
 
-    paused_on holds the approval id(s) when the run stopped on a HIL interrupt
-    instead of finishing. ctx is the prepared execution context, kept so finalize
+    ctx is the prepared execution context, kept so finalize
     can read the thread this run wrote; None when preparation itself failed, in
     which case no model call happened and nothing was committed. error_type is
     the cause of an error result, reported as the run's failure reason. stopped
@@ -352,7 +284,6 @@ class _ExecutorResult(NamedTuple):
 
     text: str
     type: str
-    paused_on: tuple[str, ...] = ()
     ctx: SubagentExecutionContext | None = None
     error_type: str | None = None
     stopped: bool = False
@@ -387,7 +318,6 @@ async def _execute_executor(
     task: str,
     configurable: AgentConfigurable,
     run: ExecutorRun,
-    resume: Command | None = None,
 ) -> _ExecutorResult:
     """Run the executor agent graph once. Never raises on error.
 
@@ -414,12 +344,6 @@ async def _execute_executor(
             )
         # Equivalent under mutation: build_agent_config always sets "configurable".
         run_configurable = ctx.config.setdefault("configurable", {})  # pragma: no mutate
-        if resume is not None:
-            # Tells spawn_subagent to probe its spawn's thread for a parked
-            # interrupt — only a resume replay can encounter one, so fresh runs
-            # skip that per-spawn checkpoint read.
-            ctx.configurable[HIL_RESUME_CONFIG_KEY] = True
-            run_configurable[HIL_RESUME_CONFIG_KEY] = True
         if message_id := run.render_message_id:
             ctx.configurable["bot_message_id"] = message_id
             run_configurable["bot_message_id"] = message_id
@@ -428,23 +352,10 @@ async def _execute_executor(
         )
         writer = progress.wrap(make_redis_stream_writer(stream_id))
         try:
-            outcome = await execute_subagent_stream(ctx=ctx, stream_writer=writer, resume=resume)
+            outcome = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
         finally:
-            # Before finalize renews (a pause) or deletes (an ending) the record.
+            # Before finalize deletes the record.
             await progress.settle()
-        if outcome.paused:
-            approval_ids = paused_approval_ids(outcome.interrupt or {})
-            if not approval_ids:
-                # Unresumable: nothing can ever re-dispatch this thread. Fail the
-                # run loudly rather than leave the conversation's lock held.
-                log.error(f"{LogTag.HIL} Executor paused with no approval_id", stream_id=stream_id)
-                return _ExecutorResult(
-                    "Approval request was malformed",
-                    "error",
-                    ctx=ctx,
-                    error_type=EXECUTOR_ERROR_MALFORMED_APPROVAL,
-                )
-            return _ExecutorResult("", EXECUTOR_PAUSED, approval_ids, ctx=ctx)
         if not outcome.answered and not outcome.stopped:
             # Nothing reported means nothing confirmed: the worst case, never "done".
             log.error(f"{LogTag.AGENT} Executor ended without an answer", stream_id=stream_id)
@@ -491,10 +402,6 @@ async def _finalize_executor_run(
     A Stop discards only what it cut short: a run that finished its answer before
     the cancel landed (stopped False, a final result) is delivered whatever the flag says.
     """
-    if result_type == EXECUTOR_PAUSED:
-        await _finalize_paused_run(run)
-        return
-
     finished = result_type == "final" and not stopped
     was_cancelled = (
         bool(run.stream_id) and not finished and await StreamManager.is_cancelled(run.stream_id)
@@ -637,44 +544,6 @@ async def _review_outcome_note(conversation_id: str, ctx: SubagentExecutionConte
     if review.problem:
         log.warning(f"{LogTag.AGENT} Executor outcome not verified", problem=review.problem)
     return outcome_delivery_note(review.declared, review.problem)
-
-
-async def _finalize_paused_run(run: ExecutorRun) -> None:
-    """Close out a run parked on a HIL approval without ending its turn.
-
-    Doesn't deliver a result, drain the queue, or release the busy lock — it stays
-    held until resolve_approval resumes this thread. Re-arms the lock's TTL to
-    cover the approval window, and still signals SSE so the user sees the approval card.
-    """
-    # A parked run has no process to beat for it: it lives as long as its park.
-    await hold_run_alive(
-        run.conversation_id,
-        build_lock_value(run.stream_id, run.task_id or ""),
-        HIL_PAUSED_LOCK_TTL_SECONDS,
-    )
-    # Work handed over until the resume must still be there when it reads.
-    await ExecutorInbox(run.conversation_id).keep_for(HIL_PAUSED_LOCK_TTL_SECONDS)
-    if not await extend_lock_if_owned(
-        run.conversation_id, run.stream_id, run.task_id, HIL_PAUSED_LOCK_TTL_SECONDS
-    ):
-        # Someone else owns the conversation (or Redis is down), so this pause is
-        # already at risk of being trampled. Nothing to do but say so loudly.
-        log.warning(
-            f"{LogTag.HIL} Could not extend busy lock for paused run; the approval "
-            "may be orphaned if the lock lapses",
-            task_id=run.task_id,
-            conversation_id=run.conversation_id,
-            stream_id=run.stream_id,
-        )
-    signal_executor_done(run.stream_id)
-    await _close_queued_stream(run, was_cancelled=False)
-    observe_executor_run_total(status="paused", queued=run.queued)
-    log.info(
-        f"{LogTag.HIL} Executor paused on approval; busy lock retained",
-        task_id=run.task_id,
-        conversation_id=run.conversation_id,
-        stream_id=run.stream_id,
-    )
 
 
 @dataclass(frozen=True)
@@ -873,7 +742,6 @@ async def _prepare_executor_run(
             identity=identity,
             workflow_execution_id=workflow_execution_id,
         ),
-        claim=LockClaim.ACQUIRE,
     )
 
 

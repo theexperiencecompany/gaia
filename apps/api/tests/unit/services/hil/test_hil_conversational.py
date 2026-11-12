@@ -7,11 +7,11 @@ ambiguous or broken reply into an action:
 
 * a reply the LLM cannot classify must never resolve as approve;
 * a selective reply must resolve ONLY what it named — an unmentioned action stays pending
-  for the buttons or the timeout sweep, it does not ride along on someone else's "yes";
+  for the buttons, it does not ride along on someone else's "yes";
 * an index the model invents must not resolve whatever happens to sit at that position.
 
 The LLM is mocked at ainvoke_structured (the real boundary); everything between the
-verdict and resolve_approval is the production code under test.
+verdict and decide_ledger is the production code under test.
 """
 
 from collections.abc import Iterator
@@ -45,13 +45,13 @@ from app.services.hil.conversational import (
     list_pending_for_reply,
     resolve_pending_from_message,
 )
-from app.services.hil.ledger_decide import LedgerDecision
-from app.services.hil.resolution import (
+from app.services.hil.errors import (
     ApprovalRequestForbiddenError,
     ApprovalRequestNotFoundError,
 )
+from app.services.hil.ledger_decide import LedgerDecision
 
-from .conftest import CONVERSATION_ID, USER_ID, jev_reply_body, make_record, serve_jev
+from .conftest import CONVERSATION_ID, USER_ID, jev_reply_body, serve_jev
 
 MODULE = "app.services.hil.conversational"
 
@@ -62,29 +62,58 @@ def _quiet_log():
         yield
 
 
+def _ledger_row(
+    approval_id: str, state: LedgerState = LedgerState.PENDING, summary: str | None = None
+) -> ApprovalLedgerDocument:
+    return ApprovalLedgerDocument(
+        approval_id=approval_id,
+        conversation_id=CONVERSATION_ID,
+        user_id=USER_ID,
+        fingerprint=f"fp-{approval_id}",
+        tool_name="send_email",
+        summary=summary or f"Send email {approval_id}",
+        state=state,
+    )
+
+
+def _committed(approval_id: str, state: LedgerState) -> LedgerDecision:
+    return LedgerDecision(
+        committed=True, approval_id=approval_id, prior_state=LedgerState.PENDING, state=state
+    )
+
+
+def _commit(approval_id: str, **decision: Any) -> LedgerDecision:
+    state = LedgerState.APPROVED if decision["kind"] == "approve" else LedgerState.DENIED
+    return _committed(approval_id, state)
+
+
 @pytest.fixture
 def resolver():
-    """Patch the two sinks a decision can reach, plus the LLM boundary in front of them.
+    """Patch the ledger a decision lands on, plus the LLM boundary in front of it.
 
     JEV is off here: these tests pin the LLM classifier and everything after it.
     """
     with (
-        patch(f"{MODULE}.resolve_approval", new=AsyncMock()) as resolve,
+        patch(f"{MODULE}.decide_ledger", new=AsyncMock(side_effect=_commit)) as resolve,
         patch(f"{MODULE}.ainvoke_structured", new=AsyncMock()) as llm,
         patch(f"{MODULE}.approval_ledger_repository") as ledger,
         patch(f"{MODULE}.is_jev_reply_enabled", new=AsyncMock(return_value=False)) as jev_flag,
     ):
         ledger.list_open = AsyncMock(return_value=[])
-        yield {"resolve": resolve, "llm": llm, "jev_flag": jev_flag}
+        yield {
+            "resolve": resolve,
+            "llm": llm,
+            "jev_flag": jev_flag,
+            "list_open": ledger.list_open,
+        }
 
 
 def pending(*summaries: str) -> Any:
-    """Patch the store to report these approvals as awaiting a decision."""
-    records = [
-        make_record(approval_id=f"appr-{i}", summary=summary)
-        for i, summary in enumerate(summaries, start=1)
+    """Patch the ledger to report these approvals as awaiting a decision."""
+    rows = [
+        _ledger_row(f"appr-{i}", summary=summary) for i, summary in enumerate(summaries, start=1)
     ]
-    return patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=records))
+    return patch(f"{MODULE}.approval_ledger_repository.list_open", new=AsyncMock(return_value=rows))
 
 
 async def resolved_action(
@@ -96,7 +125,7 @@ async def resolved_action(
 
 
 def resolved_ids(resolve: AsyncMock) -> list[str]:
-    return [call.kwargs["approval_id"] for call in resolve.await_args_list]
+    return [call.args[0] for call in resolve.await_args_list]
 
 
 def resolved_kinds(resolve: AsyncMock) -> list[str]:
@@ -112,8 +141,7 @@ class TestNothingPending:
         # The resolver sits on the critical path of EVERY chat message. If it classified
         # before checking whether anything was pending, every user would pay an LLM call
         # per message for a feature most of them have switched off.
-        with patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=[])):
-            assert await resolved_action(CONVERSATION_ID, USER_ID, "hey") is None
+        assert await resolved_action(CONVERSATION_ID, USER_ID, "hey") is None
         resolver["llm"].assert_not_awaited()
         resolver["resolve"].assert_not_awaited()
 
@@ -150,7 +178,6 @@ class TestSingleApproval:
             action = await resolved_action(CONVERSATION_ID, USER_ID, "what's the weather")
 
         assert action == "unrelated"
-        resolver["resolve"].assert_not_awaited()
         resolver["resolve"].assert_not_awaited()
 
     async def test_the_classifier_is_shown_what_it_is_deciding_about(self, resolver: dict) -> None:
@@ -321,7 +348,6 @@ class TestBatch:
 
         assert action == "unrelated"
         resolver["resolve"].assert_not_awaited()
-        resolver["resolve"].assert_not_awaited()
 
     async def test_the_numbered_list_starts_at_one_to_match_the_index_contract(
         self, resolver: dict
@@ -375,7 +401,7 @@ class TestClassifierFailure:
     """A broken LLM must never resolve as approve, and never as a genuine unrelated either.
 
     Single and batch both fail toward leaving everything pending, since a transient hiccup
-    is not the same signal as the user moving on. The buttons or the timeout sweep still
+    is not the same signal as the user moving on. The buttons still
     resolve it.
     """
 
@@ -395,7 +421,7 @@ class TestClassifierFailure:
     async def test_a_batch_is_left_pending_rather_than_abandoned(self, resolver: dict) -> None:
         # A batch is a burst of parallel work the user is mid-review on. Abandoning it on a
         # provider hiccup would throw away a review they already started, so this fails the
-        # other way: everything stays pending for the buttons or the sweep.
+        # other way: everything stays pending for the buttons.
         resolver["llm"].side_effect = ConnectionError("provider down")
         with pending("Send email", "Post to Slack"):
             action = await resolved_action(CONVERSATION_ID, USER_ID, "yes")
@@ -405,7 +431,7 @@ class TestClassifierFailure:
 
 
 class TestRacingDecisions:
-    """A button click, a typed "yes", and the timeout sweep can all fire at once.
+    """A button click and a typed "yes" can both fire at once.
 
     A decision that lost the race must not break the others.
     """
@@ -435,8 +461,6 @@ class TestRacingDecisions:
 
     async def test_a_forbidden_approval_is_swallowed_the_same_way(self, resolver: dict) -> None:
         """A forbidden decision (wrong owner) is swallowed like an already-resolved one."""
-        from app.services.hil.resolution import ApprovalRequestForbiddenError
-
         resolver["llm"].return_value = DecisionResult(action="approve")
         resolver["resolve"].side_effect = ApprovalRequestForbiddenError()
         with pending("Send email"):
@@ -583,7 +607,7 @@ HISTORY: list[MessageDict] = [{"role": "user", "content": "draft the quarterly d
 
 
 class TestTheClassifierSeesTheReplyAndItsContext:
-    """Both barrier paths hand the classifier the user's actual reply and the recent turns."""
+    """Single and batch both hand the classifier the user's actual reply and the recent turns."""
 
     async def test_single_prompt_carries_reply_and_history_and_decides_as_the_user(
         self, resolver: dict
@@ -628,26 +652,6 @@ class TestTheClassifierSeesTheReplyAndItsContext:
         resolver["resolve"].assert_not_awaited()
 
 
-def _ledger_row(
-    approval_id: str, state: LedgerState = LedgerState.PENDING
-) -> ApprovalLedgerDocument:
-    return ApprovalLedgerDocument(
-        approval_id=approval_id,
-        conversation_id=CONVERSATION_ID,
-        user_id=USER_ID,
-        fingerprint=f"fp-{approval_id}",
-        tool_name="send_email",
-        summary=f"Send email {approval_id}",
-        state=state,
-    )
-
-
-def _committed(approval_id: str, state: LedgerState) -> LedgerDecision:
-    return LedgerDecision(
-        committed=True, approval_id=approval_id, prior_state=LedgerState.PENDING, state=state
-    )
-
-
 def decided(decide: AsyncMock) -> list[tuple[str, str, str | None]]:
     """Each ledger decision as (approval_id, kind, feedback)."""
     return [(c.args[0], c.kwargs["kind"], c.kwargs["feedback"]) for c in decide.await_args_list]
@@ -658,16 +662,7 @@ class TestLedgerRows:
 
     @pytest.fixture
     def ledger(self, resolver: dict) -> Iterator[dict[str, AsyncMock]]:
-        with (
-            patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=[])),
-            patch(f"{MODULE}.approval_ledger_repository") as repo,
-            patch(f"{MODULE}.decide_ledger", new=AsyncMock()) as decide,
-        ):
-            repo.list_open = AsyncMock(return_value=[])
-            decide.side_effect = lambda approval_id, **kw: _committed(
-                approval_id, LedgerState.APPROVED if kw["kind"] == "approve" else LedgerState.DENIED
-            )
-            yield {"list_open": repo.list_open, "decide": decide, **resolver}
+        return {"decide": resolver["resolve"], **resolver}
 
     @pytest.mark.regression
     async def test_a_single_pending_row_is_decided_by_the_reply(
@@ -690,7 +685,6 @@ class TestLedgerRows:
         assert "Send email ap_1" in text
         assert "'yes send it'" in text
         assert "draft the quarterly deck email" in text
-        ledger["resolve"].assert_not_awaited()
 
     async def test_an_approval_with_a_change_denies_the_row_with_that_change(
         self, ledger: dict[str, AsyncMock]
@@ -851,7 +845,7 @@ class TestNoHistory:
 
         text = prompt_of(resolver["llm"])
         assert "RECENT CONVERSATION" not in text
-        record = make_record(summary="Send email")
+        record = _ledger_row("appr-1", summary="Send email")
         detail = build_action_detail(record.summary, record.args)
         assert f"{detail}\n\nTHE USER'S REPLY" in text
 
@@ -921,7 +915,7 @@ class TestJevClassifiesTheReply:
 
         state = client.post.await_args.kwargs["json"]["state"]
         assert state["reply"] == "sure thing"
-        record = make_record(summary="Send email")
+        record = _ledger_row("appr-1", summary="Send email")
         assert state["pending_actions"] == [
             {"number": 1, "action": build_action_detail(record.summary, record.args)}
         ]
@@ -963,7 +957,6 @@ class TestJevClassifiesTheReply:
             action = await resolved_action(CONVERSATION_ID, USER_ID, "tell me a joke")
 
         assert action == "unrelated"
-        resolver["resolve"].assert_not_awaited()
         resolver["resolve"].assert_not_awaited()
 
     async def test_an_exclusive_answer_approves_one_and_declines_the_rest(
@@ -1067,7 +1060,6 @@ class TestJevClassifiesTheReply:
 
     async def test_ledger_rows_are_decided_from_the_jev_verdict(self, resolver: dict) -> None:
         with (
-            patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=[])),
             patch(f"{MODULE}.approval_ledger_repository") as repo,
             patch(f"{MODULE}.decide_ledger", new=AsyncMock()) as decide,
             serve_jev(jev_reply_body(("deny", 0.9))),

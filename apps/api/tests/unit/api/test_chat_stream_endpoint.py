@@ -32,7 +32,6 @@ from tests.conftest import FAKE_USER, FAKE_USER_2
 from tests.work_cancel_fakes import (
     BROWSER_JOB,
     EXECUTOR_STREAM,
-    ApprovalSeams,
     approval_seams,
     seed_live_work,
 )
@@ -345,7 +344,7 @@ async def _dispatched_by_turn() -> str:
 
 
 @pytest.fixture
-def no_approvals() -> Iterator[ApprovalSeams]:
+def no_approvals() -> Iterator[AsyncMock]:
     yield from approval_seams(pending=False)
 
 

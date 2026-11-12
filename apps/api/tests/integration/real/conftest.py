@@ -11,9 +11,9 @@ points the whole repository layer at a real per-test Motor client. Redis gets a
 real connection patched into redis_cache the same way.
 
 The shared DB connection fixtures (mongodb_url, redis_url,
-postgres_url, mongo_db, real_redis, hil_approvals_collection)
+postgres_url, mongo_db, real_redis)
 live in tests/integration/real/db_fixtures.py — the e2e suite's
-real-infra tests (tests/e2e/test_hil_*_e2e.py) import the same fixtures.
+real-infra tests import the same fixtures.
 """
 
 from __future__ import annotations
@@ -51,7 +51,6 @@ from tests.helpers import (
     skip_items_without_real_services,
 )
 from tests.integration.real.db_fixtures import (
-    hil_approvals_collection,
     mongo_db,
     mongodb_url,
     postgres_url,
@@ -60,7 +59,6 @@ from tests.integration.real.db_fixtures import (
 )
 
 __all__ = [
-    "hil_approvals_collection",
     "mongo_db",
     "mongodb_url",
     "postgres_url",
@@ -70,13 +68,12 @@ __all__ = [
 
 
 @pytest.fixture(autouse=True)
-async def _autouse_hil_approvals_collection(hil_approvals_collection) -> None:
-    """Every real-infra test gets a clean approvals collection.
+async def _autouse_real_mongo(mongo_db) -> None:
+    """Every real-infra test's repository layer points at the real per-test database.
 
-    The chat stream reads it on *every* turn — it checks whether the user's
-    message answers a pending approval before running the agent — so any test
-    that streams a message touches it. The shared fixture stays opt-in in
-    db_fixtures.py; this suite applies it to all tests.
+    The chat stream reads the approval ledger on *every* turn — it checks whether the
+    user's message answers a pending approval before running the agent — so any test
+    that streams a message touches Mongo.
     """
 
 

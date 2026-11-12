@@ -60,7 +60,6 @@ from app.models.workflow_execution_models import (
     build_result_digest,
 )
 from app.override.langgraph_bigtool.create_agent import create_agent as real_create_agent
-from app.services.hil.prompts import UNPAUSABLE_DENIAL_TEMPLATE
 from app.services.workflow.playbook.dry_run import DRY_RUN_READ_TOOLS, DryRun
 from app.services.workflow.playbook.evaluator import (
     NO_ITEM,
@@ -92,6 +91,7 @@ from app.services.workflow.playbook.scripted_model import (
 from app.services.workflow.playbook.tool_space import ToolSpace
 from app.utils.timezone import Timezone
 from tests.factories import make_user_id
+from tests.unit.services.hil.conftest import registered_row
 
 #: A replay records every call it makes into its run record, which lives in Redis;
 #: a per-test fake keeps that hermetic and off the import-time client, whose loop
@@ -372,25 +372,6 @@ async def test_a_replayed_tool_resolves_the_run_user() -> None:
     assert recorder.calls[0][1]["user"] == USER_ID
 
 
-@pytest.mark.usefixtures("hil_barrier_mode")
-async def test_a_gated_call_is_refused_without_invoking_the_tool() -> None:
-    """The real gate, in the real graph: a background run cannot ask, so it refuses."""
-    recorder = _Recorder()
-    registry = _FakeRegistry(_tools(recorder))
-
-    result, _ = await _run(_playbook(AGENDA_STEPS), registry, policy="ask")
-
-    assert recorder.calls == []
-    assert result.ok is False
-    assert "list_events" in (result.failure or "")
-    assert "approval gate" in (result.failure or "")
-    # The gate's own words, not the runner's: proof the refusal came from
-    # production HIL inside the graph rather than from a check the runner kept.
-    assert UNPAUSABLE_DENIAL_TEMPLATE.format(tool="list_events") in (result.failure or "")
-    # Nothing was attempted, so nothing may reach the trace the next run reads.
-    assert result.trace == []
-
-
 async def test_a_ledger_gated_call_stops_the_replay_pending_without_invoking_the_tool() -> None:
     """The real ledger gate, in the real graph: the call is queued for the user and the replay stops."""
     recorder = _Recorder()
@@ -398,10 +379,9 @@ async def test_a_ledger_gated_call_stops_the_replay_pending_without_invoking_the
     ledger = MagicMock()
     ledger.find_live = AsyncMock(return_value=None)
     ledger.find_latest_denied = AsyncMock(return_value=None)
-    ledger.register = AsyncMock(return_value="ap_ledger01")
+    ledger.register = AsyncMock(return_value=registered_row("ap_ledger01"))
     with (
         patch(f"{GATE}.approval_ledger_repository", ledger),
-        patch(f"{GATE}.recall_declined_call", AsyncMock(return_value=None)),
         patch(f"{GATE}._integration_name_for", AsyncMock(return_value=None)),
         patch(f"{GATE}.publish_ledger_request", AsyncMock()) as publish,
     ):

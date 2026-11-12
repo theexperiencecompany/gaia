@@ -26,7 +26,7 @@ from app.agents.middleware import (
     create_comms_middleware,
     create_executor_middleware,
 )
-from app.agents.middleware.subagent import SubagentMiddleware, bind_spawner
+from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.tools import memory_tools
 from app.agents.tools.browser_chat_tools import (
     browser_step_done,
@@ -191,8 +191,6 @@ async def build_executor_graph(
     if in_memory_checkpointer or not checkpointer_manager:
         in_memory_checkpointer_instance = InMemorySaver()
         graph = builder.compile(checkpointer=in_memory_checkpointer_instance, store=store)
-        if subagent_mw is not None:
-            bind_spawner(graph, subagent_mw)
         # Surface fallback at WARNING — users silently lose conversation memory
         # when Postgres checkpointer is unavailable.
         if not in_memory_checkpointer:
@@ -209,8 +207,6 @@ async def build_executor_graph(
     else:
         postgres_checkpointer = checkpointer_manager.get_checkpointer()
         graph = builder.compile(checkpointer=postgres_checkpointer, store=store)
-        if subagent_mw is not None:
-            bind_spawner(graph, subagent_mw)
         log.info("graph_compiled_postgres", graph="comms", model=model_name)
         log.set(agent={"model": model_name})
         yield graph

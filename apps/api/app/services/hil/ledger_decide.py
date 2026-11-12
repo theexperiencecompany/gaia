@@ -6,7 +6,7 @@ the backend never runs an approved tool. Committing wakes the model with the
 ticket (the approval id); the model redeems it with
 execute(tool_name="approve", data={"id": ...}), which runs the stored
 envelope and returns the result so dependent work can chain on it.
-Guarantees (mirror resolution.py): the PENDING -> decided transition is a
+Guarantees: the PENDING -> decided transition is a
 conditional Mongo update, so double taps and stale clients lose the race and
 refresh instead of overwriting; a mismatched row version v returns the current
 row with committed=False; stale approvals carry their age for the model to
@@ -36,7 +36,6 @@ from app.db.repositories.conversations import conversation_repository
 from app.models.execute_models import DispatchErrorKind
 from app.models.hil_models import (
     ApprovalLedgerDocument,
-    HILApprovalStatus,
     LedgerState,
 )
 from app.models.user_models import AuthenticatedUser
@@ -54,13 +53,13 @@ from app.services.hil.bridge import (
     sync_conversation_approval_flag,
 )
 from app.services.hil.describe import describe_call
-from app.services.hil.policy import asks_every_time, resolved_tool_key
-from app.services.hil.preferences import set_tool_override
-from app.services.hil.resolution import (
+from app.services.hil.errors import (
     ApprovalRequestForbiddenError,
     ApprovalRequestNotFoundError,
     ToolAlwaysAsksError,
 )
+from app.services.hil.policy import asks_every_time, resolved_tool_key
+from app.services.hil.preferences import set_tool_override
 from app.services.hil.resume import record_owner_deny, resume_owner_after_approval
 from app.services.hil.utils import GatedCall
 from shared.py.analytics import UserId
@@ -542,9 +541,8 @@ async def revoke_ticket(
 async def cancel_ledger_approvals(conversation_id: str, user_id: str) -> list[str]:
     """Withdraw a cancelled run's pending ledger approvals so nothing revives them.
 
-    Ledger twin of resolution.cancel_conversation_approvals: without it a later
-    Approve (stale card, another tab, a bot "yes") redeems a ticket for stopped
-    work. Only user-owned PENDING rows; APPROVED tickets stay. Each revocation
+    Without it a later Approve (stale card, another tab, a bot "yes") redeems a
+    ticket for stopped work. Only user-owned PENDING rows; APPROVED tickets stay. Each revocation
     tombstones through the full triple.
     """
     cancelled: list[str] = []
@@ -615,9 +613,7 @@ async def publish_ledger_decision(
     proposing stream when it is still live, persists the settled status for
     reload, and broadcasts so listening clients refresh.
     """
-    mapped = (
-        HILApprovalStatus.APPROVED if status is LedgerState.APPROVED else HILApprovalStatus.DENIED
-    )
+    mapped = LedgerState.APPROVED if status is LedgerState.APPROVED else LedgerState.DENIED
     card = SettledApprovalCard(
         approval_id=row.approval_id,
         tool_call=GatedCall(name=row.tool_name, id="", args=row.args),
@@ -675,7 +671,7 @@ async def publish_ledger_revocation(
 async def _persist_decision_status(row: ApprovalLedgerDocument, status: str) -> None:
     """Settle the persisted card frame so reload renders the terminal state.
 
-    Isolated on purpose (mirrors bridge.publish_decision): a write error here
+    Isolated on purpose: a write error here
     must never fail the decision or revocation it reports on.
     """
     try:
