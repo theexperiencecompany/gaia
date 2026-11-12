@@ -25,7 +25,7 @@ const FORBIDDEN: readonly [RegExp, string][] = [
 const FORMULA_ATTR = /data-formula\s*=\s*"([^"]*)"/gi;
 const INPUT_NAME =
   /<(?:input|select)\b[^>]*\bname\s*=\s*"([a-z_][a-z0-9_]*)"/gi;
-const FORMULA_TOKEN = /\d+(?:\.\d+)?|[a-z_][a-z0-9_]*|\*\*|[-+*/(),]|\s+/gy;
+const FORMULA_TOKEN = /\d+(?:\.\d+)?|[a-z_][a-z0-9_]*|\*\*|[-+*/(),]|\s+/g;
 const FUNCTIONS = new Set([
   "min",
   "max",
@@ -41,7 +41,7 @@ function formulaProblems(html: string): string[] {
   const names = new Set([...html.matchAll(INPUT_NAME)].map((m) => m[1]));
   const problems: string[] = [];
   for (const [, formula] of html.matchAll(FORMULA_ATTR)) {
-    FORMULA_TOKEN.lastIndex = 0;
+    // Skipped characters drop out of the matches, so the tokens only rebuild a formula made of tokens.
     const tokens = formula.match(FORMULA_TOKEN) ?? [];
     if (tokens.join("") !== formula) {
       problems.push(
