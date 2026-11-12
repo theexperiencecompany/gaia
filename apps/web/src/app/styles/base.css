@@ -1513,6 +1513,39 @@ html {
     padding-inline: var(--gaia-input-sm-padding-x);
   }
 
+  /* inputVariants({ variant: "bare" }): v2 flat fields whose wrapper was made transparent, unpadded and ringless. */
+  .input.gaia-input-bare,
+  .textarea.gaia-input-bare {
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+    box-shadow: none;
+    --input-bg: transparent;
+    --input-bg-hover: transparent;
+    --input-bg-focus: transparent;
+  }
+
+  /* inputVariants({ variant: "underlined" }): v2's underlined field, a 2px foreground underline only while focused. */
+  .input.gaia-input-underlined,
+  .textarea.gaia-input-underlined {
+    padding-inline: 0.25rem;
+    border-width: 0 0 2px;
+    border-color: transparent;
+    border-radius: 0;
+    background-color: transparent;
+    box-shadow: none;
+    --input-bg: transparent;
+    --input-bg-hover: transparent;
+    --input-bg-focus: transparent;
+  }
+  .input.gaia-input-underlined:focus,
+  .input.gaia-input-underlined[data-focused="true"],
+  .textarea.gaia-input-underlined:focus,
+  .textarea.gaia-input-underlined[data-focused="true"] {
+    border-color: var(--foreground);
+  }
+
   /* Field placeholders: v2's zinc-500 at normal weight, in light and dark. */
   .input::placeholder,
   .textarea::placeholder,
