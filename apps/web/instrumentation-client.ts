@@ -6,15 +6,16 @@
 // so their chunks do not execute during the critical rendering path. Without
 // deferral Sentry alone causes ~630ms of long tasks (TBT) at page load.
 
-// Type-only import — zero runtime cost.
-import type * as SentryNs from "@/lib/observability/sentryClient";
 import { DODO_RETURN_IDENTIFYING_PARAMS } from "@/features/pricing/lib/dodoReturnUrl";
+import { onFirstInteraction } from "@/lib/firstInteraction";
 import {
   EXTENSION_URL_PATTERNS,
   filterExceptionBeforeSend,
   filterSentryEvent,
   IGNORED_EXCEPTION_MESSAGES,
 } from "@/lib/observability/exception-filter";
+// Type-only import — zero runtime cost.
+import type * as SentryNs from "@/lib/observability/sentryClient";
 
 // Holds the real Sentry function once the module loads at idle time.
 let _captureRouterTransitionStart:
@@ -65,21 +66,7 @@ if (typeof window !== "undefined") {
               // Replay is best-effort: a load failure must not break the page.
             });
         };
-        const interactionEvents = [
-          "pointerdown",
-          "keydown",
-          "touchstart",
-          "scroll",
-        ] as const;
-        const onFirstInteraction = () => {
-          for (const ev of interactionEvents) {
-            window.removeEventListener(ev, onFirstInteraction);
-          }
-          loadReplay();
-        };
-        for (const ev of interactionEvents) {
-          window.addEventListener(ev, onFirstInteraction, { passive: true });
-        }
+        onFirstInteraction(loadReplay);
       } catch {
         // Observability should never break the app.
       }

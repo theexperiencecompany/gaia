@@ -37,7 +37,6 @@ const CSP_DIRECTIVES = [
     "'unsafe-inline'",
     "'wasm-unsafe-eval'",
     ...devScriptSources,
-    "https://www.googletagmanager.com",
     "https://browser.sentry-cdn.com",
     "https://*.dodopayments.com",
     RYBBIT_HOST,
