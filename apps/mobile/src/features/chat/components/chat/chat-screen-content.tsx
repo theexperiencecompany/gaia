@@ -1,4 +1,3 @@
-import { getRelevantThinkingMessage } from "@gaia/shared/utils";
 import type { FlashListRef } from "@shopify/flash-list";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
@@ -151,10 +150,31 @@ function MessageSkeleton() {
 
 type ListItem =
   | { type: "message"; data: Message; isLast: boolean }
-  | { type: "date-separator"; date: string; id: string };
+  | { type: "date-separator"; date: string; id: string }
+  | { type: "loading"; id: string };
+
+const LOADING_ROW_ID = "loading-row";
+const LOADING_ROW_MESSAGE: Message = {
+  id: LOADING_ROW_ID,
+  text: "",
+  isUser: false,
+  timestamp: new Date(0),
+};
 
 function getDateKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+/** The loading row sits on the newest reply or task while it streams, else on a row of its own. */
+function withLoadingRow(
+  items: ListItem[],
+  loadingVisible: boolean,
+): ListItem[] {
+  if (!loadingVisible) return items;
+  const last = items.at(-1);
+  if (last?.type === "message" && !last.data.isUser && last.data.inProgress)
+    return items;
+  return [...items, { type: "loading", id: LOADING_ROW_ID }];
 }
 
 function buildListItems(messages: Message[]): ListItem[] {
@@ -201,20 +221,19 @@ export function ChatScreenContent({
 }: ChatScreenContentProps) {
   const {
     messages,
-    isTyping,
+    loading,
+    busy,
     isLoading,
-    progress,
-    progressToolName,
     flatListRef,
     sendMessage,
     retryMessage,
-    cancelStream,
+    stop,
     scrollToBottom,
     refetch,
   } = useChat(activeChatId, { onNavigate });
 
   const { spacing } = useResponsive();
-  const { setActiveChatId, clearActiveMessages } = useChatContext();
+  const { setActiveChatId } = useChatContext();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -222,13 +241,7 @@ export function ChatScreenContent({
     composerDraftReducer,
     initialComposerDraft,
   );
-  const {
-    inputValue,
-    lastUserMessage,
-    selectedTool,
-    selectedWorkflow,
-    replyingTo,
-  } = draft;
+  const { inputValue, selectedTool, selectedWorkflow, replyingTo } = draft;
 
   const pendingPrompt = usePendingPrompt();
   const consumePendingPrompt = useComposerStore(
@@ -240,10 +253,6 @@ export function ChatScreenContent({
       consumePendingPrompt();
     }
   }, [pendingPrompt, consumePendingPrompt]);
-  const [thinkingMessage, setThinkingMessage] = useState(() =>
-    getRelevantThinkingMessage(""),
-  );
-
   const actionSheetRef = useRef<MessageActionSheetRef>(null);
   const [actionConfig, setActionConfig] = useState<MessageActionConfig | null>(
     null,
@@ -258,23 +267,6 @@ export function ChatScreenContent({
   useEffect(() => {
     dispatchDraft({ type: "conversationSwitched" });
   }, [activeChatId]);
-
-  useEffect(() => {
-    if (isTyping && !progress) {
-      setThinkingMessage(getRelevantThinkingMessage(lastUserMessage));
-      const interval = setInterval(
-        () => {
-          setThinkingMessage(getRelevantThinkingMessage(lastUserMessage));
-        },
-        // cosmetic jitter on the thinking-message rotation; nothing security-relevant
-        2000 + Math.random() * 1000, // NOSONAR typescript:S2245
-      );
-      return () => clearInterval(interval);
-    }
-    return undefined;
-  }, [isTyping, progress, lastUserMessage]);
-
-  const displayMessage = progress || thinkingMessage;
 
   // Follow the stream: tokens grow the last item without changing list length,
   // so keying on messages is required; throttled to 60ms and only while parked
@@ -373,16 +365,14 @@ export function ChatScreenContent({
 
   const handleSend = useCallback(
     (text: string, attachments: AttachmentFile[]) => {
-      void sendMessage(text, {
+      sendMessage(text, {
         replyToMessage: replyingTo,
-        selectedWorkflow: selectedWorkflow
-          ? { id: selectedWorkflow.id, name: selectedWorkflow.title }
-          : null,
+        selectedWorkflow,
         selectedTool: selectedTool?.name ?? null,
         toolCategory: selectedTool?.category ?? null,
         attachments,
       });
-      dispatchDraft({ type: "messageSent", text });
+      dispatchDraft({ type: "messageSent" });
     },
     [sendMessage, replyingTo, selectedWorkflow, selectedTool],
   );
@@ -404,7 +394,6 @@ export function ChatScreenContent({
   const handleCommand = useCallback(
     (command: string) => {
       if (command === "new") {
-        clearActiveMessages();
         setActiveChatId(null);
         dispatchDraft({ type: "newChatCommand" });
         router.replace("/");
@@ -412,7 +401,6 @@ export function ChatScreenContent({
       }
 
       if (command === "clear") {
-        clearActiveMessages();
         dispatchDraft({ type: "clearCommand" });
         return true;
       }
@@ -448,7 +436,7 @@ export function ChatScreenContent({
 
       return false;
     },
-    [clearActiveMessages, router, setActiveChatId],
+    [router, setActiveChatId],
   );
 
   const handleRefresh = useCallback(async () => {
@@ -482,19 +470,33 @@ export function ChatScreenContent({
     [],
   );
 
-  const listItems = useMemo(() => buildListItems(messages), [messages]);
+  const listItems = useMemo(
+    () => withLoadingRow(buildListItems(messages), loading.visible),
+    [messages, loading.visible],
+  );
+  const lastMessageId = messages.at(-1)?.id;
 
   const renderItem = useCallback(
     ({ item }: { item: ListItem }) => {
       if (item.type === "date-separator") {
         return <DateSeparator date={item.date} />;
       }
+      if (item.type === "loading") {
+        return (
+          <ChatMessage
+            message={LOADING_ROW_MESSAGE}
+            isLoading
+            isLastMessage
+            loadingMessage={loading.text}
+          />
+        );
+      }
 
       const message = item.data;
-      const isLastMessage = item.isLast;
-      const isEmptyAiMessage =
-        !message.isUser && (!message.text || message.text.trim() === "");
-      const showLoading = isLastMessage && isEmptyAiMessage && isTyping;
+      const streaming = !message.isUser && !!message.inProgress;
+      // The newest streaming row carries the loading row's words, as one surface.
+      const carriesLoading =
+        streaming && loading.visible && message.id === lastMessageId;
 
       return (
         <ChatMessage
@@ -503,35 +505,31 @@ export function ChatScreenContent({
           onReply={handleReply}
           onLongPress={handleLongPressMessage}
           onRetry={() => retryMessage(message.id)}
-          isLoading={isLastMessage && isTyping}
-          isLastMessage={isLastMessage}
-          loadingMessage={showLoading ? displayMessage : undefined}
-          progressToolName={showLoading ? progressToolName : null}
-          progressMessage={showLoading ? progress : null}
+          isLoading={streaming}
+          isLastMessage={item.isLast}
+          loadingMessage={carriesLoading ? loading.text : undefined}
         />
       );
     },
     [
-      displayMessage,
       handleFollowUpAction,
       handleLongPressMessage,
       handleReply,
-      isTyping,
-      progress,
-      progressToolName,
+      lastMessageId,
+      loading,
       retryMessage,
     ],
   );
 
   const keyExtractor = useCallback((item: ListItem) => {
-    if (item.type === "date-separator") return item.id;
-    return item.data.id;
+    if (item.type === "message") return item.data.id;
+    return item.id;
   }, []);
 
-  const showEmptyState = messages.length === 0 && !isTyping && !activeChatId;
+  const showEmptyState = messages.length === 0 && !busy && !activeChatId;
   // Only show skeleton when opening an existing chat that hasn't loaded yet
   const showSkeleton =
-    isLoading && !isTyping && !!activeChatId && messages.length === 0;
+    isLoading && !busy && !!activeChatId && messages.length === 0;
 
   // Breathing space between top of soft keyboard and bottom of composer pill.
   const KEYBOARD_GAP = 10;
@@ -568,13 +566,7 @@ export function ChatScreenContent({
               data={listItems}
               renderItem={renderItem}
               keyExtractor={keyExtractor}
-              extraData={[
-                messages[messages.length - 1]?.text,
-                isTyping,
-                displayMessage,
-                progress,
-                progressToolName,
-              ]}
+              extraData={[messages[messages.length - 1]?.text, loading]}
               contentContainerStyle={{
                 paddingTop: spacing.md,
                 paddingBottom: spacing.md,
@@ -619,8 +611,8 @@ export function ChatScreenContent({
               dispatchDraft({ type: "inputChanged", value })
             }
             onCommand={handleCommand}
-            isStreaming={isTyping}
-            onCancel={cancelStream}
+            isStreaming={busy}
+            onCancel={stop}
             selectedTool={selectedTool}
             onRemoveTool={() => dispatchDraft({ type: "toolRemoved" })}
             selectedWorkflow={selectedWorkflow}

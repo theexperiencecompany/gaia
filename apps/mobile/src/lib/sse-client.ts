@@ -1,45 +1,20 @@
-import type { SubscriptionRequiredDetail } from "@gaia/shared";
-import { parseSubscriptionRequiredBody } from "@gaia/shared";
 import EventSource from "react-native-sse";
 import { getAuthToken } from "@/features/auth/utils/auth-storage";
 import { API_BASE_URL, CLIENT_TYPE_HEADERS } from "./constants";
 
-export interface SSEEvent {
-  id?: string;
-  event?: string;
-  data: string;
-}
+/** The server sends a keepalive every 15 s; three missed means the connection is dead. */
+export const EVENT_STREAM_STALL_MS = 45_000;
 
-export interface SSECallbacks {
-  onMessage: (event: SSEEvent) => void;
-  onError?: (error: Error) => void;
-  onClose?: () => void;
-  /**
-   * The request was refused with 402 `subscription_required`. Terminal and
-   * never retried — no amount of backoff turns a free plan into a paid one —
-   * so the caller gets the offer (checkout link, discount code) instead of a
-   * transport error, and `onError` is not also called.
-   */
-  onSubscriptionRequired?: (detail: SubscriptionRequiredDetail) => void;
+/** The stream was refused with an HTTP status (react-native-sse reports it as an error event). */
+export class EventStreamHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly body: string,
+  ) {
+    super(`Event stream refused with HTTP ${status}`);
+    this.name = "EventStreamHttpError";
+  }
 }
-
-export interface SSEOptions {
-  headers?: Record<string, string>;
-  body?: unknown;
-  maxRetries?: number;
-  initialRetryDelayMs?: number;
-  /**
-   * Kill the connection (via onError) after this many ms of complete silence.
-   * The backend sends keepalive events during long tool runs, so silence means
-   * the stream is genuinely stalled — without this the UI spins forever.
-   */
-  stallTimeoutMs?: number;
-}
-
-const HTTP_PAYMENT_REQUIRED = 402;
-const DEFAULT_MAX_RETRIES = 3;
-const DEFAULT_INITIAL_RETRY_DELAY_MS = 1000;
-const MAX_RETRY_DELAY_MS = 16000;
 
 function getTimezone(): string {
   try {
@@ -49,209 +24,70 @@ function getTimezone(): string {
   }
 }
 
-function computeRetryDelay(attempt: number, initialDelayMs: number): number {
-  const exponential = initialDelayMs * 2 ** attempt;
-  const capped = Math.min(exponential, MAX_RETRY_DELAY_MS);
-  // retry jitter only spreads reconnects; predictability costs nothing
-  const jitter = capped * 0.2 * Math.random(); // NOSONAR typescript:S2245
-  return Math.round(capped + jitter);
-}
-
-export async function createSSEConnection(
+/**
+ * Read one GET event stream until it ends: resolves when the server closes it or
+ * the signal aborts, rejects when it is refused, fails, or goes silent. Each
+ * non-empty `data:` payload is handed over raw. Reconnecting is the caller's job.
+ */
+export async function readEventStream(
   endpoint: string,
-  callbacks: SSECallbacks,
-  options: SSEOptions = {},
-): Promise<AbortController> {
-  const controller = new AbortController();
-  const {
-    maxRetries = DEFAULT_MAX_RETRIES,
-    initialRetryDelayMs = DEFAULT_INITIAL_RETRY_DELAY_MS,
-  } = options;
+  onData: (raw: string) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const token = await getAuthToken();
+  if (!token) throw new Error("Not authenticated");
+  if (signal.aborted) return;
 
-  let retryCount = 0;
-  let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
-  let stallTimeoutId: ReturnType<typeof setTimeout> | null = null;
-  let hasReceivedData = false;
-  let isDone = false;
-  // Guard against double-close: [DONE] fires onClose via onMessage, then the
-  // SSE library fires onclose again when the connection terminates.
-  let doneReceived = false;
-
-  const cleanup = () => {
-    isDone = true;
-    if (retryTimeoutId !== null) {
-      clearTimeout(retryTimeoutId);
-      retryTimeoutId = null;
-    }
-    if (stallTimeoutId !== null) {
-      clearTimeout(stallTimeoutId);
-      stallTimeoutId = null;
-    }
-  };
-
-  /** Disarm the watchdog without ending the connection (used before retries). */
-  const disarmStallWatchdog = () => {
-    if (stallTimeoutId !== null) {
-      clearTimeout(stallTimeoutId);
-      stallTimeoutId = null;
-    }
-  };
-
-  controller.signal.addEventListener("abort", cleanup);
-
-  async function connect(): Promise<void> {
-    if (controller.signal.aborted || isDone) return;
-
-    const token = await getAuthToken();
-    if (!token) {
-      callbacks.onError?.(new Error("Not authenticated"));
-      cleanup();
-      return;
-    }
-
-    const url = `${API_BASE_URL}${endpoint}`;
-
-    const armStallWatchdog = () => {
-      if (!options.stallTimeoutMs) return;
-      if (stallTimeoutId !== null) clearTimeout(stallTimeoutId);
-      stallTimeoutId = setTimeout(() => {
-        stallTimeoutId = null;
-        if (isDone || controller.signal.aborted) return;
-        cleanup();
-        es.removeAllEventListeners();
-        es.close();
-        callbacks.onError?.(
-          new Error(
-            `No data received for ${Math.round(options.stallTimeoutMs! / 1000)}s — response timed out`,
-          ),
-        );
-      }, options.stallTimeoutMs);
-    };
-
-    const es = new EventSource(url, {
-      method: "POST",
+  await new Promise<void>((resolve, reject) => {
+    const es = new EventSource(`${API_BASE_URL}${endpoint}`, {
+      method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "text/event-stream",
-        "Content-Type": "application/json",
         "x-timezone": getTimezone(),
         ...CLIENT_TYPE_HEADERS,
-        ...options.headers,
       },
-      body: options.body ? JSON.stringify(options.body) : undefined,
       pollingInterval: 0,
       timeoutBeforeConnection: 0,
     });
+    let stall: ReturnType<typeof setTimeout> | null = null;
 
-    // Cover the silent window before the first byte arrives, too.
-    armStallWatchdog();
-
-    const handleAbort = () => {
-      // Caller-initiated cancellation — the aborting code owns its own
-      // cleanup. Firing onClose here would make an intentional cancel
-      // indistinguishable from an unexpected transport failure.
+    const finish = (error: Error | null) => {
+      if (stall) clearTimeout(stall);
+      signal.removeEventListener("abort", onAbort);
       es.removeAllEventListeners();
       es.close();
+      if (error) reject(error);
+      else resolve();
     };
+    const armStall = () => {
+      if (stall) clearTimeout(stall);
+      stall = setTimeout(
+        () => finish(new Error("Event stream went silent")),
+        EVENT_STREAM_STALL_MS,
+      );
+    };
+    const onAbort = () => finish(null);
 
-    controller.signal.addEventListener("abort", handleAbort);
-
+    signal.addEventListener("abort", onAbort);
+    armStall();
     es.addEventListener("message", (event) => {
-      if (controller.signal.aborted || isDone) return;
-      if (event.data) {
-        hasReceivedData = true;
-        retryCount = 0;
-        armStallWatchdog();
-
-        // Detect [DONE] sentinel before forwarding so we can set doneReceived
-        // and prevent the subsequent onclose from calling onClose a second time.
-        if (event.data === "[DONE]") {
-          doneReceived = true;
-        }
-
-        callbacks.onMessage({
-          data: event.data,
-          id: event.lastEventId ?? undefined,
-        });
-      }
+      armStall();
+      if (event.data) onData(event.data);
     });
-
     es.addEventListener("error", (event) => {
-      if (controller.signal.aborted || isDone) return;
-
-      controller.signal.removeEventListener("abort", handleAbort);
-      es.removeAllEventListeners();
-      es.close();
-
-      // The paid-only gate: react-native-sse surfaces an HTTP error status as an
-      // `error` event carrying the 402's {code, message, checkout_url,
-      // discount_code} body. Retrying would burn the backoff budget on a request that can only ever fail.
-      if ("xhrStatus" in event && event.xhrStatus === HTTP_PAYMENT_REQUIRED) {
-        const detail = parseSubscriptionRequiredBody(event.message);
-        cleanup();
-        if (detail) {
-          callbacks.onSubscriptionRequired?.(detail);
-        } else {
-          // A 402 whose body we cannot read is still a hard stop, but we have
-          // nothing to offer — surface it rather than swallowing it.
-          callbacks.onError?.(new Error("Subscription required"));
-        }
+      if ("xhrStatus" in event && event.xhrStatus >= 400) {
+        finish(new EventStreamHttpError(event.xhrStatus, event.message));
         return;
       }
-
-      if (retryCount < maxRetries) {
-        retryCount += 1;
-        // Disarm before backoff — a stale watchdog firing mid-retry would
-        // cleanup() and cancel the scheduled reconnect.
-        disarmStallWatchdog();
-        const delay = computeRetryDelay(retryCount - 1, initialRetryDelayMs);
-        console.warn(
-          `[SSE] Connection error (attempt ${retryCount}/${maxRetries}), retrying in ${delay}ms`,
-          event,
-        );
-        retryTimeoutId = setTimeout(() => {
-          retryTimeoutId = null;
-          void connect();
-        }, delay);
-      } else {
-        const errorMessage =
-          "message" in event
-            ? (event as { message?: string }).message
-            : undefined;
-        callbacks.onError?.(
-          new Error(
-            errorMessage || `SSE connection failed after ${maxRetries} retries`,
-          ),
-        );
-        cleanup();
-      }
+      finish(
+        new Error(
+          "message" in event && event.message
+            ? event.message
+            : "Event stream failed",
+        ),
+      );
     });
-
-    es.addEventListener("close", () => {
-      if (controller.signal.aborted || isDone) return;
-      controller.signal.removeEventListener("abort", handleAbort);
-      if (hasReceivedData || retryCount >= maxRetries) {
-        // Only call onClose if [DONE] didn't already trigger it.
-        // Connection closes without [DONE] (e.g. network failure) still need cleanup.
-        if (!doneReceived) {
-          callbacks.onClose?.();
-        }
-        cleanup();
-      } else {
-        retryCount += 1;
-        disarmStallWatchdog();
-        const delay = computeRetryDelay(retryCount - 1, initialRetryDelayMs);
-        console.warn(
-          `[SSE] Unexpected close (attempt ${retryCount}/${maxRetries}), retrying in ${delay}ms`,
-        );
-        retryTimeoutId = setTimeout(() => {
-          retryTimeoutId = null;
-          void connect();
-        }, delay);
-      }
-    });
-  }
-
-  await connect();
-  return controller;
+    es.addEventListener("close", () => finish(null));
+  });
 }

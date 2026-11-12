@@ -208,7 +208,9 @@ export async function sendOneShot(params: {
   const cutShort = terminationRequested();
   try {
     await Promise.race([
-      adapter.simulateMessage(user.platformUserId, message, { channelId }),
+      adapter
+        .simulateMessage(user.platformUserId, message, { channelId })
+        .then(() => adapter.conversationsIdle()),
       cutShort,
     ]);
     await settle(settleMs, cutShort);
@@ -301,7 +303,7 @@ function turnLabel(turn: ScenarioTurn): string {
 
 /**
  * Injects a turn's messages at their scripted gaps, each without waiting for
- * the reply to the one before, and resolves once every one has been handled.
+ * the reply to the one before, and resolves once every reply has been shown.
  */
 export async function deliverTurn(
   adapter: HarnessAdapter,
@@ -320,18 +322,19 @@ export async function deliverTurn(
     );
   }
   await Promise.all(handled);
+  await adapter.conversationsIdle();
 }
 
 /**
- * The final text of everything delivered, in the order each first appeared: a
- * bubble holds its last edit, and with `proactive` a backend delivery and an
- * attachment caption are entries of their own.
+ * The final text of everything still delivered, in the order each first appeared:
+ * a bubble holds its last edit, a deleted one is gone, and with `proactive` a
+ * backend delivery and an attachment caption are entries of their own.
  */
 function deliveredTexts(
   events: readonly TranscriptEvent[],
   proactive: boolean,
 ): string[] {
-  const texts: string[] = [];
+  const texts: (string | null)[] = [];
   const indexById = new Map<string, number>();
   for (const event of events) {
     if (event.type === "send" || event.type === "edit") {
@@ -342,6 +345,9 @@ function deliveredTexts(
       } else {
         texts[index] = event.text;
       }
+    } else if (event.type === "delete") {
+      const index = indexById.get(event.messageId);
+      if (index !== undefined) texts[index] = null;
     } else if (
       proactive &&
       (event.type === "outbound-delivery" ||
@@ -350,7 +356,7 @@ function deliveredTexts(
       texts.push(event.text);
     }
   }
-  return texts;
+  return texts.filter((text) => text !== null);
 }
 
 /** 1-based positions of the inbound messages that received a reaction. */

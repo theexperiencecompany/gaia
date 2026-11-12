@@ -52,7 +52,6 @@ from app.services.chat.stream import (
     _finalize_stream,
     _note_cancellation,
     _observe_turn_latencies,
-    _resolve_pending_approval_turn,
     _shows_reply,
     _stamp_turn_latencies,
     _StreamState,
@@ -447,21 +446,6 @@ class TestShowsReply:
 
 
 class TestRunChatStreamBackground:
-    @pytest.fixture(autouse=True)
-    def _no_pending_approval(self) -> Iterator[None]:
-        """Stub conversational HIL resolution to "nothing pending".
-
-        run_chat_stream_background now checks Mongo for a pending approval at
-        the top of each turn. These tests exercise the normal turn and don't stub
-        Redis, so without this the real redis_cache singleton is reached and
-        raises "Event loop is closed" under xdist's per-test event loops.
-        """
-        with patch(
-            "app.services.chat.stream.resolve_pending_from_message",
-            new=AsyncMock(return_value=None),
-        ):
-            yield
-
     @pytest.fixture(autouse=True)
     def _not_a_todos_chat(self) -> Iterator[None]:
         """Stub the existing-conversation lookup of its tracked todo to "none".
@@ -1657,30 +1641,6 @@ class TestRunChatStreamBackground:
                 source="web",
             )
         assert mock_capture.call_args.args[1].ttft_ms is None
-
-    async def test_pending_approval_turn_stamps_ack_and_ttft(self, test_user, existing_conv_body):
-        """An approval reply is still a turn: it stamps the ack clock and TTFT exactly once."""
-        state = _StreamState()
-        state.t0_perf = 50.0
-        sm = _make_stream_manager_mock()
-        with (
-            _patch_stream_manager(sm),
-            patch(
-                "app.services.chat.stream.resolve_pending_from_message",
-                new=AsyncMock(return_value="approve"),
-            ),
-            patch("app.services.chat.stream._persist_turn", new=AsyncMock()),
-            patch("app.services.chat.stream.time.perf_counter", return_value=52.0),
-        ):
-            handled = await _resolve_pending_approval_turn(
-                existing_conv_body, test_user, "conv_existing_123", "s_approval", state, "whatsapp"
-            )
-
-        assert handled is True
-        assert state.ack_perf == 52.0
-        assert state.ttft_perf == 52.0
-        assert state.ttft_ms == 2000.0
-        assert state.e2e_ack_ms == 2000.0
 
     # chunk dispatch: every frame goes through `_dispatch_stream_chunk`, which
     # picks what the client sees and what the turn persists. The tests above

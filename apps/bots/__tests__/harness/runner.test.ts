@@ -96,6 +96,7 @@ describe("evaluateAssertion — reactedTo", () => {
       destinationId: "u",
       targetMessageId: "in2",
       emoji: "👍",
+      replaces: null,
     },
   );
 
@@ -121,17 +122,38 @@ describe("deliverTurn", () => {
   function recordingAdapter() {
     const arrivals: Array<{ text: string; at: number }> = [];
     const started = Date.now();
+    let releaseIdle: () => void = () => undefined;
+    const idle = new Promise<void>((resolve) => {
+      releaseIdle = resolve;
+    });
     const adapter = {
       simulateMessage: (_user: string, text: string) => {
         arrivals.push({ text, at: Date.now() - started });
         return new Promise<void>((resolve) => setTimeout(resolve, 50));
       },
+      conversationsIdle: () => idle,
     } as unknown as HarnessAdapter;
-    return { adapter, arrivals };
+    return { adapter, arrivals, releaseIdle };
   }
 
+  it("resolves only once every followed conversation is idle", async () => {
+    const { adapter, releaseIdle } = recordingAdapter();
+    let delivered = false;
+    const turn = deliverTurn(adapter, "u", { send: "one" }).then(() => {
+      delivered = true;
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(delivered).toBe(false);
+
+    releaseIdle();
+    await turn;
+    expect(delivered).toBe(true);
+  });
+
   it("sends a burst at its gaps without waiting for the replies", async () => {
-    const { adapter, arrivals } = recordingAdapter();
+    const { adapter, arrivals, releaseIdle } = recordingAdapter();
+    releaseIdle();
     await deliverTurn(adapter, "u", {
       burst: [
         { send: "one" },

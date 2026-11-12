@@ -10,8 +10,8 @@ import {
 } from "@/features/chat/constants/files";
 import { currentConversationId } from "@/features/chat/utils/currentConversationId";
 import { toast } from "@/lib/toast";
+import { useAuxLoadingStore } from "@/stores/auxLoadingStore";
 import { useComposerStore } from "@/stores/composerStore";
-import { useStreamStore } from "@/stores/streamStore";
 
 const validateFile = (file: File): string | null => {
   if (!ALLOWED_FILE_TYPES.includes(file.type)) {
@@ -29,7 +29,7 @@ const validateFile = (file: File): string | null => {
  * Send stays blocked while any chip is uploading (useComposerIsUploading).
  */
 export const useFileAttachments = () => {
-  const setAuxLoading = useStreamStore((state) => state.setAuxLoading);
+  const setAuxLoading = useAuxLoadingStore((state) => state.setAuxLoading);
   // Ref-count concurrent attachFiles invocations so a slow batch doesn't clear
   // the global loading state while a later batch is still uploading.
   const activeUploads = useRef(0);

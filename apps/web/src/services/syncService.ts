@@ -15,27 +15,8 @@ import type { RequestOrigin } from "@/lib/api/typed";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { compareMessageOrder } from "@/lib/db/messageOrder";
 import { useChatStore } from "@/stores/chatStore";
-import {
-  hasAnyLiveTurn,
-  isConversationStreamingNow,
-  shouldBlockSyncForConversation,
-} from "@/stores/streamStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import { fromRegistryEntries } from "@/types/features/toolDataTypes";
-
-// Carries forward non-empty local tool_data when the remote copy lacks it: executor tool cards
-// are produced client-side during streaming and saved locally on abort, so the backend's
-// cancelled/partial copy may not have caught up yet — a bare "remote wins" would delete them.
-const withPreservedToolData = (remote: IMessage, local: IMessage): IMessage => {
-  const remoteHasToolData =
-    Array.isArray(remote.tool_data) && remote.tool_data.length > 0;
-  const localHasToolData =
-    Array.isArray(local.tool_data) && local.tool_data.length > 0;
-  if (!remoteHasToolData && localHasToolData) {
-    return { ...remote, tool_data: local.tool_data };
-  }
-  return remote;
-};
 
 const mergeMessageLists = (
   localMessages: IMessage[],
@@ -46,34 +27,8 @@ const mergeMessageLists = (
   // Start with local messages
   localMessages.forEach((msg) => messageMap.set(msg.id, msg));
 
-  // Merge with remote messages - prefer remote for existing messages
-  remoteMessages.forEach((msg) => {
-    const existing = messageMap.get(msg.id);
-    if (!existing) {
-      // New message from remote
-      messageMap.set(msg.id, msg);
-    } else if (existing.optimistic) {
-      // Always replace optimistic messages with remote versions
-      messageMap.set(msg.id, msg);
-    } else if (existing.status === "sending") {
-      // CRITICAL: Only preserve "sending" status if we are ACTUALLY streaming this conversation.
-      // If we are not streaming (e.g. page refresh, crash recovery), this "sending" status is stale
-      // and MUST be overwritten by the remote message (which has the true final state).
-      if (isConversationStreamingNow(existing.conversationId)) {
-        return;
-      }
-      // Not streaming? Clean up stale "sending" message by overwriting from remote,
-      // but keep locally-retained tool cards the backend copy may still be missing.
-      messageMap.set(msg.id, withPreservedToolData(msg, existing));
-    } else {
-      // The remote copy is authoritative; the only exception is 'sending', handled above.
-      messageMap.set(msg.id, withPreservedToolData(msg, existing));
-    }
-  });
-
-  // No orphan sweep: the client's send id IS the persisted message id, so the server copy
-  // replaces the optimistic record above naturally. Sends the server never received stay
-  // visible and are marked failed by the turn lifecycle — never silently deleted.
+  // The remote copy is authoritative: no live stream writes these rows any more.
+  remoteMessages.forEach((msg) => messageMap.set(msg.id, msg));
 
   return Array.from(messageMap.values()).toSorted(compareMessageOrder);
 };
@@ -245,9 +200,6 @@ const identifyDeletedConversations = (
     // A todo chat or bot DM is never in the remote list, by design: absent there is not deleted.
     if (isUnlistedConversation(local)) continue;
 
-    // Skip if conversation is currently being streamed
-    if (isConversationStreamingNow(local.id)) continue;
-
     // Safety: Skip recently created/updated conversations
     // They might not have synced to the server yet, or might be beyond the pagination limit
     const localUpdateTime = (local.updatedAt || local.createdAt).getTime();
@@ -305,15 +257,6 @@ const warnOnMessageContentLoss = (
 export const batchSyncConversations = async (
   origin: RequestOrigin = {},
 ): Promise<void> => {
-  // CRITICAL: Skip sync while any turn streams to prevent data corruption —
-  // per-conversation guards above handle the fine-grained cases, this is the
-  // conservative whole-batch gate.
-  if (hasAnyLiveTurn()) {
-    console.debug("[SyncService] Skipped — stream in progress");
-    return;
-  }
-  console.debug("[SyncService] Starting batch sync (stream not active)");
-
   try {
     const [remoteConversations, localConversations] = await Promise.all([
       chatApi
@@ -380,9 +323,6 @@ export const batchSyncConversations = async (
           conversationId,
         );
 
-        // Skip syncing if streaming or pending save (e.g., after abort)
-        if (shouldBlockSyncForConversation(conversationId)) return;
-
         const mappedConversation = toStoredConversation(
           conversation,
           artifacts,
@@ -424,10 +364,6 @@ export const applySyncedConversation = async (
   conversationId: string,
   conversation: SyncedConversation,
 ): Promise<void> => {
-  if (shouldBlockSyncForConversation(conversationId)) {
-    return;
-  }
-
   const messages = toClientMessages(conversation.messages);
   const artifacts = fromRegistryEntries(conversation.artifacts, conversationId);
   const mappedConversation = toStoredConversation(conversation, artifacts);
@@ -462,11 +398,6 @@ export const applySyncedConversation = async (
 export const syncSingleConversation = async (
   conversationId: string,
 ): Promise<void> => {
-  // Skip sync if streaming or pending save to prevent overwriting in-flight data
-  if (shouldBlockSyncForConversation(conversationId)) {
-    return;
-  }
-
   try {
     // Use batch sync with a single conversation item
     // Sending undefined for last_updated forces backend to return the full conversation

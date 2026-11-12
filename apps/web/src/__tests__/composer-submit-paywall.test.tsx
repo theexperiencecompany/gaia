@@ -14,12 +14,13 @@ const clearReplyToMessage = vi.fn();
 
 let isPaid = false;
 let isSubscriptionStatusUnknown = false;
+let pickedTool: string | null = null;
 
 vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
   useIsPaid: () => ({ isPaid, isUnknown: isSubscriptionStatusUnknown }),
 }));
 
-vi.mock("@/features/chat/stream/sendMessage", () => ({ sendMessage }));
+vi.mock("@/features/chat/live/sendMessage", () => ({ sendMessage }));
 
 vi.mock("@/features/chat/hooks/useCalendarEventSelection", () => ({
   useCalendarEventSelection: () => ({
@@ -41,8 +42,8 @@ vi.mock("@/stores/composerStore", () => ({
   useInputText: () => "Hello GAIA",
   useComposerTextActions: () => ({ clearInputText }),
   useComposerModeSelection: () => ({
-    selectedTool: null,
-    selectedToolCategory: null,
+    selectedTool: pickedTool,
+    selectedToolCategory: pickedTool ? "gmail" : null,
     setSelectedTool: vi.fn(),
     setSelectedToolCategory: vi.fn(),
     clearToolSelection,
@@ -67,6 +68,7 @@ describe("useComposerSubmit paywall pre-check", () => {
   beforeEach(() => {
     isPaid = false;
     isSubscriptionStatusUnknown = false;
+    pickedTool = null;
     useUpgradeModalStore.setState({ open: false, offer: null });
     vi.clearAllMocks();
   });
@@ -105,6 +107,28 @@ describe("useComposerSubmit paywall pre-check", () => {
     expect(sendMessage).toHaveBeenCalledTimes(1);
     expect(useUpgradeModalStore.getState().open).toBe(false);
     expect(clearInputText).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends the picked tool with the message", () => {
+    isPaid = true;
+    pickedTool = "gmail_send";
+    const { result } = renderHook(() =>
+      useComposerSubmit({
+        inputRef: { current: null },
+        scrollToBottom: vi.fn(),
+      }),
+    );
+
+    result.current.handleFormSubmit();
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      "Hello GAIA",
+      expect.objectContaining({
+        selectedTool: "gmail_send",
+        toolCategory: "gmail",
+      }),
+    );
+    expect(clearToolSelection).toHaveBeenCalledTimes(1);
   });
 
   it("lets the send proceed while the subscription status is still unknown, instead of opening the paywall (cold-cache race)", () => {

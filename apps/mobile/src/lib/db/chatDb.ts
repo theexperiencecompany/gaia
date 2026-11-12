@@ -2,7 +2,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Message } from "@/features/chat/api/chat-api";
 import type { Conversation } from "@/features/chat/types/index";
 
-const MESSAGES_PREFIX = "@chat_messages_";
+// v2: a reaction is a field on the user message; v1 caches held emoji_ack messages instead.
+const MESSAGES_PREFIX = "@chat_messages_v2_";
+const LEGACY_MESSAGES_PREFIX = "@chat_messages_";
 const CONVERSATIONS_KEY = "@chat_conversations";
 const MAX_CONVERSATIONS = 50;
 const MAX_MESSAGES_PER_CONVERSATION = 200;
@@ -75,6 +77,12 @@ export const chatDb = {
     const result = new Map<string, Message[]>();
     try {
       const keys = await AsyncStorage.getAllKeys();
+      const legacyKeys = keys.filter(
+        (k) =>
+          k.startsWith(LEGACY_MESSAGES_PREFIX) &&
+          !k.startsWith(MESSAGES_PREFIX),
+      );
+      if (legacyKeys.length > 0) await AsyncStorage.multiRemove(legacyKeys);
       const messageKeys = keys.filter((k) => k.startsWith(MESSAGES_PREFIX));
       if (messageKeys.length === 0) return result;
 

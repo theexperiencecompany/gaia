@@ -12,7 +12,11 @@
  * and `BaseBotAdapter.fetchOutboundArtifact` under test are all real.
  */
 
-import { BaseBotAdapter, type OutboundFile } from "@gaia/shared/bots";
+import {
+  BaseBotAdapter,
+  type ConversationSurface,
+  type OutboundFile,
+} from "@gaia/shared/bots";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GaiaClient } from "../../../../../libs/shared/ts/src/bots/api";
 import type { OutboundAttachment } from "../../../../../libs/shared/ts/src/bots/consumer/envelope";
@@ -50,6 +54,9 @@ class TestAdapter extends BaseBotAdapter {
   }
   protected async stop(): Promise<void> {
     /* nothing to disconnect */
+  }
+  protected async resumeSurface(): Promise<ConversationSurface> {
+    throw new Error("no restart under test");
   }
   protected async deliverOutbound(): Promise<void> {
     /* no outbound delivery under test */

@@ -1,19 +1,36 @@
 import { parseSubscriptionRequiredBody } from "@gaia/shared";
 import { describe, expect, it, vi } from "vitest";
-import { createSSEConnection } from "./sse-client";
+import { EventStreamHttpError, readEventStream } from "./sse-client";
+
+type Listener = (event: Record<string, unknown>) => void;
 
 const { opened } = vi.hoisted(() => ({
-  opened: { headers: null as Record<string, string> | null },
+  opened: {
+    url: "",
+    init: null as { method: string; headers: Record<string, string> } | null,
+    listeners: new Map<string, Listener>(),
+    closed: false,
+  },
 }));
 
 vi.mock("react-native-sse", () => ({
   default: class {
-    constructor(_url: string, init: { headers: Record<string, string> }) {
-      opened.headers = init.headers;
+    constructor(
+      url: string,
+      init: { method: string; headers: Record<string, string> },
+    ) {
+      opened.url = url;
+      opened.init = init;
+      opened.listeners = new Map();
+      opened.closed = false;
     }
-    addEventListener = vi.fn();
-    removeAllEventListeners = vi.fn();
-    close = vi.fn();
+    addEventListener = (type: string, listener: Listener) => {
+      opened.listeners.set(type, listener);
+    };
+    removeAllEventListeners = () => opened.listeners.clear();
+    close = () => {
+      opened.closed = true;
+    };
   },
 }));
 
@@ -21,22 +38,56 @@ vi.mock("@/features/auth/utils/auth-storage", () => ({
   getAuthToken: vi.fn(async () => "token-1"),
 }));
 
-describe("createSSEConnection", () => {
-  it("tells the backend the stream comes from the mobile app", async () => {
-    const controller = await createSSEConnection("/chat-stream", {
-      onMessage: vi.fn(),
-    });
-    await vi.waitFor(() => expect(opened.headers).not.toBeNull());
-    controller.abort();
+const emit = (type: string, event: Record<string, unknown> = {}) =>
+  opened.listeners.get(type)?.(event);
 
-    expect(opened.headers?.["X-Client-Type"]).toBe("mobile");
+describe("readEventStream", () => {
+  it("opens a GET stream that tells the backend it comes from the mobile app", async () => {
+    const controller = new AbortController();
+    const reading = readEventStream(
+      "/c/events?after=3",
+      vi.fn(),
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(opened.init).not.toBeNull());
+    controller.abort();
+    await reading;
+
+    expect(opened.url).toMatch(/\/c\/events\?after=3$/);
+    expect(opened.init?.method).toBe("GET");
+    expect(opened.init?.headers["X-Client-Type"]).toBe("mobile");
+    expect(opened.closed).toBe(true);
+  });
+
+  it("hands over each data payload and resolves when the server closes the stream", async () => {
+    const onData = vi.fn();
+    const reading = readEventStream("/e", onData, new AbortController().signal);
+    await vi.waitFor(() => expect(opened.listeners.size).toBeGreaterThan(0));
+    emit("message", { data: '{"frame":1}' });
+    emit("message", { data: "" });
+    emit("close");
+
+    await expect(reading).resolves.toBeUndefined();
+    expect(onData.mock.calls).toEqual([['{"frame":1}']]);
+  });
+
+  it("rejects with the status when the stream is refused", async () => {
+    const reading = readEventStream(
+      "/e",
+      vi.fn(),
+      new AbortController().signal,
+    );
+    await vi.waitFor(() => expect(opened.listeners.size).toBeGreaterThan(0));
+    emit("error", { type: "error", xhrStatus: 404, message: "not found" });
+
+    await expect(reading).rejects.toBeInstanceOf(EventStreamHttpError);
+    await expect(reading).rejects.toMatchObject({ status: 404 });
   });
 });
 
 /**
- * The mobile SSE transport hands back the 402's raw `responseText`, never a
- * parsed object — this is the narrowing that turns it into an offer the chat
- * UI can act on, instead of the transport error it used to be retried as.
+ * A refused send hands back the 402's raw body text, never a parsed object;
+ * this is the narrowing that turns it into an offer the chat UI can act on.
  *
  * (Component-level rendering is not covered: apps/mobile's vitest config is
  * node-env and collects `*.test.ts` only, with no React Native test renderer.)

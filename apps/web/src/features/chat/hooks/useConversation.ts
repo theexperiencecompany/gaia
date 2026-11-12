@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useLiveMessages } from "@/features/chat/live/useLiveChat";
 import type { IMessage } from "@/lib/db/chatDb";
 import type { OptimisticMessage } from "@/stores/chatStore";
 import { useChatStore } from "@/stores/chatStore";
@@ -80,6 +81,8 @@ export const useConversation = () => {
   );
   // Get single optimistic message for new conversations (before conversation ID exists)
   const optimisticMessage = useChatStore((state) => state.optimisticMessage);
+  // The conversation's event stream; saved messages above are the history written before it.
+  const liveMessages = useLiveMessages(activeConversationId);
 
   const convoMessages = useMemo(() => {
     // Get messages from IndexedDB for the active conversation
@@ -103,8 +106,13 @@ export const useConversation = () => {
       ];
     }
 
-    return messages;
-  }, [activeConversationId, messagesByConversation, optimisticMessage]);
+    return liveMessages.length > 0 ? [...messages, ...liveMessages] : messages;
+  }, [
+    activeConversationId,
+    messagesByConversation,
+    optimisticMessage,
+    liveMessages,
+  ]);
 
   return { convoMessages };
 };

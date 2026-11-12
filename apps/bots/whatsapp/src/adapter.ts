@@ -16,25 +16,25 @@
  */
 
 import {
+  type ActiveBotConversation,
   BaseBotAdapter,
   BODY_READ_TIMEOUT,
   BODY_TOO_LARGE,
   type BotCommand,
   type BotFileData,
   buildAuthLinkMessage,
+  type ConversationSurface,
   consumeInboundLinkCode,
   createBotLogger,
   DELIVERY_FAILURE_KIND,
   extractSubcommandArgs,
   friendlyMediaError,
-  handleStreamingChat,
   hashLogIdentifier,
   type IncomingMedia,
   type LinkState,
   MEDIA_READ_TIMEOUT_MS,
   type OutboundFile,
   type OutboundNotifications,
-  PerUserInboundQueue,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -45,7 +45,6 @@ import {
   renderForPlatform,
   richMessageToMarkdown,
   type SentMessage,
-  STREAMING_DEFAULTS,
   sanitizeErrorForLog,
   unsupportedMediaMessage,
   WEBHOOK_MAX_BODY_BYTES,
@@ -146,11 +145,6 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    * process. Avoids a backend round-trip on every first-seen message after restart.
    */
   private readonly linkedUsers = new Set<string>();
-  /**
-   * One user's messages run one at a time, in order, so rapid messages or batched
-   * webhook deliveries never interleave typing states or replies; /stop skips it.
-   */
-  private readonly inbound = new PerUserInboundQueue();
   private readonly adapterLogger = createBotLogger("whatsapp", "adapter");
 
   private get whatsAppClient(): WhatsAppClient {
@@ -421,18 +415,18 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     });
     const msgId = event.message.id;
 
-    // Enqueue per user — webhook returns 200 immediately while processing is
-    // serialized: messages from the same user run one at a time, in order.
+    // The webhook returns 200 at once. A user's messages are posted in the order
+    // they arrived, and none waits for another's reply.
     if (text) {
-      void this.inbound.enqueue(waId, text, () =>
-        this.handleIncomingMessage(waId, text, msgId).catch((err) =>
+      void this.arrivals
+        .run(waId, () => this.handleIncomingMessage(waId, text, msgId))
+        .catch((err) =>
           this.adapterLogger.error("incoming_message_processing_failed", {
             user_hash: waIdHash,
             message_id: msgId,
             ...sanitizeErrorForLog(err),
           }),
-        ),
-      );
+        );
       return;
     }
     if (event.message.type === "text") return;
@@ -442,33 +436,29 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     if (!media) {
       // No usable media descriptor (sticker without id, unknown type, etc.)
       // Fall back to the friendly rejection.
-      void this.inbound.enqueue(waId, undefined, async () => {
-        try {
-          await this.sendWhatsAppText(
-            waId,
-            unsupportedMediaMessage(event.message.type),
-          );
-        } catch (err) {
-          this.adapterLogger.error("unsupported_media_handling_failed", {
-            user_hash: waIdHash,
-            message_type: event.message.type,
-            ...sanitizeErrorForLog(err),
-          });
-        }
-      });
+      void this.sendWhatsAppText(
+        waId,
+        unsupportedMediaMessage(event.message.type),
+      ).catch((err: unknown) =>
+        this.adapterLogger.error("unsupported_media_handling_failed", {
+          user_hash: waIdHash,
+          message_type: event.message.type,
+          ...sanitizeErrorForLog(err),
+        }),
+      );
       return;
     }
 
-    void this.inbound.enqueue(waId, undefined, () =>
-      this.handleMediaMessage(waId, media, msgId).catch((err) =>
+    void this.arrivals
+      .run(waId, () => this.handleMediaMessage(waId, media, msgId))
+      .catch((err) =>
         this.adapterLogger.error("media_message_processing_failed", {
           user_hash: waIdHash,
           message_id: msgId,
           media_kind: media.kind,
           ...sanitizeErrorForLog(err),
         }),
-      ),
-    );
+      );
   }
 
   /**
@@ -639,7 +629,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
             await this.sendWhatsAppText(waId, "Usage: /gaia <your message>");
             return;
           }
-          await this.handleStreamingMessage(waId, rest, messageId);
+          await this.postWhatsAppMessage(waId, rest, messageId);
           return;
         }
 
@@ -654,20 +644,18 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleStreamingMessage(waId, chatText, messageId);
+      await this.postWhatsAppMessage(waId, chatText, messageId);
     } finally {
       typing.stop();
     }
   }
 
   /**
-   * Send the user's message to the GAIA streaming endpoint. WhatsApp streaming is
-   * disabled (`STREAMING_DEFAULTS.whatsapp.streaming = false`), so the full
-   * response accumulates and sends as one message. The caller's typing keep-alive
-   * (see {@link startWhatsAppTyping}) stays visible for the whole generation and
-   * is cancelled in the caller's `finally`.
+   * Posts the user's message and follows its conversation in this chat. WhatsApp
+   * cannot edit, so each reply is sent once it is final, as a native reply when it
+   * answers an earlier message.
    */
-  private async handleStreamingMessage(
+  private async postWhatsAppMessage(
     waId: string,
     text: string,
     messageId: string,
@@ -680,83 +668,62 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       );
       return;
     }
-
-    let lastEditFn: ((t: string) => Promise<void>) | null = null;
-    let finalMessageSent = false;
-
-    try {
-      await handleStreamingChat(
-        this.gaia,
-        {
-          message: text || "Please describe the attached file.",
-          platform: "whatsapp",
-          platformUserId: waId,
-          channelId: waId,
-          isDm: true,
-          platformMessageId: messageId,
-          ...(attachments.length > 0
-            ? {
-                fileIds: attachments.map((a) => a.fileId),
-                fileData: attachments,
-              }
-            : {}),
-        },
-        // editMessage: no placeholder to edit — send as new message on first call.
-        // ``formatted`` already ran through PLATFORM_MARKDOWN in handleStreamingChat.
-        async (formatted: string) => {
-          if (finalMessageSent) {
-            // WhatsApp has no edit API — edit() sends a new message.
-            // Guard against sending multiple new messages if streaming is
-            // ever re-enabled or editMessage is called more than once.
-            return;
-          }
-          finalMessageSent = true;
-          if (lastEditFn) {
-            await lastEditFn(formatted);
-          } else {
-            const sent = await this.sendWhatsAppText(waId, formatted);
-            lastEditFn = sent.edit;
-          }
-        },
-        // sendNewMessage: send a new message and return its edit function
-        async (newText: string) => {
-          const sent = await this.sendWhatsAppText(waId, newText);
-          lastEditFn = sent.edit;
-          return sent.edit;
-        },
-        // onAuthError
-        async (authUrl: string) => {
-          await this.sendWhatsAppText(
-            waId,
-            renderForPlatform(buildAuthLinkMessage(authUrl), "whatsapp"),
-          );
-        },
-        // onGenericError
-        async (errMsg: string) => {
-          await this.sendWhatsAppText(waId, errMsg);
-        },
-        STREAMING_DEFAULTS.whatsapp,
-        await this.analyticsFor(waId),
-        (emoji: string, replaces: string | null) =>
-          this.reactToMessage(waId, messageId, emoji, false, replaces),
-      );
-    } catch (err) {
-      this.adapterLogger.error("streaming_failed", {
-        user_hash: hashLogIdentifier(waId),
-        ...sanitizeErrorForLog(err),
-      });
-      try {
+    await this.postAndFollow(
+      {
+        message: text || "Please describe the attached file.",
+        platform: "whatsapp",
+        platformUserId: waId,
+        channelId: waId,
+        isDm: true,
+        platformMessageId: messageId,
+        ...(attachments.length > 0
+          ? {
+              fileIds: attachments.map((a) => a.fileId),
+              fileData: attachments,
+            }
+          : {}),
+      },
+      this.conversationSurface(waId, messageId),
+      async (authUrl: string) => {
         await this.sendWhatsAppText(
           waId,
-          "An error occurred. Please try again.",
+          renderForPlatform(buildAuthLinkMessage(authUrl), "whatsapp"),
         );
-      } catch (sendErr) {
-        this.adapterLogger.error("streaming_error_message_send_failed", {
-          user_hash: hashLogIdentifier(waId),
-          ...sanitizeErrorForLog(sendErr),
-        });
-      }
-    }
+      },
+    );
+  }
+
+  protected async resumeSurface({
+    platform_user_id: waId,
+  }: ActiveBotConversation): Promise<ConversationSurface> {
+    return this.conversationSurface(waId, null);
+  }
+
+  /**
+   * The chat a conversation follows into. Typing is shown against the message
+   * that opened the follow; a follow resumed after a restart has none, so it shows no typing.
+   */
+  private conversationSurface(
+    waId: string,
+    messageId: string | null,
+  ): ConversationSurface {
+    return {
+      send: async (text, replyTo) => {
+        await this.sendWhatsAppText(waId, text, replyTo);
+        // WhatsApp cannot edit or delete: the follower never streams here.
+        return {
+          edit: async (updated: string) => {
+            await this.sendWhatsAppText(waId, updated);
+          },
+        };
+      },
+      react: (platformMessageId, emoji, replaces) =>
+        this.reactToMessage(waId, platformMessageId, emoji, false, replaces),
+      startTyping: () =>
+        messageId
+          ? this.startWhatsAppTyping(waId, messageId).stop
+          : () => undefined,
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -842,7 +809,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       if (outcome.action === "reply") {
         await this.sendWhatsAppText(waId, outcome.text);
       } else {
-        await this.handleStreamingMessage(
+        await this.postWhatsAppMessage(
           waId,
           outcome.text,
           messageId,
@@ -957,12 +924,14 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   private async sendWhatsAppText(
     waId: string,
     text: string,
+    replyTo: string | null = null,
   ): Promise<SentMessage> {
     const response = await this.whatsAppClient.messages.sendText({
       phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
       to: `+${waId}`,
       body: text,
       previewUrl: false,
+      ...(replyTo ? { contextMessageId: replyTo } : {}),
     });
 
     const messageId = response.messages[0]?.id ?? "";

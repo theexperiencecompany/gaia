@@ -32,18 +32,19 @@ Requires a running API (real LLM or the `dev --sim` scripted stub) and the same
 `GAIA_FRONTEND_URL`, `BOT_LOG_HASH_SECRET`). Set `RABBITMQ_URL` to record
 proactive `outbound-delivery` events through the real outbound consumer.
 
-### `--settle <ms>` — required for background-executor turns
+### `--settle <ms>` — for deliveries that still come through the outbound queue
 
-A reply that hands off to the background executor closes its SSE stream as soon
-as the handoff preamble is sent ("lemme check, one sec"); the real answer is
-narrated and published to the platform's outbound queue **seconds later**.
-Without a settle window the harness shuts its consumer down in between, so the
-answer is not lost but *stranded* in the durable queue — the next `gaia-sim`
-boot drains it into an unrelated transcript, where it shows up at `t≈50ms`
-belonging to nobody. The turn reads as if GAIA silently dropped the reply.
+A chat message is posted and its conversation followed until it is idle: the
+reply, a background executor's result and the reactions all arrive on the
+conversation's events stream, and the harness waits for them on its own.
+Workflow and todo deliveries and approval prompts still come through the
+platform's outbound queue. Without a settle window the harness shuts its
+consumer down before they land, so they are not lost but *stranded* in the
+durable queue — the next `gaia-sim` boot drains them into an unrelated
+transcript, where they show up at `t≈50ms` belonging to nobody.
 
 ```bash
-# a handoff turn: keep consuming for 20s after the stream closes
+# keep the outbound consumer alive 20s after the conversation goes idle
 nx run bot-harness:sim -- send --emulate telegram --user dev@gaia.local \
   --settle 20000 --out t.jsonl "did those land in todoist?"
 ```

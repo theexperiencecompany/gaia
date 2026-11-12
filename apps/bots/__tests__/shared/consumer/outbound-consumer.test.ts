@@ -912,7 +912,8 @@ describe("OutboundConsumer outside a platform's messaging window", () => {
 
     await deliverMessage(handle, msgFor(twoBubbles));
 
-    expect(deliver).toHaveBeenCalledTimes(2);
+    // The second bubble follows the first after BUBBLE_PAUSE_MS.
+    await vi.waitFor(() => expect(deliver).toHaveBeenCalledTimes(2));
     expect(notifications.deliver).not.toHaveBeenCalled();
   });
 

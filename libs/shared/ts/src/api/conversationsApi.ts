@@ -25,7 +25,6 @@ export const CONVERSATION_ENDPOINTS = {
   batchSync: "/conversations/batch-sync",
   upload: "/upload",
   generateImage: "/image/generate",
-  chatStream: "chat-stream",
 } as const;
 
 export interface ConversationListParams {
@@ -51,37 +50,4 @@ export interface PinMessageParams {
 
 export interface GenerateImageParams {
   message: string;
-}
-
-export interface ChatStreamFileData {
-  fileId: string;
-  name?: string;
-  url?: string;
-  type?: string;
-  size?: number;
-  mimeType?: string;
-}
-
-export interface ChatStreamReplyTo {
-  id: string;
-  content: string;
-  role: "user" | "assistant";
-}
-
-export interface ChatStreamMessage {
-  role: "user" | "assistant" | "system";
-  content: string;
-}
-
-export interface ChatStreamParams {
-  conversation_id: string | null;
-  message: string;
-  fileIds?: string[];
-  fileData?: ChatStreamFileData[];
-  selectedTool?: string | null;
-  toolCategory?: string | null;
-  selectedWorkflow?: Record<string, unknown> | null;
-  selectedCalendarEvent?: Record<string, unknown> | null;
-  replyToMessage?: ChatStreamReplyTo | null;
-  messages?: ChatStreamMessage[];
 }

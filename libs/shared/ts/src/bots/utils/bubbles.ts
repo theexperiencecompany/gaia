@@ -1,83 +1,25 @@
 /**
- * Turns one assistant reply into the bubbles a bot should actually send.
+ * The messages a bot sends for one finished assistant reply.
  *
- * The model owns the splits: it must emit `<NEW_MESSAGE_BREAK>` between
- * bubbles, and nothing here invents splits it did not ask for. A reply with
- * no sentinel ships as ONE bubble. Blank-line segmentation was removed on
- * purpose: it shredded logical markdown (lists, tables, headings parted from
- * their blocks) and no merge heuristic could reconstruct intent the model
- * never stated.
- *
- * Bots only. The web app splits on the sentinel and renders markdown, where a
- * long reply is a scrollable block rather than a wall in a chat thread.
+ * The streamed reply and every background delivery (executor results,
+ * reminders, workflow results) split through here, so a reply arrives as the
+ * same messages whichever path carried it.
  */
 
-import {
-  NEW_MESSAGE_BREAK_TOKEN,
-  normalizeMessageBreakTokens,
-  stripPartialBreakToken,
-} from "../../utils/messageBreakUtils";
+import { splitMessageByBreaks } from "../../utils/messageBubbles";
+import type { PlatformName } from "../types";
+import { chunkResponse } from "./text";
 
-/**
- * A bubble shorter than this is a fragment, not a message ("ok.", "got it."),
- * and reads as a stutter when sent on its own — it joins its neighbour instead.
- */
-const MIN_BUBBLE_CHARS = 40;
+/** The gap between two bubbles sent back to back, so they land like texts a person sends. */
+export const BUBBLE_PAUSE_MS = 600;
 
-/**
- * Split on the sentinel everywhere except inside fenced code blocks, where a
- * stray token would break the code. The token is swallowed there (replaced
- * with a newline) rather than splitting.
- */
-function splitOutsideFences(text: string): string[] {
-  const parts = text.split(NEW_MESSAGE_BREAK_TOKEN);
-  const out: string[] = [];
-  let current = "";
-  let inFence = false;
-  parts.forEach((part, i) => {
-    current += part;
-    if ((part.match(/```/g) ?? []).length % 2 === 1) inFence = !inFence;
-    if (inFence && i < parts.length - 1) {
-      current += "\n";
-    } else {
-      out.push(current);
-      current = "";
-    }
-  });
-  return out;
-}
-
-/** Fold sub-message fragments into their neighbour so no bubble stutters. */
-function mergeFragments(pieces: string[]): string[] {
-  const bubbles: string[] = [];
-  for (const piece of pieces) {
-    const previous = bubbles.at(-1);
-    if (previous !== undefined && previous.trim().length < MIN_BUBBLE_CHARS) {
-      bubbles[bubbles.length - 1] = `${previous}\n\n${piece}`;
-      continue;
-    }
-    bubbles.push(piece);
-  }
-  const last = bubbles.at(-1);
-  if (
-    bubbles.length > 1 &&
-    last !== undefined &&
-    last.trim().length < MIN_BUBBLE_CHARS
-  ) {
-    bubbles.splice(-2, 2, `${bubbles.at(-2)}\n\n${last}`);
-  }
-  return bubbles;
-}
-
-/**
- * The bubbles one assistant reply should be delivered as: the model's own
- * sentinel-separated segments, nothing more. No sentinel means one bubble.
- */
-export function segmentIntoBubbles(text: string): string[] {
-  if (!text.trim()) return [];
-  const segments = splitOutsideFences(normalizeMessageBreakTokens(text));
-  const cleaned = segments
-    .map((segment) => stripPartialBreakToken(segment).trim())
-    .filter(Boolean);
-  return mergeFragments(cleaned);
+/** The model's bubbles, each cut to the platform's limit measured by its rendered length. */
+export function deliverableBubbles(
+  text: string,
+  platform: PlatformName,
+  render: (chunk: string) => string,
+): string[][] {
+  return splitMessageByBreaks(text).map((bubble) =>
+    chunkResponse(bubble, platform, render),
+  );
 }

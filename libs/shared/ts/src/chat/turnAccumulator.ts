@@ -462,7 +462,6 @@ export const applyStreamEvent = (
     case "model_fallback":
     case "parse_error":
     case "main_response_complete":
-    case "emoji_ack":
     case "reaction":
     case "progress":
     case "conversation_initialized":

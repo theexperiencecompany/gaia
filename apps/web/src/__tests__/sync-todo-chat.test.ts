@@ -21,12 +21,6 @@ vi.mock("@/lib/db/chatDb", () => ({
   },
 }));
 
-vi.mock("@/stores/streamStore", () => ({
-  hasAnyLiveTurn: () => false,
-  isConversationStreamingNow: () => false,
-  shouldBlockSyncForConversation: () => false,
-}));
-
 const LONG_AGO = new Date("2026-01-01T00:00:00Z");
 
 const LISTED = {

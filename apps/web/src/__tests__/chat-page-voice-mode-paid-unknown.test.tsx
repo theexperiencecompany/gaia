@@ -112,9 +112,14 @@ vi.mock("@/features/chat/components/voice-agent/VoiceModeBackground", () => ({
   VoiceModeBackground: () => null,
 }));
 
-vi.mock("@/features/chat/hooks/useStreamResume", () => ({
-  // Reload-mid-stream recovery — irrelevant to the voice-mode gate under test.
-  useStreamResume: () => undefined,
+vi.mock("@/features/chat/hooks/useConversationSync", () => ({
+  // The on-open sync — irrelevant to the voice-mode gate under test.
+  useConversationSync: () => undefined,
+}));
+
+vi.mock("@/features/chat/live/useLiveChat", () => ({
+  // The conversation's events stream — irrelevant to the voice-mode gate under test.
+  useOpenConversation: () => undefined,
 }));
 
 vi.mock("@/features/onboarding/hooks/useReportFirstChatOpened", () => ({
@@ -132,7 +137,7 @@ vi.mock("@/hooks/ui/useDragAndDrop", () => ({
 }));
 
 const { sendMessage } = vi.hoisted(() => ({ sendMessage: vi.fn() }));
-vi.mock("@/features/chat/stream/sendMessage", () => ({ sendMessage }));
+vi.mock("@/features/chat/live/sendMessage", () => ({ sendMessage }));
 
 vi.mock("@/lib/analytics", () => ({
   track: (...args: unknown[]) => track(...args),

@@ -15,6 +15,7 @@ import type {
   BotWorkflow,
   PlatformName,
 } from "../types";
+import { BOT_ERROR_LINE } from "./error-lines";
 import { BOT_FAILURE_REASON, classifyBotFailure } from "./failure-reasons";
 import { getErrorReason } from "./logger";
 import { isTableRow, isTableSeparator, PLATFORM_DISPLAY_NAMES } from "./text";
@@ -601,12 +602,12 @@ export function formatBotError(
     // hangs up mid-response.
     message === "aborted"
   ) {
-    return "🔌 Connection interrupted. Please try again.";
+    return BOT_ERROR_LINE.CONNECTION_INTERRUPTED;
   }
 
   if (message.includes("Stream processing incomplete")) {
     return "⚠️ Response was incomplete. Please try again.";
   }
 
-  return "❌ Something went wrong. Please try again later.";
+  return BOT_ERROR_LINE.GENERIC;
 }

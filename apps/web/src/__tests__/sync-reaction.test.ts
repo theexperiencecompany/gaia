@@ -18,12 +18,6 @@ vi.mock("@/lib/db/chatDb", () => ({
   },
 }));
 
-vi.mock("@/stores/streamStore", () => ({
-  hasAnyLiveTurn: () => false,
-  isConversationStreamingNow: () => false,
-  shouldBlockSyncForConversation: () => false,
-}));
-
 describe("syncing a conversation GAIA reacted in", () => {
   it("stores the reaction on the user's message, so a reload shows the badge", async () => {
     await applySyncedConversation("conv-1", {

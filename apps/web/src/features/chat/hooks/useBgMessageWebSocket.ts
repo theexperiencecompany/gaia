@@ -1,17 +1,16 @@
 import type { MessageReaction, TodoRunWake } from "@shared/api/generated";
 import { useCallback, useEffect } from "react";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
+import { applyMessageReaction } from "@/features/chat/utils/reactionUtils";
 import {
   isViewingConversation,
   markConversationUnread,
-} from "@/features/chat/stream/unread";
-import { applyMessageReaction } from "@/features/chat/utils/reactionUtils";
+} from "@/features/chat/utils/unread";
 import type { IMessage } from "@/lib/db/chatDb";
 import { db } from "@/lib/db/chatDb";
 import { streamLog } from "@/lib/streamLogger";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { useChatStore } from "@/stores/chatStore";
-import { useStreamStore } from "@/stores/streamStore";
 
 /**
  * WebSocket payload for a message saved outside the open turn: a background
@@ -67,9 +66,7 @@ export function useBgMessageWebSocket() {
     }
     const isBotReply = message.type === "bot";
 
-    // Remove streaming placeholder (id === task_id) if one exists in the store.
-    // The placeholder was created by useExecutorStream for live tool progress;
-    // now the final message is here, so the placeholder is no longer needed.
+    // A placeholder keyed by task_id is one an earlier client saved for live tool progress; the result replaces it.
     if (isBotReply && message.task_id) {
       const state = useChatStore.getState();
       const msgs = state.messagesByConversation[conversation_id] ?? [];
@@ -97,9 +94,7 @@ export function useBgMessageWebSocket() {
       todoRunWake: message.todo_run_wake ?? null,
     };
 
-    // Persist to IndexedDB (dbEventEmitter syncs to store automatically). When
-    // this matches a queued executor placeholder (keyed by task_id, from
-    // useExecutorStream), replace it atomically so no duplicate is left behind.
+    // Persist to IndexedDB (dbEventEmitter syncs to store automatically), replacing such a placeholder atomically.
     try {
       if (isBotReply && message.task_id) {
         await db.replaceMessage(message.task_id, iMessage);
@@ -122,13 +117,6 @@ export function useBgMessageWebSocket() {
     // End the awaiting-executor session AFTER the result message is in the
     // store, so loading hands off to the rendered result in the same frame — no
     // flash of "loading gone" before the result appears.
-    const stream = useStreamStore.getState();
-    if (
-      isBotReply &&
-      stream.sessions[conversation_id]?.phase === "awaiting_executor"
-    ) {
-      stream.endSession(conversation_id);
-    }
     streamLog("ws", "conversation.new_message", {
       conversationId: conversation_id,
       detail: { task_id: message.task_id },
@@ -143,10 +131,6 @@ export function useBgMessageWebSocket() {
       by: reaction.by,
     });
     // The reaction is the result's whole answer, so the run it ends is over.
-    const stream = useStreamStore.getState();
-    if (stream.sessions[conversation_id]?.phase === "awaiting_executor") {
-      stream.endSession(conversation_id);
-    }
     streamLog("ws", REACTION_EVENT, { conversationId: conversation_id });
   }, []);
 

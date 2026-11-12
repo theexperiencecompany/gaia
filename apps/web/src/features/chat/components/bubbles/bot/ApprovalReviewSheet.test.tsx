@@ -14,10 +14,6 @@ vi.mock("@/features/chat/api/chatApi", () => ({
   },
 }));
 
-vi.mock("@/features/chat/hooks/useMarkApprovalDecided", () => ({
-  useMarkApprovalDecided: () => () => undefined,
-}));
-
 vi.mock("@/lib/toast", () => ({
   toast: { error: vi.fn() },
 }));

@@ -22,18 +22,19 @@ import {
   type AnalyticsId,
   platformIdentity,
 } from "../../../../../libs/shared/ts/src/analytics";
-import { PerUserInboundQueue } from "../../../../../libs/shared/ts/src/bots/adapter/inbound-queue";
+import { ArrivalOrder } from "../../../../../libs/shared/ts/src/bots/adapter/arrival-order";
 import {
   consumeInboundLinkCode,
   redeemLinkCode,
 } from "../../../../../libs/shared/ts/src/bots/link-codes";
 import { REACTION_OUTCOME } from "../../../../../libs/shared/ts/src/bots/utils/reaction-outcome";
+import { postAndFollowSpy } from "./postAndFollow";
 
 interface GaiaSharedMockOptions {
   /** Per-platform streaming configuration object */
   streamingDefaults: Record<string, unknown>;
   /** Platform-specific converter mocks to merge into the returned object */
-  converters?: Record<string, ReturnType<typeof vi.fn>>;
+  converters?: Record<string, unknown>;
   /** Return value of the richMessageToMarkdown mock */
   defaultRichMarkdown?: string;
 }
@@ -87,6 +88,7 @@ export function makeGaiaSharedMock(
       args: Record<string, string | number | boolean | undefined> = {},
       rawText?: string,
     ) {
+      this.arrivals.release();
       const cmd = (
         this.commands as Map<string, { execute: (p: unknown) => Promise<void> }>
       ).get(name);
@@ -104,6 +106,16 @@ export function makeGaiaSharedMock(
           // Target may be expired
         }
       }
+    }
+
+    /** The real arrival order, so adapter tests assert the order posts are sent in. */
+    protected readonly arrivals = new ArrivalOrder();
+
+    /** Records the post in arrival order; tests drive the surface and auth handler it was handed. */
+    protected postAndFollow(
+      ...args: Parameters<typeof postAndFollowSpy>
+    ): Promise<void> {
+      return this.arrivals.post(() => postAndFollowSpy(...args));
     }
 
     protected buildContext(userId: string, channelId?: string) {
@@ -184,7 +196,6 @@ export function makeGaiaSharedMock(
     formatBotError: vi.fn((err: unknown) =>
       err instanceof Error ? `Error: ${err.message}` : "Something went wrong",
     ),
-    handleStreamingChat: vi.fn().mockResolvedValue(undefined),
     STREAMING_DEFAULTS: streamingDefaults,
     // Shared non-streaming chokepoint; mocked as identity here (returns raw text) —
     // real conversion is covered by the shared formatters tests.
@@ -214,8 +225,6 @@ export function makeGaiaSharedMock(
     MEDIA_READ_TIMEOUT_MS: 30_000,
     // The real outcome set, so an adapter's reaction result is production's value.
     REACTION_OUTCOME,
-    // The real queue: message order, and what may skip it, is the adapter's behaviour.
-    PerUserInboundQueue,
     unsupportedMediaMessage: vi.fn(
       (kind: string) => `I can't process ${kind} yet.`,
     ),

@@ -25,7 +25,7 @@ A tool lives in exactly one path. If a tool has a `TOOL_RENDERERS` entry, the ba
 
 ## Text segmentation
 
-`cleanText` is split by message breaks into parts (`splitByBreaksPreservingFences` if it contains `:::openui`, else `splitMessageByBreaks`). Each part is then run through `parseOpenUISegments`:
+`cleanText` is split into parts by `splitMessageByBreaks` (`libs/shared/ts/src/utils/messageBubbles.ts`), the one splitter the bots use too, so a reply is the same bubbles live, after a reload and on every platform. A break inside a code block or `:::openui` block never splits it. Each part is then run through `parseOpenUISegments`:
 
 - **Pure-markdown part** → one `imessage-bubble imessage-from-them` bubble with `MarkdownRenderer` inside. Grouping classes (`imessage-grouped-first/middle/last`) chain consecutive bubbles. Emoji-only parts drop the bubble and scale up the glyph.
 - **Mixed part (markdown + openui)** → markdown segments each get their own compact bubble; openui segments render at the same DOM level as tool cards (no bubble wrapper).

@@ -25464,61 +25464,6 @@
         ]
       }
     },
-    "/api/v1/bot/chat-stream": {
-      "post": {
-        "description": "Stream a chat response as Server-Sent Events.",
-        "operationId": "bot_bot_chat_stream",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BotChatRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Streaming Bot Chat",
-        "tags": [
-          "Bot"
-        ]
-      }
-    },
     "/api/v1/bot/conversations/active": {
       "get": {
         "description": "The platform's conversations still answering or working, with the seq to follow after.",

@@ -12,7 +12,6 @@ from app.db.repositories.conversations import conversation_repository
 from app.decorators import enforce_cost_budget, enforce_tiered_limit
 from app.models.bot_models import BotChatRequest
 from app.models.chat_models import ConversationModel, ConversationSource
-from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.bot_session_merge import apply_merge, plan_merge
@@ -197,39 +196,6 @@ class BotService:
         await bot_session_repository.delete_by_session_key(session_key)
 
         return await BotService.get_or_create_session(platform, platform_user_id, channel_id, user)
-
-    @staticmethod
-    async def load_conversation_history(
-        conversation_id: str, user_id: str, limit: int = 20
-    ) -> list[MessageDict]:
-        """Return up to limit recent messages as role/content dicts in seq order, skipping replies still being written."""
-        history: list[MessageDict] = []
-        for msg in await conversation_repository.list_recent_messages(
-            conversation_id, user_id=user_id, limit=limit
-        ):
-            if msg.in_progress:
-                continue
-            if msg.type == "user":
-                history.append(MessageDict(role="user", content=msg.response or ""))
-            elif msg.type == "bot":
-                history.append(MessageDict(role="assistant", content=msg.response or ""))
-        return history
-
-
-async def build_bot_message_request(
-    body: BotChatRequest, conversation_id: str, user_id: str
-) -> MessageRequestWithHistory:
-    """Load conversation history and append the incoming turn, ready for the agent."""
-    history = await BotService.load_conversation_history(conversation_id, user_id)
-    history.append(MessageDict(role="user", content=body.message))
-    return MessageRequestWithHistory(
-        message=body.message,
-        conversation_id=conversation_id,
-        messages=history,
-        fileIds=body.file_ids or [],
-        fileData=body.file_data or [],
-        platform_message_id=body.platform_message_id,
-    )
 
 
 async def charge_bot_turn(user_id: str, body: BotChatRequest, stream_id: str) -> None:

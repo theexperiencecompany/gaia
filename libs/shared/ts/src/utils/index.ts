@@ -62,22 +62,22 @@ export {
   NEW_MESSAGE_BREAK_TOKEN,
   NEW_MESSAGE_BREAK_TOKEN_LENGTH,
 } from "./messageBreakUtils";
+export type { StreamingBubbles } from "./messageBubbles";
+export {
+  splitMessageByBreaks,
+  splitStreamingBubbles,
+} from "./messageBubbles";
 export type {
   OpenUIActionEventLike,
   OpenUIActionHandlers,
 } from "./openui-actions";
 export { dispatchOpenUIAction } from "./openui-actions";
 export type { ContentSegment, OpenUILibraryLike } from "./openui-parser";
-export {
-  normalizeOpenUICode,
-  parseOpenUISegments,
-  splitMessageByBreaks,
-} from "./openui-parser";
+export { normalizeOpenUICode, parseOpenUISegments } from "./openui-parser";
 export type { OpenUISample } from "./openui-samples";
 export { OPENUI_SAMPLES } from "./openui-samples";
 export {
   getRandomThinkingMessage,
-  getRelevantThinkingMessage,
   PLAYFUL_THINKING_MESSAGES,
 } from "./playfulThinking";
 export type {
@@ -89,14 +89,5 @@ export type {
 export { parseQuickAdd } from "./quickAdd";
 export type { RateLimitResetInfo } from "./rateLimitReset";
 export { rateLimitResetInfo } from "./rateLimitReset";
-export type { ReactionBadge, ReactionFoldable } from "./reactions";
-export { foldReactionAcks, groupReactions, isReactionAck } from "./reactions";
-export type { SimilarityConfig } from "./similarity";
-export {
-  DEFAULT_SIMILARITY_CONFIG,
-  getRelevantLoadingMessage,
-} from "./similarity";
-export type { OwnToolDataFold } from "./streamFold";
-export { createOwnToolDataFold, foldOwnToolData } from "./streamFold";
 export type { ParsedContent } from "./thinkingParser";
 export { parseThinkingFromText } from "./thinkingParser";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import {
   integrationKeys,
@@ -11,7 +11,6 @@ import {
   ACCOUNT_OUTCOME_PARAM,
   AccountOutcome,
 } from "@/features/integrations/constants/connect";
-import { usePathname } from "@/i18n/navigation";
 import { toast } from "@/lib/toast";
 
 // Module-level Set to track which OAuth callbacks we've already processed
@@ -25,10 +24,6 @@ const processedOAuthCallbacks = new Set<string>();
 export function useOAuthSuccessToast() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const pathname = usePathname();
-  // Typed route segment rather than a hand-rolled pathname split: the route
-  // shape is the mechanism that already guarantees this id.
-  const { id: conversationId } = useParams<{ id?: string }>();
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -87,22 +82,7 @@ export function useOAuthSuccessToast() {
       queryClient.invalidateQueries({ queryKey: integrationKeys.all });
       queryClient.invalidateQueries({ queryKey: toolKeys.all });
 
-      // Automatically send a message to continue the chat (only on chat routes)
-      // Only send the message if we're on a chat page to avoid creating unwanted conversations
-      const isChatRoute = pathname === "/c" || pathname.startsWith("/c/");
-      // Nothing changed when the account was already there, so there is nothing to resume.
-      // The send stack is imported here, not at the top: landing pages mount this hook too.
-      if (isChatRoute && accountOutcome !== AccountOutcome.ALREADY_CONNECTED) {
-        // OAuth is a full-page redirect, so the store isn't populated from the
-        // route yet when this fires — the route is the reliable source, or the
-        // send falls back to a null active id and lands in a brand new conversation.
-        void import("@/features/chat/stream/sendMessage").then(
-          ({ sendMessage }) =>
-            sendMessage(`Hey I just connected ${displayName}`, {
-              conversationId: conversationId ?? null,
-            }),
-        );
-      }
+      // The server continues a waiting chat itself when the integration connects.
     }
 
     // Handle OAuth errors
@@ -128,5 +108,5 @@ export function useOAuthSuccessToast() {
       );
     }
     return () => clearTimeout(dedupeTimer);
-  }, [searchParams, router, pathname, conversationId, queryClient]);
+  }, [searchParams, router, queryClient]);
 }

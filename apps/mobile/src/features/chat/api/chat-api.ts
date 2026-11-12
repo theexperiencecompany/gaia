@@ -1,17 +1,20 @@
 import type {
   ApprovalDecisionResponse,
   ImageData,
+  MessageAccepted,
+  MessageReaction,
   ReplyToMessageData,
+  SendMessageRequest,
   TodoRunWake,
 } from "@gaia/shared/api/generated";
 
 export type { ImageData, ReplyToMessageData } from "@gaia/shared/api/generated";
 
 import type { ApprovalDecisionPayload, ToolDataEntry } from "@gaia/shared/chat";
-import type { ReactionBadge } from "@gaia/shared/utils";
 import { getAuthToken } from "@/features/auth/utils/auth-storage";
 import { ApiError, apiService } from "@/lib/api";
 import { API_BASE_URL } from "@/lib/constants";
+import { readEventStream } from "@/lib/sse-client";
 
 // 410 Gone: the approval was already resolved elsewhere.
 const HTTP_GONE = 410;
@@ -48,10 +51,7 @@ export interface ApiMessage {
   metadata?: Record<string, unknown>;
   replyToMessage?: ReplyToMessageData | null;
   reply_to_message?: ReplyToMessageData | null;
-  /** Backend message kind ("text" | "emoji_ack") — a comms REACT answer. */
-  kind?: string | null;
-  /** GAIA id of the message an emoji_ack reacts to. */
-  reacts_to_message_id?: string | null;
+  reaction?: MessageReaction | null;
   /** What woke a tracked todo's run; set on that run's user message. */
   todo_run_wake?: TodoRunWake | null;
 }
@@ -93,12 +93,14 @@ export interface Message {
    * the partial bubble plus a retry affordance instead of wiping the text.
    */
   error?: string;
-  /** Backend message kind ("text" | "emoji_ack"). */
-  kind?: string | null;
-  /** GAIA id of the message an emoji_ack reacts to. */
-  reacts_to_message_id?: string | null;
-  /** Reactions folded onto this message for render (see foldReactionAcks). */
-  reactions?: ReactionBadge[] | null;
+  /** GAIA's one emoji reaction on a user message. */
+  reaction?: MessageReaction | null;
+  /** A reply or task still streaming, or a send the server has not accepted yet. */
+  inProgress?: boolean;
+  /** A reply or task the user stopped. */
+  stopped?: boolean;
+  /** A send that never reached the server; its retry resends the same message. */
+  sendFailed?: boolean;
   /** What woke a tracked todo's run; set on that run's user message. */
   todoRunWake?: TodoRunWake | null;
 }
@@ -130,8 +132,7 @@ function normalizeMessage(apiMsg: ApiMessage): Message {
     memoryData: memoryData ?? null,
     metadata: apiMsg.metadata,
     replyToMessage,
-    kind: apiMsg.kind ?? null,
-    reacts_to_message_id: apiMsg.reacts_to_message_id ?? null,
+    reaction: apiMsg.reaction ?? null,
     todoRunWake: apiMsg.todo_run_wake ?? null,
   };
 }
@@ -268,14 +269,36 @@ export async function pinMessage(
   }
 }
 
-export async function cancelStream(streamId: string): Promise<boolean> {
-  try {
-    await apiService.post(`/cancel-stream/${streamId}`, {});
-    return true;
-  } catch (error) {
-    console.warn("Error cancelling stream:", error);
-    return false;
-  }
+/** Accept a message into a conversation (a new one when the id is fresh); the reply arrives on its events. */
+export function sendConversationMessage(
+  conversationId: string,
+  body: SendMessageRequest,
+): Promise<MessageAccepted> {
+  return apiService.post<MessageAccepted>(
+    `/conversations/${encodeURIComponent(conversationId)}/messages`,
+    body,
+  );
+}
+
+/** Stop everything running in a conversation. */
+export async function stopConversation(conversationId: string): Promise<void> {
+  await apiService.post(
+    `/conversations/${encodeURIComponent(conversationId)}/stop`,
+  );
+}
+
+/** Follow a conversation's events after seq `after`, handing each data line over raw; resolves when the stream ends. */
+export function subscribeToConversationEvents(
+  conversationId: string,
+  after: number,
+  onData: (raw: string) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  return readEventStream(
+    `/conversations/${encodeURIComponent(conversationId)}/events?after=${after}`,
+    onData,
+    signal,
+  );
 }
 
 export async function postApprovalDecision(
@@ -379,12 +402,11 @@ export const chatApi = {
   toggleStarConversation,
   deleteMessage,
   pinMessage,
-  cancelStream,
+  sendConversationMessage,
+  stopConversation,
+  subscribeToConversationEvents,
   uploadFile,
   branchConversation,
   submitMessageFeedback,
   postApprovalDecision,
 };
-
-export type { ChatStreamRequest, StreamCallbacks } from "./chat-stream";
-export { fetchChatStream } from "./chat-stream";

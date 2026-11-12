@@ -18,8 +18,6 @@ import { useApprovalDecisionWebSocket } from "./use-approval-decision-websocket"
 interface ChatContextValue {
   activeChatId: string | null;
   setActiveChatId: (chatId: string | null) => void;
-  createNewChat: () => string;
-  clearActiveMessages: () => void;
 }
 
 const ChatContext = createContext<ChatContextValue | undefined>(undefined);
@@ -103,34 +101,9 @@ export function ChatProvider({ children }: ChatProviderProps) {
     useChatStore.getState().setActiveChatId(normalizedChatId);
   }, []);
 
-  const createNewChat = useCallback((): string => {
-    const newChatId = `chat-${Date.now()}`;
-    useChatStore.getState().setActiveChatId(newChatId);
-    return newChatId;
-  }, []);
-
-  const clearActiveMessages = useCallback(() => {
-    const store = useChatStore.getState();
-    const currentChatId = store.activeChatId;
-    if (currentChatId) {
-      store.clearMessages(currentChatId);
-    }
-    store.setStreamingState({
-      isTyping: false,
-      isStreaming: false,
-      conversationId: null,
-      progress: null,
-    });
-  }, []);
-
   const value = useMemo(
-    () => ({
-      activeChatId,
-      setActiveChatId,
-      createNewChat,
-      clearActiveMessages,
-    }),
-    [activeChatId, setActiveChatId, createNewChat, clearActiveMessages],
+    () => ({ activeChatId, setActiveChatId }),
+    [activeChatId, setActiveChatId],
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

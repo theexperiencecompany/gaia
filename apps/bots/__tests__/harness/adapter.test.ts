@@ -1,10 +1,11 @@
 /**
  * Unit tests for the HarnessAdapter in isolation.
  *
- * These use the REAL @gaia/shared (aliased to source by vitest.config.ts) — only
- * the GaiaClient's network boundary (`chatStream` / `createLinkToken`) is faked.
- * So the real streaming pipeline, markdown converters, splitting, and limits all
- * run; the tests assert the transcript the harness records.
+ * These use the REAL @gaia/shared (aliased to source by vitest.config.ts): the
+ * real post-and-follow path, conversation follower, delivery state machine,
+ * markdown converters and limits. Only the GaiaClient's network boundary is
+ * faked (`postMessage` answers, `conversationEvents` replays scripted frames),
+ * and the tests assert the transcript the harness records.
  *
  * Covered:
  * 1. plain reply → one send bubble, rendered by the emulated platform's converter
@@ -13,15 +14,30 @@
  * 4. auth prompt → the rendered "link your account" message is delivered
  * 5. plan gate → the rendered upgrade prompt with the pricing URL is delivered
  * 6. edit support → Telegram edits in place; WhatsApp only ever sends
- * 7. outbound delivery → deliverOutbound records an outbound-delivery event
- * 7b. outbound photo → deliverOutboundFile fetches the bytes and records the caption
- * 8. command path → an ephemeral reply records an ephemeral event
- * 9. reactions → a live emoji ack and an outbound reaction record reaction events
+ * 7. quoting → a reply that quotes the message records its replyTo
+ * 8. outbound delivery → deliverOutbound records an outbound-delivery event
+ * 8b. outbound photo → deliverOutboundFile fetches the bytes and records the caption
+ * 9. command path → an ephemeral reply records an ephemeral event
+ * 10. bursts → every message is posted the moment it arrives
+ * 11. reactions → a live emoji ack and an outbound reaction record reaction events
  */
 
-import { Readable } from "node:stream";
-import { GaiaClient, type PlatformName } from "@gaia/shared/bots";
+import {
+  type ChatRequest,
+  GaiaApiError,
+  type PlatformName,
+} from "@gaia/shared/bots";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  entryFrame,
+  entryUpdatedFrame,
+  replyDelta,
+  reply as replyEntry,
+  replySettled,
+  stateFrame,
+  userMessage,
+} from "../../../../libs/shared/ts/src/conversation/testing";
+import type { ConversationFrame } from "../../../../libs/shared/ts/src/conversation/types";
 import { HarnessAdapter } from "../../harness/src/adapter";
 import { resolveEmulation } from "../../harness/src/emulation";
 import { TranscriptRecorder } from "../../harness/src/transcript";
@@ -29,46 +45,92 @@ import type {
   InboundEvent,
   TranscriptEvent,
 } from "../../harness/src/transcript.types";
+import { injectGaia } from "../shared/helpers/inject-gaia";
 
-/** A scripted stand-in for the GaiaClient streaming/network boundary. */
-interface StreamScript {
+/** What the fake API does with a posted message. */
+interface ApiScript {
+  /** The reply's streamed chunks; its saved text is their concatenation. */
   chunks?: string[];
-  /** When set, the stream fails with this error instead of streaming chunks. */
-  error?: string;
+  /** The post is refused with this error instead of accepted. */
+  refuse?: GaiaApiError;
   authUrl?: string;
-  /**
-   * When true, yields a macrotask between chunks so the shared streamer's
-   * throttled edit queue flushes — required to observe mid-stream in-place
-   * edits on streaming platforms (otherwise all chunks collapse into one final
-   * delivery).
-   */
-  liveEdits?: boolean;
+  /** The turn resolves to this emoji ack on the newest message instead of a reply. */
+  reaction?: string;
+  /** The reply natively quotes the newest message. */
+  quote?: boolean;
 }
 
-const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+const NOT_LINKED = new GaiaApiError("API error: 401", 401, {
+  code: "NOT_AUTHENTICATED",
+});
+const PLAN_REQUIRED = new GaiaApiError("API error: 402", 402);
 
-function makeGaia(script: StreamScript) {
+/** The frames a conversation's events stream carries for these posts and the script's answer. */
+function turnFrames(
+  script: ApiScript,
+  posts: readonly ChatRequest[],
+): ConversationFrame[] {
+  const count = posts.length;
+  const ids = posts.map((_, i) => `u${i + 1}`);
+  const message = (i: number) => ({
+    ...userMessage(ids[i], posts[i].message),
+    surface: posts[i].platform,
+    platform_message_id: posts[i].platformMessageId ?? null,
+  });
+  const frames: ConversationFrame[] = [
+    ...posts.map((_, i) => entryFrame(i + 1, message(i))),
+    stateFrame(count, "thinking"),
+  ];
+  if (script.reaction) {
+    const last = count - 1;
+    return [
+      ...frames,
+      entryUpdatedFrame(count, {
+        ...message(last),
+        reaction: { emoji: script.reaction, by: "chat_model" },
+        revision: 1,
+      }),
+      entryFrame(count + 1, replySettled("r1", ids, count, null, "silent")),
+      stateFrame(count + 1, "idle"),
+    ];
+  }
+  const chunks = script.chunks ?? [];
+  const text = chunks.join("");
+  const quote = script.quote ? ids[count - 1] : null;
+  return [
+    ...frames,
+    entryFrame(count + 1, replyEntry("r1", "a1", "", 0, quote)),
+    ...chunks.map((chunk, i) => replyDelta("a1", "r1", i, chunk)),
+    entryUpdatedFrame(count + 1, replyEntry("r1", "a1", text, 1, quote)),
+    entryFrame(count + 2, replySettled("r1", ids, count + 1, quote)),
+    stateFrame(count + 2, "idle"),
+  ];
+}
+
+/**
+ * A scripted stand-in for the GaiaClient network boundary. The events stream
+ * waits for `held` before replaying, so a test can post a burst first.
+ */
+function makeGaia(script: ApiScript, held: Promise<void> = Promise.resolve()) {
+  const posts: ChatRequest[] = [];
   return {
-    chatStream: vi.fn(
-      async (
-        _req: unknown,
-        onChunk: (t: string) => void | Promise<void>,
-        onDone: (full: string, conv: string) => void | Promise<void>,
-        onError: (e: Error) => void | Promise<void>,
-      ) => {
-        if (script.error) {
-          await onError(new Error(script.error));
-          return "";
-        }
-        const chunks = script.chunks ?? [];
-        for (const chunk of chunks) {
-          await onChunk(chunk);
-          if (script.liveEdits) await tick();
-        }
-        await onDone(chunks.join(""), "conv-1");
-        return "conv-1";
-      },
-    ),
+    posts,
+    postMessage: vi.fn(async (request: ChatRequest) => {
+      if (script.refuse) throw script.refuse;
+      posts.push(request);
+      return {
+        conversation_id: "c1",
+        message_id: `u${posts.length}`,
+        seq: posts.length,
+        session_token: "session",
+      };
+    }),
+    conversationEvents: vi.fn(async function* () {
+      await held;
+      for (const frame of turnFrames(script, posts)) {
+        yield { streamId: null, frame };
+      }
+    }),
     createLinkToken: vi.fn(async () => ({
       token: "tok",
       authUrl: script.authUrl ?? "https://gaia.test/auth?token=abc123",
@@ -77,26 +139,30 @@ function makeGaia(script: StreamScript) {
   };
 }
 
+type FakeGaia = ReturnType<typeof makeGaia>;
+
 /** Builds a harness adapter for `platform` with a scripted gaia injected. */
 function makeAdapter(
   platform: PlatformName,
-  script: StreamScript,
-): { adapter: HarnessAdapter; recorder: TranscriptRecorder } {
+  script: ApiScript,
+  held?: Promise<void>,
+): { adapter: HarnessAdapter; recorder: TranscriptRecorder; gaia: FakeGaia } {
   const recorder = new TranscriptRecorder(platform);
   const adapter = new HarnessAdapter(resolveEmulation(platform), recorder);
-  (adapter as unknown as { gaia: ReturnType<typeof makeGaia> }).gaia =
-    makeGaia(script);
-  return { adapter, recorder };
+  const gaia = makeGaia(script, held);
+  injectGaia(adapter, gaia);
+  return { adapter, recorder, gaia };
 }
 
-/** Convenience: drive one message and return the recorded events. */
+/** Convenience: drive one message, wait for its replies, and return the recorded events. */
 async function drive(
   platform: PlatformName,
-  script: StreamScript,
+  script: ApiScript,
   message: string,
 ): Promise<readonly TranscriptEvent[]> {
   const { adapter, recorder } = makeAdapter(platform, script);
   await adapter.simulateMessage("dev-user-1", message);
+  await adapter.conversationsIdle();
   return recorder.getEvents();
 }
 
@@ -118,6 +184,28 @@ describe("HarnessAdapter — plain reply", () => {
     expect(sends(events)).toHaveLength(1);
     expect(sends(events)[0]).toMatchObject({ text: "Hello world" });
   });
+
+  it("posts the message with the inbound message's id", async () => {
+    const { adapter, recorder, gaia } = makeAdapter("telegram", {
+      chunks: ["ok"],
+    });
+
+    await adapter.simulateMessage("dev-user-1", "hi there");
+    await adapter.conversationsIdle();
+
+    const inbound = recorder
+      .getEvents()
+      .find((e): e is InboundEvent => e.type === "inbound");
+    expect(gaia.posts).toEqual([
+      {
+        message: "hi there",
+        platform: "telegram",
+        platformUserId: "dev-user-1",
+        channelId: "dev-user-1",
+        platformMessageId: inbound?.messageId,
+      },
+    ]);
+  });
 });
 
 describe("HarnessAdapter — markdown fidelity via the real converter", () => {
@@ -136,7 +224,7 @@ describe("HarnessAdapter — markdown fidelity via the real converter", () => {
 
 describe("HarnessAdapter — long reply splitting", () => {
   it("splits a reply over the Telegram limit into multiple in-limit bubbles", async () => {
-    // ~9000 chars of words → chunkResponse splits at the 4096 limit.
+    // ~9000 chars of words → split at the 4096 limit.
     const long = Array.from({ length: 1500 }, (_, i) => `word${i}`).join(" ");
     const events = await drive("telegram", { chunks: [long] }, "tell me lots");
 
@@ -145,20 +233,14 @@ describe("HarnessAdapter — long reply splitting", () => {
     for (const send of sendEvents) {
       expect(send.length).toBeLessThanOrEqual(4096);
     }
-    const split = events.find((e) => e.type === "split");
-    expect(split).toBeDefined();
-    expect(split).toMatchObject({
-      segmentCount: sendEvents.length,
-      limit: 4096,
-    });
-  });
+  }, 10_000);
 });
 
 describe("HarnessAdapter — auth prompt", () => {
-  it("delivers the rendered auth-link message on not_authenticated", async () => {
+  it("delivers the rendered auth-link message when the account is not linked", async () => {
     const events = await drive(
       "telegram",
-      { error: "not_authenticated", authUrl: "https://gaia.test/auth?t=xyz" },
+      { refuse: NOT_LINKED, authUrl: "https://gaia.test/auth?t=xyz" },
       "do something",
     );
     const delivered = texts(events).join("\n");
@@ -168,10 +250,10 @@ describe("HarnessAdapter — auth prompt", () => {
 });
 
 describe("HarnessAdapter — plan gate", () => {
-  it("delivers the rendered upgrade prompt on plan_required", async () => {
+  it("delivers the rendered upgrade prompt when the plan refuses the post", async () => {
     const events = await drive(
       "telegram",
-      { error: "plan_required" },
+      { refuse: PLAN_REQUIRED },
       "do something",
     );
     const delivered = texts(events).join("\n");
@@ -182,11 +264,10 @@ describe("HarnessAdapter — plan gate", () => {
 
 describe("HarnessAdapter — edit semantics", () => {
   it("Telegram edits a bubble in place (supportsEdit = true)", async () => {
-    // Two chunks that fit one bubble: the first streams (send), the final
-    // delivery edits it in place.
+    // The first chunk previews into a new bubble; the settled reply edits it.
     const events = await drive(
       "telegram",
-      { chunks: ["Hello ", "world"], liveEdits: true },
+      { chunks: ["Hello ", "world"] },
       "hi",
     );
     expect(events.some((e) => e.type === "edit")).toBe(true);
@@ -200,7 +281,28 @@ describe("HarnessAdapter — edit semantics", () => {
       "hi",
     );
     expect(events.some((e) => e.type === "edit")).toBe(false);
-    expect(sends(events).length).toBeGreaterThanOrEqual(1);
+    expect(sends(events)).toEqual([
+      expect.objectContaining({ text: "Hello world" }),
+    ]);
+  });
+});
+
+describe("HarnessAdapter — quoting", () => {
+  it("records the inbound message a quoting reply answers natively", async () => {
+    const events = await drive(
+      "whatsapp",
+      { chunks: ["Booked."], quote: true },
+      "book it",
+    );
+    const inbound = events.find((e): e is InboundEvent => e.type === "inbound");
+    expect(sends(events)).toEqual([
+      expect.objectContaining({ text: "Booked.", replyTo: inbound?.messageId }),
+    ]);
+  });
+
+  it("records no replyTo on a reply that quotes nothing", async () => {
+    const events = await drive("whatsapp", { chunks: ["Done."] }, "hi");
+    expect(sends(events)[0]).not.toHaveProperty("replyTo");
   });
 });
 
@@ -250,7 +352,7 @@ describe("HarnessAdapter — outbound delivery", () => {
     ).deliverOutboundFile("dev-telegram-42", {
       url: "http://localhost:8121/shots/c0de/3.png",
       filename: "browser-step-3.png",
-      caption: "Step 3 \u00b7 read the top story",
+      caption: "Step 3 · read the top story",
     });
 
     expect(recorder.getEvents()).toEqual([
@@ -258,7 +360,7 @@ describe("HarnessAdapter — outbound delivery", () => {
         type: "outbound-attachment",
         destinationId: "dev-telegram-42",
         filename: "browser-step-3.png",
-        text: "Step 3 \u00b7 read the top story",
+        text: "Step 3 · read the top story",
         bytes: 9,
         contentType: "image/png",
       }),
@@ -271,10 +373,7 @@ describe("HarnessAdapter — command path", () => {
   let adapter: HarnessAdapter;
 
   beforeEach(() => {
-    recorder = new TranscriptRecorder("telegram");
-    adapter = new HarnessAdapter(resolveEmulation("telegram"), recorder);
-    (adapter as unknown as { gaia: ReturnType<typeof makeGaia> }).gaia =
-      makeGaia({ chunks: [] });
+    ({ adapter, recorder } = makeAdapter("telegram", {}));
   });
 
   it("routes an unknown /command through dispatch and records an ephemeral", async () => {
@@ -302,113 +401,60 @@ describe("TranscriptRecorder — wall-clock stamp", () => {
 });
 
 describe("HarnessAdapter — a burst of inbound messages", () => {
-  /** A gaia whose every stream stays open until the test releases it. */
-  function heldGaia() {
-    const releases: Array<() => void> = [];
-    const gaia = makeGaia({});
-    gaia.chatStream.mockImplementation(
-      async (
-        _req: unknown,
-        _onChunk: unknown,
-        onDone: (full: string, conv: string) => void | Promise<void>,
-      ) => {
-        await new Promise<void>((resolve) => releases.push(resolve));
-        await onDone("reply", "conv-1");
-        return "conv-1";
-      },
-    );
-    return { gaia, releases };
+  /** An adapter whose conversation replays nothing until the test releases it. */
+  function heldAdapter(platform: PlatformName) {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return { ...makeAdapter(platform, { chunks: ["reply"] }, held), release };
   }
 
-  function burstAdapter(platform: PlatformName) {
-    const { adapter, recorder } = makeAdapter(platform, {});
-    const held = heldGaia();
-    (adapter as unknown as { gaia: unknown }).gaia = held.gaia;
-    return { adapter, recorder, releases: held.releases };
-  }
-
-  const inboundTexts = (events: readonly TranscriptEvent[]) =>
-    events.flatMap((e) => (e.type === "inbound" ? [e.text] : []));
-  /** Messages whose turn has started: each opens with a typing indicator. */
-  const turnsStarted = (events: readonly TranscriptEvent[]) =>
-    events.filter((e) => e.type === "typing" && e.state === "start").length;
-
-  it.each<PlatformName>(["telegram", "whatsapp"])(
-    "%s takes the second message only after the first one's reply",
+  it.each<PlatformName>(["telegram", "whatsapp", "slack", "discord"])(
+    "%s posts every message the moment it arrives, and one reply answers them all",
     async (platform) => {
-      const { adapter, recorder, releases } = burstAdapter(platform);
-      const first = adapter.simulateMessage("dev-user-1", "one");
-      const second = adapter.simulateMessage("dev-user-1", "two");
-      await tick();
-      expect(inboundTexts(recorder.getEvents())).toEqual(["one", "two"]);
-      expect(turnsStarted(recorder.getEvents())).toBe(1);
+      const { adapter, recorder, gaia, release } = heldAdapter(platform);
 
-      releases[0]();
-      await first;
-      await tick();
-      expect(turnsStarted(recorder.getEvents())).toBe(2);
-      releases[1]();
-      await second;
+      await adapter.simulateMessage("dev-user-1", "one");
+      await adapter.simulateMessage("dev-user-1", "two");
+
+      expect(gaia.posts.map((p) => p.message)).toEqual(["one", "two"]);
+      expect(sends(recorder.getEvents())).toEqual([]);
+
+      release();
+      await adapter.conversationsIdle();
+      expect(texts(sends(recorder.getEvents()))).toEqual(["reply"]);
     },
   );
 
-  it.each<PlatformName>(["slack", "discord"])(
-    "%s takes every message the moment it arrives",
-    async (platform) => {
-      const { adapter, recorder, releases } = burstAdapter(platform);
-      const handled = [
-        adapter.simulateMessage("dev-user-1", "one"),
-        adapter.simulateMessage("dev-user-1", "two"),
-      ];
-      await tick();
-      expect(turnsStarted(recorder.getEvents())).toBe(2);
-      for (const release of releases) release();
-      await Promise.all(handled);
-    },
-  );
-
-  it("still takes the next message after one fails, and reports the failure", async () => {
-    const { adapter, recorder, releases } = burstAdapter("telegram");
+  it("still posts the next message after one fails, and reports the failure", async () => {
+    const { adapter, gaia, release } = heldAdapter("telegram");
     const boom = new Error("handler crashed");
     (adapter as unknown as { dispatchCommand: unknown }).dispatchCommand = vi
       .fn()
       .mockRejectedValue(boom);
-    const crashing = adapter.simulateMessage("dev-user-1", "/todo");
-    const after = adapter.simulateMessage("dev-user-1", "two");
-    await expect(crashing).rejects.toBe(boom);
-    await tick();
-    expect(turnsStarted(recorder.getEvents())).toBe(1);
-    releases[0]();
-    await after;
+
+    await expect(adapter.simulateMessage("dev-user-1", "/todo")).rejects.toBe(
+      boom,
+    );
+    await adapter.simulateMessage("dev-user-1", "two");
+
+    expect(gaia.posts.map((p) => p.message)).toEqual(["two"]);
+    release();
+    await adapter.conversationsIdle();
   });
 });
 
 describe("HarnessAdapter — reactions", () => {
-  /** A real GaiaClient whose transport replays a comms turn that resolved to a reaction. */
-  function reactionTurnGaia(): GaiaClient {
-    const gaia = new GaiaClient("http://gaia.test", "key", "http://web.test");
-    const body = [
-      { reaction: { message_id: "u1", emoji: "😅", by: "chat_model" } },
-      { done: true, conversation_id: "c1" },
-    ]
-      .map((frame) => `data: ${JSON.stringify(frame)}\n\n`)
-      .join("");
-    (gaia as unknown as { client: unknown }).client = {
-      post: vi.fn(async () => ({ data: Readable.from([body]) })),
-    };
-    return gaia;
-  }
-
   it.each<PlatformName>(["telegram", "slack", "discord", "whatsapp"])(
     "%s records the live ack as a reaction on the inbound message, and no text",
     async (platform) => {
-      const recorder = new TranscriptRecorder(platform);
-      const adapter = new HarnessAdapter(resolveEmulation(platform), recorder);
-      (adapter as unknown as { gaia: GaiaClient }).gaia = reactionTurnGaia();
+      const events = await drive(
+        platform,
+        { reaction: "😅" },
+        "that fixed it, thanks",
+      );
 
-      await adapter.simulateMessage("dev-user-1", "that fixed it, thanks");
-
-      const events = recorder.getEvents();
       const inbound = events.find(
         (e): e is InboundEvent => e.type === "inbound",
       );
@@ -418,6 +464,7 @@ describe("HarnessAdapter — reactions", () => {
           destinationId: "dev-user-1",
           targetMessageId: inbound?.messageId,
           emoji: "😅",
+          replaces: null,
         }),
       ]);
       expect(events.some((e) => e.type === "send" || e.type === "edit")).toBe(

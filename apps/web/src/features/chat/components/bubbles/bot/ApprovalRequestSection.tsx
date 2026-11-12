@@ -18,7 +18,6 @@ import { flattenArgsPreview, statusAfterDecision } from "@shared/utils";
 import { useMemo, useRef, useState } from "react";
 import { ShieldAlertIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
-import { useMarkApprovalDecided } from "@/features/chat/hooks/useMarkApprovalDecided";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { toast } from "@/lib/toast";
 
@@ -28,9 +27,6 @@ interface ApprovalRequestSectionProps {
   /** A batch decision ("Approve all"/"Decline all") is in flight — lock this card
    * so a per-card click can't send a second, conflicting decision for the same id. */
   disabled?: boolean;
-  /** The conversation owning this card — clears that stream's gate instead of
-   * the active one (a sheet or background card can outlive the active chat). */
-  conversationId?: string;
 }
 
 // Statuses a stale tap settles to locally (the real verdict, not the tap);
@@ -73,7 +69,6 @@ export default function ApprovalRequestSection({
   data,
   onDecided,
   disabled = false,
-  conversationId,
 }: ApprovalRequestSectionProps) {
   const [submitting, setSubmitting] = useState<ApprovalDecision | null>(null);
   const [feedback, setFeedback] = useState("");
@@ -82,7 +77,6 @@ export default function ApprovalRequestSection({
   // not the version check — decides. v is an optimization, never a gate. Read
   // and written only inside submit, never in render — a ref, not state.
   const versionConflict = useRef(false);
-  const markApprovalDecided = useMarkApprovalDecided();
   const locked = submitting !== null || disabled || phase === "submitting";
 
   const needsReconfirm = (data.age_seconds ?? 0) >= RECONFIRM_AGE_SECONDS;
@@ -119,7 +113,6 @@ export default function ApprovalRequestSection({
         toast.error("That approval already moved — tap again to confirm");
         return;
       }
-      markApprovalDecided(conversationId);
       onDecided(settled, attachedFeedback);
     } catch {
       toast.error("Couldn't submit your decision, please try again");

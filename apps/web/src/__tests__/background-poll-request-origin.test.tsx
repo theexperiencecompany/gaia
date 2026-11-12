@@ -128,20 +128,19 @@ describe("the post-connect settle poll", () => {
   });
 });
 
-describe("an executor stream subscription", () => {
+describe("a conversation events subscription", () => {
   it("is a re-attach no user action caused", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response("data: [DONE]\n\n", {
+      new Response(": keepalive\n\n", {
         status: 200,
         headers: { "content-type": "text/event-stream" },
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await chatApi.subscribeToExecutorStream(
-      "stream-1",
-      vi.fn(),
-      vi.fn(),
+    await chatApi.subscribeToConversationEvents(
+      "conv-1",
+      0,
       vi.fn(),
       new AbortController().signal,
     );

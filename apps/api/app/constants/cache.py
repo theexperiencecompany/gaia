@@ -196,12 +196,6 @@ HIL_DECLINED_PREFIX = "hil:declined:"
 WORKFLOW_LIMIT_NOTICE_PREFIX = "workflow:limit-notice:"
 WORKFLOW_LIMIT_NOTICE_TTL = ONE_DAY_TTL
 
-# One bot user's personalised Dodo upgrade link; gates the MINT, not the
-# message, so a lapsed user's blocked turns don't each cost a get_plans call
-# and a checkout_sessions insert. An hour, not a day, since a Dodo session is single-use.
-BOT_UPGRADE_LINK_PREFIX = "bot:upgrade-link:"
-BOT_UPGRADE_LINK_TTL = ONE_HOUR_TTL
-
 # Every tool call one run made, in order, keyed by the run's stream id. Outlives
 # the longest run (a parked approval) so the trace and a playbook write read it whole.
 RUN_RECORD_PREFIX = "run_record:"

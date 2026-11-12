@@ -126,6 +126,12 @@ async def record_approval_requested(
     await accept(runtime_ports(), conversation_id, user_id, entry)
 
 
+async def approval_is_logged(conversation_id: str, user_id: str, approval_id: str) -> bool:
+    """Return whether the conversation's live work is waiting on approval_id in the log."""
+    state = await runtime_ports().log.state(conversation_id, user_id)
+    return any(approval_id in work.pending_approvals for work in state.work)
+
+
 async def record_approval_decided(
     conversation_id: str, user_id: str, approval_id: str, decision: ApprovalResolution
 ) -> None:

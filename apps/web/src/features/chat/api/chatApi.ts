@@ -1,25 +1,23 @@
-import {
-  type EventSourceMessage,
-  fetchEventSource,
-} from "@microsoft/fetch-event-source";
+import { fetchEventSource } from "@microsoft/fetch-event-source";
 import type {
   ConversationEntry,
   ConversationSummary,
   ConversationSyncItem,
   ConversationSyncRow,
+  MessageAccepted,
+  SendMessageRequest,
   SystemPurpose as SystemPurposeLiteral,
 } from "@shared/api/generated";
 
 export type { ConversationSyncItem } from "@shared/api/generated";
 
-import { ApiError, toErrorEnvelope } from "@shared/api";
+import { ApiError } from "@shared/api";
 import type {
   ApprovalDecisionPayload,
   BatchApprovalDecisionPayload,
   BatchApprovalDecisionResponse,
 } from "@shared/chat";
 import type { DesktopToolResult } from "@shared/desktop-tools";
-import { getSubscriptionRequiredDetail } from "@shared/types/subscription";
 import { BATCH_OUTCOME_REASON } from "@/features/chat/utils/batchOutcome";
 import {
   apiBaseUrl,
@@ -33,86 +31,22 @@ import {
   type RequestOrigin,
 } from "@/lib/api/typed";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
-import { toast } from "@/lib/toast";
-import { useComposerStore } from "@/stores/composerStore";
-import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
-import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 import type { MessageType } from "@/types/features/convoTypes";
-import type { WorkflowData } from "@/types/features/workflowTypes";
-import type { AttachedFileData } from "@/types/shared/fileTypes";
-import {
-  handleRateLimitError,
-  subscriptionRequiredOfferFromDetail,
-} from "@/utils/interceptorUtils";
 
-/** Thrown when the backend rejects a send whose turn_id was already claimed —
- *  the original request is (or was) processing; the retry must not re-run. */
-export class DuplicateTurnError extends Error {
-  constructor() {
-    super("This send was already accepted by the server");
-    this.name = "DuplicateTurnError";
+/** The events stream refused a conversation the server does not hold yet: its first send has not landed. */
+export class ConversationNotFoundError extends Error {
+  constructor(conversationId: string) {
+    super(`Conversation ${conversationId} does not exist yet`);
+    this.name = "ConversationNotFoundError";
   }
 }
 
-/** Thrown when a send is rejected by a usage wall (429). The rate-limit
- *  upsell toast is shown at throw time, so downstream failure handling must
- *  not add a generic error toast on top. */
-export class RateLimitError extends Error {
-  constructor(message?: string) {
-    super(message || "Usage limit reached");
-    this.name = "RateLimitError";
-  }
-}
-
-/** Thrown when chat-stream rejects a send with 402 (the user isn't on Pro).
- *  The paywall is opened at throw time, so downstream failure handling must
- *  not add a generic error toast on top. */
-export class SubscriptionRequiredError extends Error {
-  constructor(message?: string) {
-    super(message || "Subscription required");
-    this.name = "SubscriptionRequiredError";
-  }
-}
-
-const HTTP_CONFLICT = 409;
-const HTTP_PAYMENT_REQUIRED = 402;
+const HTTP_NOT_FOUND = 404;
 const HTTP_GONE = 410;
-const HTTP_TOO_MANY_REQUESTS = 429;
 
 // The server rejects a batch-decision body larger than this, so a big review
 // sheet is chunked into requests of this size instead of 422ing as one.
 const APPROVAL_BATCH_CHUNK_SIZE = 25;
-
-export interface ChatStreamRequest {
-  inputText: string;
-  /** Prior turns as role/content pairs — the caller owns history assembly. */
-  history: { role: "user" | "assistant"; content: string }[];
-  /** Target conversation; null asks the backend to create one. */
-  conversationId: string | null;
-  /** Client id for this SEND, stable across retries — backend dedup key. */
-  turnId: string | null;
-  onMessage: (
-    event: EventSourceMessage,
-  ) => undefined | string | Promise<undefined | string>;
-  /** `sawDone` is false when the connection ended without `[DONE]` — a
-   *  truncated turn, not a finished one. */
-  onClose: (sawDone: boolean) => void;
-  onError: (err: Error) => void;
-  controller: AbortController;
-  fileData: AttachedFileData[];
-  selectedTool: string | null;
-  toolCategory: string | null;
-  selectedWorkflow: WorkflowData | null;
-  selectedCalendarEvent: SelectedCalendarEventData | null;
-  replyToMessage: {
-    id: string;
-    content: string;
-    role: "user" | "assistant";
-  } | null;
-  isOnboardingDemo: boolean;
-  /** The user resent an earlier message from its retry action. */
-  isRetry: boolean;
-}
 
 /** The API's enum; the members are the ones the web reads by name. */
 
@@ -291,212 +225,72 @@ export const chatApi = {
     });
   },
 
-  // Fetch chat stream
-  fetchChatStream: async (request: ChatStreamRequest) => {
-    const {
-      inputText,
-      history,
-      conversationId,
-      turnId,
-      onMessage,
-      onClose,
-      onError,
-      controller,
-      fileData,
-      selectedTool,
-      toolCategory,
-      selectedWorkflow,
-      selectedCalendarEvent,
-      replyToMessage,
-      isOnboardingDemo,
-      isRetry,
-    } = request;
+  /** Accept a message into a conversation; the server creates the conversation on its first message. */
+  sendConversationMessage: (
+    conversationId: string,
+    body: SendMessageRequest,
+  ): Promise<MessageAccepted> =>
+    api.post("/api/v1/conversations/{conversation_id}/messages", {
+      path: { conversation_id: conversationId },
+      body,
+      silent: true,
+    }),
 
-    // Guard against double onClose — [DONE] in onmessage fires onClose, then
-    // the SSE library fires onclose when the connection ends.  Without this
-    // flag both would call onClose, causing duplicate cleanup / persistence.
-    let doneReceived = false;
-
-    // DEV-ONLY: per-request model overrides from the chat-header selector. Read
-    // at send time from the composer store. The backend ignores these unless
-    // ENV=development; `use_default_models` keeps the plan-routed default.
-    const { useDefaultModels, commsModel, executorModel } =
-      useComposerStore.getState();
-
-    await fetchEventSource(`${apiBaseUrl}/chat-stream`, {
-      openWhenHidden: true,
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-        ...clientHeaders(),
-      },
-      credentials: "include",
-      signal: controller.signal,
-      // Default onopen only validates content-type; a 409 (duplicate turn_id
-      // claim) must surface as a typed error so the session can reconcile
-      // instead of showing a failure for a send that IS being processed.
-      async onopen(response) {
-        if (response.status === HTTP_CONFLICT) {
-          throw new DuplicateTurnError();
-        }
-        // The axios interceptor never sees this request, so the paywall opens
-        // here. Typed so turnSession.ts skips its generic error toast.
-        if (response.status === HTTP_PAYMENT_REQUIRED) {
-          const data: unknown = await response.json().catch(() => undefined);
-          const detail = getSubscriptionRequiredDetail(data);
-          if (detail) {
-            useUpgradeModalStore
-              .getState()
-              .openModal(subscriptionRequiredOfferFromDetail(detail), {
-                source: "chat_stream_402",
-              });
-          }
-          throw new SubscriptionRequiredError(detail?.message);
-        }
-        // Usage wall (message count or cost budget exhausted): render the
-        // rate-limit upsell UI here — the axios interceptor never sees this
-        // request — and throw typed so failure handling skips its generic toast.
-        if (response.status === HTTP_TOO_MANY_REQUESTS) {
-          const data: unknown = await response.json().catch(() => undefined);
-          if (!handleRateLimitError(data)) {
-            toast.error("Too many requests. Please try again later.");
-          }
-          throw new RateLimitError(toErrorEnvelope(data)?.message);
-        }
-        if (
-          !response.ok ||
-          !response.headers.get("content-type")?.includes("text/event-stream")
-        ) {
-          throw new Error(
-            `Unexpected chat-stream response (${response.status})`,
-          );
-        }
-      },
-      body: JSON.stringify({
-        conversation_id: conversationId,
-        turn_id: turnId,
-        message: inputText,
-        fileIds: fileData.map((file) => file.fileId),
-        fileData,
-        selectedTool,
-        toolCategory,
-        selectedWorkflow,
-        selectedCalendarEvent,
-        replyToMessage,
-        is_onboarding_demo: isOnboardingDemo,
-        is_retry: isRetry,
-        use_default_models: useDefaultModels,
-        comms_model: useDefaultModels ? null : commsModel,
-        executor_model: useDefaultModels ? null : executorModel,
-        messages: history.slice(-30),
-      }),
-
-      onmessage(event) {
-        // Transport-level record of the raw frame, before any parsing or
-        // dispatch can drop it. This and the executor subscription below are
-        // the app's only two SSE readers, so nothing bypasses the recording.
-        streamLog("sse", "frame", {
-          conversationId,
-          detail: { raw: event.data },
-        });
-        const errorResult = onMessage(event);
-
-        if (event.data === "[DONE]") {
-          doneReceived = true;
-          onClose(true);
-          return;
-        }
-
-        // onMessage is async — surface errors from the Promise. No queue/gate
-        // needed: conversation binding updates the Zustand store synchronously
-        // before any awaits, so subsequent events can render immediately.
-        if (errorResult instanceof Promise) {
-          errorResult.then((err) => {
-            if (err) {
-              console.error("[chatApi] Stream event error:", err);
-              onError(new Error(err));
-              controller.abort();
-            }
-          });
-        } else if (errorResult) {
-          console.error("[chatApi] Stream event error:", errorResult);
-          onError(new Error(errorResult));
-          controller.abort();
-        }
-      },
-      onclose() {
-        streamLog("sse", "connection-closed", { conversationId });
-        // Only call onClose if [DONE] didn't already trigger it.
-        // Connection drops without [DONE] (e.g. network failure) still need cleanup.
-        if (!doneReceived) {
-          onClose(false);
-        }
-      },
-      onerror: (err) => {
-        streamLogError("sse", "connection-error", {
-          conversationId,
-          detail: { message: err.message },
-        });
-        console.error("[chatApi] Stream error:", {
-          error: err,
-          message: err.message,
-          stack: err.stack,
-        });
-        onError(err);
-        throw err; // This stops any retry attempts
-      },
-    });
-  },
-
-  subscribeToExecutorStream: async (
-    streamId: string,
-    onMessage: (event: EventSourceMessage) => void,
-    onClose: (sawDone: boolean) => void,
-    onError: (err: Error) => void,
+  /**
+   * Follow a conversation's event stream from the log after seq `after`; resolves when
+   * the server closes it. Each `data:` line is handed over raw for the caller to parse.
+   */
+  subscribeToConversationEvents: async (
+    conversationId: string,
+    after: number,
+    onData: (raw: string) => void,
     signal: AbortSignal,
-    lastEventId?: string,
   ): Promise<void> => {
-    let doneReceived = false;
-
-    await fetchEventSource(`${apiBaseUrl}/stream/${streamId}`, {
-      method: "GET",
-      openWhenHidden: true,
-      headers: {
-        Accept: "text/event-stream",
-        ...clientHeaders(),
-        // A background executor's output, or a reload re-attaching to a live turn.
-        ...requestOriginHeaders(true),
-        // Resume cursor — the backend replays everything after this entry.
-        ...(lastEventId ? { "Last-Event-ID": lastEventId } : {}),
+    await fetchEventSource(
+      `${apiBaseUrl}/conversations/${encodeURIComponent(conversationId)}/events?after=${after}`,
+      {
+        method: "GET",
+        openWhenHidden: true,
+        headers: {
+          Accept: "text/event-stream",
+          ...clientHeaders(),
+          ...requestOriginHeaders(true),
+        },
+        credentials: "include",
+        signal,
+        async onopen(response) {
+          if (response.status === HTTP_NOT_FOUND) {
+            throw new ConversationNotFoundError(conversationId);
+          }
+          if (
+            !response.ok ||
+            !response.headers.get("content-type")?.includes("text/event-stream")
+          ) {
+            throw new Error(
+              `Unexpected conversation events response (${response.status})`,
+            );
+          }
+        },
+        onmessage(event) {
+          streamLog("sse", "frame", {
+            conversationId,
+            detail: { raw: event.data },
+          });
+          onData(event.data);
+        },
+        onclose() {
+          streamLog("sse", "connection-closed", { conversationId });
+        },
+        onerror(err) {
+          streamLogError("sse", "connection-error", {
+            conversationId,
+            detail: { message: err.message },
+          });
+          // The caller owns reconnecting, from the log, with its own backoff.
+          throw err;
+        },
       },
-      credentials: "include",
-      signal,
-      onmessage(event) {
-        streamLog("sse", "frame", {
-          detail: { raw: event.data, streamId },
-        });
-        if (event.data === "[DONE]") {
-          doneReceived = true;
-          onClose(true);
-          return;
-        }
-        onMessage(event);
-      },
-      onclose() {
-        streamLog("sse", "connection-closed");
-        if (!doneReceived) {
-          onClose(false);
-        }
-      },
-      onerror(err) {
-        streamLogError("sse", "connection-error", {
-          detail: { message: err.message },
-        });
-        onError(err);
-        throw err; // stops retry attempts
-      },
-    });
+    );
   },
 
   /**

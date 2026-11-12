@@ -18,7 +18,6 @@ from shared.py.wide_events import log
 
 TIMEOUT_EXCLUDE_PREFIXES: tuple[str, ...] = (
     "/api/v1/chat-stream",
-    "/api/v1/bot/chat-stream",
     "/api/v1/ws/",
     "/api/v1/stream/",
     "/api/v1/sse/",

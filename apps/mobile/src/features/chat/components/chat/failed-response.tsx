@@ -1,3 +1,4 @@
+import { REPLY_CUT_SHORT } from "@gaia/shared/conversation";
 import { Pressable, View } from "react-native";
 import { Alert01Icon, AppIcon, RepeatIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -34,10 +35,52 @@ function RetryButton({ onRetry }: { onRetry: () => void }) {
   );
 }
 
+/** The quiet strip under a message: cut short, stopped, or not sent, with a retry when there is one. */
+export function MessageNote({
+  text,
+  alert,
+  align = "start",
+  onRetry,
+}: {
+  text: string;
+  alert: boolean;
+  align?: "start" | "end";
+  onRetry?: () => void;
+}) {
+  const { spacing, fontSize } = useResponsive();
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        alignSelf: align === "end" ? "flex-end" : "flex-start",
+        gap: spacing.sm,
+        marginTop: GAP_MD,
+        paddingHorizontal: spacing.md,
+      }}
+    >
+      {alert ? (
+        <AppIcon icon={Alert01Icon} size={14} color={colors.zinc400} />
+      ) : null}
+      <Text
+        style={{
+          color: colors.zinc400,
+          fontSize: fontSize.xs,
+          flexShrink: 1,
+          marginRight: GAP_XS,
+        }}
+      >
+        {text}
+      </Text>
+      {onRetry ? <RetryButton onRetry={onRetry} /> : null}
+    </View>
+  );
+}
+
 /**
- * Failure surface for an errored turn — mobile counterpart of web's
- * FailedResponse. The streamed text (if any) stays visible above; this strip
- * marks the answer as cut short and offers a retry.
+ * Failure surface for a failed reply, the mobile counterpart of web's
+ * FailedResponse. Streamed text stays visible above and gets the cut-short
+ * strip; with nothing shown, the failure is the message.
  */
 export function FailedResponse({
   error,
@@ -51,31 +94,7 @@ export function FailedResponse({
   const { spacing, fontSize, moderateScale } = useResponsive();
 
   if (hasPartialText) {
-    // Compact strip under the partial bubble — the answer was truncated.
-    return (
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: spacing.sm,
-          marginTop: GAP_MD,
-          paddingHorizontal: spacing.md,
-        }}
-      >
-        <AppIcon icon={Alert01Icon} size={14} color={colors.zinc400} />
-        <Text
-          style={{
-            color: colors.zinc400,
-            fontSize: fontSize.xs,
-            flexShrink: 1,
-            marginRight: GAP_XS,
-          }}
-        >
-          Response was cut short
-        </Text>
-        {onRetry ? <RetryButton onRetry={onRetry} /> : null}
-      </View>
-    );
+    return <MessageNote text={REPLY_CUT_SHORT} alert onRetry={onRetry} />;
   }
 
   // Full bubble — nothing streamed, so this IS the message.
