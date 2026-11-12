@@ -5,11 +5,11 @@ from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from arq import Retry
-from pymongo.errors import PyMongoError
 import pytest
 
 from app.constants.log_tags import LogTag
 from app.constants.payments import PAID_PERSON_SYNC_RETRY_DELAY
+from app.db.repositories.errors import RepositoryError
 from app.models.payment_models import SubscriptionDocument
 from app.workers.tasks.paid_person_tasks import sync_paid_person_properties_task
 
@@ -81,7 +81,7 @@ class TestSyncPaidPersonPropertiesTask:
             patch(
                 f"{EVENTS}.subscription_repository.get_by_dodo_id",
                 new_callable=AsyncMock,
-                side_effect=PyMongoError("down"),
+                side_effect=RepositoryError("down"),
             ),
             patch(f"{TASK}.log") as log,
             pytest.raises(Retry) as retry,
@@ -91,7 +91,7 @@ class TestSyncPaidPersonPropertiesTask:
         assert retry.value.defer_score == defer / timedelta(milliseconds=1)
         log.warning.assert_called_once_with(
             f"{LogTag.PAYMENT} Paid person properties sync could not read the row; retrying",
-            error_type="PyMongoError",
+            error_type="RepositoryError",
             defer_seconds=defer.total_seconds(),
         )
 
