@@ -12,6 +12,11 @@ from typing import Final, Literal
 from app.constants.cache import EXECUTOR_BUSY_TTL
 from app.constants.general import FINISH_TASK_NAME
 
+# What a user decides on a pending approval.
+ApprovalDecision = Literal["approve", "deny"]
+# How a pending approval closes: the user's decision, or a timeout or abandon the system assigns.
+ApprovalResolution = Literal[ApprovalDecision, "timeout", "abandon"]
+
 # The launch switch is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (the
 # default mode is a HILPreferences field default, so it lives with the model).
 

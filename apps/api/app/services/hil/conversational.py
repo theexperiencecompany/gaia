@@ -13,7 +13,7 @@ error leaves approvals pending, never approves.
 """
 
 import contextlib
-from typing import Literal, assert_never
+from typing import assert_never
 
 from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, silent_metered_config
 from app.constants.hil import (
@@ -21,6 +21,7 @@ from app.constants.hil import (
     HIL_CLASSIFIER_MAX_DETAIL_CHARS,
     HIL_LLM_TIMEOUT_SECONDS,
     UNRELATED_FEEDBACK,
+    ApprovalDecision,
     ReplyChoice,
 )
 from app.constants.log_tags import LogTag
@@ -323,8 +324,8 @@ async def classify_with_llm(
 
 
 def no_arg_edit(
-    action: Literal["approve", "deny"], feedback: str | None
-) -> tuple[Literal["approve", "deny"], str | None]:
+    action: ApprovalDecision, feedback: str | None
+) -> tuple[ApprovalDecision, str | None]:
     """Turn an 'approve' carrying feedback into a deny, since there is no arg-editing.
 
     The gate runs the tool with its ORIGINAL args, so an 'approve' with feedback
@@ -348,7 +349,7 @@ def _log_jev_fallback(error: Exception) -> None:
 
 
 async def _safe_resolve(
-    approval_id: str, user_id: str, decision: Literal["approve", "deny"], feedback: str | None
+    approval_id: str, user_id: str, decision: ApprovalDecision, feedback: str | None
 ) -> None:
     """Apply one decision, tolerating an already-resolved/expired approval."""
     with contextlib.suppress(ApprovalRequestNotFoundError, ApprovalRequestForbiddenError):
@@ -371,7 +372,7 @@ async def _list_pending_ledger(conversation_id: str) -> list[ApprovalLedgerDocum
 
 
 async def _safe_resolve_ledger(
-    approval_id: str, user_id: str, decision: Literal["approve", "deny"], feedback: str | None
+    approval_id: str, user_id: str, decision: ApprovalDecision, feedback: str | None
 ) -> None:
     """Apply one ledger decision, tolerating a lost race.
 

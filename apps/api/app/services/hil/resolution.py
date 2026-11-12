@@ -2,7 +2,7 @@
 
 The single entry point for every decision source — approval buttons, a bot's
 interactive component, the conversational resolver, and the timeout sweep. Each
-supplies a DecisionKind; everything else is identical.
+supplies an ApprovalResolution; everything else is identical.
 
 Two guarantees:
 
@@ -18,7 +18,7 @@ Two guarantees:
 import asyncio
 from datetime import UTC, datetime
 from http import HTTPStatus
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, TypedDict, cast
 
 from langgraph.types import Command
 
@@ -31,6 +31,7 @@ from app.agents.core.background.executor_runner import run_executor_background
 from app.agents.core.subagents.parked_resume import resume_parked_subagent
 from app.constants.hil import (
     HIL_DECIDED_UNRESUMED_GRACE_SECONDS,
+    ApprovalResolution,
 )
 from app.constants.log_tags import LogTag
 from app.models.hil_models import ApprovalScope, HILApprovalRecord, HILApprovalStatus
@@ -51,8 +52,6 @@ from app.services.latency_metrics import observe_hil_dispatch_lag, observe_hil_u
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
-DecisionKind = Literal["approve", "deny", "timeout", "abandon"]
-
 
 class SweepCounts(TypedDict):
     """One approval-sweep pass: expired timeouts and redispatched resumes."""
@@ -67,7 +66,7 @@ CANCELLED_FEEDBACK = "The user cancelled this task; the action was never perform
 
 # What the record audits. The paused gate receives the same status, except
 # "abandoned" resumes as a denial — the user moved on, the agent must not act.
-_TERMINAL_STATUS: dict[str, HILApprovalStatus] = {
+_TERMINAL_STATUS: dict[ApprovalResolution, HILApprovalStatus] = {
     "approve": HILApprovalStatus.APPROVED,
     "deny": HILApprovalStatus.DENIED,
     "timeout": HILApprovalStatus.TIMEOUT,
@@ -127,7 +126,7 @@ async def resolve_approval(
     *,
     approval_id: str,
     user_id: str,
-    kind: DecisionKind,
+    kind: ApprovalResolution,
     feedback: str | None = None,
     scope: ApprovalScope = "once",
 ) -> HILApprovalRecord:
@@ -139,7 +138,7 @@ async def resolve_approval(
 
 
 async def resolve_approvals_batch(
-    user_id: str, decisions: list[tuple[str, DecisionKind, str | None]]
+    user_id: str, decisions: list[tuple[str, ApprovalResolution, str | None]]
 ) -> list[BatchDecisionOutcome]:
     """Apply several decisions in one submission — the web batch review's backend.
 
@@ -241,7 +240,7 @@ async def _resolve_or_close(
     record: HILApprovalRecord,
     *,
     user_id: str,
-    kind: DecisionKind,
+    kind: ApprovalResolution,
     feedback: str | None,
 ) -> None:
     """Resolve a record, or close it in place when no run can be resumed.
@@ -276,7 +275,7 @@ async def _resolve_record(
     record: HILApprovalRecord,
     *,
     user_id: str,
-    kind: DecisionKind,
+    kind: ApprovalResolution,
     feedback: str | None,
     scope: ApprovalScope = "once",
 ) -> HILApprovalRecord:

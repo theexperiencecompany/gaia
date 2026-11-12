@@ -64,6 +64,25 @@ def test_the_embedding_sidecar_imports_without_settings() -> None:
     assert result.returncode == 0, result.stderr[-2000:]
 
 
+def test_the_conversation_core_imports_without_settings() -> None:
+    """The reducer and verdict are pure, so a fresh interpreter importing them never loads settings."""
+    probe = (
+        "import sys\n"
+        "import app.services.conversation.reducer, app.services.conversation.verdict\n"
+        "loaded = 'app.config.settings' in sys.modules\n"
+        "sys.exit('app.config.settings was imported' if loaded else 0)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[2],
+        env={"ENV": "test", "PATH": os.environ["PATH"], "LOG_LEVEL": "ERROR"},
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
+
+
 def test_the_configurable_key_matches_langgraphs() -> None:
     """app.models.agent_config spells langgraph's CONF out to stay a leaf."""
     from langgraph.constants import CONF

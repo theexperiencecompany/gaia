@@ -59,7 +59,8 @@ from app.models.chat_models import (
     UpdateMessagesRequest,
 )
 from app.models.hil_models import HILApprovalStatus
-from app.models.message_models import ReplyToMessageData, TodoRunWake
+from app.models.message_models import ReplyToMessageData
+from app.models.todo_wake_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.conversation_service import update_messages

@@ -25,7 +25,7 @@ from app.agents.llm.lane import AgentRole
 from app.constants.log_tags import LogTag
 from app.constants.streaming import DetachedStreamKind
 from app.constants.todos import TodoWakeKind
-from app.models.message_models import TodoRunWake
+from app.models.todo_wake_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.models.workflow_models import TriggerType
 from app.services.checkpoint_thread_reset import ThreadReset

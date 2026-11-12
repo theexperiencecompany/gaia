@@ -7,6 +7,7 @@ from typing import Any, Literal, NotRequired, TypedDict
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.background.executor_queue import ExecutorRunItem
+from app.constants.hil import ApprovalDecision
 from app.db.repositories.base import MongoDocument
 from app.models.agent_config import SubagentResumeItem
 
@@ -262,7 +263,7 @@ class ApprovalLedgerDocument(MongoDocument, ApprovalProposal):
 
 
 # What a bot user's chat reply to pending approvals resolves to (services/hil/conversational.py).
-DecisionAction = Literal["approve", "deny", "unrelated"]
+DecisionAction = Literal[ApprovalDecision, "unrelated"]
 
 
 class DecisionResult(BaseModel):
@@ -276,7 +277,7 @@ class BatchItemDecision(BaseModel):
     """One pending action's verdict from the user's reply."""
 
     index: int = Field(description="1-based index of the pending action")
-    action: Literal["approve", "deny", "leave"]
+    action: Literal[ApprovalDecision, "leave"]
     feedback: str | None = None
 
 

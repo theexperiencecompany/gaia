@@ -91,7 +91,6 @@ from app.constants.todos import (
 from app.constants.trigger_gates import GateAuthor, SystemGatePreset
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.repositories.todos import todo_repository
-from app.models.message_models import TodoRunWake
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
@@ -105,6 +104,7 @@ from app.models.todo_models import (
     TodoRunContext,
     TodoUpdate,
 )
+from app.models.todo_wake_models import TodoRunWake
 from app.models.trigger_gate_models import AuthoredGate, QuietHoursBypass, SystemGate, TriggerGate
 from app.models.trigger_subscription_models import (
     ConditionOperator,

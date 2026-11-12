@@ -16,7 +16,6 @@ recovery runs lazily via reconcile_conversation_ledger, with no daemon.
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Literal
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
@@ -28,6 +27,7 @@ from app.agents.tools.execute.dispatch import (
 )
 from app.constants.agents import AgentTag
 from app.constants.general import EXECUTOR_THREAD_PREFIX
+from app.constants.hil import ApprovalDecision
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
@@ -65,8 +65,6 @@ from app.services.hil.utils import GatedCall
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilDecisionSubmitted, HilDecisionVia, HilRevoked
 from shared.py.wide_events import log
-
-DecisionKind = Literal["approve", "deny"]
 
 # A redeem that dies between claim and receipt leaves EXECUTING behind.
 # Reconciled lazily to UNKNOWN on the decide path — there is no sweeper by
@@ -109,7 +107,7 @@ async def decide_ledger(
     approval_id: str,
     *,
     user_id: str,
-    kind: DecisionKind,
+    kind: ApprovalDecision,
     feedback: str | None = None,
     v: int | None = None,
     via: HilDecisionVia,
@@ -150,7 +148,7 @@ async def _commit_decision(
     row: ApprovalLedgerDocument,
     *,
     user_id: str,
-    kind: DecisionKind,
+    kind: ApprovalDecision,
     feedback: str | None,
     v: int | None,
     via: HilDecisionVia,
