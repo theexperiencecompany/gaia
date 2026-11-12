@@ -59,13 +59,10 @@ async def get_public_integration(
     try:
         log.set(operation="get_public_integration", integration_id=identifier)
 
-        # 1. Platform (native) integrations first, in memory: by slug ("google-maps") or id ("google_maps")
+        # 1. Check platform (native) integrations first — in-memory, instant
+        # Platform integrations use their ID as slug (e.g., "googlecalendar", "slack")
         native = next(
-            (
-                i
-                for i in all_integrations()
-                if identifier in (i.slug, i.id) and i.managed_by != "internal"
-            ),
+            (i for i in all_integrations() if i.id == identifier and i.managed_by != "internal"),
             None,
         )
         if native:
@@ -84,7 +81,7 @@ async def get_public_integration(
             log.set(outcome="success")
             return PublicIntegrationDetailResponse(
                 integration_id=native.id,
-                slug=native.slug,
+                slug=native.id,
                 name=native.name,
                 description=native.description,
                 category=native.category,

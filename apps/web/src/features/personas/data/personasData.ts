@@ -27,7 +27,6 @@ export interface PersonaData {
   intro: string;
   painPoints: string[];
   howGaiaHelps: PersonaFeature[];
-  /** Marketplace integration ids (not slugs), resolved to live records at render. */
   relevantIntegrations: string[];
   faqs: Array<{ question: string; answer: string }>;
   relatedComparisons?: string[];

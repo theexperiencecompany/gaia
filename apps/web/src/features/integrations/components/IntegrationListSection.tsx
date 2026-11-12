@@ -12,6 +12,7 @@ import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { InstanceSetupNotice } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import type { SuggestedIntegration } from "@/features/integrations/types";
 import { toast } from "@/lib/toast";
 
@@ -114,7 +115,7 @@ function IntegrationListSection({
   };
 
   const handleSuggestedClick = (suggestion: SuggestedIntegration) => {
-    router.push(`/marketplace/${encodeURIComponent(suggestion.slug)}`);
+    router.push(marketplacePath(encodeURIComponent(suggestion.slug)));
   };
 
   const renderIntegration = (integration: (typeof integrations)[0]) => {

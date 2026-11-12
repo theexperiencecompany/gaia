@@ -1,7 +1,7 @@
 /**
  * Persona pages link each relevant integration to its marketplace page, so every
- * integration id a persona lists must be one the marketplace serves (recorded from
- * prod /integrations/config), and an unknown id must fail the render, not 404.
+ * slug a persona lists must be one the marketplace serves (recorded from prod
+ * /integrations/config), and an unknown slug must fail the render, not 404.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolvePersonaIntegrations } from "@/features/personas/data/personaIntegrations";
@@ -9,8 +9,8 @@ import { getAllPersonas } from "@/features/personas/data/personasData";
 
 import MARKETPLACE_CONFIG from "./fixtures/integrations-config.json";
 
-const MARKETPLACE_IDS = new Set(
-  MARKETPLACE_CONFIG.integrations.map((integration) => integration.id),
+const MARKETPLACE_SLUGS = new Set(
+  MARKETPLACE_CONFIG.integrations.map((integration) => integration.slug),
 );
 
 function stubMarketplaceBackend(): void {
@@ -38,13 +38,13 @@ afterEach(() => {
 });
 
 describe("persona marketplace links", () => {
-  it("lists only integration ids the marketplace serves", async () => {
+  it("lists only slugs the marketplace serves", async () => {
     const personas = await getAllPersonas();
     expect(personas.length).toBeGreaterThan(0);
     const unknown = personas.flatMap((persona) =>
       persona.relevantIntegrations
-        .filter((id) => !MARKETPLACE_IDS.has(id))
-        .map((id) => `${persona.slug}: ${id}`),
+        .filter((slug) => !MARKETPLACE_SLUGS.has(slug))
+        .map((slug) => `${persona.slug}: ${slug}`),
     );
     expect(unknown).toEqual([]);
   });
@@ -55,15 +55,10 @@ describe("persona marketplace links", () => {
 
     for (const persona of await getAllPersonas()) {
       const integrations = await resolvePersonaIntegrations(persona);
-      expect(
-        integrations.map((integration) => integration.integrationId),
-      ).toEqual(persona.relevantIntegrations);
+      expect(integrations.map((integration) => integration.slug)).toEqual(
+        persona.relevantIntegrations,
+      );
     }
-    const [teams] = await resolvePersonaIntegrations({
-      slug: "test",
-      relevantIntegrations: ["microsoft_teams"],
-    });
-    expect(teams?.slug).toBe("microsoft-teams");
     const [calendar] = await resolvePersonaIntegrations({
       slug: "test",
       relevantIntegrations: ["googlecalendar"],
@@ -71,7 +66,7 @@ describe("persona marketplace links", () => {
     expect(calendar?.name).toBe("Google Calendar");
   });
 
-  it("fails the render on an id the marketplace does not serve", async () => {
+  it("fails the render on a slug the marketplace does not serve", async () => {
     vi.setSystemTime(new Date("2041-01-01T00:00:00Z"));
     stubMarketplaceBackend();
 

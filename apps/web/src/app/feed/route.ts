@@ -2,6 +2,7 @@ import { getAllAlternatives } from "@/features/alternatives/data/alternativesDat
 import { getAllComparisons } from "@/features/comparisons/data/comparisonsData";
 import { getAllGlossaryTerms } from "@/features/glossary/data/glossaryData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
+import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import { getAllCommunityIntegrations } from "@/features/integrations/lib/serverMarketplaceApi";
 import { FEATURES } from "@/features/landing/data/featuresData";
 import { getAllPersonas } from "@/features/personas/data/personasData";
@@ -145,7 +146,7 @@ async function getIntegrationItems(baseUrl: string): Promise<FeedItem[]> {
   const integrations = await getAllCommunityIntegrations();
   return integrations.map((integration) => ({
     title: `${integration.name} Integration`,
-    link: `${baseUrl}/marketplace/${integration.slug}`,
+    link: `${baseUrl}${marketplacePath(integration.slug)}`,
     description: integration.description,
     pubDate: new Date(integration.publishedAt ?? Date.now()).toUTCString(),
     category: "Integrations",

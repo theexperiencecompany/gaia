@@ -1,5 +1,9 @@
 import { cache } from "react";
 
+import {
+  marketplacePath,
+  marketplaceSlug,
+} from "@/features/integrations/lib/marketplaceSlug";
 import type {
   CommunityIntegration,
   CommunityIntegrationsResponse,
@@ -159,17 +163,25 @@ export async function getMarketplacePath(
 ): Promise<string | null> {
   const index = await getMarketplaceSlugIndex();
   const integration = index.get(normalizeToolSlug(toolSlug));
-  return integration === undefined ? null : `/marketplace/${integration.slug}`;
+  return integration === undefined ? null : marketplacePath(integration.slug);
 }
 
-/** The live marketplace integration with this id, or null when the marketplace has none. */
+/** The live marketplace integration with exactly this slug, or null when the marketplace has none. */
 export async function getMarketplaceIntegration(
-  integrationId: string,
+  slug: string,
 ): Promise<CommunityIntegration | null> {
   const index = await getMarketplaceSlugIndex();
-  return (
-    [...index.values()].find(
-      (integration) => integration.integrationId === integrationId,
-    ) ?? null
-  );
+  const integration = index.get(normalizeToolSlug(slug));
+  return integration?.slug === slug ? integration : null;
+}
+
+/** The API slug behind a marketplace URL slug; a slug the index does not know yet (newly published) is its own. */
+export async function marketplaceApiIdentifier(
+  urlSlug: string,
+): Promise<string> {
+  const index = await getMarketplaceSlugIndex();
+  const integration = index.get(normalizeToolSlug(urlSlug));
+  return integration && marketplaceSlug(integration.slug) === urlSlug
+    ? integration.slug
+    : urlSlug;
 }

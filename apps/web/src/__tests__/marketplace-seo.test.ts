@@ -11,7 +11,10 @@ import {
   type IntegrationMetaInput,
 } from "@/app/[locale]/(landing)/marketplace/[slug]/integrationMeta";
 import { getAllCombos } from "@/features/integrations/data/combosData";
-import { getMarketplacePath } from "@/features/integrations/lib/serverMarketplaceApi";
+import {
+  getMarketplacePath,
+  marketplaceApiIdentifier,
+} from "@/features/integrations/lib/serverMarketplaceApi";
 import { generatePageMetadata } from "@/lib/seo";
 
 const BANNED_TOKENS = [
@@ -266,7 +269,7 @@ const NATIVE_CONFIG = {
     },
     {
       id: "microsoft_teams",
-      slug: "microsoft-teams",
+      slug: "microsoft_teams",
       name: "Microsoft Teams",
       description: "",
       category: "communication",
@@ -337,5 +340,23 @@ describe("marketplace cross-links", () => {
     stubBackend(500);
 
     await expect(getMarketplacePath("gmail")).rejects.toThrow(/500/);
+  });
+
+  it("serves an underscored API slug at a hyphenated URL and resolves it back", async () => {
+    vi.setSystemTime(new Date("2032-01-01T00:00:00Z"));
+    stubBackend(200);
+
+    await expect(marketplaceApiIdentifier("microsoft-teams")).resolves.toBe(
+      "microsoft_teams",
+    );
+    await expect(marketplaceApiIdentifier("googlecalendar")).resolves.toBe(
+      "googlecalendar",
+    );
+    await expect(marketplaceApiIdentifier("microsoftteams")).resolves.toBe(
+      "microsoftteams",
+    );
+    await expect(
+      marketplaceApiIdentifier("resend-mcp-communication"),
+    ).resolves.toBe("resend-mcp-communication");
   });
 });

@@ -3512,7 +3512,6 @@
         "type": "object"
       },
       "ConnectIntegrationResponse": {
-        "description": "The outcome of a connect request: connected, a redirect to follow, or an error.",
         "properties": {
           "error": {
             "anyOf": [
@@ -8211,7 +8210,6 @@
         "type": "object"
       },
       "IntegrationConfigItem": {
-        "description": "One platform integration in the public catalog.",
         "properties": {
           "authType": {
             "anyOf": [
@@ -8668,7 +8666,6 @@
         "type": "object"
       },
       "IntegrationTool": {
-        "description": "A tool an integration exposes, as listed on its pages.",
         "properties": {
           "description": {
             "anyOf": [
@@ -8762,7 +8759,6 @@
         "type": "object"
       },
       "IntegrationsConfigResponse": {
-        "description": "The public catalog of platform integrations.",
         "properties": {
           "integrations": {
             "items": {

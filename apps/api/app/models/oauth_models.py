@@ -89,11 +89,6 @@ class OAuthIntegration(BaseModel):
     origin: Literal["code", "instance"] = "code"
     icon_url: str | None = None
 
-    @property
-    def slug(self) -> str:
-        """The marketplace URL slug: the id with hyphens, the separator every marketplace URL uses."""
-        return self.id.replace("_", "-")
-
     @model_validator(mode="after")
     def _enforce_composio_invariant(self) -> "OAuthIntegration":
         # provider_subagents.py selects the Composio branch via managed_by ==
