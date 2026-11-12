@@ -62,6 +62,7 @@ export function AuthorTooltip({
             {author.linkedin && (
               <a
                 href={author.linkedin}
+                aria-label={`${author.name} on LinkedIn`}
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -71,6 +72,7 @@ export function AuthorTooltip({
             {author.twitter && (
               <a
                 href={author.twitter}
+                aria-label={`${author.name} on X`}
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -79,7 +81,12 @@ export function AuthorTooltip({
             )}
 
             {author.github && (
-              <a href={author.github} target="_blank" rel="noopener noreferrer">
+              <a
+                href={author.github}
+                aria-label={`${author.name} on GitHub`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 <Github width={20} height={20} />
               </a>
             )}
