@@ -67,6 +67,29 @@ def producers(monkeypatch: pytest.MonkeyPatch) -> dict[str, MagicMock]:
 
 
 class TestGatherCandidates:
+    async def test_the_reminder_window_ends_at_the_next_local_midnight_on_a_short_day(
+        self, producers: dict[str, MagicMock]
+    ) -> None:
+        new_york = ZoneInfo("America/New_York")
+        spring_forward = datetime(2026, 3, 8, 15, 0, tzinfo=UTC)
+        clock = UserClock(
+            tz=new_york,
+            now_local=spring_forward.astimezone(new_york),
+            date_str="2026-03-08",
+            day_of_year=67,
+        )
+        scouts = ScoutSignals(remembered=[], criteria={}, results=[])
+
+        await gather_candidates(
+            USER_ID, clock, SINCE, spring_forward, CandidateSources(TrackedWork(), [], scouts, [])
+        )
+
+        assert producers["reminder_candidates"].await_args.args == (
+            USER_ID,
+            datetime(2026, 3, 8, 5, 0, tzinfo=UTC),
+            datetime(2026, 3, 9, 4, 0, tzinfo=UTC),
+        )
+
     async def test_each_producer_reads_its_own_window_for_this_user(
         self, producers: dict[str, MagicMock]
     ) -> None:
@@ -103,7 +126,7 @@ class TestGatherCandidates:
         assert producers["reminder_candidates"].await_args.args == (
             USER_ID,
             day_start,
-            day_start + timedelta(days=1),
+            day_start_utc(CLOCK, days_ago=-1),
         )
         assert producers["failed_run_candidates"].await_args.args == (USER_ID, SINCE)
         assert producers["held_candidates"].await_args.args == (USER_ID, held)

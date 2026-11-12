@@ -1,6 +1,9 @@
 """The facts block the model voices, and the values its slots render, built from the chosen sections."""
 
 from datetime import UTC, datetime, timedelta
+import os
+import time
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -88,6 +91,31 @@ class TestTheFactLine:
 
         assert facts.values.facts[1].time == "Fri Oct 16"
         assert "| time: Fri Oct 16" in facts.block
+
+    def test_a_due_time_is_read_on_the_readers_calendar_not_utcs(self) -> None:
+        item = _ask("Call the dentist")
+        just_after_midnight_in_india = datetime(2026, 10, 13, 19, 0, tzinfo=UTC)
+        candidate = _candidate("Call the dentist", due_at=just_after_midnight_in_india)
+        chosen = Chosen(sections=[_section([item])], picked=[[(1, candidate)]])
+
+        facts = build_facts(chosen, _sources(), CLOCK)
+
+        assert facts.values.facts[1].time == "today"
+
+    def test_a_naive_stored_due_time_is_utc_whatever_the_servers_zone(self) -> None:
+        item = _ask("Call the dentist")
+        candidate = _candidate("Call the dentist", due_at=datetime(2026, 10, 13, 19, 0))
+        chosen = Chosen(sections=[_section([item])], picked=[[(1, candidate)]])
+
+        with patch.dict(os.environ, {"TZ": "Pacific/Auckland"}):
+            time.tzset()
+            try:
+                facts = build_facts(chosen, _sources(), CLOCK)
+            finally:
+                os.environ.pop("TZ", None)
+        time.tzset()
+
+        assert facts.values.facts[1].time == "today"
 
     def test_a_line_without_an_app_time_or_detail_is_only_its_state_and_title(self) -> None:
         item = BriefingItem(text="Investor update", outcome=BriefOutcome.FINISHED, kind="lookback")

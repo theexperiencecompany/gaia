@@ -1,7 +1,7 @@
 """Build the facts block the model voices, and the values its slots render, from the chosen sections."""
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 from app.constants.briefing import (
     GAIA_APP_NAME,
@@ -82,7 +82,8 @@ def work_stats(work: context.TrackedWork) -> list[BriefingStat]:
 
 def _due_on(due_at: datetime, clock: UserClock) -> str:
     """Say a due date the way the brief does: today, or its weekday and date."""
-    day = due_at.date()
+    aware = due_at if due_at.tzinfo else due_at.replace(tzinfo=UTC)
+    day = aware.astimezone(clock.tz).date()
     return "today" if day.isoformat() == clock.date_str else day.strftime("%a %b %-d")
 
 
