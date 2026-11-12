@@ -54,7 +54,6 @@ async def seams() -> AsyncIterator[_Seams]:
         patch.object(stream, "register_executor_capture"),
         patch.object(stream, "_set_stream_log_context"),
         patch.object(stream, "_publish_init_chunk", AsyncMock()) as publish_init,
-        patch.object(stream, "_resolve_pending_approval_turn", AsyncMock(return_value=False)),
         # Not a tracked todo's chat: the turn binds no todo.
         patch.object(stream.conversation_repository, "get_todo_id", AsyncMock(return_value=None)),
         patch.object(stream, "schedule_last_active_touch"),

@@ -40,7 +40,6 @@ from app.constants.chat import (
     TURN_REPLY_NOT_SAVED,
 )
 from app.constants.comms import CommsDirectiveKind
-from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED
 from app.constants.log_tags import LogTag
 from app.constants.reactions import REACTION_SETTLE_SECONDS
 from app.core.stream_manager import stream_manager
@@ -57,7 +56,6 @@ from app.models.stream_events import (
     ConversationInitializedFrame,
     ErrorFrame,
     MainResponseCompleteFrame,
-    ReplyCompleteFrame,
     ReplyPlacedFrame,
 )
 from app.models.user_models import AuthenticatedUser
@@ -92,14 +90,12 @@ from app.services.conversation.reaction import (
 )
 from app.services.delivery.presence import record_turn_presence
 from app.services.files import FileService
-from app.services.hil.conversational import classifier_history, resolve_pending_from_message
 from app.services.latency_metrics import (
     observe_chat_e2e_ack,
     observe_chat_e2e_full,
     observe_chat_ttft,
     observe_chat_turn_total,
 )
-from app.services.platform_message_service import is_bot_platform
 from app.services.storage import flush_fs_metrics
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
@@ -339,13 +335,6 @@ async def _run_chat_stream(
             is_new_conversation,
         )
 
-        # A HIL approval can be answered via chat reply only on button-less bot
-        # channels (WhatsApp/Telegram/Slack/Discord); web/mobile/desktop use real
-        # Approve/Deny buttons. A resolving reply ends this turn; the paused run continues on its stream.
-        if await _resolve_pending_approval_turn(
-            body, user, conversation_id, stream_id, state, source
-        ):
-            return
         # Runs beside the pre-model work below; the model reads it only if it is already placed.
         state.instant_reaction = _start_instant_reaction(
             body, user_id, conversation_id, stream_id, state
@@ -403,12 +392,6 @@ async def _run_chat_stream(
 
         # Saved before the executor wait: a reload during the wait shows the comms ack.
         await _persist_turn(stream_id, body, user, conversation_id, state)
-        # A bot ends its turn here, so the user's next message is not held behind
-        # background work whose result reaches it through the outbound queue.
-        if is_bot_platform(source):
-            await stream_manager.publish_chunk(
-                stream_id, format_sse_data(ReplyCompleteFrame(reply_complete=True).model_dump())
-            )
         await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
         # A stop pressed during the executor wait arrives after the consume
         # loop's check: re-read it here or the turn closes as completed.
@@ -486,85 +469,6 @@ def _turn_ended_event(
         e2e_full_ms=state.e2e_full_ms,
         source=source or None,
     )
-
-
-def _recent_history(messages: list[MessageDict]) -> list[MessageDict]:
-    """Recent prior turns for the approval classifier's context.
-
-    The client includes the current turn as the trailing entry when its role is
-    user (see user_message_content_from); drop it so the window is only
-    prior context, then keep the last HIL_CLASSIFIER_HISTORY_TURNS.
-    """
-    prior = messages
-    if messages:
-        last_turn: MessageDict = messages[-1]
-        if last_turn.get("role") == "user":
-            prior = messages[:-1]
-    return classifier_history(prior)
-
-
-async def _resolve_pending_approval_turn(
-    body: MessageRequestWithHistory,
-    user: AuthenticatedUser,
-    conversation_id: str,
-    stream_id: str,
-    state: _StreamState,
-    source: str | None,
-) -> bool:
-    """Resolve a pending HIL approval from a bot user's free-text chat reply.
-
-    Classifies "yes"/"no"/"do X instead" into approve/deny; runs only for button-less bot
-    channels (WhatsApp/Telegram/Slack/Discord/iMessage) since UI clients resolve via real buttons and
-    guessing risks misreading a destructive action. Returns True only when a bot reply
-    resolved it — the turn is then fully handled here and the caller must not run the agent.
-    """
-    if not is_bot_platform(source):
-        # UI clients (web/mobile/desktop) and background/workflow runs never
-        # LLM-classify an approval — the UI has deterministic Approve/Deny
-        # buttons, so the pending approval waits for a click or the sweep.
-        return False
-
-    user_id = user.user_id
-    message = user_message_content_from(body)
-    if not user_id or not message:
-        return False
-
-    try:
-        history = _recent_history(body.messages)
-        action = await resolve_pending_from_message(conversation_id, user_id, message, history)
-    except Exception as e:  # chat must survive this
-        # Critical path for every message but an optional feature; on failure the
-        # safe degradation is a normal turn (approval stays pending till the sweep
-        # expires it) — the gate executes actions, not this classifier.
-        log.error(
-            f"{LogTag.HIL} Pending-approval check failed; running a normal turn",
-            error=str(e),
-            error_type=type(e).__name__,
-            conversation_id=conversation_id,
-        )
-        return False
-
-    if action not in ("approve", "deny"):
-        return False
-
-    ack = HIL_ACK_APPROVED if action == "approve" else HIL_ACK_DENIED
-    state.complete_message = ack
-    state.ack_perf = time.perf_counter()
-    await _open_reply(stream_id, body, user, conversation_id, state)
-    await stream_manager.publish_chunk(stream_id, format_sse_response(ack))
-    if state.ttft_perf is None:
-        state.ttft_perf = state.ack_perf
-    _stamp_turn_latencies(state)
-    await stream_manager.publish_chunk(
-        stream_id,
-        format_sse_data(
-            MainResponseCompleteFrame(main_response_complete=True).model_dump(exclude_none=True)
-        ),
-    )
-    await _persist_turn(stream_id, body, user, conversation_id, state)
-    await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
-    await stream_manager.complete_stream(stream_id)
-    return True
 
 
 def _set_stream_log_context(

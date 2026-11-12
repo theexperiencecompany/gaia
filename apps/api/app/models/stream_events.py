@@ -226,16 +226,6 @@ class MainResponseCompleteFrame(BaseModel):
     usage: dict[str, Any] | None = None
 
 
-class ReplyCompleteFrame(BaseModel):
-    """Mark a bot turn's reply as saved, before the stream waits on any background executor.
-
-    Published only on bot streams: the executor's result reaches a bot through the
-    outbound queue. The web stream stays open for live executor progress.
-    """
-
-    reply_complete: bool
-
-
 class ReactionPayload(MessageReaction):
     """A reaction GAIA placed, and the user message it sits on."""
 

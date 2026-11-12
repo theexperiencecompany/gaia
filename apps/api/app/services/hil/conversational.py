@@ -1,7 +1,7 @@
 """Resolve pending HIL approvals from a bot user's next chat reply.
 
-BUTTON-LESS CHANNELS ONLY: the caller (_resolve_pending_approval_turn in
-app/services/chat/stream.py) invokes this for messaging-platform bots alone;
+BUTTON-LESS CHANNELS ONLY: the conversation step's approval replies
+(HilApprovalReplies) invoke this for messaging-platform bots alone;
 web/mobile/desktop resolve via POST /approvals/{id}/decision instead.
 
 A reply approves (runs EXACTLY as proposed), denies (any change is a deny with

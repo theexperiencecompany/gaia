@@ -23,15 +23,13 @@ import pytest
 from app.agents.core.agent import AgentRunOptions, StreamMessageIds
 from app.agents.core.background.session import RunKind, create_session, get_session
 from app.db.repositories.conversations import conversation_repository
-from app.models.message_models import FileData, MessageDict, MessageRequestWithHistory
+from app.models.message_models import FileData, MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from app.services.chat.stream import (
     _attach_executor_tool_data,
     _consume_agent_stream,
     _finalize_stream,
-    _recent_history,
-    _resolve_pending_approval_turn,
     _set_stream_log_context,
     _StreamState,
     _TurnContext,
@@ -215,25 +213,6 @@ class TestFinalizeStreamBackstop:
         assert get_session("s1") is None
 
 
-class TestRecentHistory:
-    def test_a_trailing_user_turn_is_dropped_from_the_prior_context(self) -> None:
-        messages: list[MessageDict] = [
-            {"role": "user", "content": "draft it"},
-            {"role": "assistant", "content": "drafted"},
-            {"role": "user", "content": "send it"},
-        ]
-
-        assert _recent_history(messages) == messages[:2]
-
-    def test_a_trailing_assistant_turn_is_kept(self) -> None:
-        messages: list[MessageDict] = [
-            {"role": "user", "content": "draft it"},
-            {"role": "assistant", "content": "drafted"},
-        ]
-
-        assert _recent_history(messages) == messages
-
-
 class TestSetStreamLogContext:
     def _user_message_length(self, body: MessageRequestWithHistory) -> object:
         with patch.object(chat_stream, "log") as log:
@@ -251,96 +230,6 @@ class TestSetStreamLogContext:
         body = MessageRequestWithHistory(message="hello", messages=[])
 
         assert self._user_message_length(body) == 0
-
-
-class TestResolvePendingApprovalTurnApproves:
-    async def test_a_bot_yes_is_classified_for_this_user_and_resolves_the_turn(self) -> None:
-        body = MessageRequestWithHistory(
-            message="yes",
-            messages=[
-                {"role": "assistant", "content": "Send the email?"},
-                {"role": "user", "content": "yes"},
-            ],
-            conversation_id="conv-1",
-        )
-        classifier = AsyncMock(return_value="approve")
-        opener = AsyncMock(return_value=2)
-        user = AuthenticatedUser(user_id=USER_ID)
-        state = _StreamState()
-        with (
-            patch.object(chat_stream, "stream_manager") as sm,
-            patch.object(chat_stream, "_persist_turn", new_callable=AsyncMock),
-            patch.object(chat_stream, "open_bot_reply", new=opener),
-            patch.object(chat_stream, "resolve_pending_from_message", new=classifier),
-        ):
-            sm.publish_chunk = AsyncMock()
-            sm.complete_stream = AsyncMock()
-            result = await _resolve_pending_approval_turn(
-                body, user, "conv-1", "stream-1", state, "whatsapp"
-            )
-
-        assert result is True
-        classifier.assert_awaited_once_with(
-            "conv-1", USER_ID, "yes", [{"role": "assistant", "content": "Send the email?"}]
-        )
-        opener.assert_awaited_once_with(body, user, "conv-1", state.bot_message_id)
-        stream_id, placed = sm.publish_chunk.await_args_list[0].args
-        assert (stream_id, json.loads(placed.removeprefix("data: "))) == (
-            "stream-1",
-            {"bot_message_seq": 2},
-        )
-
-
-class TestResolvePendingApprovalTurnDegradesOnFailure:
-    """A failing classifier lookup must not take chat down — _resolve_pending_approval_turn returns False so the message runs as a normal turn."""
-
-    def _bot_reply_body(self) -> MessageRequestWithHistory:
-        return MessageRequestWithHistory(
-            message="yes",
-            messages=[{"role": "user", "content": "yes"}],
-            conversation_id=None,
-        )
-
-    async def test_classifier_failure_runs_as_normal_turn(self) -> None:
-        with patch.object(
-            chat_stream,
-            "resolve_pending_from_message",
-            new=AsyncMock(side_effect=RuntimeError("classifier unreachable")),
-        ):
-            result = await _resolve_pending_approval_turn(
-                self._bot_reply_body(),
-                AuthenticatedUser(user_id=USER_ID),
-                "conv-1",
-                "stream-1",
-                _StreamState(),
-                "whatsapp",  # a button-less bot channel — the only source that reaches the classifier
-            )
-
-        assert result is False
-
-    async def test_classifier_failure_does_not_publish_or_persist(self) -> None:
-        """The degraded path must skip the ack/persist steps — those belong only to a resolved approve/deny."""
-        with (
-            patch.object(chat_stream, "stream_manager") as sm,
-            patch.object(chat_stream, "_persist_turn", new_callable=AsyncMock) as persist,
-            patch.object(
-                chat_stream,
-                "resolve_pending_from_message",
-                new=AsyncMock(side_effect=RuntimeError("classifier unreachable")),
-            ),
-        ):
-            sm.publish_chunk = AsyncMock()
-            await _resolve_pending_approval_turn(
-                self._bot_reply_body(),
-                AuthenticatedUser(user_id=USER_ID),
-                "conv-1",
-                "stream-1",
-                _StreamState(),
-                "whatsapp",
-            )
-
-        sm.publish_chunk.assert_not_awaited()
-        persist.assert_not_awaited()
 
 
 class TestConsumeAgentStreamCallsTheAgent:
@@ -504,9 +393,6 @@ class TestRunChatStreamTurnDerivations:
             patch.object(chat_stream, "_set_stream_log_context"),
             patch.object(chat_stream, "_capture_presence", AsyncMock(return_value=None)),
             patch.object(chat_stream, "_publish_init_chunk", fake_publish_init),
-            patch.object(
-                chat_stream, "_resolve_pending_approval_turn", AsyncMock(return_value=False)
-            ),
             patch.object(chat_stream, "schedule_last_active_touch"),
             patch.object(chat_stream, "forward_artifact_events", AsyncMock()),
             patch.object(chat_stream, "_start_description_task", MagicMock(return_value=None)),
