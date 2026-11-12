@@ -94,8 +94,8 @@ export function QuietHoursSettings() {
         >
           <Slider.Track>
             <Slider.Fill className="bg-indigo-400/70" />
-            <Slider.Thumb className="bg-indigo-300" />
-            <Slider.Thumb className="bg-indigo-300" />
+            <Slider.Thumb index={0} className="bg-indigo-300 after:bg-indigo-300" />
+            <Slider.Thumb index={1} className="bg-indigo-300 after:bg-indigo-300" />
           </Slider.Track>
           <Slider.Marks className="pointer-events-none">
             {QUIET_AXIS_MARKS.map((value) => (
