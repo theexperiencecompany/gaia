@@ -1,7 +1,7 @@
 import { globSync, readFileSync } from "node:fs";
 import path from "node:path";
 import tailwind from "@tailwindcss/postcss";
-import postcss, { type Container, type Root } from "postcss";
+import postcss, { type Container, type Root, Rule } from "postcss";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -43,7 +43,7 @@ function scopeOf(container: Container | undefined): Scope {
   const chain: string[] = [];
   for (let node = container; node && node.type !== "root"; ) {
     if (node.type === "rule")
-      chain.push((node as { selector: string }).selector);
+      if (node instanceof Rule) chain.push(node.selector);
     node = node.parent as Container | undefined;
   }
   const selectors = chain.flatMap((s) => s.split(","));
