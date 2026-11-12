@@ -109,8 +109,6 @@ class Settings(BrowserHostSettings):
     LINK_CONTENT_URL_TEMPLATE: str | None = None
     # Signs the short-lived content tokens that origin checks (min 32 chars).
     LINK_CONTENT_SIGNING_KEY: str | None = None
-    # Google Web Risk; checks the URLs in a shared HTML or SVG file. Unset skips the check.
-    GOOGLE_WEB_RISK_API_KEY: str | None = None
     # The bots' HMAC key for hashed platform ids in logs; the same value here
     # makes the API's user_hash join the bots'. Unset falls back like the bots.
     BOT_LOG_HASH_SECRET: str | None = None

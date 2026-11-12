@@ -288,15 +288,21 @@ class TestPublish:
         snapshot = await publish(OWNER, SESSION, _source("r.html", "text/html", b"<p>hi</p>"))
         assert snapshot.max_access is LinkAccess.PUBLIC
 
-    async def test_html_naming_a_flagged_url_opens_only_for_people(
+    async def test_the_urls_a_file_names_never_narrow_it(
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
     ) -> None:
         html = b"<a href='http://testsafebrowsing.appspot.com/s/phishing.html'>x</a>"
-        with patch.object(content, "flagged_urls", AsyncMock(return_value=True)) as flagged:
-            snapshot = await publish(OWNER, SESSION, _source("r.html", "text/html", html))
-        flagged.assert_awaited_once_with(["http://testsafebrowsing.appspot.com/s/phishing.html"])
-        assert snapshot.max_access is LinkAccess.PEOPLE
-        assert snapshot.restricted_by is PublishRejection.UNSAFE_URL
+        snapshot = await publish(OWNER, SESSION, _source("r.html", "text/html", html))
+        assert (snapshot.max_access, snapshot.restricted_by) == (LinkAccess.PUBLIC, None)
+
+    async def test_an_svg_is_never_narrowed_by_its_owners_takedowns(
+        self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
+    ) -> None:
+        no_takedowns.return_value = 5
+        svg = b"<svg xmlns='http://www.w3.org/2000/svg'/>"
+        snapshot = await publish(OWNER, SESSION, _source("a.svg", "image/svg+xml", svg))
+        no_takedowns.assert_not_awaited()
+        assert (snapshot.max_access, snapshot.restricted_by) == (LinkAccess.PUBLIC, None)
 
     async def test_a_png_gets_a_preview_card_under_the_size_cap(
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None

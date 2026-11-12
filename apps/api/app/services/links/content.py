@@ -57,7 +57,6 @@ from app.services.analytics_service import analytics_day_start, capture
 from app.services.blob_store import link_content_store
 from app.services.links.access import at_most
 from app.services.links.spec import SnapshotSource
-from app.services.links.web_risk import flagged_urls
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.short_links import (
     ShortLinkContentPublished,
@@ -98,7 +97,6 @@ _SIZE_CAPS: dict[RenderMode, int] = {
     RenderMode.FRAME_ACTIVE: MAX_HTML_SNAPSHOT_BYTES,
     RenderMode.IMAGE_SVG: MAX_SVG_SNAPSHOT_BYTES,
 }
-_ABSOLUTE_URL = re.compile(rb"""https?://[^\s"'<>()]+""", re.IGNORECASE)
 _SENSITIVE_INPUT = re.compile(
     rb"""<input\b[^>]*\btype\s*=\s*["']?password|autocomplete\s*=\s*["']?cc-""", re.IGNORECASE
 )
@@ -153,18 +151,13 @@ async def _restriction(
     """Return the widest level these bytes may be served at, when something narrows it."""
     if _extension(filename) in EXECUTABLE_EXTENSIONS:
         return LinkAccess.OWNER, PublishRejection.RESTRICTED_TYPE
-    if render not in (RenderMode.FRAME_ACTIVE, RenderMode.IMAGE_SVG):
+    if render is not RenderMode.FRAME_ACTIVE:
         return None
-    if render is RenderMode.FRAME_ACTIVE and _SENSITIVE_INPUT.search(data):
-        return LinkAccess.PEOPLE, PublishRejection.RESTRICTED_TYPE
     if (
-        render is RenderMode.FRAME_ACTIVE
-        and await short_link_repository.count_takedowns(owner_id) >= REPEAT_ABUSE_TAKEDOWNS
+        _SENSITIVE_INPUT.search(data)
+        or await short_link_repository.count_takedowns(owner_id) >= REPEAT_ABUSE_TAKEDOWNS
     ):
         return LinkAccess.PEOPLE, PublishRejection.RESTRICTED_TYPE
-    urls = sorted({match.decode() for match in _ABSOLUTE_URL.findall(data)})
-    if urls and await flagged_urls(urls):
-        return LinkAccess.PEOPLE, PublishRejection.UNSAFE_URL
     return None
 
 

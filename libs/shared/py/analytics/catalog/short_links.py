@@ -33,7 +33,7 @@ ShortLinkDenialReason = Literal[
 ShortLinkRenderMode = Literal[
     "frame_active", "image", "image_svg", "pdf", "text", "media", "download"
 ]
-ShortLinkPublishRejection = Literal["too_large", "unsafe_url", "restricted_type", "quota"]
+ShortLinkPublishRejection = Literal["too_large", "restricted_type", "quota"]
 ShortLinkReportReason = Literal["phishing", "malware", "harassment", "illegal", "other"]
 
 

@@ -1408,7 +1408,7 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
-    "reason": "too_large" | "unsafe_url" | "restricted_type" | "quota";
+    "reason": "too_large" | "restricted_type" | "quota";
   };
   "short_link:reported": {
     "actor": "user" | "agent";

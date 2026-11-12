@@ -60,10 +60,3 @@ RESOLVE_LOCKOUT_KEY = "short_link:lockout:{viewer}"
 # Reports: distinct reporters that suspend a link with active or downloadable content, and any other.
 ACTIVE_CONTENT_REPORT_THRESHOLD = 3
 REPORT_THRESHOLD = 5
-
-WEB_RISK_SEARCH_URL = "https://webrisk.googleapis.com/v1/uris:search"
-WEB_RISK_THREAT_TYPES = ("MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE")
-WEB_RISK_TIMEOUT_SECONDS = 10.0
-#: URLs checked per file; a file naming more is treated as flagged rather than half-checked.
-WEB_RISK_MAX_URLS = 100
-WEB_RISK_CONCURRENCY = 8

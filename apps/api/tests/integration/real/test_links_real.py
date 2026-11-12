@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
 from httpx import AsyncClient, Response
@@ -868,9 +868,3 @@ def _no_support_email() -> Iterator[AsyncMock]:
 def _no_turnstile() -> Iterator[AsyncMock]:
     with patch("app.api.v1.endpoints.short_links.verify_turnstile_token", AsyncMock()) as verify:
         yield verify
-
-
-@pytest.fixture(autouse=True)
-def _no_web_risk() -> Iterator[MagicMock]:
-    with patch("app.services.links.content.flagged_urls", AsyncMock(return_value=False)) as flagged:
-        yield flagged

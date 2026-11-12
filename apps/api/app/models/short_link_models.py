@@ -95,7 +95,6 @@ class PublishRejection(StrEnum):
     """Why a file's bytes were not published; the link then shows only the file's name and size."""
 
     TOO_LARGE = "too_large"
-    UNSAFE_URL = "unsafe_url"
     RESTRICTED_TYPE = "restricted_type"
     QUOTA = "quota"
 
@@ -406,7 +405,7 @@ class ShortLinkResponse(ResponseModel):
     """One live heygaia.link and its settings.
 
     content_max_access is the widest level its file may be served at when the
-    file narrows it (a login form, an unsafe URL, an installer); None otherwise.
+    file narrows it (a login form, an installer); None otherwise.
     """
 
     url: str

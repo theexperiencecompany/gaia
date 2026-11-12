@@ -14965,7 +14965,7 @@ export interface components {
          * @description One live heygaia.link and its settings.
          *
          *     content_max_access is the widest level its file may be served at when the
-         *     file narrows it (a login form, an unsafe URL, an installer); None otherwise.
+         *     file narrows it (a login form, an installer); None otherwise.
          */
         ShortLinkResponse: {
             access: components["schemas"]["LinkAccess"];

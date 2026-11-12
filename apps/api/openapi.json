@@ -18956,7 +18956,7 @@
         "type": "object"
       },
       "ShortLinkResponse": {
-        "description": "One live heygaia.link and its settings.\n\ncontent_max_access is the widest level its file may be served at when the\nfile narrows it (a login form, an unsafe URL, an installer); None otherwise.",
+        "description": "One live heygaia.link and its settings.\n\ncontent_max_access is the widest level its file may be served at when the\nfile narrows it (a login form, an installer); None otherwise.",
         "properties": {
           "access": {
             "$ref": "#/components/schemas/LinkAccess"

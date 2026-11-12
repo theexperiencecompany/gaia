@@ -179,7 +179,7 @@ class TestGaiaAttachedLinks:
         "failure",
         [
             ServerSelectionTimeoutError("no primary"),
-            AppError(message="web risk down", status_code=503),
+            AppError(message="storage down", status_code=503),
         ],
     )
     async def test_a_failure_costs_only_the_link(self, repo, failure):
@@ -571,7 +571,7 @@ class TestGaiaAttachedSharingRules:
         store.links.create.assert_not_awaited()
 
     async def test_a_failed_mint_logs_what_failed_and_where(self, store: Store) -> None:
-        store.links.get_latest_for_target.side_effect = AppError(message="web risk down")
+        store.links.get_latest_for_target.side_effect = AppError(message="storage down")
 
         async with captured_wide_event() as event:
             assert await optional_short_link(OWNER, TODO, "t1") is None
@@ -582,7 +582,7 @@ class TestGaiaAttachedSharingRules:
                 "user_id": OWNER,
                 "target_type": TODO.value,
                 "error_type": "AppError",
-                "error": "web risk down",
+                "error": "storage down",
             }
         ]
 
@@ -977,7 +977,9 @@ class TestLinkResponse:
             grantees=["a@example.com"],
             expires_at=expires,
             snapshot=_snap(
-                "c" * 26, max_access=LinkAccess.PEOPLE, restricted_by=PublishRejection.UNSAFE_URL
+                "c" * 26,
+                max_access=LinkAccess.PEOPLE,
+                restricted_by=PublishRejection.RESTRICTED_TYPE,
             ),
         )
 
