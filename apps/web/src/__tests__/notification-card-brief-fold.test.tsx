@@ -61,14 +61,6 @@ function notification(
   } as unknown as NotificationView;
 }
 
-/** Whether the reader can see el: no ancestor still holds the letter's transparent entry pose. */
-function isShowing(el: HTMLElement): boolean {
-  for (let node: HTMLElement | null = el; node; node = node.parentElement) {
-    if (node.style.opacity === "0") return false;
-  }
-  return true;
-}
-
 function renderCard(view: NotificationView) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -220,12 +212,8 @@ describe("briefing notification", () => {
     fireEvent.click(
       screen.getByRole("button", { name: `Open brief: ${HEADLINE}` }),
     );
-    const close = await screen.findByRole("button", { name: "Close" });
-    // A close in the frame the letter mounts races its entrance, and a late entrance cancels the exit.
-    await waitFor(() =>
-      expect(isShowing(screen.getByText(MESSAGE))).toBe(true),
-    );
-    fireEvent.click(close);
+    // Regression: a close before the letter's entrance ran stranded the modal open.
+    fireEvent.click(await screen.findByRole("button", { name: "Close" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
