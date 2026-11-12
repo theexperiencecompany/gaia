@@ -46,6 +46,7 @@ from app.models.ownership_models import ExecutorIntent
 from app.models.work_cancel_models import WorkCancelled
 from app.services.browser.chat_task import stop_report
 from app.services.browser.job_stop import requester_chat
+from app.services.conversation.work_log import record_gaia_stop, record_work_started
 from app.services.workflow.execution_service import get_last_run_brief
 from app.services.workflow.playbook.check import playbook_check_brief
 from app.utils.background_tasks import spawn_background_task
@@ -323,6 +324,13 @@ async def _dispatch_executor(
     # warmup hit get_all_connected_tools() on every executor call and
     # dominated cold-start latency.
 
+    step = configurable.get("conversation_step")
+    if step is not None and not await record_work_started(
+        step, conversation_id, configurable.get("user_id", ""), task_id
+    ):
+        await release_lock_if_owned(conversation_id, stream_id, task_id)
+        return _NOT_STARTED_STOPPED
+
     if stream_id:
         mark_executor_spawned(stream_id)
 
@@ -414,6 +422,8 @@ async def cancel_executor(
                 user_id, ConversationSource.coerce(configurable.get("conversation_source"))
             )
             work = await cancel_all_work(conversation_id, user_id, requester, redirect=message)
+            if (step := configurable.get("conversation_step")) is not None:
+                await record_gaia_stop(step, conversation_id, user_id, uuid4().hex)
     except Exception as e:
         # Deliberately no lock cleanup here: unconditional deletion previously
         # let two executors run concurrently on one conversation. TTL recovers it.
@@ -440,6 +450,10 @@ def _cancel_report(work: WorkCancelled, *, targeted: bool) -> str:
     return f"{result} {browser}" if browser else result
 
 
+_NOT_STARTED_STOPPED = (
+    "Not dispatched: the user stopped this request, or this turn was replaced by a newer one. "
+    "Do not say the work is underway."
+)
 _NOTHING_TO_CANCEL = "No executor tasks are running or pending for this conversation."
 _NOTHING_MATCHED = "None of the specified task_ids matched any running or pending tasks."
 

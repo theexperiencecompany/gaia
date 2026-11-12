@@ -84,9 +84,14 @@ from app.models.agent_models import (
     run_analytics_context,
 )
 from app.models.chat_models import ToolDataEntry
+from app.models.conversation_log_models import WorkOutcome
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
 from app.services.browser.job_stop import stop_browser_job
+from app.services.conversation.work_log import (
+    record_approval_requested,
+    record_work_finished,
+)
 from app.services.hil.approvals_store import set_resume_item
 from app.services.hil.resume_slot import release_resume_dispatch
 from app.services.latency_metrics import (
@@ -194,9 +199,11 @@ async def _run_executor(
                     observe_executor_ttft(ttft_ms / 1000.0, queued=queued)
                 timing_fields = _timing_fields(queue_wait_ms, ttft_ms, active_ms)
                 log.set(executor={"queued": queued, **timing_fields})
-                if result.paused_on and not await _record_pause(
+                if result.paused_on and await _record_pause(
                     run, task, configurable, result.paused_on
                 ):
+                    await _log_approvals_requested(run, result.paused_on)
+                elif result.paused_on:
                     # Recording failed, so no decision can ever resume this thread; finalizing
                     # as paused would hold the busy lock for its full TTL waiting for a resume
                     # that can't come. Fail instead: the lock releases and the sweep closes it.
@@ -547,6 +554,7 @@ async def _finalize_executor_run(
             result_type=result_type,
         )
 
+    step_outcome: TerminalOutcome | None = None
     # Delivery is best-effort: a failure here must NOT skip the lock release and
     # queue handoff below, or queued tasks strand and the busy lock leaks until
     # its TTL. The lock lifecycle is the load-bearing step — always run it.
@@ -557,18 +565,15 @@ async def _finalize_executor_run(
                 if ctx is not None and result_type == "final"
                 else ""
             )
-            await _deliver_terminal_outcome(
-                run,
-                task,
-                TerminalOutcome(
-                    result_text=result_text,
-                    result_type=result_type,
-                    was_cancelled=was_cancelled,
-                    returned_note=returned_note,
-                    tool_data=tool_data,
-                    outcome_note=outcome_note,
-                ),
+            outcome = TerminalOutcome(
+                result_text=result_text,
+                result_type=result_type,
+                was_cancelled=was_cancelled,
+                returned_note=returned_note,
+                tool_data=tool_data,
+                outcome_note=outcome_note,
             )
+            step_outcome = await _deliver_unless_stepped(run, task, outcome)
     except Exception as e:  # never let delivery failure strand the queue
         log.error(
             f"{LogTag.AGENT} Executor finalize delivery failed",
@@ -590,6 +595,8 @@ async def _finalize_executor_run(
             task_id=run.task_id,
             error=str(e),
         )
+
+    await _log_work_finished(run, step_outcome, stopped=stopped)
 
     end_status = (
         "error" if result_type == "error" else ("cancelled" if was_cancelled else "success")
@@ -614,6 +621,16 @@ async def _finalize_executor_run(
         )
         return
     await _carry_pending_into_new_run(run, ctx)
+
+
+async def _log_approvals_requested(run: ExecutorRun, approval_ids: tuple[str, ...]) -> None:
+    """Log each approval a step-dispatched run paused on, so the conversation shows it awaiting the user."""
+    if run.conversation_step is None or not run.task_id:
+        return
+    for approval_id in approval_ids:
+        await record_approval_requested(
+            run.conversation_id, run.user.user_id, run.task_id, approval_id
+        )
 
 
 async def _review_outcome_note(conversation_id: str, ctx: SubagentExecutionContext) -> str:
@@ -690,6 +707,41 @@ class TerminalOutcome:
     returned_note: str
     tool_data: list[ToolDataEntry] | None
     outcome_note: str = ""
+
+
+def _work_outcome(outcome: TerminalOutcome, *, stopped: bool) -> WorkOutcome:
+    """Name how the run ended for the conversation log."""
+    if outcome.was_cancelled or stopped:
+        return WorkOutcome.CANCELLED
+    if outcome.result_type == "error":
+        return WorkOutcome.FAILED
+    return WorkOutcome.DONE
+
+
+async def _deliver_unless_stepped(
+    run: ExecutorRun, task: str, outcome: TerminalOutcome
+) -> TerminalOutcome | None:
+    """Deliver the result the legacy way; a step-dispatched run returns it for the step to narrate instead."""
+    if run.conversation_step is None:
+        await _deliver_terminal_outcome(run, task, outcome)
+        return None
+    return outcome
+
+
+async def _log_work_finished(
+    run: ExecutorRun, outcome: TerminalOutcome | None, *, stopped: bool
+) -> None:
+    """Log a step-dispatched run's end once its busy lock is free; the step narrates it in the task's reply."""
+    if outcome is None or not run.task_id:
+        return
+    report = "\n\n".join(part for part in (outcome.result_text, outcome.outcome_note) if part)
+    await record_work_finished(
+        run.conversation_id,
+        run.user.user_id,
+        run.task_id,
+        _work_outcome(outcome, stopped=stopped),
+        report,
+    )
 
 
 async def _deliver_terminal_outcome(

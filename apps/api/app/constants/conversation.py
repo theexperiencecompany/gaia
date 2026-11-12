@@ -59,6 +59,10 @@ WORK_UNFINISHED_NOTE = (
     "reply: {report}]"
 )
 WORKFLOW_FIRED_NOTE = "[Workflow {workflow_id} fired. Its context: {context}]"
+INTEGRATION_CONNECTED_NOTE = (
+    "[The user just connected {integration}. Carry on with the work that was waiting on it; "
+    "the user did not type a message.]"
+)
 BARGE_IN_NOTE = "[The user spoke over your reply. They heard only this much of it: {heard}]"
 SERVER_RESTART_NOTE = (
     "<server_restart>Your previous reply was cut off by a server restart before it finished. "
@@ -78,3 +82,14 @@ EVENTS_BLOCK_MS = 15_000
 EVENTS_STREAM_START = "0-0"
 # How often a running step polls its preempt hint while the model is silent.
 STEP_TICK_SECONDS = 0.25
+# Heads one sweep reads; the sweep runs every SWEEP_SECONDS, so a backlog drains over a few runs.
+SWEEP_BATCH = 200
+SWEEP_SECONDS = frozenset({0, 15, 30, 45})
+WORK_LOST_REPORT = (
+    "The background work stopped unexpectedly when the server running it went down, "
+    "so it did not finish."
+)
+# How long a shutting-down process lets its running conversation steps finish.
+STEP_DRAIN_GRACE_SECONDS = 20.0
+# How far back a connect looks for work waiting on that integration.
+INTEGRATION_NEED_WINDOW = timedelta(days=1)

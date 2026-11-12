@@ -10,6 +10,8 @@ from app.models.conversation_log_models import (
     Effect,
     Entry,
     FinishedWork,
+    IntegrationConnected,
+    IntegrationNeeded,
     KickStep,
     LiveWork,
     LoggedEntry,
@@ -42,11 +44,11 @@ def reduce(state: ConversationState, logged: LoggedEntry) -> Transition | Reject
 def _apply(state: ConversationState, seq: int, entry: Entry) -> Transition | Rejected:
     result: Transition | Rejected
     match entry:
-        case UserMessage() | BargeIn() | WorkflowFired():
+        case UserMessage() | BargeIn() | WorkflowFired() | IntegrationConnected():
             result = Transition(state=_wake(state, seq), effects=_wake_effects(entry))
         case StopRequested():
             result = _stop(state, seq, entry)
-        case TodoWoke() | Notice():
+        case TodoWoke() | Notice() | IntegrationNeeded():
             result = Transition(state=state, effects=())
         case WorkStarted():
             result = _start_work(state, seq, entry)
@@ -69,7 +71,9 @@ def _apply(state: ConversationState, seq: int, entry: Entry) -> Transition | Rej
     return result
 
 
-def _wake_effects(entry: UserMessage | BargeIn | WorkflowFired) -> tuple[Effect, ...]:
+def _wake_effects(
+    entry: UserMessage | BargeIn | WorkflowFired | IntegrationConnected,
+) -> tuple[Effect, ...]:
     match entry:
         case UserMessage(voice=False, id=message_id):
             return (KickStep(), StartAck(message_id=message_id))

@@ -269,6 +269,14 @@ CONVERSATION_TODO_BINDING_OPTIONS: IndexOptions = {
 }
 
 
+# The sweeper's scan: only heads the conversation step runs, a few among every conversation.
+CONVERSATION_STEP_SWEEP_KEYS: IndexKeys = [("runtime", 1), ("updatedAt", -1)]
+CONVERSATION_STEP_SWEEP_OPTIONS: IndexOptions = {
+    "name": "conversation_step_sweep",
+    "partialFilterExpression": {"runtime": {"$type": "string"}},
+}
+
+
 # A conversation's entries: one seq and one id per entry (the protocol's two uniqueness
 # guarantees), then one index per cross-conversation read the repository makes.
 CONVERSATION_ENTRY_INDEXES: list[tuple[IndexKeys, IndexOptions]] = [
@@ -318,6 +326,9 @@ async def create_conversation_indexes() -> None:
             conversations_collection.create_index([("updatedAt", -1)]),
             conversations_collection.create_index(
                 CONVERSATION_TODO_BINDING_KEYS, **CONVERSATION_TODO_BINDING_OPTIONS
+            ),
+            conversations_collection.create_index(
+                CONVERSATION_STEP_SWEEP_KEYS, **CONVERSATION_STEP_SWEEP_OPTIONS
             ),
             *(
                 entries_collection.create_index(keys, **options)

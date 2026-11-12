@@ -27,6 +27,7 @@ from app.models.conversation_log_models import (
     CommsPhase,
     ConversationState,
     Entry,
+    IntegrationConnected,
     LoggedEntry,
     MergeGroup,
     Reaction,
@@ -222,7 +223,9 @@ def _batch(pending: Sequence[LoggedEntry]) -> Batch:
 
 def _waking(logged: LoggedEntry) -> WakingEntry:
     entry = logged.entry
-    if isinstance(entry, UserMessage | BargeIn | WorkflowFired | WorkFinished):
+    if isinstance(
+        entry, UserMessage | BargeIn | WorkflowFired | WorkFinished | IntegrationConnected
+    ):
         return entry
     raise TypeError(f"seq {logged.seq} is a {entry.kind}, not a waking entry")
 

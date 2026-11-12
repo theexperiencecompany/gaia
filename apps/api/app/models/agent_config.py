@@ -64,6 +64,8 @@ class StepTurnRef(TypedDict):
 
     #: The step claim's epoch; the run's own log writes are fenced on it.
     epoch: int
+    #: The oldest log seq the attempt answers; a stop it asks for covers everything before it.
+    batch_start: int
     #: The newest log seq the attempt answers; work it starts is caused through here.
     cause_through: int
     #: The ids of the user messages the attempt answers.

@@ -70,6 +70,7 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
     )
     step: StepTurnRef = {
         "epoch": claim.epoch,
+        "batch_start": batch.start,
         "cause_through": batch.end,
         "answers": [message.id for message in said],
     }

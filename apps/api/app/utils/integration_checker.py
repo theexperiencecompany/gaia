@@ -28,12 +28,14 @@ from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
 from app.models.agent_models import (
     AgentConfigurableView,
+    agent_configurable,
     current_stream_writer,
     read_agent_configurable,
 )
 from app.models.chat_models import SourceCategory
 from app.models.integration_models import IntegrationAccount
 from app.services.connect_link_service import build_connect_link_url
+from app.services.conversation.integration_log import record_integration_needed
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_oauth import build_oauth_auth_url
@@ -51,6 +53,21 @@ def _current_run() -> AgentConfigurableView | None:
     except RuntimeError:
         return None
     return read_agent_configurable(config)
+
+
+async def _log_need(user_id: str, integration_id: str, integration_name: str) -> None:
+    """Log the need on a conversation the step runs, so the connect continues its work."""
+    try:
+        configurable = agent_configurable(get_config())
+    except RuntimeError:
+        return
+    step = configurable.get("conversation_step")
+    conversation_id = configurable.get("thread_id")
+    if step is None or not conversation_id:
+        return
+    await record_integration_needed(
+        step, conversation_id, user_id, integration_id, integration_name
+    )
 
 
 class _StandaloneAuth(NamedTuple):
@@ -332,6 +349,9 @@ async def request_integration_connection(
                 }
             }
         )
+
+    if first_ask:
+        await _log_need(user_id, integration_id, integration_name)
 
     # Login-required but permanent: the fallback when no single-use link applies.
     integrations_url = f"{settings.FRONTEND_URL.rstrip('/')}/integrations"

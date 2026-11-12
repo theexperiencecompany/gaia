@@ -545,3 +545,15 @@ async def prepare_run_from_item(
         workflow_execution_id=item.get("workflow_execution_id"),
     )
     return PreparedQueuedTask(run=run, task=task, configurable=configurable)
+
+
+async def run_is_lost(conversation_id: str, task_id: str) -> bool:
+    """Return whether no live process runs task_id, a run dispatched with no stream id.
+
+    A run's liveness outlasts its finalize, so a run that just ended is never lost.
+    """
+    lock_value = build_lock_value(None, task_id)
+    if await redis_cache.client.exists(_alive_key(conversation_id, lock_value)):
+        return False
+    holder = await get_lock_holder(conversation_id)
+    return holder != lock_value or await _holder_is_dead(conversation_id, holder)

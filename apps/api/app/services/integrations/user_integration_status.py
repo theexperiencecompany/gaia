@@ -16,6 +16,7 @@ from app.core.websocket_manager import websocket_manager
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.caching import CacheInvalidator
 from app.models.integration_models import UserIntegrationStatus
+from app.services.conversation.integration_log import continue_after_connect
 from app.services.integrations_fs import schedule_user_integrations_sync
 from shared.py.wide_events import log
 
@@ -36,6 +37,17 @@ async def publish_connected(user_id: str, integration_id: str) -> None:
     except Exception as e:
         log.warning(
             f"{LogTag.INTEGRATION} Failed to broadcast connected status",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+
+    # Best-effort for the same reason: the connect itself already succeeded.
+    try:
+        await continue_after_connect(user_id, integration_id)
+    except Exception as e:
+        log.error(
+            f"{LogTag.INTEGRATION} Failed to continue conversations waiting on the connect",
             integration_id=integration_id,
             error=str(e),
             error_type=type(e).__name__,

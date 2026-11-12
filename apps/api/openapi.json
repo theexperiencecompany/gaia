@@ -6588,6 +6588,8 @@
                 "approval_decided": "#/components/schemas/ApprovalDecided",
                 "approval_requested": "#/components/schemas/ApprovalRequested",
                 "barge_in": "#/components/schemas/BargeIn",
+                "integration_connected": "#/components/schemas/IntegrationConnected",
+                "integration_needed": "#/components/schemas/IntegrationNeeded",
                 "notice": "#/components/schemas/Notice",
                 "reply": "#/components/schemas/Reply",
                 "reply_settled": "#/components/schemas/ReplySettled",
@@ -6636,6 +6638,12 @@
               },
               {
                 "$ref": "#/components/schemas/ReplySettled"
+              },
+              {
+                "$ref": "#/components/schemas/IntegrationNeeded"
+              },
+              {
+                "$ref": "#/components/schemas/IntegrationConnected"
               }
             ],
             "title": "Entry"
@@ -6670,6 +6678,8 @@
                 "approval_decided": "#/components/schemas/ApprovalDecided",
                 "approval_requested": "#/components/schemas/ApprovalRequested",
                 "barge_in": "#/components/schemas/BargeIn",
+                "integration_connected": "#/components/schemas/IntegrationConnected",
+                "integration_needed": "#/components/schemas/IntegrationNeeded",
                 "notice": "#/components/schemas/Notice",
                 "reply": "#/components/schemas/Reply",
                 "reply_settled": "#/components/schemas/ReplySettled",
@@ -6718,6 +6728,12 @@
               },
               {
                 "$ref": "#/components/schemas/ReplySettled"
+              },
+              {
+                "$ref": "#/components/schemas/IntegrationNeeded"
+              },
+              {
+                "$ref": "#/components/schemas/IntegrationConnected"
               }
             ],
             "title": "Entry"
@@ -9138,6 +9154,44 @@
         "title": "IntegrationConfigItem",
         "type": "object"
       },
+      "IntegrationConnected": {
+        "additionalProperties": false,
+        "description": "The user connected an integration this conversation's work was waiting on.",
+        "properties": {
+          "id": {
+            "description": "Producer-minted idempotency key",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "integration_id": {
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "integration_name": {
+            "title": "Integration Name",
+            "type": "string"
+          },
+          "kind": {
+            "const": "integration_connected",
+            "default": "integration_connected",
+            "title": "Kind",
+            "type": "string"
+          },
+          "needed_id": {
+            "title": "Needed Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "integration_id",
+          "integration_name",
+          "needed_id"
+        ],
+        "title": "IntegrationConnected",
+        "type": "object"
+      },
       "IntegrationContent": {
         "description": "Rich marketplace content shown only on the integration detail page.\n\nSerializes with camelCase aliases (use_cases -> useCases, how_it_works ->\nhowItWorks) so the nested object matches the camelCase contract the rest of\nthe public integration response already uses; without this the frontend\nreceives snake_case keys and silently falls back to generic content.",
         "properties": {
@@ -9238,6 +9292,39 @@
           "status"
         ],
         "title": "IntegrationInfo",
+        "type": "object"
+      },
+      "IntegrationNeeded": {
+        "additionalProperties": false,
+        "description": "Work in this conversation is waiting on the user to connect an integration.",
+        "properties": {
+          "id": {
+            "description": "Producer-minted idempotency key",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "integration_id": {
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "integration_name": {
+            "title": "Integration Name",
+            "type": "string"
+          },
+          "kind": {
+            "const": "integration_needed",
+            "default": "integration_needed",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "integration_id",
+          "integration_name"
+        ],
+        "title": "IntegrationNeeded",
         "type": "object"
       },
       "IntegrationRef": {

@@ -36,6 +36,7 @@ from app.constants.log_tags import LogTag
 from app.models.agent_models import ExecutorRunItem
 from app.models.hil_models import ApprovalScope, HILApprovalRecord, HILApprovalStatus
 from app.schemas.hil_schemas import BatchDecisionOutcome
+from app.services.conversation.work_log import record_approval_decided
 from app.services.hil.approvals_store import (
     clear_resume_item,
     get_approval,
@@ -339,6 +340,7 @@ async def _resolve_record(
         }
     )
     _observe_hil_user_wait(record)
+    await record_approval_decided(record.conversation_id, user_id, record.approval_id, kind)
 
     log.set(hil={"approval_id": record.approval_id, "decision": kind, "tool": record.tool_name})
     if record.resume_item is None and record.subagent_resume is None:

@@ -29,6 +29,8 @@ class EntryKind(StrEnum):
     WORK_FINISHED = "work_finished"
     REPLY = "reply"
     REPLY_SETTLED = "reply_settled"
+    INTEGRATION_NEEDED = "integration_needed"
+    INTEGRATION_CONNECTED = "integration_connected"
 
 
 class StopBy(StrEnum):
@@ -167,6 +169,24 @@ class WorkFinished(_Entry):
     report: str
 
 
+class IntegrationNeeded(_Entry):
+    """Work in this conversation is waiting on the user to connect an integration."""
+
+    kind: Literal[EntryKind.INTEGRATION_NEEDED] = EntryKind.INTEGRATION_NEEDED
+    integration_id: str
+    integration_name: str
+
+
+class IntegrationConnected(_Entry):
+    """The user connected an integration this conversation's work was waiting on."""
+
+    kind: Literal[EntryKind.INTEGRATION_CONNECTED] = EntryKind.INTEGRATION_CONNECTED
+    integration_id: str
+    integration_name: str
+    # The IntegrationNeeded entry this connect answers.
+    needed_id: str
+
+
 class Reply(_Entry):
     """GAIA's reply, appended when the user first sees it; its content is filled in place."""
 
@@ -213,11 +233,13 @@ Entry = Annotated[
     | ApprovalDecided
     | WorkFinished
     | Reply
-    | ReplySettled,
+    | ReplySettled
+    | IntegrationNeeded
+    | IntegrationConnected,
     Field(discriminator="kind"),
 ]
 
-WakingEntry = UserMessage | BargeIn | WorkflowFired | WorkFinished
+WakingEntry = UserMessage | BargeIn | WorkflowFired | WorkFinished | IntegrationConnected
 
 
 class LoggedEntry(BaseModel):

@@ -8891,7 +8891,7 @@ export interface components {
              */
             at: string;
             /** Entry */
-            entry: components["schemas"]["UserMessage"] | components["schemas"]["StopRequested"] | components["schemas"]["BargeIn"] | components["schemas"]["WorkflowFired"] | components["schemas"]["TodoWoke"] | components["schemas"]["Notice"] | components["schemas"]["WorkStarted"] | components["schemas"]["ApprovalRequested"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["WorkFinished"] | components["schemas"]["Reply"] | components["schemas"]["ReplySettled"];
+            entry: components["schemas"]["UserMessage"] | components["schemas"]["StopRequested"] | components["schemas"]["BargeIn"] | components["schemas"]["WorkflowFired"] | components["schemas"]["TodoWoke"] | components["schemas"]["Notice"] | components["schemas"]["WorkStarted"] | components["schemas"]["ApprovalRequested"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["WorkFinished"] | components["schemas"]["Reply"] | components["schemas"]["ReplySettled"] | components["schemas"]["IntegrationNeeded"] | components["schemas"]["IntegrationConnected"];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -8906,7 +8906,7 @@ export interface components {
          */
         EntryUpdatedFrame: {
             /** Entry */
-            entry: components["schemas"]["UserMessage"] | components["schemas"]["StopRequested"] | components["schemas"]["BargeIn"] | components["schemas"]["WorkflowFired"] | components["schemas"]["TodoWoke"] | components["schemas"]["Notice"] | components["schemas"]["WorkStarted"] | components["schemas"]["ApprovalRequested"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["WorkFinished"] | components["schemas"]["Reply"] | components["schemas"]["ReplySettled"];
+            entry: components["schemas"]["UserMessage"] | components["schemas"]["StopRequested"] | components["schemas"]["BargeIn"] | components["schemas"]["WorkflowFired"] | components["schemas"]["TodoWoke"] | components["schemas"]["Notice"] | components["schemas"]["WorkStarted"] | components["schemas"]["ApprovalRequested"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["WorkFinished"] | components["schemas"]["Reply"] | components["schemas"]["ReplySettled"] | components["schemas"]["IntegrationNeeded"] | components["schemas"]["IntegrationConnected"];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -10080,6 +10080,28 @@ export interface components {
             source?: "platform";
         };
         /**
+         * IntegrationConnected
+         * @description The user connected an integration this conversation's work was waiting on.
+         */
+        IntegrationConnected: {
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /** Integration Id */
+            integration_id: string;
+            /** Integration Name */
+            integration_name: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "integration_connected";
+            /** Needed Id */
+            needed_id: string;
+        };
+        /**
          * IntegrationContent
          * @description Rich marketplace content shown only on the integration detail page.
          *
@@ -10145,6 +10167,26 @@ export interface components {
              * @description Integration status: 'created' or 'connected'
              */
             status: string;
+        };
+        /**
+         * IntegrationNeeded
+         * @description Work in this conversation is waiting on the user to connect an integration.
+         */
+        IntegrationNeeded: {
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /** Integration Id */
+            integration_id: string;
+            /** Integration Name */
+            integration_name: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "integration_needed";
         };
         /**
          * IntegrationRef
@@ -17522,10 +17564,12 @@ export type InstructionsResponse = components['schemas']['InstructionsResponse']
 export type IntegrationAccountResponse = components['schemas']['IntegrationAccountResponse'];
 export type IntegrationAccountsResponse = components['schemas']['IntegrationAccountsResponse'];
 export type IntegrationConfigItem = components['schemas']['IntegrationConfigItem'];
+export type IntegrationConnected = components['schemas']['IntegrationConnected'];
 export type IntegrationContent = components['schemas']['IntegrationContent'];
 export type IntegrationFAQ = components['schemas']['IntegrationFAQ'];
 export type IntegrationHowItWorksStep = components['schemas']['IntegrationHowItWorksStep'];
 export type IntegrationInfo = components['schemas']['IntegrationInfo'];
+export type IntegrationNeeded = components['schemas']['IntegrationNeeded'];
 export type IntegrationRef = components['schemas']['IntegrationRef'];
 export type IntegrationResponse = components['schemas']['IntegrationResponse'];
 export type IntegrationsConfigResponse = components['schemas']['IntegrationsConfigResponse'];

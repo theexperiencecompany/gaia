@@ -1,10 +1,13 @@
 """Stop a conversation: cancel its live streams, then every kind of work it has running."""
 
+from uuid import uuid4
+
 from app.agents.core.background.work_cancel import cancel_all_work
 from app.core.stream_manager import stream_manager
 from app.models.work_cancel_models import ConversationStopResponse
 from app.services.analytics_service import capture
 from app.services.browser.job_stop import RequesterChat
+from app.services.conversation.work_log import record_user_stop
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatWorkStopped
 
@@ -40,6 +43,7 @@ async def press_stop(
     held_stream_id: str | None = None,
 ) -> ConversationStopResponse:
     """Stop the conversation because the user pressed Stop, and count that press."""
+    await record_user_stop(conversation_id, user_id, uuid4().hex)
     result = await stop_conversation(
         conversation_id, user_id, requester, held_stream_id=held_stream_id
     )

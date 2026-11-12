@@ -13,6 +13,7 @@ from langchain_core.messages import AnyMessage, HumanMessage
 from app.agents.core.interruption import INTERRUPTION_MARKER, INTERRUPTION_SOURCE
 from app.constants.conversation import (
     BARGE_IN_NOTE,
+    INTEGRATION_CONNECTED_NOTE,
     LOG_MESSAGE_ID_PREFIX,
     LOG_SEQ,
     NOTICE_DELIVERED_NOTE,
@@ -27,6 +28,7 @@ from app.models.chat_models import ReactionBy
 from app.models.conversation_log_models import (
     BargeIn,
     Batch,
+    IntegrationConnected,
     LoggedEntry,
     Notice,
     ReplyOutcome,
@@ -104,6 +106,8 @@ def _note_text(logged: LoggedEntry) -> str | None:
             note = BARGE_IN_NOTE.format(heard=heard)
         case Notice(text=text):
             note = NOTICE_DELIVERED_NOTE.format(text=text)
+        case IntegrationConnected(integration_name=name):
+            note = INTEGRATION_CONNECTED_NOTE.format(integration=name)
         # A dead holder's open reply is settled failed with no answers by recovery.
         case ReplySettled(outcome=ReplyOutcome.FAILED, answers=()):
             note = SERVER_RESTART_NOTE
