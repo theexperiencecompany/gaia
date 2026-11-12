@@ -81,12 +81,8 @@ async def test_a_script_that_threw_on_the_page_fails_the_print() -> None:
     page.pdf.assert_not_awaited()
 
 
-async def test_renders_past_the_slots_and_the_waiting_line_are_refused_with_429(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(pdf_module, "PDF_RENDER_MAX_CONCURRENT", 1)
-    monkeypatch.setattr(pdf_module, "PDF_RENDER_MAX_WAITING", 1)
-    monkeypatch.setattr(pdf_module, "_gate", pdf_module._RenderGate())
+async def _burst(waiting_allowed: int, extra: int) -> tuple[int, int]:
+    """Start 1 running + waiting_allowed waiting + extra more renders; return (refused, finished)."""
     release = asyncio.Event()
     browser, page = _browser(_pdf_of(1))
 
@@ -95,20 +91,39 @@ async def test_renders_past_the_slots_and_the_waiting_line_are_refused_with_429(
 
     page.goto = slow_goto
     with patch(f"{_PDF}.chromium_browser", _launch(browser)):
-        running = asyncio.create_task(render_url_to_pdf("https://x/print", "#ready"))
-        waiting = asyncio.create_task(render_url_to_pdf("https://x/print", "#ready"))
+        tasks = [
+            asyncio.create_task(render_url_to_pdf("https://x/print", "#ready"))
+            for _ in range(1 + waiting_allowed + extra)
+        ]
         await asyncio.sleep(0)
         await asyncio.sleep(0)
-
-        with pytest.raises(RenderBusyError) as refused:
-            await render_url_to_pdf("https://x/print", "#ready")
         release.set()
-        results = await asyncio.gather(running, waiting)
-
-    assert refused.value.status_code == 429
-    assert (refused.value.message, refused.value.fix) == (
-        "too many PDF exports are running",
-        "try again in a minute",
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+    refused = [r for r in results if isinstance(r, RenderBusyError)]
+    assert all(r.status_code == 429 for r in refused)
+    assert all(
+        (r.message, r.fix) == ("too many PDF exports are running", "try again in a minute")
+        for r in refused
     )
-    assert [pages for _, pages in results] == [1, 1]
-    assert browser.new_page.await_count == 2
+    return len(refused), len(results) - len(refused)
+
+
+async def test_renders_past_the_slots_and_the_waiting_line_are_refused_with_429(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(pdf_module, "PDF_RENDER_MAX_CONCURRENT", 1)
+    monkeypatch.setattr(pdf_module, "PDF_RENDER_MAX_WAITING", 2)
+    monkeypatch.setattr(pdf_module, "_gate", pdf_module._RenderGate())
+
+    assert await _burst(waiting_allowed=2, extra=2) == (2, 3)
+
+
+async def test_the_waiting_line_empties_as_renders_finish_so_the_next_burst_fits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(pdf_module, "PDF_RENDER_MAX_CONCURRENT", 1)
+    monkeypatch.setattr(pdf_module, "PDF_RENDER_MAX_WAITING", 2)
+    monkeypatch.setattr(pdf_module, "_gate", pdf_module._RenderGate())
+
+    assert await _burst(waiting_allowed=2, extra=0) == (0, 3)
+    assert await _burst(waiting_allowed=2, extra=1) == (1, 3)
