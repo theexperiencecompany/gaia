@@ -346,6 +346,45 @@
         "title": "ApiCallConfig",
         "type": "object"
       },
+      "ApprovalDecided": {
+        "additionalProperties": false,
+        "description": "A pending approval resolved.",
+        "properties": {
+          "approval_id": {
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "approve",
+              "deny",
+              "timeout",
+              "abandon"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "id": {
+            "description": "Producer-minted idempotency key",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "approval_decided",
+            "default": "approval_decided",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "approval_id",
+          "decision"
+        ],
+        "title": "ApprovalDecided",
+        "type": "object"
+      },
       "ApprovalDecisionRequest": {
         "description": "Body for a button approval decision (approve/deny, with scope and feedback).",
         "properties": {
@@ -430,6 +469,39 @@
           "success"
         ],
         "title": "ApprovalDecisionResponse",
+        "type": "object"
+      },
+      "ApprovalRequested": {
+        "additionalProperties": false,
+        "description": "Live work paused on the user's approval.",
+        "properties": {
+          "approval_id": {
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "id": {
+            "description": "Producer-minted idempotency key",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "approval_requested",
+            "default": "approval_requested",
+            "title": "Kind",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "task_id",
+          "approval_id"
+        ],
+        "title": "ApprovalRequested",
         "type": "object"
       },
       "ApprovePairingRequest": {
@@ -1032,6 +1104,39 @@
           "enforced"
         ],
         "title": "AuthoredGateView",
+        "type": "object"
+      },
+      "BargeIn": {
+        "additionalProperties": false,
+        "description": "The user spoke over a voice reply, having heard only heard_text of it.",
+        "properties": {
+          "heard_text": {
+            "title": "Heard Text",
+            "type": "string"
+          },
+          "id": {
+            "description": "Producer-minted idempotency key",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "barge_in",
+            "default": "barge_in",
+            "title": "Kind",
+            "type": "string"
+          },
+          "reply_id": {
+            "title": "Reply Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "reply_id",
+          "heard_text"
+        ],
+        "title": "BargeIn",
         "type": "object"
       },
       "BatchApprovalDecisionRequest": {
@@ -1807,6 +1912,35 @@
           "platform_user_id"
         ],
         "title": "BotChatRequest",
+        "type": "object"
+      },
+      "BotMessageAccepted": {
+        "description": "A bot message accepted, with the token the bot follows the events stream with.",
+        "properties": {
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "session_token": {
+            "title": "Session Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "message_id",
+          "seq",
+          "session_token"
+        ],
+        "title": "BotMessageAccepted",
         "type": "object"
       },
       "BotSessionRequest": {
@@ -3757,6 +3891,16 @@
             "title": "Messages",
             "type": "array"
           },
+          "runtime": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationRuntime"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "source": {
             "anyOf": [
               {
@@ -4133,6 +4277,62 @@
         "title": "ConversationEntry",
         "type": "object"
       },
+      "ConversationEvent": {
+        "description": "One frame on a conversation's events stream; stream_id is the cursor to resume after, None for a log replay.",
+        "properties": {
+          "frame": {
+            "discriminator": {
+              "mapping": {
+                "entry": "#/components/schemas/EntryFrame",
+                "entry_updated": "#/components/schemas/EntryUpdatedFrame",
+                "reply_delta": "#/components/schemas/ReplyDeltaFrame",
+                "retract": "#/components/schemas/RetractFrame",
+                "state": "#/components/schemas/StateFrame",
+                "work_delta": "#/components/schemas/WorkDeltaFrame"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EntryFrame"
+              },
+              {
+                "$ref": "#/components/schemas/EntryUpdatedFrame"
+              },
+              {
+                "$ref": "#/components/schemas/ReplyDeltaFrame"
+              },
+              {
+                "$ref": "#/components/schemas/WorkDeltaFrame"
+              },
+              {
+                "$ref": "#/components/schemas/RetractFrame"
+              },
+              {
+                "$ref": "#/components/schemas/StateFrame"
+              }
+            ],
+            "title": "Frame"
+          },
+          "stream_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stream Id"
+          }
+        },
+        "required": [
+          "stream_id",
+          "frame"
+        ],
+        "title": "ConversationEvent",
+        "type": "object"
+      },
       "ConversationListResponse": {
         "description": "One page of the conversation list: every starred conversation followed by\nthe requested page of the non-starred ones.",
         "properties": {
@@ -4255,6 +4455,14 @@
         ],
         "title": "ConversationModel",
         "type": "object"
+      },
+      "ConversationRuntime": {
+        "description": "What runs a conversation: absent on the head means the legacy per-turn stream.",
+        "enum": [
+          "step"
+        ],
+        "title": "ConversationRuntime",
+        "type": "string"
       },
       "ConversationSource": {
         "description": "Client or channel a conversation originated from.",
@@ -6250,6 +6458,17 @@
         "title": "DispatchErrorKind",
         "type": "string"
       },
+      "DisplayState": {
+        "description": "The one status a client shows for a conversation.",
+        "enum": [
+          "idle",
+          "thinking",
+          "working",
+          "awaiting_approval"
+        ],
+        "title": "DisplayState",
+        "type": "string"
+      },
       "DodoWebhookAckResponse": {
         "description": "Acknowledgement returned to Dodo once a webhook has been accepted.",
         "properties": {
@@ -6352,6 +6571,174 @@
           "composio_managed"
         ],
         "title": "EnableComposioToolkitResponse",
+        "type": "object"
+      },
+      "EntryFrame": {
+        "additionalProperties": false,
+        "description": "A newly appended entry.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "entry": {
+            "discriminator": {
+              "mapping": {
+                "approval_decided": "#/components/schemas/ApprovalDecided",
+                "approval_requested": "#/components/schemas/ApprovalRequested",
+                "barge_in": "#/components/schemas/BargeIn",
+                "notice": "#/components/schemas/Notice",
+                "reply": "#/components/schemas/Reply",
+                "reply_settled": "#/components/schemas/ReplySettled",
+                "stop_requested": "#/components/schemas/StopRequested",
+                "todo_woke": "#/components/schemas/TodoWoke",
+                "user_message": "#/components/schemas/UserMessage",
+                "work_finished": "#/components/schemas/WorkFinished",
+                "work_started": "#/components/schemas/WorkStarted",
+                "workflow_fired": "#/components/schemas/WorkflowFired"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserMessage"
+              },
+              {
+                "$ref": "#/components/schemas/StopRequested"
+              },
+              {
+                "$ref": "#/components/schemas/BargeIn"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowFired"
+              },
+              {
+                "$ref": "#/components/schemas/TodoWoke"
+              },
+              {
+                "$ref": "#/components/schemas/Notice"
+              },
+              {
+                "$ref": "#/components/schemas/WorkStarted"
+              },
+              {
+                "$ref": "#/components/schemas/ApprovalRequested"
+              },
+              {
+                "$ref": "#/components/schemas/ApprovalDecided"
+              },
+              {
+                "$ref": "#/components/schemas/WorkFinished"
+              },
+              {
+                "$ref": "#/components/schemas/Reply"
+              },
+              {
+                "$ref": "#/components/schemas/ReplySettled"
+              }
+            ],
+            "title": "Entry"
+          },
+          "kind": {
+            "const": "entry",
+            "default": "entry",
+            "title": "Kind",
+            "type": "string"
+          },
+          "seq": {
+            "minimum": 1.0,
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "at",
+          "entry"
+        ],
+        "title": "EntryFrame",
+        "type": "object"
+      },
+      "EntryUpdatedFrame": {
+        "additionalProperties": false,
+        "description": "An entry changed in place; a client applies it only when entry.revision is newer than its own.",
+        "properties": {
+          "entry": {
+            "discriminator": {
+              "mapping": {
+                "approval_decided": "#/components/schemas/ApprovalDecided",
+                "approval_requested": "#/components/schemas/ApprovalRequested",
+                "barge_in": "#/components/schemas/BargeIn",
+                "notice": "#/components/schemas/Notice",
+                "reply": "#/components/schemas/Reply",
+                "reply_settled": "#/components/schemas/ReplySettled",
+                "stop_requested": "#/components/schemas/StopRequested",
+                "todo_woke": "#/components/schemas/TodoWoke",
+                "user_message": "#/components/schemas/UserMessage",
+                "work_finished": "#/components/schemas/WorkFinished",
+                "work_started": "#/components/schemas/WorkStarted",
+                "workflow_fired": "#/components/schemas/WorkflowFired"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserMessage"
+              },
+              {
+                "$ref": "#/components/schemas/StopRequested"
+              },
+              {
+                "$ref": "#/components/schemas/BargeIn"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowFired"
+              },
+              {
+                "$ref": "#/components/schemas/TodoWoke"
+              },
+              {
+                "$ref": "#/components/schemas/Notice"
+              },
+              {
+                "$ref": "#/components/schemas/WorkStarted"
+              },
+              {
+                "$ref": "#/components/schemas/ApprovalRequested"
+              },
+              {
+                "$ref": "#/components/schemas/ApprovalDecided"
+              },
+              {
+                "$ref": "#/components/schemas/WorkFinished"
+              },
+              {
+                "$ref": "#/components/schemas/Reply"
+              },
+              {
+                "$ref": "#/components/schemas/ReplySettled"
+              }
+            ],
+            "title": "Entry"
+          },
+          "kind": {
+            "const": "entry_updated",
+            "default": "entry_updated",
+            "title": "Kind",
+            "type": "string"
+          },
+          "seq": {
+            "minimum": 1.0,
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "entry"
+        ],
+        "title": "EntryUpdatedFrame",
         "type": "object"
       },
       "ErrorEnvelope": {
@@ -7219,6 +7606,30 @@
           "since"
         ],
         "title": "FoldedCards",
+        "type": "object"
+      },
+      "FollowUpActionsEvent": {
+        "additionalProperties": false,
+        "description": "A chat stream follow_up_actions event, tagged.",
+        "properties": {
+          "follow_up_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Follow Up Actions",
+            "type": "array"
+          },
+          "type": {
+            "const": "follow_up_actions",
+            "default": "follow_up_actions",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "follow_up_actions"
+        ],
+        "title": "FollowUpActionsEvent",
         "type": "object"
       },
       "GateAuthor": {
@@ -9411,6 +9822,26 @@
         "title": "LinkedUsersResponse",
         "type": "object"
       },
+      "LiveTask": {
+        "additionalProperties": false,
+        "description": "One live background task, shown as one work bubble.",
+        "properties": {
+          "awaiting_approval": {
+            "title": "Awaiting Approval",
+            "type": "boolean"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "awaiting_approval"
+        ],
+        "title": "LiveTask",
+        "type": "object"
+      },
       "LiveViewTokenResponse": {
         "description": "A short-lived takeover token for opening the cross-origin live view.",
         "properties": {
@@ -10843,6 +11274,69 @@
         "title": "MemoryTreeResponse",
         "type": "object"
       },
+      "MessageAccepted": {
+        "description": "The message is durable at seq; its reply arrives on the conversation's events stream.",
+        "properties": {
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "message_id",
+          "seq"
+        ],
+        "title": "MessageAccepted",
+        "type": "object"
+      },
+      "MessageBoundaryEvent": {
+        "additionalProperties": false,
+        "description": "A chat stream message_boundary event, tagged.",
+        "properties": {
+          "message_boundary": {
+            "$ref": "#/components/schemas/MessageBoundaryPayload"
+          },
+          "type": {
+            "const": "message_boundary",
+            "default": "message_boundary",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_boundary"
+        ],
+        "title": "MessageBoundaryEvent",
+        "type": "object"
+      },
+      "MessageBoundaryPayload": {
+        "description": "End of one assistant message inside a turn.\n\n``discarded`` is true when that message turned out to carry tool calls, which\nmakes any text it streamed a MOMENT-1 preamble (\"let me get that set up\u2026\")\nthe user must not keep \u2014 the real reply arrives as the next message. The\nframe exists because the wire streams that text BEFORE the tool call, so a\nlive consumer has already shown it by the time we know, and has to retract\nit rather than leave a duplicate reply on screen.",
+        "properties": {
+          "discarded": {
+            "title": "Discarded",
+            "type": "boolean"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id",
+          "discarded"
+        ],
+        "title": "MessageBoundaryPayload",
+        "type": "object"
+      },
       "MessageDict": {
         "description": "One chat turn as {role, content} for LLM history payloads.",
         "properties": {
@@ -11882,6 +12376,39 @@
           "snippet"
         ],
         "title": "NoteSearchResult",
+        "type": "object"
+      },
+      "Notice": {
+        "additionalProperties": false,
+        "description": "Text delivered to the user outside a step.",
+        "properties": {
+          "id": {
+            "description": "Producer-minted idempotency key",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "notice",
+            "default": "notice",
+            "title": "Kind",
+            "type": "string"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "origin"
+        ],
+        "title": "Notice",
         "type": "object"
       },
       "NotificationAction": {
@@ -15023,6 +15550,26 @@
         "title": "QuietHours",
         "type": "object"
       },
+      "Reaction": {
+        "additionalProperties": false,
+        "description": "An emoji on a user message; a field updated in place, never a state change.",
+        "properties": {
+          "by": {
+            "$ref": "#/components/schemas/ReactionBy"
+          },
+          "emoji": {
+            "minLength": 1,
+            "title": "Emoji",
+            "type": "string"
+          }
+        },
+        "required": [
+          "emoji",
+          "by"
+        ],
+        "title": "Reaction",
+        "type": "object"
+      },
       "ReactionBy": {
         "description": "Which mind put a reaction on a message: the instant classifier or the chat model.",
         "enum": [
@@ -15056,6 +15603,51 @@
           "dependencies"
         ],
         "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "ReasoningEvent": {
+        "additionalProperties": false,
+        "description": "A chat stream reasoning event, tagged.",
+        "properties": {
+          "reasoning": {
+            "$ref": "#/components/schemas/ReasoningPayload"
+          },
+          "type": {
+            "const": "reasoning",
+            "default": "reasoning",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reasoning"
+        ],
+        "title": "ReasoningEvent",
+        "type": "object"
+      },
+      "ReasoningPayload": {
+        "description": "A streamed reasoning (\"thinking\") delta from the model.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "subagent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subagent Id"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "ReasoningPayload",
         "type": "object"
       },
       "RecordedCall": {
@@ -15670,6 +16262,233 @@
         "title": "ReminderResponse",
         "type": "object"
       },
+      "Reply": {
+        "additionalProperties": false,
+        "description": "GAIA's reply, appended when the user first sees it; its content is filled in place.",
+        "properties": {
+          "attempt_id": {
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "follow_up_actions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Follow Up Actions",
+            "type": "array"
+          },
+          "heard_through": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heard Through"
+          },
+          "id": {
+            "description": "Producer-minted idempotency key",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "reply",
+            "default": "reply",
+            "title": "Kind",
+            "type": "string"
+          },
+          "reply_id": {
+            "title": "Reply Id",
+            "type": "string"
+          },
+          "revision": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          },
+          "tool_data": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ToolDataEntry"
+            },
+            "title": "Tool Data",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "reply_id",
+          "attempt_id"
+        ],
+        "title": "Reply",
+        "type": "object"
+      },
+      "ReplyDeltaFrame": {
+        "additionalProperties": false,
+        "description": "Streamed content of one comms attempt; reply_id is None until its reply entry exists.",
+        "properties": {
+          "attempt_id": {
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "index": {
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "reply_delta",
+            "default": "reply_delta",
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "discriminator": {
+              "mapping": {
+                "follow_up_actions": "#/components/schemas/FollowUpActionsEvent",
+                "message_boundary": "#/components/schemas/MessageBoundaryEvent",
+                "reasoning": "#/components/schemas/ReasoningEvent",
+                "response": "#/components/schemas/ResponseEvent",
+                "subagent_end": "#/components/schemas/SubagentEndEvent",
+                "subagent_start": "#/components/schemas/SubagentStartEvent",
+                "todo_progress": "#/components/schemas/TodoProgressEvent",
+                "tool_data": "#/components/schemas/ToolDataEvent",
+                "tool_output": "#/components/schemas/ToolOutputEvent"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ResponseEvent"
+              },
+              {
+                "$ref": "#/components/schemas/ReasoningEvent"
+              },
+              {
+                "$ref": "#/components/schemas/ToolDataEvent"
+              },
+              {
+                "$ref": "#/components/schemas/ToolOutputEvent"
+              },
+              {
+                "$ref": "#/components/schemas/MessageBoundaryEvent"
+              },
+              {
+                "$ref": "#/components/schemas/SubagentStartEvent"
+              },
+              {
+                "$ref": "#/components/schemas/SubagentEndEvent"
+              },
+              {
+                "$ref": "#/components/schemas/FollowUpActionsEvent"
+              },
+              {
+                "$ref": "#/components/schemas/TodoProgressEvent"
+              }
+            ],
+            "title": "Payload"
+          },
+          "reply_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Id"
+          }
+        },
+        "required": [
+          "attempt_id",
+          "reply_id",
+          "index",
+          "payload"
+        ],
+        "title": "ReplyDeltaFrame",
+        "type": "object"
+      },
+      "ReplyOutcome": {
+        "description": "How a finished reply ended.",
+        "enum": [
+          "answered",
+          "stopped",
+          "failed",
+          "silent"
+        ],
+        "title": "ReplyOutcome",
+        "type": "string"
+      },
+      "ReplySettled": {
+        "additionalProperties": false,
+        "description": "The open reply's attempt ended; through is the newest seq it answered.",
+        "properties": {
+          "answers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Answers",
+            "type": "array"
+          },
+          "id": {
+            "description": "Producer-minted idempotency key",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "reply_settled",
+            "default": "reply_settled",
+            "title": "Kind",
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ReplyOutcome"
+          },
+          "quote_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote Target"
+          },
+          "reply_id": {
+            "title": "Reply Id",
+            "type": "string"
+          },
+          "through": {
+            "minimum": 0.0,
+            "title": "Through",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "reply_id",
+          "outcome",
+          "answers",
+          "through",
+          "quote_target"
+        ],
+        "title": "ReplySettled",
+        "type": "object"
+      },
       "ReplyToMessageData": {
         "description": "Data for the message being replied to.",
         "properties": {
@@ -15738,6 +16557,48 @@
           "message"
         ],
         "title": "ResetWorkflowResponse",
+        "type": "object"
+      },
+      "ResponseEvent": {
+        "additionalProperties": false,
+        "description": "A chat stream response event, tagged.",
+        "properties": {
+          "response": {
+            "title": "Response",
+            "type": "string"
+          },
+          "type": {
+            "const": "response",
+            "default": "response",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "response"
+        ],
+        "title": "ResponseEvent",
+        "type": "object"
+      },
+      "RetractFrame": {
+        "additionalProperties": false,
+        "description": "Everything an uncommitted reply attempt streamed is withdrawn; work is never retracted.",
+        "properties": {
+          "attempt_id": {
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "retract",
+            "default": "retract",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempt_id"
+        ],
+        "title": "RetractFrame",
         "type": "object"
       },
       "SandboxExecuteRequest": {
@@ -16425,6 +17286,62 @@
           "attachments_count"
         ],
         "title": "SendEmailWithAttachmentsResponse",
+        "type": "object"
+      },
+      "SendMessageRequest": {
+        "description": "A user message sent into a conversation; message_id is minted by the client and makes a resend a no-op.",
+        "properties": {
+          "file_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "File Ids",
+            "type": "array"
+          },
+          "message_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Message Id",
+            "type": "string"
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To"
+          },
+          "retry_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Of"
+          },
+          "text": {
+            "maxLength": 32768,
+            "title": "Text",
+            "type": "string"
+          },
+          "voice": {
+            "default": false,
+            "title": "Voice",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "message_id",
+          "text"
+        ],
+        "title": "SendMessageRequest",
         "type": "object"
       },
       "SetToolOverrideRequest": {
@@ -17181,6 +18098,40 @@
         "title": "StartPairingResponse",
         "type": "object"
       },
+      "StateFrame": {
+        "additionalProperties": false,
+        "description": "The conversation's display state after an append.",
+        "properties": {
+          "display": {
+            "$ref": "#/components/schemas/DisplayState"
+          },
+          "head": {
+            "minimum": 0.0,
+            "title": "Head",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "state",
+            "default": "state",
+            "title": "Kind",
+            "type": "string"
+          },
+          "work": {
+            "items": {
+              "$ref": "#/components/schemas/LiveTask"
+            },
+            "title": "Work",
+            "type": "array"
+          }
+        },
+        "required": [
+          "head",
+          "display",
+          "work"
+        ],
+        "title": "StateFrame",
+        "type": "object"
+      },
       "StaticReminderPayload": {
         "description": "Payload for STATIC agent reminders.",
         "properties": {
@@ -17200,6 +18151,54 @@
           "body"
         ],
         "title": "StaticReminderPayload",
+        "type": "object"
+      },
+      "StopBy": {
+        "description": "Who asked for a Stop: the user's button or command, or GAIA's cancel_executor tool.",
+        "enum": [
+          "user",
+          "gaia"
+        ],
+        "title": "StopBy",
+        "type": "string"
+      },
+      "StopRequested": {
+        "additionalProperties": false,
+        "description": "A Stop: cancels every input and piece of work caused at or before covers_through.",
+        "properties": {
+          "by": {
+            "$ref": "#/components/schemas/StopBy"
+          },
+          "covers_through": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Covers Through"
+          },
+          "id": {
+            "description": "Producer-minted idempotency key",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "stop_requested",
+            "default": "stop_requested",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "by"
+        ],
+        "title": "StopRequested",
         "type": "object"
       },
       "StoredIntegrationTool": {
@@ -17290,6 +18289,149 @@
           "created_at"
         ],
         "title": "SubTask",
+        "type": "object"
+      },
+      "SubagentEndEvent": {
+        "additionalProperties": false,
+        "description": "A chat stream subagent_end event, tagged.",
+        "properties": {
+          "subagent_end": {
+            "$ref": "#/components/schemas/SubagentEndPayload"
+          },
+          "type": {
+            "const": "subagent_end",
+            "default": "subagent_end",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subagent_end"
+        ],
+        "title": "SubagentEndEvent",
+        "type": "object"
+      },
+      "SubagentEndPayload": {
+        "description": "Lifecycle payload marking a delegated subagent finishing.",
+        "properties": {
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "subagent_id": {
+            "title": "Subagent Id",
+            "type": "string"
+          },
+          "token_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Count"
+          }
+        },
+        "required": [
+          "subagent_id",
+          "duration_ms"
+        ],
+        "title": "SubagentEndPayload",
+        "type": "object"
+      },
+      "SubagentStartEvent": {
+        "additionalProperties": false,
+        "description": "A chat stream subagent_start event, tagged.",
+        "properties": {
+          "subagent_start": {
+            "$ref": "#/components/schemas/SubagentStartPayload"
+          },
+          "type": {
+            "const": "subagent_start",
+            "default": "subagent_start",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subagent_start"
+        ],
+        "title": "SubagentStartEvent",
+        "type": "object"
+      },
+      "SubagentStartPayload": {
+        "description": "Lifecycle payload marking a delegated subagent beginning execution.",
+        "properties": {
+          "agent_type": {
+            "title": "Agent Type",
+            "type": "string"
+          },
+          "icon_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Url"
+          },
+          "parent_subagent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Subagent Id"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "subagent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subagent"
+          },
+          "subagent_id": {
+            "title": "Subagent Id",
+            "type": "string"
+          },
+          "subagent_name": {
+            "title": "Subagent Name",
+            "type": "string"
+          },
+          "tool_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Category"
+          }
+        },
+        "required": [
+          "subagent_id",
+          "subagent_name",
+          "agent_type",
+          "started_at"
+        ],
+        "title": "SubagentStartPayload",
         "type": "object"
       },
       "SubscriptionAction": {
@@ -18382,6 +19524,28 @@
         "title": "TodoModel",
         "type": "object"
       },
+      "TodoProgressEvent": {
+        "additionalProperties": false,
+        "description": "A chat stream todo_progress event, tagged.",
+        "properties": {
+          "todo_progress": {
+            "additionalProperties": true,
+            "title": "Todo Progress",
+            "type": "object"
+          },
+          "type": {
+            "const": "todo_progress",
+            "default": "todo_progress",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "todo_progress"
+        ],
+        "title": "TodoProgressEvent",
+        "type": "object"
+      },
       "TodoResponse": {
         "description": "Complete todo response with all fields",
         "properties": {
@@ -18951,6 +20115,38 @@
         "title": "TodoWakeKind",
         "type": "string"
       },
+      "TodoWoke": {
+        "additionalProperties": false,
+        "description": "A tracked todo's run woke.",
+        "properties": {
+          "id": {
+            "description": "Producer-minted idempotency key",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "todo_woke",
+            "default": "todo_woke",
+            "title": "Kind",
+            "type": "string"
+          },
+          "todo_id": {
+            "title": "Todo Id",
+            "type": "string"
+          },
+          "wake": {
+            "$ref": "#/components/schemas/TodoRunWake"
+          }
+        },
+        "required": [
+          "id",
+          "todo_id",
+          "wake"
+        ],
+        "title": "TodoWoke",
+        "type": "object"
+      },
       "TodoWorkflowGenerationResponse": {
         "description": "Result of asking for a todo's workflow to be generated.",
         "properties": {
@@ -19186,6 +20382,26 @@
         "title": "ToolDataEntry",
         "type": "object"
       },
+      "ToolDataEvent": {
+        "additionalProperties": false,
+        "description": "A chat stream tool_data event (a tool card), tagged.",
+        "properties": {
+          "tool_data": {
+            "$ref": "#/components/schemas/ToolDataEntry"
+          },
+          "type": {
+            "const": "tool_data",
+            "default": "tool_data",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_data"
+        ],
+        "title": "ToolDataEvent",
+        "type": "object"
+      },
       "ToolInfo": {
         "description": "Model for individual tool information.",
         "properties": {
@@ -19232,6 +20448,56 @@
           "locked"
         ],
         "title": "ToolInfo",
+        "type": "object"
+      },
+      "ToolOutputEvent": {
+        "additionalProperties": false,
+        "description": "A chat stream tool_output event, tagged.",
+        "properties": {
+          "tool_output": {
+            "$ref": "#/components/schemas/ToolOutputPayload"
+          },
+          "type": {
+            "const": "tool_output",
+            "default": "tool_output",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_output"
+        ],
+        "title": "ToolOutputEvent",
+        "type": "object"
+      },
+      "ToolOutputPayload": {
+        "description": "Result text for a completed tool call, keyed by its ``tool_call_id``.",
+        "properties": {
+          "output": {
+            "title": "Output",
+            "type": "string"
+          },
+          "subagent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subagent Id"
+          },
+          "tool_call_id": {
+            "title": "Tool Call Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_call_id",
+          "output"
+        ],
+        "title": "ToolOutputPayload",
         "type": "object"
       },
       "ToolsCategoryResponse": {
@@ -20870,6 +22136,100 @@
         "title": "UserFeatureFlagResponse",
         "type": "object"
       },
+      "UserMessage": {
+        "additionalProperties": false,
+        "description": "A message the user sent from any surface.",
+        "properties": {
+          "file_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "File Ids",
+            "type": "array"
+          },
+          "id": {
+            "description": "Producer-minted idempotency key",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "user_message",
+            "default": "user_message",
+            "title": "Kind",
+            "type": "string"
+          },
+          "platform_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform Message Id"
+          },
+          "reaction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reaction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To"
+          },
+          "retry_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Of"
+          },
+          "revision": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "surface": {
+            "$ref": "#/components/schemas/ConversationSource"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "voice": {
+            "default": false,
+            "title": "Voice",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "surface"
+        ],
+        "title": "UserMessage",
+        "type": "object"
+      },
       "UserSubscriptionStatus": {
         "description": "Response model for user subscription status.",
         "properties": {
@@ -21404,6 +22764,170 @@
         "title": "WorkCancelled",
         "type": "object"
       },
+      "WorkDeltaFrame": {
+        "additionalProperties": false,
+        "description": "Streamed content of one background task.",
+        "properties": {
+          "index": {
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "work_delta",
+            "default": "work_delta",
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "discriminator": {
+              "mapping": {
+                "follow_up_actions": "#/components/schemas/FollowUpActionsEvent",
+                "message_boundary": "#/components/schemas/MessageBoundaryEvent",
+                "reasoning": "#/components/schemas/ReasoningEvent",
+                "response": "#/components/schemas/ResponseEvent",
+                "subagent_end": "#/components/schemas/SubagentEndEvent",
+                "subagent_start": "#/components/schemas/SubagentStartEvent",
+                "todo_progress": "#/components/schemas/TodoProgressEvent",
+                "tool_data": "#/components/schemas/ToolDataEvent",
+                "tool_output": "#/components/schemas/ToolOutputEvent"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ResponseEvent"
+              },
+              {
+                "$ref": "#/components/schemas/ReasoningEvent"
+              },
+              {
+                "$ref": "#/components/schemas/ToolDataEvent"
+              },
+              {
+                "$ref": "#/components/schemas/ToolOutputEvent"
+              },
+              {
+                "$ref": "#/components/schemas/MessageBoundaryEvent"
+              },
+              {
+                "$ref": "#/components/schemas/SubagentStartEvent"
+              },
+              {
+                "$ref": "#/components/schemas/SubagentEndEvent"
+              },
+              {
+                "$ref": "#/components/schemas/FollowUpActionsEvent"
+              },
+              {
+                "$ref": "#/components/schemas/TodoProgressEvent"
+              }
+            ],
+            "title": "Payload"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "index",
+          "payload"
+        ],
+        "title": "WorkDeltaFrame",
+        "type": "object"
+      },
+      "WorkFinished": {
+        "additionalProperties": false,
+        "description": "Background work ended.",
+        "properties": {
+          "id": {
+            "description": "Producer-minted idempotency key",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "work_finished",
+            "default": "work_finished",
+            "title": "Kind",
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/WorkOutcome"
+          },
+          "report": {
+            "title": "Report",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "task_id",
+          "outcome",
+          "report"
+        ],
+        "title": "WorkFinished",
+        "type": "object"
+      },
+      "WorkOutcome": {
+        "description": "How a piece of background work ended.",
+        "enum": [
+          "done",
+          "failed",
+          "cancelled",
+          "lost"
+        ],
+        "title": "WorkOutcome",
+        "type": "string"
+      },
+      "WorkStarted": {
+        "additionalProperties": false,
+        "description": "Background work dispatched for the inputs through cause_through.",
+        "properties": {
+          "answers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Answers",
+            "type": "array"
+          },
+          "cause_through": {
+            "minimum": 1.0,
+            "title": "Cause Through",
+            "type": "integer"
+          },
+          "id": {
+            "description": "Producer-minted idempotency key",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "work_started",
+            "default": "work_started",
+            "title": "Kind",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "task_id",
+          "cause_through"
+        ],
+        "title": "WorkStarted",
+        "type": "object"
+      },
       "WorkflowCreator": {
         "description": "The public-facing creator card built by ``format_creator``.\n\nA ``TypedDict``, not a model: it rides inside the untyped card dicts of\n``PublicWorkflowsResponse.workflows`` as well as ``Workflow.creator``, so it\nhas to stay a plain dict on the wire for both.",
         "properties": {
@@ -21640,6 +23164,45 @@
           "has_more"
         ],
         "title": "WorkflowExecutionsResponse",
+        "type": "object"
+      },
+      "WorkflowFired": {
+        "additionalProperties": false,
+        "description": "A workflow fired into this conversation.",
+        "properties": {
+          "context": {
+            "additionalProperties": true,
+            "title": "Context",
+            "type": "object"
+          },
+          "execution_id": {
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "id": {
+            "description": "Producer-minted idempotency key",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "workflow_fired",
+            "default": "workflow_fired",
+            "title": "Kind",
+            "type": "string"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workflow_id",
+          "execution_id",
+          "context"
+        ],
+        "title": "WorkflowFired",
         "type": "object"
       },
       "WorkflowListResponse": {
@@ -23547,6 +25110,68 @@
           }
         },
         "summary": "List Linked Platform Users",
+        "tags": [
+          "Bot"
+        ]
+      }
+    },
+    "/api/v1/bot/messages": {
+      "post": {
+        "description": "Accept a message into the session's conversation; follow its events stream for the reply.",
+        "operationId": "bot_bot_send_message",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BotChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BotMessageAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Send a Bot Message",
         "tags": [
           "Bot"
         ]
@@ -26167,7 +27792,154 @@
         ]
       }
     },
+    "/api/v1/conversations/{conversation_id}/events": {
+      "get": {
+        "description": "Stream the conversation's frames as SSE: everything after the cursor, then live.",
+        "operationId": "conversations_conversation_events_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A seq to replay the log after, or a stream id to resume after",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": "0",
+              "description": "A seq to replay the log after, or a stream id to resume after",
+              "title": "After",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationEvent"
+                }
+              },
+              "text/event-stream": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Conversation Events Endpoint",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
     "/api/v1/conversations/{conversation_id}/messages": {
+      "post": {
+        "description": "Accept a message into a conversation the step runs; its reply arrives on the events stream.",
+        "operationId": "conversations_send_message_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Send Message Endpoint",
+        "tags": [
+          "Conversations"
+        ]
+      },
       "put": {
         "description": "Update the messages of a conversation.",
         "operationId": "conversations_update_messages_endpoint",

@@ -19,6 +19,12 @@ HINT_KEY_PREFIX = "conv:hint:"
 HINT_TTL_SECONDS = ONE_DAY_TTL
 
 
+class ConversationRuntime(StrEnum):
+    """What runs a conversation: absent on the head means the legacy per-turn stream."""
+
+    STEP = "step"
+
+
 class HintField(StrEnum):
     """The fields of a conversation's hint hash."""
 
@@ -27,6 +33,7 @@ class HintField(StrEnum):
     OPEN = "open"
     BARGE = "barge"
     EPOCH = "epoch"
+
 
 # One task.cancel() can be swallowed by the Postgres pool's connection check, so a cancel is re-sent at this interval.
 COMMS_CANCEL_CONFIRM_SECONDS = 1.0
@@ -58,3 +65,16 @@ SERVER_RESTART_NOTE = (
     "Do not redo anything it already did; tell the user it was interrupted, then carry on."
     "</server_restart>"
 )
+
+#: conv:events:{conversation_id}, the one Redis Stream of a conversation's output frames.
+EVENTS_KEY_PREFIX = "conv:events:"
+# A reply streams a few hundred deltas; older frames are replayed from the log instead.
+EVENTS_STREAM_MAXLEN = 2000
+# An idle conversation's frames are all in the log, so the stream only needs to outlive a session.
+EVENTS_STREAM_TTL_SECONDS = ONE_DAY_TTL
+# How long one events read blocks before the follower checks the client is still there.
+EVENTS_BLOCK_MS = 15_000
+#: The cursor that reads a stream from its oldest retained frame.
+EVENTS_STREAM_START = "0-0"
+# How often a running step polls its preempt hint while the model is silent.
+STEP_TICK_SECONDS = 0.25

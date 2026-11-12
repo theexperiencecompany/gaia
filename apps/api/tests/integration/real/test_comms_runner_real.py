@@ -476,7 +476,12 @@ async def test_step_second_message_before_commit_restarts_into_one_reply(
         with patched_graph(graph):
             await accept(rt.ports, conversation_id, USER, user("u1"))
             await advance(stepping(rt, conversation_id), conversation_id, USER)
-    assert await kinds(rt, conversation_id) == ["user_message", "user_message", "reply", "reply_settled"]
+    assert await kinds(rt, conversation_id) == [
+        "user_message",
+        "user_message",
+        "reply",
+        "reply_settled",
+    ]
     assert await answered(rt, conversation_id) == [(ReplyOutcome.ANSWERED, ("u1", "u2"))]
     shown = humans(model.prompts[1])
     assert (shown.count("text of u1"), shown.count("text of u2")) == (1, 1)

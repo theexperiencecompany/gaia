@@ -419,6 +419,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bot/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a Bot Message
+         * @description Accept a message into the session's conversation; follow its events stream for the reply.
+         */
+        post: operations["bot_bot_send_message"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bot/redeem-link-code": {
         parameters: {
             query?: never;
@@ -1053,6 +1073,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/conversations/{conversation_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Conversation Events Endpoint
+         * @description Stream the conversation's frames as SSE: everything after the cursor, then live.
+         */
+        get: operations["conversations_conversation_events_endpoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/conversations/{conversation_id}/messages": {
         parameters: {
             query?: never;
@@ -1066,7 +1106,11 @@ export interface paths {
          * @description Update the messages of a conversation.
          */
         put: operations["conversations_update_messages_endpoint"];
-        post?: never;
+        /**
+         * Send Message Endpoint
+         * @description Accept a message into a conversation the step runs; its reply arrives on the events stream.
+         */
+        post: operations["conversations_send_message_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6050,6 +6094,29 @@ export interface components {
             success_message?: string | null;
         };
         /**
+         * ApprovalDecided
+         * @description A pending approval resolved.
+         */
+        ApprovalDecided: {
+            /** Approval Id */
+            approval_id: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve" | "deny" | "timeout" | "abandon";
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "approval_decided";
+        };
+        /**
          * ApprovalDecisionRequest
          * @description Body for a button approval decision (approve/deny, with scope and feedback).
          */
@@ -6081,6 +6148,26 @@ export interface components {
             status?: string | null;
             /** Success */
             success: boolean;
+        };
+        /**
+         * ApprovalRequested
+         * @description Live work paused on the user's approval.
+         */
+        ApprovalRequested: {
+            /** Approval Id */
+            approval_id: string;
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "approval_requested";
+            /** Task Id */
+            task_id: string;
         };
         /**
          * ApprovePairingRequest
@@ -6292,6 +6379,26 @@ export interface components {
              * @default 0
              */
             skipped_count: number;
+        };
+        /**
+         * BargeIn
+         * @description The user spoke over a voice reply, having heard only heard_text of it.
+         */
+        BargeIn: {
+            /** Heard Text */
+            heard_text: string;
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "barge_in";
+            /** Reply Id */
+            reply_id: string;
         };
         /**
          * BatchApprovalDecisionRequest
@@ -6636,6 +6743,20 @@ export interface components {
              * @description User's ID on the platform
              */
             platform_user_id: string;
+        };
+        /**
+         * BotMessageAccepted
+         * @description A bot message accepted, with the token the bot follows the events stream with.
+         */
+        BotMessageAccepted: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Message Id */
+            message_id: string;
+            /** Seq */
+            seq: number;
+            /** Session Token */
+            session_token: string;
         };
         /**
          * BotSessionRequest
@@ -7602,6 +7723,7 @@ export interface components {
             is_unread?: boolean | null;
             /** Messages */
             messages?: components["schemas"]["ConversationEntry"][];
+            runtime?: components["schemas"]["ConversationRuntime"] | null;
             source?: components["schemas"]["ConversationSource"] | null;
             /** Starred */
             starred?: boolean | null;
@@ -7681,6 +7803,16 @@ export interface components {
             type: string;
         };
         /**
+         * ConversationEvent
+         * @description One frame on a conversation's events stream; stream_id is the cursor to resume after, None for a log replay.
+         */
+        ConversationEvent: {
+            /** Frame */
+            frame: components["schemas"]["EntryFrame"] | components["schemas"]["EntryUpdatedFrame"] | components["schemas"]["ReplyDeltaFrame"] | components["schemas"]["WorkDeltaFrame"] | components["schemas"]["RetractFrame"] | components["schemas"]["StateFrame"];
+            /** Stream Id */
+            stream_id: string | null;
+        };
+        /**
          * ConversationListResponse
          * @description One page of the conversation list: every starred conversation followed by
          *     the requested page of the non-starred ones.
@@ -7737,6 +7869,12 @@ export interface components {
             source?: components["schemas"]["ConversationSource"] | null;
             system_purpose?: components["schemas"]["SystemPurpose"] | null;
         };
+        /**
+         * ConversationRuntime
+         * @description What runs a conversation: absent on the head means the legacy per-turn stream.
+         * @enum {string}
+         */
+        ConversationRuntime: "step";
         /**
          * ConversationSource
          * @description Client or channel a conversation originated from.
@@ -8678,6 +8816,12 @@ export interface components {
          */
         DispatchErrorKind: "unknown_tool" | "invalid_args" | "internal_tool" | "out_of_scope" | "unknown_account" | "account_expired" | "timeout";
         /**
+         * DisplayState
+         * @description The one status a client shows for a conversation.
+         * @enum {string}
+         */
+        DisplayState: "idle" | "thinking" | "working" | "awaiting_approval";
+        /**
          * DodoWebhookAckResponse
          * @description Acknowledgement returned to Dodo once a webhook has been accepted.
          */
@@ -8735,6 +8879,41 @@ export interface components {
              * @enum {string}
              */
             origin: "code" | "instance";
+        };
+        /**
+         * EntryFrame
+         * @description A newly appended entry.
+         */
+        EntryFrame: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Entry */
+            entry: components["schemas"]["UserMessage"] | components["schemas"]["StopRequested"] | components["schemas"]["BargeIn"] | components["schemas"]["WorkflowFired"] | components["schemas"]["TodoWoke"] | components["schemas"]["Notice"] | components["schemas"]["WorkStarted"] | components["schemas"]["ApprovalRequested"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["WorkFinished"] | components["schemas"]["Reply"] | components["schemas"]["ReplySettled"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "entry";
+            /** Seq */
+            seq: number;
+        };
+        /**
+         * EntryUpdatedFrame
+         * @description An entry changed in place; a client applies it only when entry.revision is newer than its own.
+         */
+        EntryUpdatedFrame: {
+            /** Entry */
+            entry: components["schemas"]["UserMessage"] | components["schemas"]["StopRequested"] | components["schemas"]["BargeIn"] | components["schemas"]["WorkflowFired"] | components["schemas"]["TodoWoke"] | components["schemas"]["Notice"] | components["schemas"]["WorkStarted"] | components["schemas"]["ApprovalRequested"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["WorkFinished"] | components["schemas"]["Reply"] | components["schemas"]["ReplySettled"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "entry_updated";
+            /** Seq */
+            seq: number;
         };
         /**
          * ErrorEnvelope
@@ -9100,6 +9279,19 @@ export interface components {
              * Format: date-time
              */
             since: string;
+        };
+        /**
+         * FollowUpActionsEvent
+         * @description A chat stream follow_up_actions event, tagged.
+         */
+        FollowUpActionsEvent: {
+            /** Follow Up Actions */
+            follow_up_actions: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "follow_up_actions";
         };
         /**
          * GateAuthor
@@ -10253,6 +10445,16 @@ export interface components {
             username: string | null;
         };
         /**
+         * LiveTask
+         * @description One live background task, shown as one work bubble.
+         */
+        LiveTask: {
+            /** Awaiting Approval */
+            awaiting_approval: boolean;
+            /** Task Id */
+            task_id: string;
+        };
+        /**
          * LiveViewTokenResponse
          * @description A short-lived takeover token for opening the cross-origin live view.
          */
@@ -11027,6 +11229,47 @@ export interface components {
             tree: components["schemas"]["MemoryTreeNode"][];
         };
         /**
+         * MessageAccepted
+         * @description The message is durable at seq; its reply arrives on the conversation's events stream.
+         */
+        MessageAccepted: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Message Id */
+            message_id: string;
+            /** Seq */
+            seq: number;
+        };
+        /**
+         * MessageBoundaryEvent
+         * @description A chat stream message_boundary event, tagged.
+         */
+        MessageBoundaryEvent: {
+            message_boundary: components["schemas"]["MessageBoundaryPayload"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "message_boundary";
+        };
+        /**
+         * MessageBoundaryPayload
+         * @description End of one assistant message inside a turn.
+         *
+         *     ``discarded`` is true when that message turned out to carry tool calls, which
+         *     makes any text it streamed a MOMENT-1 preamble ("let me get that set up…")
+         *     the user must not keep — the real reply arrives as the next message. The
+         *     frame exists because the wire streams that text BEFORE the tool call, so a
+         *     live consumer has already shown it by the time we know, and has to retract
+         *     it rather than leave a duplicate reply on screen.
+         */
+        MessageBoundaryPayload: {
+            /** Discarded */
+            discarded: boolean;
+            /** Message Id */
+            message_id: string;
+        };
+        /**
          * MessageDict
          * @description One chat turn as {role, content} for LLM history payloads.
          */
@@ -11406,6 +11649,26 @@ export interface components {
             plaintext: string;
             /** Snippet */
             snippet: string;
+        };
+        /**
+         * Notice
+         * @description Text delivered to the user outside a step.
+         */
+        Notice: {
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "notice";
+            /** Origin */
+            origin: string;
+            /** Text */
+            text: string;
         };
         /**
          * NotificationAction
@@ -12906,6 +13169,15 @@ export interface components {
             start_hour: number;
         };
         /**
+         * Reaction
+         * @description An emoji on a user message; a field updated in place, never a state change.
+         */
+        Reaction: {
+            by: components["schemas"]["ReactionBy"];
+            /** Emoji */
+            emoji: string;
+        };
+        /**
          * ReactionBy
          * @description Which mind put a reaction on a message: the instant classifier or the chat model.
          * @enum {string}
@@ -12923,6 +13195,28 @@ export interface components {
              * @enum {string}
              */
             status: "ready" | "not_ready";
+        };
+        /**
+         * ReasoningEvent
+         * @description A chat stream reasoning event, tagged.
+         */
+        ReasoningEvent: {
+            reasoning: components["schemas"]["ReasoningPayload"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "reasoning";
+        };
+        /**
+         * ReasoningPayload
+         * @description A streamed reasoning ("thinking") delta from the model.
+         */
+        ReasoningPayload: {
+            /** Content */
+            content: string;
+            /** Subagent Id */
+            subagent_id?: string | null;
         };
         /**
          * RecordedCall
@@ -13233,6 +13527,98 @@ export interface components {
             user_id: string;
         };
         /**
+         * Reply
+         * @description GAIA's reply, appended when the user first sees it; its content is filled in place.
+         */
+        Reply: {
+            /** Attempt Id */
+            attempt_id: string;
+            /**
+             * Follow Up Actions
+             * @default []
+             */
+            follow_up_actions?: string[];
+            /** Heard Through */
+            heard_through?: number | null;
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "reply";
+            /** Reply Id */
+            reply_id: string;
+            /**
+             * Revision
+             * @default 0
+             */
+            revision?: number;
+            /**
+             * Text
+             * @default
+             */
+            text?: string;
+            /**
+             * Tool Data
+             * @default []
+             */
+            tool_data?: components["schemas"]["ToolDataEntry"][];
+        };
+        /**
+         * ReplyDeltaFrame
+         * @description Streamed content of one comms attempt; reply_id is None until its reply entry exists.
+         */
+        ReplyDeltaFrame: {
+            /** Attempt Id */
+            attempt_id: string;
+            /** Index */
+            index: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "reply_delta";
+            /** Payload */
+            payload: components["schemas"]["ResponseEvent"] | components["schemas"]["ReasoningEvent"] | components["schemas"]["ToolDataEvent"] | components["schemas"]["ToolOutputEvent"] | components["schemas"]["MessageBoundaryEvent"] | components["schemas"]["SubagentStartEvent"] | components["schemas"]["SubagentEndEvent"] | components["schemas"]["FollowUpActionsEvent"] | components["schemas"]["TodoProgressEvent"];
+            /** Reply Id */
+            reply_id: string | null;
+        };
+        /**
+         * ReplyOutcome
+         * @description How a finished reply ended.
+         * @enum {string}
+         */
+        ReplyOutcome: "answered" | "stopped" | "failed" | "silent";
+        /**
+         * ReplySettled
+         * @description The open reply's attempt ended; through is the newest seq it answered.
+         */
+        ReplySettled: {
+            /** Answers */
+            answers: string[];
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "reply_settled";
+            outcome: components["schemas"]["ReplyOutcome"];
+            /** Quote Target */
+            quote_target: string | null;
+            /** Reply Id */
+            reply_id: string;
+            /** Through */
+            through: number;
+        };
+        /**
          * ReplyToMessageData
          * @description Data for the message being replied to.
          */
@@ -13278,6 +13664,32 @@ export interface components {
              * @description Whether the workflow was reset
              */
             success: boolean;
+        };
+        /**
+         * ResponseEvent
+         * @description A chat stream response event, tagged.
+         */
+        ResponseEvent: {
+            /** Response */
+            response: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "response";
+        };
+        /**
+         * RetractFrame
+         * @description Everything an uncommitted reply attempt streamed is withdrawn; work is never retracted.
+         */
+        RetractFrame: {
+            /** Attempt Id */
+            attempt_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "retract";
         };
         /** SandboxExecuteRequest */
         SandboxExecuteRequest: {
@@ -13587,6 +13999,27 @@ export interface components {
             message_id: string | null;
             /** Status */
             status: string;
+        };
+        /**
+         * SendMessageRequest
+         * @description A user message sent into a conversation; message_id is minted by the client and makes a resend a no-op.
+         */
+        SendMessageRequest: {
+            /** File Ids */
+            file_ids?: string[];
+            /** Message Id */
+            message_id: string;
+            /** Reply To */
+            reply_to?: string | null;
+            /** Retry Of */
+            retry_of?: string | null;
+            /** Text */
+            text: string;
+            /**
+             * Voice
+             * @default false
+             */
+            voice?: boolean;
         };
         /**
          * SetToolOverrideRequest
@@ -14029,6 +14462,22 @@ export interface components {
             starred: boolean;
         };
         /**
+         * StateFrame
+         * @description The conversation's display state after an append.
+         */
+        StateFrame: {
+            display: components["schemas"]["DisplayState"];
+            /** Head */
+            head: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "state";
+            /** Work */
+            work: components["schemas"]["LiveTask"][];
+        };
+        /**
          * StaticReminderPayload
          * @description Payload for STATIC agent reminders.
          */
@@ -14045,6 +14494,31 @@ export interface components {
             title: string;
         };
         /**
+         * StopBy
+         * @description Who asked for a Stop: the user's button or command, or GAIA's cancel_executor tool.
+         * @enum {string}
+         */
+        StopBy: "user" | "gaia";
+        /**
+         * StopRequested
+         * @description A Stop: cancels every input and piece of work caused at or before covers_through.
+         */
+        StopRequested: {
+            by: components["schemas"]["StopBy"];
+            /** Covers Through */
+            covers_through?: number | null;
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "stop_requested";
+        };
+        /**
          * StoredIntegrationTool
          * @description Tool metadata for frontend display (not used by LLM).
          */
@@ -14053,6 +14527,64 @@ export interface components {
             description?: string | null;
             /** Name */
             name: string;
+        };
+        /**
+         * SubagentEndEvent
+         * @description A chat stream subagent_end event, tagged.
+         */
+        SubagentEndEvent: {
+            subagent_end: components["schemas"]["SubagentEndPayload"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "subagent_end";
+        };
+        /**
+         * SubagentEndPayload
+         * @description Lifecycle payload marking a delegated subagent finishing.
+         */
+        SubagentEndPayload: {
+            /** Duration Ms */
+            duration_ms: number;
+            /** Subagent Id */
+            subagent_id: string;
+            /** Token Count */
+            token_count?: number | null;
+        };
+        /**
+         * SubagentStartEvent
+         * @description A chat stream subagent_start event, tagged.
+         */
+        SubagentStartEvent: {
+            subagent_start: components["schemas"]["SubagentStartPayload"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "subagent_start";
+        };
+        /**
+         * SubagentStartPayload
+         * @description Lifecycle payload marking a delegated subagent beginning execution.
+         */
+        SubagentStartPayload: {
+            /** Agent Type */
+            agent_type: string;
+            /** Icon Url */
+            icon_url?: string | null;
+            /** Parent Subagent Id */
+            parent_subagent_id?: string | null;
+            /** Started At */
+            started_at: string;
+            /** Subagent */
+            subagent?: string | null;
+            /** Subagent Id */
+            subagent_id: string;
+            /** Subagent Name */
+            subagent_name: string;
+            /** Tool Category */
+            tool_category?: string | null;
         };
         /**
          * SubscriptionAction
@@ -14699,6 +15231,21 @@ export interface components {
             workflow_id?: string | null;
         };
         /**
+         * TodoProgressEvent
+         * @description A chat stream todo_progress event, tagged.
+         */
+        TodoProgressEvent: {
+            /** Todo Progress */
+            todo_progress: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "todo_progress";
+        };
+        /**
          * TodoResponse
          * @description Complete todo response with all fields
          */
@@ -14933,6 +15480,25 @@ export interface components {
          */
         TodoWakeKind: "schedule" | "trigger" | "approval";
         /**
+         * TodoWoke
+         * @description A tracked todo's run woke.
+         */
+        TodoWoke: {
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "todo_woke";
+            /** Todo Id */
+            todo_id: string;
+            wake: components["schemas"]["TodoRunWake"];
+        };
+        /**
          * TodoWorkflowGenerationResponse
          * @description Result of asking for a todo's workflow to be generated.
          */
@@ -15039,6 +15605,18 @@ export interface components {
             tool_name: string;
         };
         /**
+         * ToolDataEvent
+         * @description A chat stream tool_data event (a tool card), tagged.
+         */
+        ToolDataEvent: {
+            tool_data: components["schemas"]["ToolDataEntry"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "tool_data";
+        };
+        /**
          * ToolInfo
          * @description Model for individual tool information.
          */
@@ -15061,6 +15639,30 @@ export interface components {
              * @default false
              */
             requires_integration: boolean;
+        };
+        /**
+         * ToolOutputEvent
+         * @description A chat stream tool_output event, tagged.
+         */
+        ToolOutputEvent: {
+            tool_output: components["schemas"]["ToolOutputPayload"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "tool_output";
+        };
+        /**
+         * ToolOutputPayload
+         * @description Result text for a completed tool call, keyed by its ``tool_call_id``.
+         */
+        ToolOutputPayload: {
+            /** Output */
+            output: string;
+            /** Subagent Id */
+            subagent_id?: string | null;
+            /** Tool Call Id */
+            tool_call_id: string;
         };
         /**
          * ToolsCategoryResponse
@@ -15721,6 +16323,47 @@ export interface components {
             unavailable_reason: string | null;
         };
         /**
+         * UserMessage
+         * @description A message the user sent from any surface.
+         */
+        UserMessage: {
+            /**
+             * File Ids
+             * @default []
+             */
+            file_ids?: string[];
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "user_message";
+            /** Platform Message Id */
+            platform_message_id?: string | null;
+            reaction?: components["schemas"]["Reaction"] | null;
+            /** Reply To */
+            reply_to?: string | null;
+            /** Retry Of */
+            retry_of?: string | null;
+            /**
+             * Revision
+             * @default 0
+             */
+            revision?: number;
+            surface: components["schemas"]["ConversationSource"];
+            /** Text */
+            text: string;
+            /**
+             * Voice
+             * @default false
+             */
+            voice?: boolean;
+        };
+        /**
          * UserSubscriptionStatus
          * @description Response model for user subscription status.
          */
@@ -16017,6 +16660,44 @@ export interface components {
             subagent_ids: string[];
         };
         /**
+         * WorkDeltaFrame
+         * @description Streamed content of one background task.
+         */
+        WorkDeltaFrame: {
+            /** Index */
+            index: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "work_delta";
+            /** Payload */
+            payload: components["schemas"]["ResponseEvent"] | components["schemas"]["ReasoningEvent"] | components["schemas"]["ToolDataEvent"] | components["schemas"]["ToolOutputEvent"] | components["schemas"]["MessageBoundaryEvent"] | components["schemas"]["SubagentStartEvent"] | components["schemas"]["SubagentEndEvent"] | components["schemas"]["FollowUpActionsEvent"] | components["schemas"]["TodoProgressEvent"];
+            /** Task Id */
+            task_id: string;
+        };
+        /**
+         * WorkFinished
+         * @description Background work ended.
+         */
+        WorkFinished: {
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "work_finished";
+            outcome: components["schemas"]["WorkOutcome"];
+            /** Report */
+            report: string;
+            /** Task Id */
+            task_id: string;
+        };
+        /**
          * WorkflowCreator
          * @description The public-facing creator card built by ``format_creator``.
          *
@@ -16147,6 +16828,30 @@ export interface components {
              * @default 0
              */
             total: number;
+        };
+        /**
+         * WorkflowFired
+         * @description A workflow fired into this conversation.
+         */
+        WorkflowFired: {
+            /** Context */
+            context: {
+                [key: string]: unknown;
+            };
+            /** Execution Id */
+            execution_id: string;
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "workflow_fired";
+            /** Workflow Id */
+            workflow_id: string;
         };
         /**
          * WorkflowListResponse
@@ -16495,6 +17200,37 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * WorkOutcome
+         * @description How a piece of background work ended.
+         * @enum {string}
+         */
+        WorkOutcome: "done" | "failed" | "cancelled" | "lost";
+        /**
+         * WorkStarted
+         * @description Background work dispatched for the inputs through cause_through.
+         */
+        WorkStarted: {
+            /**
+             * Answers
+             * @default []
+             */
+            answers?: string[];
+            /** Cause Through */
+            cause_through: number;
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "work_started";
+            /** Task Id */
+            task_id: string;
+        };
         /** WritingStyleEditRequest */
         WritingStyleEditRequest: {
             /** Edited Summary */
@@ -16556,8 +17292,10 @@ export type AddUserIntegrationRequest = components['schemas']['AddUserIntegratio
 export type AddUserIntegrationResponse = components['schemas']['AddUserIntegrationResponse'];
 export type AgentType = components['schemas']['AgentType'];
 export type ApiCallConfig = components['schemas']['ApiCallConfig'];
+export type ApprovalDecided = components['schemas']['ApprovalDecided'];
 export type ApprovalDecisionRequest = components['schemas']['ApprovalDecisionRequest'];
 export type ApprovalDecisionResponse = components['schemas']['ApprovalDecisionResponse'];
+export type ApprovalRequested = components['schemas']['ApprovalRequested'];
 export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest'];
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];
@@ -16565,6 +17303,7 @@ export type AsanaTaskTriggerConfig = components['schemas']['AsanaTaskTriggerConf
 export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUserResponse'];
 export type AuthorDetails = components['schemas']['AuthorDetails'];
 export type AuthoredGateView = components['schemas']['AuthoredGateView'];
+export type BargeIn = components['schemas']['BargeIn'];
 export type BatchApprovalDecisionRequest = components['schemas']['BatchApprovalDecisionRequest'];
 export type BatchApprovalDecisionResponse = components['schemas']['BatchApprovalDecisionResponse'];
 export type BatchDecisionItem = components['schemas']['BatchDecisionItem'];
@@ -16595,6 +17334,7 @@ export type Body_user_update_user_name = components['schemas']['Body_user_update
 export type Body_user_update_user_timezone = components['schemas']['Body_user_update_user_timezone'];
 export type BotAuthStatusResponse = components['schemas']['BotAuthStatusResponse'];
 export type BotChatRequest = components['schemas']['BotChatRequest'];
+export type BotMessageAccepted = components['schemas']['BotMessageAccepted'];
 export type BotSessionRequest = components['schemas']['BotSessionRequest'];
 export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
 export type BrowserImportRequest = components['schemas']['BrowserImportRequest'];
@@ -16653,9 +17393,11 @@ export type ConversationActionResponse = components['schemas']['ConversationActi
 export type ConversationDescriptionHit = components['schemas']['ConversationDescriptionHit'];
 export type ConversationDocument = components['schemas']['ConversationDocument'];
 export type ConversationEntry = components['schemas']['ConversationEntry'];
+export type ConversationEvent = components['schemas']['ConversationEvent'];
 export type ConversationListResponse = components['schemas']['ConversationListResponse'];
 export type ConversationMessageHit = components['schemas']['ConversationMessageHit'];
 export type ConversationModel = components['schemas']['ConversationModel'];
+export type ConversationRuntime = components['schemas']['ConversationRuntime'];
 export type ConversationSource = components['schemas']['ConversationSource'];
 export type ConversationStopResponse = components['schemas']['ConversationStopResponse'];
 export type ConversationSummary = components['schemas']['ConversationSummary'];
@@ -16706,10 +17448,13 @@ export type DiscoveredSkillInfo = components['schemas']['DiscoveredSkillInfo'];
 export type DiscoverSkillsResponse = components['schemas']['DiscoverSkillsResponse'];
 export type DispatchError = components['schemas']['DispatchError'];
 export type DispatchErrorKind = components['schemas']['DispatchErrorKind'];
+export type DisplayState = components['schemas']['DisplayState'];
 export type DodoWebhookAckResponse = components['schemas']['DodoWebhookAckResponse'];
 export type EmailSearchResponse = components['schemas']['EmailSearchResponse'];
 export type EnableComposioToolkitRequest = components['schemas']['EnableComposioToolkitRequest'];
 export type EnableComposioToolkitResponse = components['schemas']['EnableComposioToolkitResponse'];
+export type EntryFrame = components['schemas']['EntryFrame'];
+export type EntryUpdatedFrame = components['schemas']['EntryUpdatedFrame'];
 export type ErrorEnvelope = components['schemas']['ErrorEnvelope'];
 export type EventCreateRequest = components['schemas']['EventCreateRequest'];
 export type EventDeleteRequest = components['schemas']['EventDeleteRequest'];
@@ -16730,6 +17475,7 @@ export type FirstStepsCollapseRequest = components['schemas']['FirstStepsCollaps
 export type FirstStepsResponse = components['schemas']['FirstStepsResponse'];
 export type FirstStepsState = components['schemas']['FirstStepsState'];
 export type FoldedCards = components['schemas']['FoldedCards'];
+export type FollowUpActionsEvent = components['schemas']['FollowUpActionsEvent'];
 export type GateAuthor = components['schemas']['GateAuthor'];
 export type GateEdit = components['schemas']['GateEdit'];
 export type GateSkipRecord = components['schemas']['GateSkipRecord'];
@@ -16798,6 +17544,7 @@ export type LinkedUsersResponse = components['schemas']['LinkedUsersResponse'];
 export type LinkPlatformRequest = components['schemas']['LinkPlatformRequest'];
 export type LinkPlatformResponse = components['schemas']['LinkPlatformResponse'];
 export type LinkTokenInfoResponse = components['schemas']['LinkTokenInfoResponse'];
+export type LiveTask = components['schemas']['LiveTask'];
 export type LiveViewTokenResponse = components['schemas']['LiveViewTokenResponse'];
 export type LoginRequest = components['schemas']['LoginRequest'];
 export type LogoutResponse = components['schemas']['LogoutResponse'];
@@ -16840,6 +17587,9 @@ export type MemorySearchResult = components['schemas']['MemorySearchResult'];
 export type MemorySourceType = components['schemas']['MemorySourceType'];
 export type MemoryTreeNode = components['schemas']['MemoryTreeNode'];
 export type MemoryTreeResponse = components['schemas']['MemoryTreeResponse'];
+export type MessageAccepted = components['schemas']['MessageAccepted'];
+export type MessageBoundaryEvent = components['schemas']['MessageBoundaryEvent'];
+export type MessageBoundaryPayload = components['schemas']['MessageBoundaryPayload'];
 export type MessageDict = components['schemas']['MessageDict'];
 export type MessageFeedbackRequest = components['schemas']['MessageFeedbackRequest'];
 export type MessageFeedbackResponse = components['schemas']['MessageFeedbackResponse'];
@@ -16857,6 +17607,7 @@ export type MyIntegrationsResponse = components['schemas']['MyIntegrationsRespon
 export type NoteModel = components['schemas']['NoteModel'];
 export type NoteResponse = components['schemas']['NoteResponse'];
 export type NoteSearchResult = components['schemas']['NoteSearchResult'];
+export type Notice = components['schemas']['Notice'];
 export type NotificationAction = components['schemas']['NotificationAction'];
 export type NotificationActionView = components['schemas']['NotificationActionView'];
 export type NotificationChannelView = components['schemas']['NotificationChannelView'];
@@ -16933,8 +17684,11 @@ export type PublishWorkflowResponse = components['schemas']['PublishWorkflowResp
 export type PushTokenRequest = components['schemas']['PushTokenRequest'];
 export type PushTokenResponse = components['schemas']['PushTokenResponse'];
 export type QuietHours = components['schemas']['QuietHours'];
+export type Reaction = components['schemas']['Reaction'];
 export type ReactionBy = components['schemas']['ReactionBy'];
 export type ReadinessResponse = components['schemas']['ReadinessResponse'];
+export type ReasoningEvent = components['schemas']['ReasoningEvent'];
+export type ReasoningPayload = components['schemas']['ReasoningPayload'];
 export type RecordedCall = components['schemas']['RecordedCall'];
 export type RecurrenceData = components['schemas']['RecurrenceData'];
 export type RecurrenceRule = components['schemas']['RecurrenceRule'];
@@ -16949,9 +17703,15 @@ export type RegistrationPolicy = components['schemas']['RegistrationPolicy'];
 export type RegistrationPolicyRequest = components['schemas']['RegistrationPolicyRequest'];
 export type RegistrationPolicyResponse = components['schemas']['RegistrationPolicyResponse'];
 export type ReminderResponse = components['schemas']['ReminderResponse'];
+export type Reply = components['schemas']['Reply'];
+export type ReplyDeltaFrame = components['schemas']['ReplyDeltaFrame'];
+export type ReplyOutcome = components['schemas']['ReplyOutcome'];
+export type ReplySettled = components['schemas']['ReplySettled'];
 export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
 export type ResetSessionResponse = components['schemas']['ResetSessionResponse'];
 export type ResetWorkflowResponse = components['schemas']['ResetWorkflowResponse'];
+export type ResponseEvent = components['schemas']['ResponseEvent'];
+export type RetractFrame = components['schemas']['RetractFrame'];
 export type SandboxExecuteRequest = components['schemas']['SandboxExecuteRequest'];
 export type SandboxExecuteResponse = components['schemas']['SandboxExecuteResponse'];
 export type SandboxToolSchemaRequest = components['schemas']['SandboxToolSchemaRequest'];
@@ -16974,6 +17734,7 @@ export type SelfPairResponse = components['schemas']['SelfPairResponse'];
 export type SendDraftResponse = components['schemas']['SendDraftResponse'];
 export type SendEmailForm = components['schemas']['SendEmailForm'];
 export type SendEmailWithAttachmentsResponse = components['schemas']['SendEmailWithAttachmentsResponse'];
+export type SendMessageRequest = components['schemas']['SendMessageRequest'];
 export type SetToolOverrideRequest = components['schemas']['SetToolOverrideRequest'];
 export type SetupStatusResponse = components['schemas']['SetupStatusResponse'];
 export type SetupWizardResponse = components['schemas']['SetupWizardResponse'];
@@ -16996,8 +17757,15 @@ export type StarredVoicesResponse = components['schemas']['StarredVoicesResponse
 export type StartPairingRequest = components['schemas']['StartPairingRequest'];
 export type StartPairingResponse = components['schemas']['StartPairingResponse'];
 export type StarVoiceRequest = components['schemas']['StarVoiceRequest'];
+export type StateFrame = components['schemas']['StateFrame'];
 export type StaticReminderPayload = components['schemas']['StaticReminderPayload'];
+export type StopBy = components['schemas']['StopBy'];
+export type StopRequested = components['schemas']['StopRequested'];
 export type StoredIntegrationTool = components['schemas']['StoredIntegrationTool'];
+export type SubagentEndEvent = components['schemas']['SubagentEndEvent'];
+export type SubagentEndPayload = components['schemas']['SubagentEndPayload'];
+export type SubagentStartEvent = components['schemas']['SubagentStartEvent'];
+export type SubagentStartPayload = components['schemas']['SubagentStartPayload'];
 export type SubscriptionAction = components['schemas']['SubscriptionAction'];
 export type SubscriptionCondition = components['schemas']['SubscriptionCondition'];
 export type SubscriptionDocument = components['schemas']['SubscriptionDocument'];
@@ -17030,18 +17798,23 @@ export type TodoistNewTaskCreatedConfig = components['schemas']['TodoistNewTaskC
 export type TodoLabelCount = components['schemas']['TodoLabelCount'];
 export type TodoListResponse = components['schemas']['TodoListResponse'];
 export type TodoModel = components['schemas']['TodoModel'];
+export type TodoProgressEvent = components['schemas']['TodoProgressEvent'];
 export type TodoResponse = components['schemas']['TodoResponse'];
 export type TodoRunWake = components['schemas']['TodoRunWake'];
 export type TodoStats = components['schemas']['TodoStats'];
 export type TodoUpdateRequest = components['schemas']['TodoUpdateRequest'];
 export type TodoWakeKind = components['schemas']['TodoWakeKind'];
+export type TodoWoke = components['schemas']['TodoWoke'];
 export type TodoWorkflowGenerationResponse = components['schemas']['TodoWorkflowGenerationResponse'];
 export type TodoWorkflowGenerationStatus = components['schemas']['TodoWorkflowGenerationStatus'];
 export type TodoWorkflowStatus = components['schemas']['TodoWorkflowStatus'];
 export type TodoWorkflowStatusResponse = components['schemas']['TodoWorkflowStatusResponse'];
 export type ToolContract = components['schemas']['ToolContract'];
 export type ToolDataEntry = components['schemas']['ToolDataEntry'];
+export type ToolDataEvent = components['schemas']['ToolDataEvent'];
 export type ToolInfo = components['schemas']['ToolInfo'];
+export type ToolOutputEvent = components['schemas']['ToolOutputEvent'];
+export type ToolOutputPayload = components['schemas']['ToolOutputPayload'];
 export type ToolsCategoryResponse = components['schemas']['ToolsCategoryResponse'];
 export type ToolsListResponse = components['schemas']['ToolsListResponse'];
 export type TranscribeAudioResponse = components['schemas']['TranscribeAudioResponse'];
@@ -17082,6 +17855,7 @@ export type UsageHistoryEntry = components['schemas']['UsageHistoryEntry'];
 export type UsageSummary = components['schemas']['UsageSummary'];
 export type UserFeatureFlagListResponse = components['schemas']['UserFeatureFlagListResponse'];
 export type UserFeatureFlagResponse = components['schemas']['UserFeatureFlagResponse'];
+export type UserMessage = components['schemas']['UserMessage'];
 export type UserSubscriptionStatus = components['schemas']['UserSubscriptionStatus'];
 export type UserUpdateResponse = components['schemas']['UserUpdateResponse'];
 export type ValidationIssue = components['schemas']['ValidationIssue'];
@@ -17092,11 +17866,14 @@ export type VoiceSelectionResponse = components['schemas']['VoiceSelectionRespon
 export type VoiceTokenResponse = components['schemas']['VoiceTokenResponse'];
 export type WebSearchResult = components['schemas']['WebSearchResult'];
 export type WorkCancelled = components['schemas']['WorkCancelled'];
+export type WorkDeltaFrame = components['schemas']['WorkDeltaFrame'];
+export type WorkFinished = components['schemas']['WorkFinished'];
 export type WorkflowCreator = components['schemas']['WorkflowCreator'];
 export type WorkflowExecution = components['schemas']['WorkflowExecution'];
 export type WorkflowExecutionRequest = components['schemas']['WorkflowExecutionRequest'];
 export type WorkflowExecutionResponse = components['schemas']['WorkflowExecutionResponse'];
 export type WorkflowExecutionsResponse = components['schemas']['WorkflowExecutionsResponse'];
+export type WorkflowFired = components['schemas']['WorkflowFired'];
 export type WorkflowListResponse = components['schemas']['WorkflowListResponse'];
 export type WorkflowMessageResponse = components['schemas']['WorkflowMessageResponse'];
 export type WorkflowResponse = components['schemas']['WorkflowResponse'];
@@ -17105,6 +17882,8 @@ export type WorkflowStepInput = components['schemas']['WorkflowStepInput'];
 export type WorkflowStepOutput = components['schemas']['WorkflowStepOutput'];
 export type WorkflowTriggerResponse = components['schemas']['WorkflowTriggerResponse'];
 export type WorkflowWithIntegrations = components['schemas']['WorkflowWithIntegrations'];
+export type WorkOutcome = components['schemas']['WorkOutcome'];
+export type WorkStarted = components['schemas']['WorkStarted'];
 export type WritingStyleEditRequest = components['schemas']['WritingStyleEditRequest'];
 export type WritingStyleExampleBlocks = components['schemas']['WritingStyleExampleBlocks'];
 export type WritingStyleRegenerateRequest = components['schemas']['WritingStyleRegenerateRequest'];
@@ -18106,6 +18885,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LinkedUsersResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    bot_bot_send_message: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotMessageAccepted"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -20090,6 +20920,59 @@ export interface operations {
             };
         };
     };
+    conversations_conversation_events_endpoint: {
+        parameters: {
+            query?: {
+                /** @description A seq to replay the log after, or a stream id to resume after */
+                after?: string;
+            };
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationEvent"];
+                    "text/event-stream": unknown;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     conversations_update_messages_endpoint: {
         parameters: {
             query?: never;
@@ -20128,6 +21011,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UpdateMessagesResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    conversations_send_message_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageAccepted"];
                 };
             };
             /** @description Unprocessable Entity */

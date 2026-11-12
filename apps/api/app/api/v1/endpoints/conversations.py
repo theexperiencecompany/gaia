@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi.responses import StreamingResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.middleware.client_type import request_client_source
 from app.constants.general import MAX_PAGE_NUMBER
+from app.decorators import tiered_rate_limit
 from app.models.chat_models import (
     BatchSyncRequest,
     ConversationModel,
@@ -23,8 +26,16 @@ from app.models.conversation_models import (
     UpdateDescriptionResponse,
     UpdateMessagesResponse,
 )
+from app.models.conversation_send_models import (
+    ConversationEvent,
+    MessageAccepted,
+    SendMessageRequest,
+)
 from app.models.user_models import AuthenticatedUser
 from app.models.work_cancel_models import ConversationStopResponse
+from app.services.conversation.event_stream import event_lines
+from app.services.conversation.runtime import runtime_ports
+from app.services.conversation.send import submit_message
 from app.services.conversation_service import (
     batch_sync_conversations,
     create_conversation_service,
@@ -151,6 +162,53 @@ async def update_messages_endpoint(
         conversation={"operation": "update_messages"},
     )
     return await update_messages(request, user)
+
+
+@router.post("/conversations/{conversation_id}/messages", status_code=status.HTTP_202_ACCEPTED)
+@tiered_rate_limit("chat_messages")
+async def send_message_endpoint(
+    request: Request,
+    conversation_id: str,
+    body: SendMessageRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> MessageAccepted:
+    """Accept a message into a conversation the step runs; its reply arrives on the events stream."""
+    log.set(
+        user={"id": user.user_id},
+        conversation={"operation": "send", "id": conversation_id},
+    )
+    accepted = await submit_message(conversation_id, user, body, request_client_source(request))
+    log.set_ns("conversation", message_id=accepted.message_id, seq=accepted.seq)
+    return accepted
+
+
+@router.get(
+    "/conversations/{conversation_id}/events",
+    response_class=StreamingResponse,
+    responses={200: {"model": ConversationEvent, "content": {"text/event-stream": {}}}},
+)
+async def conversation_events_endpoint(
+    request: Request,
+    conversation_id: str,
+    after: str = Query(
+        default="0", description="A seq to replay the log after, or a stream id to resume after"
+    ),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> StreamingResponse:
+    """Stream the conversation's frames as SSE: everything after the cursor, then live."""
+    log.set(
+        user={"id": user.user_id},
+        conversation={"operation": "events", "id": conversation_id, "after": after},
+    )
+    await require_owned_conversation(conversation_id, user.user_id)
+    lines = event_lines(
+        runtime_ports().log, conversation_id, user.user_id, after, request.is_disconnected
+    )
+    return StreamingResponse(
+        lines,
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.put("/conversations/{conversation_id}/star")

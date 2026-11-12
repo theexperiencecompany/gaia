@@ -41,6 +41,7 @@ from app.models.bot_models import (
     TranscribeAudioResponse,
     UnlinkAccountResponse,
 )
+from app.models.conversation_send_models import BotMessageAccepted
 from app.models.integration_models import UserIntegrationDocument
 from app.models.payment_models import PlanType
 from app.models.user_models import AuthenticatedUser
@@ -75,6 +76,7 @@ from app.services.bot_service import (
 from app.services.bot_session_stop import reset_bot_session, stop_bot_session
 from app.services.bot_token_service import create_bot_session_token
 from app.services.chat.stream import run_chat_stream_background
+from app.services.conversation.send import submit_bot_message
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.latency_metrics import observe_sse_delivery
@@ -703,6 +705,30 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
         ),
         media_type="text/event-stream",
     )
+
+
+@router.post(
+    "/messages",
+    status_code=202,
+    summary="Send a Bot Message",
+    description="Accept a message into the session's conversation; follow its events stream for the reply.",
+)
+async def bot_send_message(request: Request, body: BotChatRequest) -> BotMessageAccepted:
+    """Accept a linked bot user's message on the conversation step and return its seq at once."""
+    await require_bot_api_key(request)
+    log.set(operation="bot_send_message", platform=body.platform)
+    await BotService.enforce_rate_limit(body.platform, body.platform_user_id)
+    user = await _require_linked_bot_caller(request, body.platform, body.platform_user_id)
+    log.set(user={"id": user.user_id})
+    if await _bot_stream_entitlement_gate(user.user_id, body.platform) is not None:
+        raise _bot_request_refused(
+            402,
+            BotRequestFailure.SUBSCRIPTION_REQUIRED,
+            "This account's plan does not include messaging GAIA from this platform.",
+        )
+    accepted = await submit_bot_message(body, user)
+    log.set(conversation={"id": accepted.conversation_id, "seq": accepted.seq})
+    return accepted
 
 
 @router.post(

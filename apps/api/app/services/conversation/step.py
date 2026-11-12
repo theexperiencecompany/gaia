@@ -8,6 +8,7 @@ import itertools
 
 from app.constants.chat import BOT_CONVERSATION_SOURCES, EMPTY_RESPONSE_FALLBACK
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED
+from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
@@ -29,7 +30,6 @@ from app.models.conversation_log_models import (
     LoggedEntry,
     MergeGroup,
     Reaction,
-    ReactionBy,
     Reply,
     ReplyOutcome,
     ReplySettled,

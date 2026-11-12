@@ -85,6 +85,7 @@ from app.models.conversation_models import (
     StoredEntry,
     _ConversationIdRow,
     _ConversationOwnerRow,
+    _RuntimeRow,
     _SourceRow,
     _SystemGeneratedRow,
     _TodoBindingRow,
@@ -781,6 +782,15 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             _TodoBindingRow,
         )
         return None if row is None else row.todo_id
+
+    async def read_runtime(self, conversation_id: str, *, user_id: str) -> _RuntimeRow | None:
+        """Return what runs the conversation, or None when the user has no such conversation."""
+        return await self._find_one_projected(
+            {"conversation_id": conversation_id, "user_id": user_id},
+            # Equivalent under mutation: any truthy flag projects the field, and the row ignores _id.
+            {"_id": 0, "runtime": 1},  # pragma: no mutate
+            _RuntimeRow,
+        )
 
     async def create(self, doc: ConversationDocument) -> ConversationDocument:
         """Insert the conversation's head at an empty log; raises ValueError if doc carries messages."""

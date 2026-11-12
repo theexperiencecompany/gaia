@@ -2,6 +2,7 @@
 
 import pytest
 
+from app.models.chat_models import ReactionBy
 from app.models.conversation_log_models import (
     CancelWork,
     CommsPhase,
@@ -13,7 +14,6 @@ from app.models.conversation_log_models import (
     LiveWork,
     Preempt,
     Reaction,
-    ReactionBy,
     Rejected,
     RejectReason,
     ReplyOutcome,

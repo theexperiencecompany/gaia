@@ -153,6 +153,31 @@ class ConversationLogRepository(ConversationRepository):
         self._spawn_flush(conversation_id, user_id)
         return True
 
+    async def stage_log_reaction(
+        self, conversation_id: str, *, user_id: str, amended: LoggedEntry, after_revision: int
+    ) -> bool:
+        """Stage amended unfenced, only while the stored entry is still at after_revision; the flush carries it.
+
+        A staged amendment newer than after_revision (the chat model's reaction) makes this a no-op.
+        """
+        staged = f"{OUTBOX_FIELD}.{amended.seq}"
+        with store_errors("log reaction"):  # pragma: no mutate — error label
+            result = await self._raw_collection().update_one(
+                {
+                    "conversation_id": conversation_id,
+                    "user_id": user_id,
+                    "$or": [
+                        {staged: {"$exists": False}},
+                        {f"{staged}.revision": after_revision},
+                    ],
+                },
+                {"$set": {staged: _document(conversation_id, user_id, amended)}},
+            )
+        if not result.matched_count:
+            return False
+        self._spawn_flush(conversation_id, user_id)
+        return True
+
     async def take_runner(
         self, conversation_id: str, *, user_id: str, runner_epoch: int, alive_key: str
     ) -> bool:

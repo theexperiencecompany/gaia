@@ -34,6 +34,7 @@ from app.models.conversation_log_models import (
     Entry,
     LoggedEntry,
     PreemptHint,
+    Reaction,
     Rejected,
     Reply,
     StepClaim,
@@ -101,6 +102,28 @@ class MongoConversationLog:
             claim.conversation_id, user_id=claim.user_id, epoch=claim.epoch, amended=amended
         ):
             raise ClaimLost
+        return amended
+
+    async def react_once(
+        self, conversation_id: str, user_id: str, message_id: str, reaction: Reaction
+    ) -> LoggedEntry | None:
+        """Put reaction on the user message while it has none; None when it already had one or moved on."""
+        found = await self._repository.read_log(conversation_id, user_id=user_id, ids=[message_id])
+        if not found or not isinstance(message := found[0].entry, UserMessage):
+            raise ConversationEntryNotFoundError(
+                message=f"no user message {message_id} in conversation {conversation_id}",
+                meta={"conversation_id": conversation_id, "entry_id": message_id},
+            )
+        if message.reaction is not None:
+            return None
+        revised = message.model_copy(
+            update={"reaction": reaction, "revision": message.revision + 1}
+        )
+        amended = found[0].model_copy(update={"entry": revised})
+        if not await self._repository.stage_log_reaction(
+            conversation_id, user_id=user_id, amended=amended, after_revision=message.revision
+        ):
+            return None
         return amended
 
     async def read_after(

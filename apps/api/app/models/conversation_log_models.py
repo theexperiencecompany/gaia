@@ -7,6 +7,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from app.constants.chat import ConversationSource
 from app.constants.hil import ApprovalResolution
+from app.models.chat_models import ReactionBy
 from app.models.todo_wake_models import TodoRunWake
 from app.models.tool_data_models import ToolDataEntry
 
@@ -56,13 +57,6 @@ class ReplyOutcome(StrEnum):
 
 
 _MAY_ANSWER_NOTHING = frozenset({ReplyOutcome.STOPPED, ReplyOutcome.FAILED})
-
-
-class ReactionBy(StrEnum):
-    """Who reacted to a user message: Jev at accept, or the chat model in its reply."""
-
-    JEV = "jev"
-    CHAT_MODEL = "chat_model"
 
 
 class Reaction(BaseModel):

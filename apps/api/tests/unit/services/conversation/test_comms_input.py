@@ -11,11 +11,11 @@ from app.constants.conversation import (
     WORK_DONE_NOTE,
     WORK_UNFINISHED_NOTE,
 )
+from app.models.chat_models import ReactionBy
 from app.models.conversation_log_models import (
     Batch,
     LoggedEntry,
     Reaction,
-    ReactionBy,
     ReplyOutcome,
     WorkOutcome,
 )

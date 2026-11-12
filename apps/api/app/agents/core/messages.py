@@ -66,19 +66,23 @@ class MessageAttachments:
     trigger_context: Mapping[str, object] | None = None
 
 
-async def construct_langchain_messages(
-    query: str,
-    scope: MessageScope | None = None,
-    attachments: MessageAttachments | None = None,
-) -> list[AnyMessage]:
-    """Construct LangChain messages for agent interaction.
+@dataclass(frozen=True)
+class TurnContext:
+    """The messages around a comms turn's inputs: system prompt and context slots ahead, the clock after."""
 
-    Builds a conversation from system prompt + optional memory + human
-    message. query is the user's turn: the human message and the memory
-    recall query. The checkpointer owns history, so only this turn is built.
+    #: The system prompt and the assembled context slots.
+    chain: list[AnyMessage]
+    #: Where the user is, inline just ahead of the turn it describes; None when nothing is due.
+    presence: AnyMessage | None
+    #: The current time, after the turn's inputs.
+    clock: AnyMessage
+
+
+async def build_turn_context(query: str, scope: MessageScope) -> TurnContext:
+    """Build the system prompt, context slots, presence note and clock of a comms turn on query.
+
+    query is the user's turn: the memory recall query of the context slots.
     """
-    scope = scope or MessageScope()
-    attachments = attachments or MessageAttachments()
     user_id, user_name, user_dict = scope.user_id, scope.user_name, scope.user_dict
     conversation_id, source = scope.conversation_id, scope.source
 
@@ -96,8 +100,6 @@ async def construct_langchain_messages(
     user_preferences, writing_style = onboarding_preferences(
         user_dict.onboarding if user_dict else None
     )
-
-    user_content = query.strip()
 
     assembled, note = await asyncio.gather(
         assemble_context(
@@ -129,17 +131,38 @@ async def construct_langchain_messages(
 
     # The recall block and the clock are written into the thread with this turn and
     # stay where they are, so the next turn's request begins with this one.
-    time_msg = build_current_time_message(user_timezone=user_timezone)
-    chain_msgs: list[AnyMessage] = [system_msg, assembled.stable]
+    chain: list[AnyMessage] = [system_msg, assembled.stable]
     if assembled.volatile is not None:
-        chain_msgs.append(assembled.volatile)
+        chain.append(assembled.volatile)
+    return TurnContext(
+        chain=chain,
+        presence=note,
+        clock=build_current_time_message(user_timezone=user_timezone),
+    )
 
-    human_msg = HumanMessage(content=await _human_content(scope, attachments, user_content))
-    # Read after the gather, never awaited: a reaction still deciding costs this turn nothing.
+
+async def construct_langchain_messages(
+    query: str,
+    scope: MessageScope | None = None,
+    attachments: MessageAttachments | None = None,
+) -> list[AnyMessage]:
+    """Construct LangChain messages for agent interaction.
+
+    Builds a conversation from system prompt + optional memory + human
+    message. query is the user's turn: the human message and the memory
+    recall query. The checkpointer owns history, so only this turn is built.
+    """
+    scope = scope or MessageScope()
+    attachments = attachments or MessageAttachments()
+    context, content = await asyncio.gather(
+        build_turn_context(query, scope), _human_content(scope, attachments, query.strip())
+    )
+    human_msg = HumanMessage(content=content)
+    # Read after the context is built, never awaited: a reaction still deciding costs this turn nothing.
     reacted = reaction_note_message(scope.instant_reaction)
     # The notes sit inline just ahead of the turn they describe, and stay in the thread.
-    turn_msgs = [*(m for m in (note, reacted) if m is not None), human_msg]
-    return [*chain_msgs, *turn_msgs, time_msg]
+    turn_msgs = [*(m for m in (context.presence, reacted) if m is not None), human_msg]
+    return [*context.chain, *turn_msgs, context.clock]
 
 
 async def _human_content(

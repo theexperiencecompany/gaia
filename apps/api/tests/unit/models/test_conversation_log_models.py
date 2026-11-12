@@ -5,6 +5,7 @@ from collections.abc import Callable
 from pydantic import BaseModel, TypeAdapter, ValidationError
 import pytest
 
+from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
@@ -34,7 +35,6 @@ from app.models.conversation_log_models import (
     LiveWork,
     LoggedEntry,
     Reaction,
-    ReactionBy,
     ReplyOutcome,
     ReplySettled,
     UserMessage,

@@ -59,6 +59,17 @@ class SubagentResumeItem(TypedDict):
     parent_configurable: "AgentConfigurable"
 
 
+class StepTurnRef(TypedDict):
+    """The conversation step attempt a comms run belongs to, inherited by the work it dispatches."""
+
+    #: The step claim's epoch; the run's own log writes are fenced on it.
+    epoch: int
+    #: The newest log seq the attempt answers; work it starts is caused through here.
+    cause_through: int
+    #: The ids of the user messages the attempt answers.
+    answers: list[str]
+
+
 class AgentConfigurable(TypedDict, total=False):
     """Every key GAIA puts in a run's ``config["configurable"]`` — the whole agreement.
 
@@ -115,6 +126,9 @@ class AgentConfigurable(TypedDict, total=False):
     #: The conversation runner's attempt id on a comms run it started; its pre-model hook
     #: drains that attempt's feed. Absent on every other run.
     comms_run: str
+    #: The step attempt of a comms run the conversation runtime started, and of the
+    #: executor it dispatched; absent on the legacy stream path.
+    conversation_step: StepTurnRef
     #: Onboarding preferences / writing style, established once at a run tree's
     #: root and inherited unchanged by every child agent. Absent when the root
     #: had none; the context sections that read them degrade to no section.

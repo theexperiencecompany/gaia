@@ -6,13 +6,13 @@ import pytest
 
 from app.constants.chat import EMPTY_RESPONSE_FALLBACK, ConversationSource
 from app.constants.hil import HIL_ACK_APPROVED
+from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import ResponseEvent, RetractFrame, ToolDataEvent
 from app.models.conversation_log_models import (
     ApprovalDecided,
     CommsPhase,
     Entry,
     Reaction,
-    ReactionBy,
     Reply,
     ReplyOutcome,
     ReplySettled,

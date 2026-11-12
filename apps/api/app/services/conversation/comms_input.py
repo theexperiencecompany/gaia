@@ -23,12 +23,12 @@ from app.constants.conversation import (
     WORK_UNFINISHED_NOTE,
     WORKFLOW_FIRED_NOTE,
 )
+from app.models.chat_models import ReactionBy
 from app.models.conversation_log_models import (
     BargeIn,
     Batch,
     LoggedEntry,
     Notice,
-    ReactionBy,
     ReplyOutcome,
     ReplySettled,
     StopRequested,
