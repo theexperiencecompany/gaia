@@ -93,7 +93,7 @@ export default function WorkflowHeader({
                 placeholder={
                   mode === "edit" ? "Workflow name" : "Name your workflow"
                 }
-                className="h-auto min-h-0 border-none bg-transparent px-0 py-0 text-2xl font-semibold text-white placeholder:font-normal placeholder:text-zinc-600 focus:outline-none focus-visible:outline-none"
+                className="h-auto min-h-0 border-none bg-transparent px-0 py-0 text-2xl font-semibold text-white placeholder:font-normal placeholder:text-zinc-600 shadow-none hover:bg-transparent focus:bg-transparent focus:ring-0 focus:outline-none focus-visible:outline-none"
               />
               <FieldError>{errors.title?.message}</FieldError>
             </TextField>
@@ -217,7 +217,7 @@ export default function WorkflowHeader({
             <TextArea
               placeholder="Add a short description..."
               rows={1}
-              className="resize-none text-sm text-zinc-300 field-sizing-content max-h-20 border-none bg-transparent px-0 py-0 focus:outline-none focus-visible:outline-none"
+              className="resize-none text-sm text-zinc-300 field-sizing-content max-h-20 border-none bg-transparent px-0 py-0 shadow-none hover:bg-transparent focus:bg-transparent focus:ring-0 focus:outline-none focus-visible:outline-none"
             />
             <FieldError>{errors.description?.message}</FieldError>
           </TextField>

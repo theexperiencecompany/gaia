@@ -389,7 +389,7 @@ export default function TodoModal({
           <Modal.Container size="lg">
             <Modal.Dialog>
               <Modal.CloseTrigger aria-label="Close" />
-              <Modal.Body className="gap-6 pt-6">
+              <Modal.Body className="gap-6">
                 <TodoTextInputFields
                   title={formData.title}
                   description={formData.description || ""}
