@@ -201,10 +201,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         own prompt), so system-generated conversations are excluded — the
         signal is a human typing, not an automation running.
         """
-        sent = await self._find_entries(
-            user_id, {"type": USER_MESSAGE_TYPE}, excluding={"is_system_generated": True}, limit=1
+        sent = await self._first_entry(
+            user_id, {"type": USER_MESSAGE_TYPE}, excluding={"is_system_generated": True}
         )
-        return bool(sent)
+        return sent is not None
 
     async def owned_ids(self, user_id: str, conversation_ids: Sequence[str]) -> set[str]:
         """Which of these conversation ids the user owns."""
@@ -347,19 +347,19 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def flush_outbox(self, conversation_id: str, *, user_id: str) -> None:
         """Copy every outbox entry into conversation_entries, then drop it from the head: insert first, always."""
         # Reads only the outbox: what is committed is flushed whatever the embedded array holds.
-        with store_errors("flush"):
-            raw = await self._raw_collection().find_one(
-                {"conversation_id": conversation_id, "user_id": user_id}, _OUTBOX_FIELDS
-            )
+        head = {"conversation_id": conversation_id, "user_id": user_id}
+        with store_errors("flush"):  # pragma: no mutate — error label only
+            # The projection only trims the read: the head model ignores every other field.
+            raw = await self._raw_collection().find_one(head, _OUTBOX_FIELDS)  # pragma: no mutate
         outbox = ConversationHead.model_validate(raw).outbox if raw else {}
         if not outbox:
             return
-        with store_errors("flush"):
+        drained = {
+            f"{OUTBOX_FIELD}.{seq}": "" for seq in outbox
+        }  # pragma: no mutate — $unset ignores the value
+        with store_errors("flush"):  # pragma: no mutate — error label only
             await self._insert_entries(list(outbox.values()))
-            unset = await self._raw_collection().update_one(
-                {"conversation_id": conversation_id, "user_id": user_id},
-                {"$unset": {f"{OUTBOX_FIELD}.{seq}": "" for seq in outbox}},
-            )
+            unset = await self._raw_collection().update_one(head, {"$unset": drained})
             if not unset.matched_count:
                 # The conversation was deleted while this flush ran: take back what it inserted.
                 await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(
@@ -405,7 +405,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             head = await self._read_head_for_append(conversation_id, user_id, [message_id])
             if head is None or message_id in head.known_seqs():
                 return False
-            with store_errors("park folded cards"):
+            with store_errors("park folded cards"):  # pragma: no mutate — error label only
                 matched = await self._apply_pipeline_update_unfetched(
                     {"conversation_id": conversation_id, **at_log_head(head.log_head)},
                     [{"$set": {FOLDED_CARDS_FIELD: parked(message_id, entries)}}],
@@ -429,7 +429,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             conversation_id, user_id, {"id": message_id}, {"$set": {"pinned": pinned}}
         ):
             return False
-        await self._set_fields(conversation_id, user_id, {})
+        await self._set_fields(conversation_id, user_id)
         return True
 
     async def update_artifact(
@@ -640,8 +640,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         self, user_id: str, message_id: str, *, message_type: str = "bot"
     ) -> str | None:
         """Return the conversation id owning a message of message_type with this id."""
-        found = await self._find_entries(user_id, {"id": message_id, "type": message_type}, limit=1)
-        return found[0][0] if found else None
+        found = await self._first_entry(user_id, {"id": message_id, "type": message_type})
+        return None if found is None else found[0]
 
     async def find_workflow_conversation_id(self, user_id: str, workflow_id: str) -> str | None:
         """Return the id of the system-generated conversation a workflow's runs execute in."""
@@ -689,16 +689,15 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         head = doc.model_dump(exclude={"id", "messages"}, exclude_none=True)
         head[LOG_HEAD_FIELD] = 0
         await self._raw_collection().insert_one(head)
-        await self._invalidate(doc.user_id)
         if doc.messages:
             await self.append_messages(
                 doc.conversation_id, user_id=doc.user_id, messages=doc.messages
             )
         created = await self.get(doc.conversation_id, user_id=doc.user_id)
         if created is None:
-            raise ConversationStoreError(
-                message="inserted conversation could not be read back"  # pragma: no mutate — error text only
-            )
+            # pragma: no mutate start — error text only
+            raise ConversationStoreError(message="inserted conversation could not be read back")
+            # pragma: no mutate end
         return created
 
     async def try_create(self, doc: ConversationDocument) -> bool:
@@ -781,7 +780,14 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         described = await self._aggregate(
             [
                 {"$match": {"user_id": user_id, "todo_id": None, "description": regex}},
-                {"$project": {"_id": 0, "conversation_id": 1, "description": 1}},
+                {
+                    "$project": {
+                        # Equivalent under mutation: the hit model ignores _id.
+                        "_id": 0,  # pragma: no mutate
+                        "conversation_id": 1,
+                        "description": 1,
+                    }
+                },
             ],
             ConversationDescriptionHit,
         )
@@ -878,8 +884,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """
         entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).name
         pipeline = head_with_existing(conversation_id, user_id, ids, entries_collection=entries)
-        with store_errors("head read"):
-            raws = await self._raw_collection().aggregate(pipeline).to_list(length=1)
+        with store_errors("head read"):  # pragma: no mutate — error label only
+            raws = await self._raw_collection().aggregate(pipeline).to_list(length=None)
         return head_from_raw(raws[0]) if raws else None
 
     async def _commit(
@@ -903,7 +909,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             )
             for entry_id, data in fresh
         }
-        with store_errors("append"):
+        with store_errors("append"):  # pragma: no mutate — error label only
             matched = await self._apply_pipeline_update_unfetched(
                 {"conversation_id": conversation_id, **at_log_head(log_head)},
                 [
@@ -918,8 +924,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                         }
                     }
                 ],
-                scope=user_id,
-                doc_id=conversation_id,
+                # Conversations are uncached (cache_policy None): no read to invalidate.
+                scope=None,
                 extra_filter={"user_id": user_id},
             )
         return matched > 0
@@ -931,7 +937,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             try:
                 await collection.insert_one(entry.document())
             except DuplicateKeyError as exc:
-                stored = await collection.find_one(at_its_seq(entry), _ENTRY_KEY_FIELDS)
+                at_seq = at_its_seq(entry)
+                # The projection only trims the read: the key model ignores every other field.
+                stored = await collection.find_one(at_seq, _ENTRY_KEY_FIELDS)  # pragma: no mutate
                 if not is_same_entry(stored, entry):
                     raise ConversationStoreError(
                         message="an outbox entry conflicts with a stored entry",
@@ -974,7 +982,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         if window.limit and len(heads) == 1:
             cursor = cursor.limit(window.limit)
         # pragma: no mutate end
-        with store_errors("entry read"):
+        with store_errors("entry read"):  # pragma: no mutate — error label only
             rows = await cursor.to_list(length=None)
         stored: dict[tuple[str, str], dict[int, ConversationEntry]] = {}
         for row in map(stored_row, rows):
@@ -1002,7 +1010,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         read for callers that need only whether one exists. Refuses a user with a
         conversation the migration has not caught up with, rather than missing its messages.
         """
-        with store_errors("entry search"):
+        with store_errors("entry search"):  # pragma: no mutate — error label only
             if await self._count({"user_id": user_id, **UNMIGRATED_HEADS}):
                 raise unmigrated(f"user {user_id}")
             pending = await (
@@ -1029,6 +1037,19 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         ordered = sorted(found.values(), key=lambda row: (row.at, row.entry.seq))
         return [(row.conversation_id, row.entry) for row in ordered]
 
+    async def _first_entry(
+        self,
+        user_id: str,
+        match: Mapping[str, object],
+        *,
+        excluding: Mapping[str, object] | None = None,
+    ) -> tuple[str, ConversationEntry] | None:
+        """Return one (conversation id, entry) matching match across the user's conversations, or None."""
+        # pragma: no mutate start — limit only bounds a read whose callers ask whether one exists
+        found = await self._find_entries(user_id, match, excluding=excluding, limit=1)
+        # pragma: no mutate end
+        return found[0] if found else None
+
     async def _update_entry(
         self,
         conversation_id: str,
@@ -1050,15 +1071,15 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
         if every_match:
             await self.flush_outbox(conversation_id, user_id=user_id)
-            with store_errors("entry update"):
+            with store_errors("entry update"):  # pragma: no mutate — error label only
                 result = await entries.update_many(query, dict(update), array_filters=filters)
             return result.matched_count > 0
-        with store_errors("entry update"):
+        with store_errors("entry update"):  # pragma: no mutate — error label only
             result = await entries.update_one(query, dict(update), array_filters=filters)
         if result.matched_count:
             return True
         await self.flush_outbox(conversation_id, user_id=user_id)
-        with store_errors("entry update"):
+        with store_errors("entry update"):  # pragma: no mutate — error label only
             retried = await entries.update_one(query, dict(update), array_filters=filters)
         return retried.matched_count > 0
 
@@ -1069,7 +1090,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         if not ids:
             return []
         await self._delete_many(query, scope=user_id)
-        with store_errors("entry delete"):
+        with store_errors("entry delete"):  # pragma: no mutate — error label only
             await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(
                 {"user_id": user_id, "conversation_id": {"$in": ids}}
             )
@@ -1111,9 +1132,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         }
 
     async def _set_fields(
-        self, conversation_id: str, user_id: str, fields: dict[str, object]
+        self, conversation_id: str, user_id: str, fields: dict[str, object] | None = None
     ) -> bool:
-        update: dict[str, dict[str, object]] = {"$currentDate": {"updatedAt": True}}
+        update: dict[str, dict[str, object]] = {"$currentDate": {"updatedAt": {"$type": "date"}}}
         if fields:
             update["$set"] = fields
         matched = await self._apply_raw_update_unfetched(

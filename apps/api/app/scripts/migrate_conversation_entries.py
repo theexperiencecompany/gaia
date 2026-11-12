@@ -45,7 +45,9 @@ async def _heads(
             yield ref
         seen += len(batch)
         after = batch[-1].head_id
+        # pragma: no mutate start — flush only paces the progress output
         print(f"... {seen} conversations scanned (resume after _id {after})", flush=True)
+        # pragma: no mutate end
 
 
 async def _migrate(args: argparse.Namespace) -> int:
@@ -148,26 +150,34 @@ async def _run(args: argparse.Namespace) -> int:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--apply", action="store_true", help="Write (otherwise dry run).")
+    parser = argparse.ArgumentParser(description=__doc__)  # pragma: no mutate — help text only
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Write (otherwise dry run).",  # pragma: no mutate — help text only
+    )
     parser.add_argument(
         "--since",
         type=datetime.fromisoformat,
+        # pragma: no mutate start — help text only
         help="Second pass: only conversations whose updatedAt is at or after this ISO datetime.",
+        # pragma: no mutate end
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
-        "--verify", action="store_true", help="Compare entries with each embedded array."
+        "--verify",
+        action="store_true",
+        help="Compare entries with each embedded array.",  # pragma: no mutate — help text only
     )
     mode.add_argument(
         "--drop-embedded",
         action="store_true",
-        help="Unset each embedded array that --verify passes.",
+        help="Unset each embedded array that --verify passes.",  # pragma: no mutate — help text only
     )
     mode.add_argument(
         "--rebuild-embedded",
         action="store_true",
-        help="Rollback: rebuild embedded arrays from entries.",
+        help="Rollback: rebuild embedded arrays from entries.",  # pragma: no mutate — help text only
     )
     return parser
 

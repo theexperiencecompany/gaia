@@ -168,6 +168,21 @@ async def test_the_second_pass_merges_what_the_old_build_wrote_after_the_first(
     assert (report.embedded, report.entries) == (2, 3)
 
 
+async def test_the_second_pass_merges_old_build_writes_into_a_conversation_the_new_build_created(
+    migration: ConversationEntriesMigration, raw_collection: Any
+) -> None:
+    ref = await _legacy(raw_collection, [], log_head=0)
+    await raw_collection.update_one(
+        {"_id": ObjectId(ref.head_id)},
+        {"$push": {"messages": {"$each": [_message(1), _message(2)]}}},
+    )
+
+    merged = await migration.migrate(ref, apply=True)
+
+    assert (merged.action, merged.copied) == (MigrationAction.MERGED, 2)
+    assert await _read_ids(ref) == ["m1", "m2"]
+
+
 async def test_legacy_elements_without_ids_get_stable_ids_and_repeated_ids_are_refused(
     migration: ConversationEntriesMigration, raw_collection: Any
 ) -> None:
@@ -189,7 +204,9 @@ async def test_drop_needs_a_passing_verify_and_rebuild_restores_the_array(
     elements = [_message(1), _message(2, "bot", pinned=True)]
     ref = await _legacy(raw_collection, elements)
     unmigrated = await _legacy(raw_collection, [_message(9)])
+    kept = await _legacy(raw_collection, [_message(8)])
     await migration.migrate(ref, apply=True)
+    await migration.migrate(kept, apply=True)
 
     assert not await migration.drop_embedded(unmigrated)
     assert await migration.drop_embedded(ref)
@@ -202,6 +219,7 @@ async def test_drop_needs_a_passing_verify_and_rebuild_restores_the_array(
     )
 
     [dropped] = await migration.heads_without_embedded(after_head_id=None, batch=10)
+    assert dropped.head_id == ref.head_id
     assert await migration.rebuild_embedded(dropped, apply=True) == 3
 
     head = await raw_collection.find_one({"_id": ObjectId(ref.head_id)})
@@ -618,42 +636,48 @@ async def test_the_script_runs_dry_copy_verify_rerun_drop_and_rollback_a_batch_a
             await _read_ids(rebuilt)
 
 
-async def test_the_script_exits_nonzero_on_a_refused_conversation_and_names_it(
+async def test_the_script_exits_nonzero_on_refused_conversations_and_names_each(
     raw_collection: Any, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    ref = await _legacy(raw_collection, [_message(1), _message(1)])
-    scanned = f"... 1 conversations scanned (resume after _id {ref.head_id})"
+    first = await _legacy(raw_collection, [_message(1), _message(1)])
+    good = await _legacy(raw_collection, [_message(2)])
+    second = await _legacy(raw_collection, [_message(3), _message(3)])
+    scanned = f"... 3 conversations scanned (resume after _id {second.head_id})"
 
     assert await _cli(capsys, "--apply") == (
         1,
         [
-            f"  [refused] {ref.conversation_id} message ids repeat in the embedded array: m1",
+            f"  [refused] {first.conversation_id} message ids repeat in the embedded array: m1",
+            f"  [copied] {good.conversation_id}: 1 copied, 0 rewritten",
+            f"  [refused] {second.conversation_id} message ids repeat in the embedded array: m3",
             scanned,
-            "Summary: 1 refused; 0 entries",
+            "Summary: 1 copied, 2 refused; 1 entries",
         ],
     )
     assert await _cli(capsys, "--verify") == (
         1,
         [
-            f"  MISMATCH {ref.conversation_id}: not migrated: no log_head",
+            f"  MISMATCH {first.conversation_id}: not migrated: no log_head",
+            f"  MISMATCH {second.conversation_id}: not migrated: no log_head",
             scanned,
-            "Verified 1 conversations: 1 with mismatches.",
+            "Verified 3 conversations: 2 with mismatches.",
         ],
     )
     assert await _cli(capsys, "--drop-embedded") == (
         1,
         [
             scanned,
-            "0 embedded arrays would drop; 1 refused.",
+            "1 embedded arrays would drop; 2 refused.",
             "Dry run only. Re-run with --apply to write.",
         ],
     )
     assert await _cli(capsys, "--drop-embedded", "--apply") == (
         1,
         [
-            f"  [refused] {ref.conversation_id}: --verify does not pass",
+            f"  [refused] {first.conversation_id}: --verify does not pass",
+            f"  [refused] {second.conversation_id}: --verify does not pass",
             scanned,
-            "0 embedded arrays dropped; 1 refused.",
+            "1 embedded arrays dropped; 2 refused.",
         ],
     )
 

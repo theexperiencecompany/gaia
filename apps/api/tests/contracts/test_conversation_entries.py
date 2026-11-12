@@ -16,7 +16,7 @@ from app.db.repositories import conversations as conversations_module
 from app.db.repositories.conversation_entries import EntryWindow
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import MessageModel, ToolDataEntry
-from app.models.conversation_models import ConversationDocument
+from app.models.conversation_models import ConversationDescriptionHit, ConversationDocument
 from app.utils.errors import (
     ConversationNotFoundError,
     ConversationStoreError,
@@ -374,9 +374,9 @@ async def test_deleting_conversations_deletes_their_entries(
     assert await entries_collection.count_documents({"user_id": "u1"}) == 0
     await repo.delete_all_for_user("u2")
     assert await entries_collection.count_documents({"user_id": "u2"}) == 0
-    await repo.delete_for_todos("u3", ["todo-1"])
-    assert await entries_collection.count_documents({"user_id": "u3"}) == 1
     await repo.delete_all_chats_for_user("u3")
+    assert await entries_collection.count_documents({"user_id": "u3"}) == 1
+    await repo.delete_for_todos("u3", ["todo-1"])
     assert await entries_collection.count_documents({}) == 0
 
 
@@ -432,16 +432,22 @@ async def test_search_skips_a_todos_chat_and_cross_reads_refuse_unmigrated_data(
     repo: ConversationRepository, held: _HeldFlushes, raw_collection: Any
 ) -> None:
     uid = f"u-{uuid.uuid4().hex}"
-    todo_chat = await _chat(repo, uid, todo_id="todo-1")
+    todo_chat = await _chat(repo, uid, todo_id="todo-1", description="needle todo")
+    described = await _chat(repo, uid, description="needle notes")
     await repo.append(todo_chat, user_id=uid, entries=[_message("t1", "needle")])
     held.drop_all()
-    assert (await repo.search(uid, pattern="needle")).messages == []
+    found = await repo.search(uid, pattern="needle")
+    assert found.messages == []
+    assert found.conversations == [
+        ConversationDescriptionHit(conversation_id=described, description="needle notes")
+    ]
 
     await raw_collection.insert_one(
         {"conversation_id": "old", "user_id": uid, "messages": [{"type": "user", "response": "x"}]}
     )
-    with pytest.raises(UnmigratedConversationError):
+    with pytest.raises(UnmigratedConversationError) as refused:
         await repo.has_sent_message(uid)
+    assert refused.value.message == f"user {uid} {_REFUSAL}"
 
 
 _REFUSAL = (
@@ -670,3 +676,113 @@ async def test_a_flush_of_a_conversation_deleted_under_it_takes_back_what_it_ins
 
     assert await entries_collection.count_documents({"conversation_id": cid}) == 0
     assert await entries_collection.count_documents({"conversation_id": other}) == 1
+
+
+async def test_a_repeat_append_finishes_the_flush_the_first_append_never_ran(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    held: _HeldFlushes,
+    raw_collection: Any,
+    entries_collection: Any,
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    await repo.append(cid, user_id=uid, entries=[_message("m1")])
+    held.drop_all()
+    held.spawned.clear()
+
+    assert await repo.append(cid, user_id=uid, entries=[_message("m1")]) == [1]
+    assert held.spawned == [("conversation_flush", {"conversation_id": cid})]
+    await held.run_all()
+
+    assert await _outbox(raw_collection, conversation) == {}
+    assert await entries_collection.count_documents({"conversation_id": cid}) == 1
+
+
+async def test_two_users_conversations_under_one_id_keep_their_own_entries(
+    repo: ConversationRepository, held: _HeldFlushes
+) -> None:
+    shared = f"c-{uuid.uuid4().hex}"
+    first, second = f"u-{uuid.uuid4().hex}", f"u-{uuid.uuid4().hex}"
+    for user_id in (first, second):
+        await _chat(repo, user_id, conversation_id=shared)
+
+    await repo.append(shared, user_id=second, entries=[_message("m1")])
+    await held.run_all()
+
+    theirs = await repo.get(shared, user_id=second)
+    other = await repo.get(shared, user_id=first)
+    assert theirs is not None and [m.message_id for m in theirs.messages] == ["m1"]
+    assert other is not None and other.messages == []
+
+
+async def test_a_conversation_created_with_messages_holds_them_as_entries_not_in_its_head(
+    repo: ConversationRepository, held: _HeldFlushes, raw_collection: Any
+) -> None:
+    doc = ConversationDocument.model_validate(
+        {
+            "user_id": f"u-{uuid.uuid4().hex}",
+            "conversation_id": f"c-{uuid.uuid4().hex}",
+            "createdAt": datetime.now(UTC).isoformat(),
+            "messages": [_message("m1"), _message("m2")],
+        }
+    )
+
+    created = await repo.create(doc)
+
+    assert [m.message_id for m in created.messages] == ["m1", "m2"]
+    head = await raw_collection.find_one({"conversation_id": doc.conversation_id})
+    assert head is not None
+    assert not {"id", "messages"} & set(head)
+    assert head["log_head"] == 2
+
+
+async def test_pinning_a_stored_message_bumps_updated_at_and_leaves_the_outbox_to_its_flush(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    held: _HeldFlushes,
+    raw_collection: Any,
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    await repo.append(cid, user_id=uid, entries=[_message("m1")])
+    await held.run_all()
+    await repo.append(cid, user_id=uid, entries=[_message("m2")])
+    held.drop_all()
+    stale = datetime(2020, 1, 1, tzinfo=UTC)
+    await raw_collection.update_one({"conversation_id": cid}, {"$set": {"updatedAt": stale}})
+
+    assert await repo.set_message_pinned(cid, user_id=uid, message_id="m1", pinned=True)
+
+    head = await raw_collection.find_one({"conversation_id": cid})
+    assert head is not None and head["updatedAt"].year > stale.year
+    assert list(await _outbox(raw_collection, conversation)) == ["2"]
+    saved = await repo.get_message(cid, "m1", user_id=uid)
+    assert saved is not None and saved.pinned is True
+
+
+async def test_pinning_an_unknown_message_is_refused_and_leaves_updated_at(
+    repo: ConversationRepository, conversation: ConversationDocument, raw_collection: Any
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    stale = datetime(2020, 1, 1, tzinfo=UTC)
+    await raw_collection.update_one({"conversation_id": cid}, {"$set": {"updatedAt": stale}})
+
+    assert not await repo.set_message_pinned(cid, user_id=uid, message_id="nope", pinned=True)
+
+    head = await raw_collection.find_one({"conversation_id": cid})
+    assert head is not None and head["updatedAt"].year == stale.year
+
+
+async def test_recent_conversations_are_the_newest_limit_with_their_messages(
+    repo: ConversationRepository, held: _HeldFlushes
+) -> None:
+    uid = f"u-{uuid.uuid4().hex}"
+    await _chat(repo, uid, createdAt="2026-01-01T00:00:00+00:00")
+    middle = await _chat(repo, uid, createdAt="2026-01-02T00:00:00+00:00")
+    newest = await _chat(repo, uid, createdAt="2026-01-03T00:00:00+00:00")
+    await repo.append(newest, user_id=uid, entries=[_message("m1")])
+    held.drop_all()
+
+    recent = await repo.recent_for_user(uid, limit=2)
+
+    assert [doc.conversation_id for doc in recent] == [newest, middle]
+    assert [m.message_id for m in recent[0].messages] == ["m1"]
