@@ -9,6 +9,7 @@ import pytest
 from app.models.user_models import OnboardingPreferences, OnboardingSubdocument, UserDocument
 from app.services.referrals.codes import share_link
 from app.services.referrals.sent_with_gaia import sent_with_gaia_link
+from tests.helpers import referrals_off_for
 
 MODULE = "app.services.referrals.sent_with_gaia"
 
@@ -82,4 +83,11 @@ async def test_a_lapsed_subscriber_has_no_link_to_sign_with(seams: Seams) -> Non
 @pytest.mark.usefixtures("referrals_off")
 async def test_with_referrals_off_mail_goes_out_unsigned(seams: Seams) -> None:
     assert await sent_with_gaia_link("64a0000000000000000000a1") is None
+    seams.ensure_code.assert_not_awaited()
+
+
+async def test_a_subscriber_the_program_is_held_back_from_sends_unsigned(seams: Seams) -> None:
+    with referrals_off_for("64a0000000000000000000a1"):
+        assert await sent_with_gaia_link("64a0000000000000000000a1") is None
+
     seams.ensure_code.assert_not_awaited()

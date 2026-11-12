@@ -847,6 +847,19 @@ class TestWorkflowsPublicMarketplaceReads:
         page2 = await repo.find_community(limit=1, offset=1)
         assert [r.id for r in page2] == [older.id]
 
+    async def test_count_community_by_creator_counts_only_their_public_community_workflows(
+        self, repo: WorkflowsRepository, raw_collection: AsyncIOMotorCollection
+    ) -> None:
+        creator = _uid("creator")
+        for _ in range(2):
+            await repo.create(_workflow(is_public=True, created_by=creator))
+        explore = await repo.create(_workflow(is_public=True, created_by=creator))
+        await raw_collection.update_one({"_id": explore.id}, {"$set": {"is_explore": True}})
+        await repo.create(_workflow(is_public=False, created_by=creator))
+        await repo.create(_workflow(is_public=True, created_by=_uid("someone_else")))
+
+        assert await repo.count_community_by_creator(creator) == 2
+
     async def test_find_explore_orders_and_creator_always_empty(
         self, repo, raw_collection, seeded_creator
     ):

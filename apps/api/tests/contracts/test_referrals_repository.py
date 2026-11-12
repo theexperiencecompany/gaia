@@ -7,7 +7,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.db.repositories.referrals import ReferralsRepository
+from app.constants.referrals import ReferralSource
+from app.db.repositories.referrals import ReferralsRepository, WorkflowCredits
 from app.models.payment_models import PlanDuration
 from app.models.referral_models import (
     ReferralDocument,
@@ -184,6 +185,31 @@ class TestReferralsRepository:
         ]
         assert [r.friend_user_id for r in await repo.list_owed("referrer")] == ["c", "b", "a"]
         assert await repo.list_owed("someone-else") == []
+
+    async def test_workflow_credits_count_a_creators_settled_visitors_and_those_carrying_a_month(
+        self, repo: ReferralsRepository
+    ) -> None:
+        workflow = {"source": ReferralSource.WORKFLOW, "workflow_id": "wf_digest"}
+        visitors = {
+            ("applied", "referrer"): ReferralRewardState.APPLIED,
+            ("banked", "referrer"): ReferralRewardState.BANKED,
+            ("metered_1", "referrer"): ReferralRewardState.METERED,
+            ("metered_2", "referrer"): ReferralRewardState.METERED,
+            ("pending", "referrer"): ReferralRewardState.PENDING,
+            ("revoked", "referrer"): ReferralRewardState.REVOKED,
+            ("self", "referrer"): ReferralRewardState.SELF_REFERRAL,
+            ("elsewhere", "another-creator"): ReferralRewardState.METERED,
+        }
+        for (friend, referrer), state in visitors.items():
+            await repo.attribute(_referral(friend, referrer).model_copy(update=workflow))
+            await repo.update(friend, ReferralUpdate(reward_state=state))
+        await repo.attribute(_referral("joined").model_copy(update=workflow))
+        await repo.attribute(_referral("invited"))
+        await repo.update("invited", ReferralUpdate(reward_state=ReferralRewardState.APPLIED))
+
+        assert await repo.count_workflow_credits("referrer") == WorkflowCredits(
+            counted=4, carrying=2
+        )
 
     async def test_owed_rewards_are_pending_banked_or_asked_back_and_never_final(self, repo):
         states = {

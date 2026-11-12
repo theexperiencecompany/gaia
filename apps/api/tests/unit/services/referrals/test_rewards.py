@@ -978,13 +978,15 @@ class TestAWorkflowsMonth:
         with patch(
             f"{REWARDS}.referral_repository.count_workflow_credits",
             AsyncMock(return_value=WorkflowCredits(counted=4, carrying=1)),
-        ):
+        ) as meter:
             assert await settle_rewards(REFERRER.id) == [
                 RewardDelivery(ReferralRewardState.METERED)
             ]
 
+        meter.assert_awaited_once_with(REFERRER.id)
         seams.update.assert_awaited_once_with(
             FRIEND.id, ReferralUpdate(reward_state=ReferralRewardState.METERED)
         )
+        seams.log.set_ns.assert_called_once_with("referral", workflow_meter="counted")
         seams.pin_target.assert_not_awaited()
         seams.notify.assert_not_awaited()

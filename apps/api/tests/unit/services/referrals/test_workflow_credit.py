@@ -9,6 +9,7 @@ import pytest
 
 from app.models.user_models import UserDocument
 from app.services.referrals.workflow_credit import workflow_creator_code
+from tests.helpers import referrals_off_for
 
 MODULE = "app.services.referrals.workflow_credit"
 CREATOR = UserDocument(id="64a0000000000000000000c1", first_name="Cara")
@@ -91,5 +92,13 @@ async def test_a_creator_without_a_subscription_has_no_link_to_credit(seams: Sea
 @pytest.mark.usefixtures("referrals_off")
 async def test_with_referrals_off_no_creator_is_credited(seams: Seams) -> None:
     assert await workflow_creator_code("wf-1") is None
+    seams.ensure_code.assert_not_awaited()
+    seams.log.set_ns.assert_called_once_with("referral", workflow_credit="referrals_off")
+
+
+async def test_a_creator_the_program_is_held_back_from_is_not_credited(seams: Seams) -> None:
+    with referrals_off_for(CREATOR.id):
+        assert await workflow_creator_code("wf-1") is None
+
     seams.ensure_code.assert_not_awaited()
     seams.log.set_ns.assert_called_once_with("referral", workflow_credit="referrals_off")

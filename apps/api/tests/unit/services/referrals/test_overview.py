@@ -517,6 +517,20 @@ class TestWorkflowMeter:
         seams.find_by_ids.assert_awaited_once_with(["priya"])
         assert overview.months_earned == 2
 
+    async def test_a_banked_month_fills_the_meter_like_an_applied_one(self, seams: Seams) -> None:
+        seams.list_for_referrer.return_value = [
+            _visitor("v1", ReferralRewardState.APPLIED),
+            _visitor("v2", ReferralRewardState.BANKED),
+            *(_visitor(f"m{i}", ReferralRewardState.METERED) for i in range(5)),
+        ]
+        seams.find_by_ids.return_value = []
+
+        overview = await get_referral_overview(REFERRER.id)
+
+        assert overview.workflow_meter == ReferralWorkflowMeter(
+            subscribed=1, per_month=WORKFLOW_CREDITS_PER_MONTH, months_earned=2, published=0
+        )
+
     async def test_a_refunded_visitor_stops_counting_before_the_month_is_taken_back(
         self, seams: Seams
     ) -> None:
