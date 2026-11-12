@@ -12,11 +12,8 @@ import {
   GALLERY_STATES,
   type GalleryView,
 } from "./fixtures";
-import {
-  NudgesPreview,
-  OnboardingPreview,
-  SettingsStatesPreview,
-} from "./JourneyPreviews";
+import { OnboardingPreview, SettingsStatesPreview } from "./JourneyPreviews";
+import { NudgesPreview } from "./NudgesPreview";
 
 export interface PreviewProps {
   copyVariant: ReferralCopyVariant;

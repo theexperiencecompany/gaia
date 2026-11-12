@@ -1,70 +1,25 @@
 "use client";
 
-import type { ReferralCopyVariant } from "@shared/api/generated";
-import { useEffect } from "react";
-import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
 import {
   Invite,
   InviteComposer,
 } from "@/features/onboarding/components/stages/Invite";
-import { ChatReferralCard } from "@/features/referrals/components/ChatReferralCard";
 import { FriendsList } from "@/features/referrals/components/FriendsList";
 import { PostPaymentReferral } from "@/features/referrals/components/PostPaymentShareCard";
 import { WorkflowMeterSection } from "@/features/referrals/components/page/WorkflowMeterSection";
 import { ReferralsSettings } from "@/features/referrals/components/ReferralsSettings";
 import { SentWithGaiaToggle } from "@/features/referrals/components/SentWithGaiaToggle";
-import { SidebarReferralSlot } from "@/features/referrals/components/SidebarReferralPromo";
 import { SuggestionsList } from "@/features/referrals/components/SuggestionsList";
-import { WeeklyStatsChatCard } from "@/features/referrals/components/WeeklyStatsChatCard";
-import {
-  type InvitePhase,
-  useInviteStore,
-} from "@/features/referrals/stores/inviteStore";
-import { type FixtureAccount, FixtureQueries } from "./FixtureQueries";
+import { FixtureQueries } from "./FixtureQueries";
 import { Frame } from "./Frame";
 import {
-  FIXTURE_CONTACTS,
   FIXTURE_FRIEND_STATES,
-  FIXTURE_ME,
   FIXTURE_SUGGESTION_PHASES,
-  FIXTURE_WEEKLY,
   FIXTURE_WORKFLOW_METERS,
   fixtureSender,
 } from "./fixtures";
 import type { PreviewProps } from "./GalleryPreview";
-
-const proAccount = (copyVariant: ReferralCopyVariant): FixtureAccount => ({
-  plan: "pro",
-  me: { ...FIXTURE_ME.mid, copy_variant: copyVariant },
-  sentWithGaia: false,
-  weekly: FIXTURE_WEEKLY.mid,
-  contacts: FIXTURE_CONTACTS.map((contact) => contact.metadata),
-});
-
-/** Parks each address in its fixture phase while the preview is open; no timers run, so nothing is ever sent. */
-function useHeldInvites(
-  entries: { email: string; phase: InvitePhase | null }[],
-) {
-  useEffect(() => {
-    const fixtureEmails = new Set(entries.map(({ email }) => email));
-    const withoutFixtures = (invites: Record<string, InvitePhase>) =>
-      Object.fromEntries(
-        Object.entries(invites).filter(([email]) => !fixtureEmails.has(email)),
-      );
-    useInviteStore.setState((state) => {
-      const invites = withoutFixtures(state.invites);
-      for (const { email, phase } of entries) {
-        if (phase) invites[email] = phase;
-      }
-      return { invites };
-    });
-    // The store is the app's own, so leaving the preview takes the fixture phases back out.
-    return () =>
-      useInviteStore.setState((state) => ({
-        invites: withoutFixtures(state.invites),
-      }));
-  }, [entries]);
-}
+import { proAccount, useHeldInvites } from "./previewState";
 
 export function OnboardingPreview({ copyVariant }: PreviewProps) {
   return (
@@ -135,41 +90,5 @@ export function SettingsStatesPreview({ copyVariant }: PreviewProps) {
         </Frame>
       </div>
     </div>
-  );
-}
-
-const CONTACT_INVITES = FIXTURE_CONTACTS.map(({ metadata, phase }) => ({
-  email: metadata.url,
-  phase,
-}));
-
-export function NudgesPreview({ copyVariant }: PreviewProps) {
-  useHeldInvites(CONTACT_INVITES);
-  return (
-    <FixtureQueries key={copyVariant} account={proAccount(copyVariant)}>
-      <div className="flex flex-col gap-10">
-        <Frame label="Sidebar promo">
-          <div className="w-64 rounded-2xl bg-zinc-950 p-2">
-            <SidebarReferralSlot />
-          </div>
-        </Frame>
-        <Frame label="In-chat card under a finished reply">
-          <ChatReferralCard turnId="gallery-turn" />
-        </Frame>
-        <Frame label="Weekly stats card on a new chat (Mondays)">
-          <WeeklyStatsChatCard className="max-w-xl" />
-        </Frame>
-        <Frame label="Email hover card in a reply: hover an address">
-          <ul className="flex w-full max-w-xl flex-col gap-3 rounded-2xl bg-zinc-800 p-4">
-            {FIXTURE_CONTACTS.map(({ label, metadata }) => (
-              <li key={metadata.url} className="text-sm text-zinc-300">
-                {label}:{" "}
-                <CustomAnchor href={metadata.url}>{metadata.url}</CustomAnchor>
-              </li>
-            ))}
-          </ul>
-        </Frame>
-      </div>
-    </FixtureQueries>
   );
 }
