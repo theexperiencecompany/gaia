@@ -91,11 +91,10 @@ export default function SkillsManagement() {
       {/* Tabs, search, and New skill share one row. */}
       <div className="flex items-center gap-3">
         <Tabs
-          className={shapeVariants({ shape: "pill" })}
+          className={shapeVariants({ shape: "pill", className: "shrink-0" })}
           variant="primary"
           selectedKey={tab}
           onSelectionChange={(key) => setTab(key as string)}
-          className="shrink-0"
         >
           <Tabs.ListContainer>
             <Tabs.List aria-label="Skills">
