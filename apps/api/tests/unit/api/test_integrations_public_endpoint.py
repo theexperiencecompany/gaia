@@ -68,7 +68,6 @@ class TestGetPublicIntegration:
         """Return native platform integration with tools."""
         fake_native = MagicMock()
         fake_native.id = "googlecalendar"
-        fake_native.slug = "googlecalendar"
         fake_native.name = "Google Calendar"
         fake_native.description = "Calendar integration"
         fake_native.category = "productivity"
@@ -103,23 +102,10 @@ class TestGetPublicIntegration:
         assert body["authType"] == "oauth"
 
     @pytest.mark.asyncio
-    async def test_native_integration_answers_at_its_kebab_case_slug(
-        self, client: AsyncClient
-    ) -> None:
-        with patch(f"{_PUBLIC}.get_integration_tools", new_callable=AsyncMock, return_value=[]):
-            resp = await client.get(f"{BASE}/public/google-maps")
-
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["integrationId"] == "google_maps"
-        assert body["slug"] == "google-maps"
-
-    @pytest.mark.asyncio
     async def test_native_integration_with_mcp_auth(self, client: AsyncClient) -> None:
         """Native integration with mcp_config returns its auth_type."""
         fake_native = MagicMock()
         fake_native.id = "mcp_tool"
-        fake_native.slug = "mcp-tool"
         fake_native.name = "MCP Tool"
         fake_native.description = "An MCP tool"
         fake_native.category = "custom"
@@ -149,7 +135,6 @@ class TestGetPublicIntegration:
         """Internal integrations are not returned as native matches."""
         fake_native = MagicMock()
         fake_native.id = "internal_tool"
-        fake_native.slug = "internal-tool"
         fake_native.managed_by = "internal"
 
         with (

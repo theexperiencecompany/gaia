@@ -162,7 +162,7 @@
     },
     {
       "id": "microsoft_teams",
-      "slug": "microsoft-teams",
+      "slug": "microsoft_teams",
       "name": "Microsoft Teams",
       "description": "Collaborate with teams, send messages, manage channels, and automate team workflows",
       "category": "communication",
@@ -192,7 +192,7 @@
     },
     {
       "id": "google_maps",
-      "slug": "google-maps",
+      "slug": "google_maps",
       "name": "Google Maps",
       "description": "Search locations, get directions, and manage place information",
       "category": "productivity",

@@ -4,12 +4,17 @@ import JsonLd from "@/components/seo/JsonLd";
 import { getTranslatedAlternative } from "@/features/alternatives/data/getTranslatedAlternative";
 import { getComparison } from "@/features/comparisons/data/comparisonsData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
+import {
+  marketplacePath,
+  marketplaceSlug,
+} from "@/features/integrations/lib/marketplaceSlug";
 import { relatedIntegrations } from "@/features/integrations/lib/relatedIntegrations";
 import {
   getAllCommunityIntegrations,
   getIntegrationWorkflows,
   getNativeIntegrations,
   getPublicIntegration,
+  marketplaceApiIdentifier,
 } from "@/features/integrations/lib/serverMarketplaceApi";
 import type {
   CommunityIntegration,
@@ -49,7 +54,9 @@ async function allStaticParams() {
     getNativeIntegrations(),
     getAllCommunityIntegrations(),
   ]);
-  const slugs = new Set([...native, ...community].map((item) => item.slug));
+  const slugs = new Set(
+    [...native, ...community].map((item) => marketplaceSlug(item.slug)),
+  );
   return [...slugs].map((slug) => ({ slug }));
 }
 
@@ -63,9 +70,16 @@ interface Props {
   readonly params: Promise<{ readonly slug: string }>;
 }
 
+/** The integration a marketplace URL slug names; the API is keyed by its own slug. */
+async function integrationAtSlug(
+  slug: string,
+): Promise<PublicIntegrationResponse | null> {
+  return getPublicIntegration(await marketplaceApiIdentifier(slug));
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const integration = await getPublicIntegration(slug);
+  const integration = await integrationAtSlug(slug);
 
   if (!integration) {
     return {
@@ -81,8 +95,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return generatePageMetadata({
     title: generateIntegrationTitle(integration),
     description: generateIntegrationDescription(integration),
-    path: `/marketplace/${slug}`,
-    image: `/api/og/integration?slug=${slug}`,
+    path: marketplacePath(integration.slug),
+    image: `/api/og/integration?slug=${integration.slug}`,
     keywords: [
       integrationName,
       `AI assistant for ${integrationName}`,
@@ -104,7 +118,7 @@ export default async function IntegrationPage({ params }: Props) {
   const { slug } = await params;
   // Independent fetches — run in parallel to save a round-trip on the happy path.
   const [integration, comparison] = await Promise.all([
-    getPublicIntegration(slug),
+    integrationAtSlug(slug),
     getComparison(slug),
   ]);
 
@@ -112,7 +126,7 @@ export default async function IntegrationPage({ params }: Props) {
     notFound();
   }
 
-  const pageUrl = `${siteConfig.url}/marketplace/${slug}`;
+  const pageUrl = `${siteConfig.url}${marketplacePath(integration.slug)}`;
   const categoryLabel =
     integration.category.charAt(0).toUpperCase() +
     integration.category.slice(1);
