@@ -185,6 +185,14 @@ v3 has no `color` on Button (colour folds into `variant`), no `radius`, no `clas
 
 **Do not override HeroUI default styling.** Use variant props (`variant="tertiary"`, `variant="danger-soft"`, etc.) first. Custom `className` / inline `style` are acceptable only for one-off layout adjustments (`w-full`, `max-w-*`) or when the user explicitly asks for a visual customisation — never to override HeroUI's internal color or shape tokens. Overrides make components fragile across theme changes and upgrades.
 
+Three gates hold the HeroUI v3 design system, and each names the fix when it fails:
+
+- `node scripts/ci/checks.mjs heroui-style-overrides` (lint-node) rejects a `className`/`style` on a component imported from `@heroui/react` that sets colour, background, border colour, `rounded-*` or padding. Layout (`w-`, `h-`, `min-`/`max-`, `m-`, flex, grid, gap, order, `self-`, `justify-`, `items-`) stays free. The look belongs in a Button variant or `shape` (`components/shared/buttonVariants.ts`, `shape.ts`), a parity constant (`lib/heroui/accordionParity.ts`, `tabsParity.ts`), or a rule on HeroUI's BEM class in the `gaia` layer of `app/styles/base.css`. Overrides that predate the gate are in `scripts/ci/baselines/heroui-style-overrides.txt`, which only shrinks.
+- `src/__tests__/css-token-completeness.test.ts` compiles `base.css` plus each area sheet and fails on any fallback-less `var(--x)` that has no definition in both light and dark. A new token goes in the token bridge in `base.css`; one HeroUI's react-aria layer sets inline is listed, with its source, in `HEROUI_RUNTIME_TOKENS`.
+- `src/__tests__/heroui-v2-leftovers.test.ts` fails on v2 HeroUI APIs: `@heroui/<component>` imports, `isLoading`/`onClick`/`startContent`/`endContent`/`radius`/`color` on Button, `classNames`/`labelPlacement`, the v2 variant names, `useDisclosure`/`HeroUIProvider` from `@heroui`. The mapping is `tools/heroui-migration/decisions.json`.
+
+**Before merging a UI-heavy change, run the whole-app visual review:** `mise web:visual:review <base-ref> [head-ref]` (head defaults to `HEAD`). It seeds one local API, production-builds both refs, screenshots every app route and UI state, and writes `review.html` with each diff. It wraps `tools/heroui-migration/review/run.sh`, needs the full stack (run it on the M4, not a throttled laptop), and fails with the branch to merge if the harness is not on your branch yet. `mise web:visual` is the narrower marketing-page pixel diff on the Cloudflare worker build.
+
 **OpenUI components** must render **outside** the `imessage-bubble` wrapper, never inside it. Both use `bg-zinc-800`, so rendering inside makes them invisible against the bubble. See `apps/web/src/config/openui/CLAUDE.md` for the full OpenUI lifecycle and component checklist.
 
 ## i18n

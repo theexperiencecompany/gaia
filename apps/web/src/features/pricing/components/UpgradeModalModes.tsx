@@ -2,8 +2,8 @@
 
 import { Button, Chip, ModalBody, Tabs } from "@heroui/react";
 import type { ReactNode } from "react";
+import { chipVariants } from "@/components/shared/controlVariants";
 import { RaisedButton } from "@/components/ui/raised-button";
-
 import type { Plan } from "../api/pricingApi";
 import type { PaywallCopy } from "../constants";
 import {
@@ -50,7 +50,12 @@ export function UpgradeModalPlanPicker({
             <Tabs.Tab id="yearly">
               <div className="flex items-center gap-2">
                 Yearly
-                <Chip color="accent" size="sm" variant="primary">
+                <Chip
+                  color="accent"
+                  size="sm"
+                  variant="primary"
+                  className={chipVariants({ isSelected: true })}
+                >
                   <Chip.Label className="text-xs font-medium">
                     2 months free
                   </Chip.Label>

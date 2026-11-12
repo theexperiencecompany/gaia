@@ -2,13 +2,12 @@ import {
   ComboBox,
   EmptyState,
   Header,
-  Input,
   Label,
   ListBox,
   Skeleton,
 } from "@heroui/react";
 import type React from "react";
-
+import { ComboBoxInput } from "@/components/shared/ComboBoxInput";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useTriggerFilter } from "@/features/workflows/hooks/useTriggerFilter";
 import type { TriggerSchema } from "@/features/workflows/triggers/types/base";
@@ -128,10 +127,22 @@ export function TriggerAutocomplete({
         onSelectionChange={handleSelectionChange}
       >
         <Label>Event</Label>
-        <ComboBox.InputGroup>
-          <Input placeholder="Search apps and events..." />
-          <ComboBox.Trigger />
-        </ComboBox.InputGroup>
+        <ComboBoxInput
+          placeholder="Search apps and events..."
+          startContent={
+            selectedSchema &&
+            getToolCategoryIcon(selectedSchema.integration_id, {
+              width: 20,
+              height: 20,
+              showBackground: false,
+            })
+          }
+          isClearable
+          onClear={() => {
+            setFilterValue("");
+            onTriggerChange(null);
+          }}
+        />
         <ComboBox.Popover>
           <ListBox
             aria-label="Triggers"
