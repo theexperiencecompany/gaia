@@ -3,6 +3,7 @@
 import { Slider, Switch } from "@heroui/react";
 import { Moon02Icon } from "@icons";
 import { sliderVariants } from "@/components/shared/controlVariants";
+import { toneVariants } from "@/components/shared/tone";
 import { useQuietHours } from "@/features/settings/hooks/useQuietHours";
 import {
   formatHour,
