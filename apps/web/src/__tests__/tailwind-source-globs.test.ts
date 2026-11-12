@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, globSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -15,9 +16,9 @@ import { describe, expect, it } from "vitest";
  */
 const STYLESHEETS = [
   "src/app/styles/base.css",
-  "src/app/styles/marketing.css",
-  "src/app/styles/content.css",
-  "src/app/styles/app.css",
+  "src/app/styles/generated/marketing.css",
+  "src/app/styles/generated/content.css",
+  "src/app/styles/generated/app.css",
   "../mobile/global.css",
 ] as const;
 
@@ -35,11 +36,9 @@ function declaredSources(stylesheet: string): string[] {
 // base.css is the always-shipped floor and intentionally declares no file
 // globs (it only pins @source inline utilities). The area bundles must declare
 // real sources or they emit nothing for the routes that import them.
-const MUST_DECLARE_SOURCES = new Set([
-  "src/app/styles/marketing.css",
-  "src/app/styles/content.css",
-  "src/app/styles/app.css",
-]);
+const AREAS = ["marketing", "content", "app"] as const;
+const generated = (area: string) => `src/app/styles/generated/${area}.css`;
+const MUST_DECLARE_SOURCES = new Set<string>(AREAS.map(generated));
 
 describe("Tailwind @source globs", () => {
   for (const stylesheet of STYLESHEETS) {
@@ -59,58 +58,43 @@ describe("Tailwind @source globs", () => {
   }
 });
 
-const APP_DIR = path.resolve(__dirname, "../app");
-const SRC_DIR = path.resolve(__dirname, "..");
-const AREA_IMPORT =
-  /import\s+"(?:\.\.\/)+styles\/(marketing|content|app)\.css";/;
-const COMPONENT_IMPORT = /from\s+"@\/((?:features|components)\/[^"]+)"/g;
+const WEB_DIR = path.resolve(__dirname, "../..");
 
-interface SourceRule {
-  negated: boolean;
-  root: string;
-}
+describe("area bundles come from the import graph", () => {
+  it("the committed generated/<area>.css files match the routes that import each area", () => {
+    // Throws with the generator's stderr when a route's reach changed without `pnpm area-css`.
+    execFileSync(
+      process.execPath,
+      ["scripts/generate-area-css.mjs", "--check"],
+      {
+        cwd: WEB_DIR,
+        stdio: "pipe",
+      },
+    );
+  });
 
-function sourceRules(stylesheet: string): SourceRule[] {
-  const file = path.resolve(__dirname, "../..", stylesheet);
-  const css = readFileSync(file, "utf8");
-  return [...css.matchAll(/@source\s+(not\s+)?"([^"]+)"/g)]
-    .filter(([, , glob]) => !glob.startsWith("inline("))
-    .map(([, negated, glob]) => ({
-      negated: Boolean(negated),
-      root: path.resolve(path.dirname(file), glob),
-    }));
-}
+  for (const area of AREAS) {
+    it(`${area}.css styles its routes through generated/${area}.css only`, () => {
+      const css = readFileSync(
+        path.join(WEB_DIR, `src/app/styles/${area}.css`),
+        "utf8",
+      );
+      expect(css).toContain(`@import "./generated/${area}.css";`);
+      expect(css).not.toMatch(SOURCE_PATH);
+      expect(css).not.toContain("@heroui/styles/components/");
+    });
 
-function isScanned(file: string, rules: SourceRule[]): boolean {
-  const within = (root: string) =>
-    file === root || file.startsWith(`${root}${path.sep}`);
-  return (
-    rules.some((rule) => !rule.negated && within(rule.root)) &&
-    !rules.some((rule) => rule.negated && within(rule.root))
-  );
-}
-
-// A route gets only the utilities its area bundle's @source globs scan; a route
-// moved out of a scanned folder silently loses its own and its features' classes.
-describe("area bundles scan the routes that import them", () => {
-  const routes = globSync("**/{page,layout}.tsx", { cwd: APP_DIR });
-  for (const route of routes) {
-    const file = path.join(APP_DIR, route);
-    const source = readFileSync(file, "utf8");
-    const area = source.match(AREA_IMPORT)?.[1];
-    if (!area) continue;
-    it(`${route} is scanned by ${area}.css`, () => {
-      const rules = sourceRules(`src/app/styles/${area}.css`);
-      expect(isScanned(file, rules), `${area}.css skips ${route}`).toBe(true);
-      for (const [, specifier] of source.matchAll(COMPONENT_IMPORT)) {
-        const component = path.join(SRC_DIR, `${specifier}.tsx`);
-        if (!existsSync(component)) continue;
-        if (!readFileSync(component, "utf8").includes("className")) continue;
-        expect(
-          isScanned(component, rules),
-          `${area}.css skips ${specifier}, which ${route} renders`,
-        ).toBe(true);
-      }
+    // Tailwind 4.3 drops a file @source when a later one sits in an ancestor directory.
+    it(`generated/${area}.css lists no file after one in a deeper directory`, () => {
+      const dirs = declaredSources(generated(area)).map((file) =>
+        path.dirname(file),
+      );
+      dirs.forEach((dir, i) => {
+        const shadowed = dirs
+          .slice(0, i)
+          .find((earlier) => earlier.startsWith(`${dir}${path.sep}`));
+        expect(shadowed, `${dir} is listed after ${shadowed}`).toBeUndefined();
+      });
     });
   }
 });

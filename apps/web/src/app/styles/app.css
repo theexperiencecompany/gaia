@@ -2,48 +2,7 @@
 @import "tailwindcss/utilities.css" layer(utilities) source(none);
 @import "./theme.css";
 
-@import "@heroui/styles/components/accordion.css" layer(components);
-@import "@heroui/styles/components/alert.css" layer(components);
-@import "@heroui/styles/components/avatar.css" layer(components);
-@import "@heroui/styles/components/badge.css" layer(components);
-@import "@heroui/styles/components/button.css" layer(components);
-@import "@heroui/styles/components/button-group.css" layer(components);
-@import "@heroui/styles/components/card.css" layer(components);
-@import "@heroui/styles/components/checkbox.css" layer(components);
-@import "@heroui/styles/components/chip.css" layer(components);
-@import "@heroui/styles/components/close-button.css" layer(components);
-@import "@heroui/styles/components/combo-box.css" layer(components);
-@import "@heroui/styles/components/description.css" layer(components);
-@import "@heroui/styles/components/dropdown.css" layer(components);
-@import "@heroui/styles/components/empty-state.css" layer(components);
-@import "@heroui/styles/components/field-error.css" layer(components);
-@import "@heroui/styles/components/header.css" layer(components);
-@import "@heroui/styles/components/input.css" layer(components);
-@import "@heroui/styles/components/input-group.css" layer(components);
-@import "@heroui/styles/components/kbd.css" layer(components);
-@import "@heroui/styles/components/label.css" layer(components);
-@import "@heroui/styles/components/link.css" layer(components);
-@import "@heroui/styles/components/list-box.css" layer(components);
-@import "@heroui/styles/components/menu.css" layer(components);
-@import "@heroui/styles/components/modal.css" layer(components);
-@import "@heroui/styles/components/number-field.css" layer(components);
-@import "@heroui/styles/components/popover.css" layer(components);
-@import "@heroui/styles/components/progress-bar.css" layer(components);
-@import "@heroui/styles/components/radio.css" layer(components);
-@import "@heroui/styles/components/radio-group.css" layer(components);
-@import "@heroui/styles/components/scroll-shadow.css" layer(components);
-@import "@heroui/styles/components/search-field.css" layer(components);
-@import "@heroui/styles/components/select.css" layer(components);
-@import "@heroui/styles/components/separator.css" layer(components);
-@import "@heroui/styles/components/skeleton.css" layer(components);
-@import "@heroui/styles/components/slider.css" layer(components);
-@import "@heroui/styles/components/spinner.css" layer(components);
-@import "@heroui/styles/components/switch.css" layer(components);
-@import "@heroui/styles/components/table.css" layer(components);
-@import "@heroui/styles/components/tabs.css" layer(components);
-@import "@heroui/styles/components/textarea.css" layer(components);
-@import "@heroui/styles/components/textfield.css" layer(components);
-@import "@heroui/styles/components/tooltip.css" layer(components);
+@import "./generated/app.css";
 
 @reference "@heroui/styles/themes/default";
 @reference "@heroui/styles/utilities";
@@ -51,54 +10,3 @@
 
 @custom-variant dark (&:is(.dark *));
 @plugin "tailwindcss-animate";
-
-/* These are ALLOWLISTS: `source(none)` means a directory not named here emits
-   zero CSS, and Tailwind reports nothing. Anything a page imports must be
-   reachable from one of these lines (and the marketing/content bundles use
-   `@source not` so their subtrees are excluded on purpose).
-   scripts/audit-tailwind-classes.mjs is the backstop: it fails the build when
-   a class in src/ has no matching selector, which is how a missed directory
-   surfaces as an error instead of an unstyled page. */
-@source "../[locale]/(main)";
-@source "../[locale]/file-icons";
-@source "../[locale]/(desktop)";
-@source "../[locale]/(live)";
-@source "../[locale]/dev";
-@source "../connect";
-@source "../../features/auth";
-@source "../../features/browser";
-@source "../../features/calendar";
-@source "../../features/chat";
-@source "../../features/desktop-popup";
-@source "../../features/devices";
-@source "../../features/first-steps";
-@source "../../features/instructions";
-@source "../../features/integrations";
-@source "../../features/mail";
-@source "../../features/memory";
-@source "../../features/notification";
-@source "../../features/onboarding";
-@source "../../features/pins";
-@source "../../features/reddit";
-@source "../../features/search";
-@source "../../features/settings";
-@source "../../features/setup-wizard";
-@source "../../features/skills";
-@source "../../features/support";
-@source "../../features/todo";
-@source "../../features/wake-word";
-@source "../../features/weather";
-@source "../../features/whats-new";
-@source "../../features/workflows";
-@source "../../components/common";
-@source "../../components/layout";
-@source "../../components/layouts";
-@source "../../components/navigation";
-@source "../../components/seo";
-@source "../../components/browser";
-@source "../../components/shared";
-@source "../../components/ui";
-@source "../../hooks";
-@source "../../lib";
-@source "../../stores";
-@source "../../config/openui";
