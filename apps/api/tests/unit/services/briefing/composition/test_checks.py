@@ -238,6 +238,15 @@ class TestChartsFitTheirSeries:
             "block 1 (chart): a line draws at most 1 series"
         ]
 
+    def test_a_line_may_draw_exactly_the_most_series_the_editions_can_tell_apart(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("app.services.briefing.composition.checks.MAX_LINE_SERIES", 2)
+
+        assert _problems(_chart("meetings", "emails")) == [
+            "block 1 (chart): a line draws one unit, not emails, hours"
+        ]
+
     def test_a_line_over_series_of_different_units_is_refused_by_name(self) -> None:
         assert _problems(_chart("meetings", "emails")) == [
             "block 1 (chart): a line draws one unit, not emails, hours"
