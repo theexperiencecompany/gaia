@@ -36,7 +36,14 @@ const answerWith =
       ),
     );
 
-describe("referralsApi.getMe failure reporting", () => {
+type ReferralCall = () => Promise<unknown>;
+
+const getMe: ReferralCall = referralsApi.getMe;
+const getSuggestions: ReferralCall = referralsApi.getSuggestions;
+const sendInvite: ReferralCall = () =>
+  referralsApi.sendInvites(["friend@example.com"], "page");
+
+describe("referralsApi failure reporting", () => {
   const originalAdapter = apiauth.defaults.adapter;
   let ejectAppShellHandler: () => void;
 
@@ -54,12 +61,16 @@ describe("referralsApi.getMe failure reporting", () => {
     vi.restoreAllMocks();
   });
 
-  it.each(["REFERRAL_SUBSCRIPTION_REQUIRED", "REFERRALS_DISABLED"])(
-    "answers %s without logging, tracking or toasting a failure",
-    async (code) => {
+  it.each<[string, ReferralCall, string]>([
+    ["getMe", getMe, "REFERRAL_SUBSCRIPTION_REQUIRED"],
+    ["getMe", getMe, "REFERRALS_DISABLED"],
+    ["getSuggestions", getSuggestions, "REFERRALS_DISABLED"],
+  ])(
+    "%s answers %s without logging, tracking or toasting a failure",
+    async (_name, call, code) => {
       apiauth.defaults.adapter = answerWith(HTTP_FORBIDDEN, code);
 
-      await expect(referralsApi.getMe()).rejects.toMatchObject({
+      await expect(call()).rejects.toMatchObject({
         status: HTTP_FORBIDDEN,
         code,
       });
@@ -70,19 +81,24 @@ describe("referralsApi.getMe failure reporting", () => {
     },
   );
 
-  it.each([
-    [HTTP_FORBIDDEN, "FORBIDDEN"],
-    [HTTP_SERVER_ERROR, "internal_error"],
-  ])("still reports a %i %s as a failure", async (status, code) => {
-    apiauth.defaults.adapter = answerWith(status, code);
+  // An invite is a click, so the paused-program toast is the user's only answer.
+  it.each<[string, ReferralCall, number, string]>([
+    ["getMe", getMe, HTTP_FORBIDDEN, "FORBIDDEN"],
+    ["getMe", getMe, HTTP_SERVER_ERROR, "internal_error"],
+    ["sendInvites", sendInvite, HTTP_FORBIDDEN, "REFERRALS_DISABLED"],
+  ])(
+    "%s still reports a %i %s as a failure",
+    async (_name, call, status, code) => {
+      apiauth.defaults.adapter = answerWith(status, code);
 
-    await expect(referralsApi.getMe()).rejects.toMatchObject({ status, code });
+      await expect(call()).rejects.toMatchObject({ status, code });
 
-    expect(console.error).toHaveBeenCalledTimes(1);
-    expect(track).toHaveBeenCalledWith(
-      "api:request_failed",
-      expect.objectContaining({ status, error_code: code }),
-    );
-    expect(toast.error).toHaveBeenCalledTimes(1);
-  });
+      expect(console.error).toHaveBeenCalledTimes(1);
+      expect(track).toHaveBeenCalledWith(
+        "api:request_failed",
+        expect.objectContaining({ status, error_code: code }),
+      );
+      expect(toast.error).toHaveBeenCalledTimes(1);
+    },
+  );
 });
