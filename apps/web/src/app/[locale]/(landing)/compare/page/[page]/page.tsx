@@ -26,8 +26,10 @@ export const dynamicParams = false;
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
-  const { locale, page } = await params;
-  const comparisons = await getAllComparisons();
+  const [{ locale, page }, comparisons] = await Promise.all([
+    params,
+    getAllComparisons(),
+  ]);
   return comparisonsHubMetadata(
     locale,
     Number(page),

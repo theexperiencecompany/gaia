@@ -25,8 +25,10 @@ export const dynamicParams = false;
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
-  const { locale, page } = await params;
-  const terms = await getAllGlossaryTerms();
+  const [{ locale, page }, terms] = await Promise.all([
+    params,
+    getAllGlossaryTerms(),
+  ]);
   return glossaryHubMetadata(locale, Number(page), hubPageCount(terms.length));
 }
 
