@@ -380,6 +380,7 @@ apps/web/src/features/settings/components/PreferencesSettings.tsx:ListBox:bg-zin
 apps/web/src/features/settings/components/PreferencesSettings.tsx:Select.Popover:bg-zinc-800
 apps/web/src/features/settings/components/PreferencesSettings.tsx:Select.Trigger:bg-zinc-800/50
 apps/web/src/features/settings/components/PreferencesSettings.tsx:Select.Trigger:hover:bg-zinc-700/50
+apps/web/src/features/settings/components/QuietHoursSettings.tsx:Slider.Mark:text-zinc-500
 apps/web/src/features/settings/components/SettingsMenu.tsx:Dropdown.Item:hover:text-white
 apps/web/src/features/settings/components/SettingsMenu.tsx:Dropdown.Item:text-zinc-400
 apps/web/src/features/settings/components/SettingsMenu.tsx:Dropdown.Popover:bg-secondary-bg
