@@ -2,6 +2,7 @@
 
 import { Button, InputGroup, Switch } from "@heroui/react";
 import { Search01Icon } from "@icons";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   type IntegrationPermissions,
@@ -72,7 +73,10 @@ export const PermissionToolList = ({
       )}
 
       {tools.length > SEARCH_THRESHOLD && (
-        <InputGroup className="mb-2" variant="secondary">
+        <InputGroup
+          className={inputVariants({ size: "sm", className: "mb-2" })}
+          variant="secondary"
+        >
           <InputGroup.Prefix>
             <Search01Icon className="size-4 text-zinc-500" />
           </InputGroup.Prefix>

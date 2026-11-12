@@ -13,6 +13,7 @@ import {
   ZapIcon,
 } from "@icons";
 import { useEffect, useMemo, useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -356,7 +357,12 @@ export default function DemoIntegrationsView({
 
         {/* Search */}
         <div className="mb-6">
-          <InputGroup className="bg-zinc-800/50 border-zinc-700">
+          <InputGroup
+            className={inputVariants({
+              size: "sm",
+              className: "bg-zinc-800/50 border-zinc-700",
+            })}
+          >
             <InputGroup.Prefix>
               <Search01Icon className="text-zinc-500" width={18} height={18} />
             </InputGroup.Prefix>

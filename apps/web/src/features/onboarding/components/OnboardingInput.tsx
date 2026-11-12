@@ -20,6 +20,7 @@ import {
 import { SparklesIcon } from "@icons";
 import * as m from "motion/react-m";
 import { memo } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { shapeVariants } from "@/components/shared/shape";
 import {
   isListedProfession,
@@ -217,7 +218,7 @@ function OwnWordsInput({
       isInvalid={isAtLimit}
       // The counter and message sit under the field, so the row can grow taller
       // but never wider — `max-w-56` above stays the field's whole width.
-      className="max-w-56"
+      className={inputVariants({ size: "sm", className: "max-w-56" })}
     >
       <Input
         placeholder={placeholder}

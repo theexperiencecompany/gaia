@@ -11,6 +11,7 @@ import {
   TextField,
 } from "@heroui/react";
 import { useState, useTransition } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { MAX_MEMORY_LENGTH } from "@/features/memory/constants";
 import { toast } from "@/lib/toast";
@@ -94,7 +95,11 @@ export function AddMemoryModal({
                     : undefined}
                 </FieldError>
               </TextField>
-              <TextField value={categoryPath} onChange={setCategoryPath}>
+              <TextField
+                className={inputVariants({ size: "sm" })}
+                value={categoryPath}
+                onChange={setCategoryPath}
+              >
                 <Label>Folder</Label>
                 <Input placeholder="e.g. food-preferences" />
                 <Description>

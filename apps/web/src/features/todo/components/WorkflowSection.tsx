@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Description,
   Dropdown,
   DropdownItem,
@@ -311,15 +310,15 @@ export default function WorkflowSection({
             )}
             {hasWorkflow && (
               <Tooltip>
-                <Button
-                  variant="tertiary"
+                <GaiaButton
+                  variant="success-soft"
                   size="sm"
                   onPress={handleRun}
                   isDisabled={isGenerating}
                   isIconOnly
                 >
                   <PlayIcon className="h-4 w-4" />
-                </Button>
+                </GaiaButton>
                 <Tooltip.Content placement="bottom">
                   Run workflow
                 </Tooltip.Content>

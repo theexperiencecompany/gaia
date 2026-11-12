@@ -22,7 +22,10 @@ import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
-import { modalVariants } from "@/components/shared/controlVariants";
+import {
+  inputVariants,
+  modalVariants,
+} from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight, Gmail } from "@/components/shared/icons";
 import { Separator } from "@/components/ui/separator";
@@ -312,6 +315,7 @@ function EditEmailModal({
               {/* Subject Field */}
               <div className="mb-1">
                 <TextField
+                  className={inputVariants({ size: "sm" })}
                   value={draft.subject}
                   onChange={(value) =>
                     setDraft((d) => ({ ...d, subject: value }))
@@ -326,6 +330,7 @@ function EditEmailModal({
               {/* Body Field */}
               <div>
                 <TextField
+                  className={inputVariants({ size: "sm" })}
                   value={draft.body}
                   onChange={(value) => setDraft((d) => ({ ...d, body: value }))}
                   isInvalid={!!errors.body}
@@ -456,6 +461,7 @@ function RecipientSelectionModal({
 
               <div className="flex gap-2">
                 <TextField
+                  className={inputVariants({ size: "sm" })}
                   value={customEmailInput}
                   onChange={(value) => {
                     setCustomEmailInput(value);

@@ -42,7 +42,7 @@ export function PricingCardsFallback({
           Unable to load pricing plans. Please refresh the page or try again
           later.
         </p>
-        <Button variant="danger" onPress={() => window.location.reload()}>
+        <Button variant="danger-soft" onPress={() => window.location.reload()}>
           Refresh page
         </Button>
       </div>

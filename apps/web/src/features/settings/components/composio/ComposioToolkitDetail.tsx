@@ -11,6 +11,7 @@ import {
 } from "@heroui/react";
 import { CheckmarkCircle02Icon, Delete02Icon, Link01Icon } from "@icons";
 import { useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import type {
   ComposioCatalogEntry,
@@ -74,6 +75,7 @@ export function ComposioToolkitDetail({ slug }: ComposioToolkitDetailProps) {
       {canEnable &&
         detail.fields.map((field) => (
           <TextField
+            className={inputVariants({ size: "sm" })}
             key={field.name}
             isRequired={field.required}
             type={field.is_secret ? "password" : "text"}
@@ -152,8 +154,8 @@ function ToolkitActions({
     <div className="flex items-center justify-end gap-2">
       {toolkit.status === "enabled" && (
         <Button
-          size="sm"
           variant="danger-soft"
+          size="sm"
           isPending={disable.isPending}
           onPress={() => disable.mutate({ slug, name })}
         >

@@ -25,6 +25,7 @@ import {
 import Image from "next/image";
 import { type ComponentType, useEffect, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useBrowserLogins } from "../hooks/useBrowserLogins";
@@ -259,7 +260,7 @@ export function SavedLogins() {
               aria-label="Search saved sites"
               value={query}
               onChange={setQuery}
-              className="max-w-52"
+              className={inputVariants({ size: "sm", className: "max-w-52" })}
             >
               <SearchField.Group className="bg-zinc-800">
                 <Search01Icon className="size-4 text-zinc-500" />

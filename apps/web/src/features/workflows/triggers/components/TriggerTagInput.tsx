@@ -10,7 +10,7 @@
 import { Chip, InputGroup, Label, TextField } from "@heroui/react";
 import { Cancel01Icon } from "@icons";
 import { useId, useState } from "react";
-
+import { inputVariants } from "@/components/shared/controlVariants";
 import type { TriggerTagInputProps } from "./types";
 
 export function TriggerTagInput({
@@ -57,7 +57,7 @@ export function TriggerTagInput({
 
   return (
     <div className="flex w-full flex-col gap-2">
-      <TextField id={inputId}>
+      <TextField className={inputVariants({ size: "sm" })} id={inputId}>
         {label ? <Label>{label}</Label> : null}
         <InputGroup>
           {prefix ? (
