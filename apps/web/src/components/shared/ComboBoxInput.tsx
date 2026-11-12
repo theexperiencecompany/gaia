@@ -21,6 +21,7 @@ function ComboBoxClearButton({ onClear }: { onClear?: () => void }) {
   return (
     <CloseButton
       slot={null}
+      className="gaia-combo-clear"
       aria-label="Clear"
       onPress={() => {
         state.setSelectedKey(null);

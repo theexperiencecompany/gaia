@@ -1281,6 +1281,11 @@
 }
 
 .dark {
+  /* v2 flat field: default-100 (zinc-800) */
+  --field-background: var(--gaia-field-background);
+}
+
+.dark {
   --default-soft: color-mix(in oklab, #3f3f46 40%, transparent);
   --default-soft-hover: color-mix(in oklab, #3f3f46 60%, transparent);
 }
@@ -1339,6 +1344,13 @@ html {
   --gaia-input-sm-height: 2rem;
   --gaia-input-sm-padding-x: 0.5rem;
   --gaia-input-sm-font-size: 0.875rem;
+  --gaia-card-section-padding: 0.75rem;
+  --gaia-chip-sm-font-size: 0.75rem;
+  --gaia-chip-md-font-size: 0.875rem;
+  --gaia-chip-lg-font-size: 1rem;
+  --gaia-chip-lg-padding-x: 0.5rem;
+  --gaia-field-height: 2.5rem;
+  --gaia-field-background: #27272a;
   --gaia-switch-track-off: #3f3f46;
   --gaia-switch-padding: 0.25rem;
   --gaia-switch-sm-width: 2.5rem;
@@ -1419,6 +1431,50 @@ html {
     width: var(--gaia-checkbox-size);
     height: var(--gaia-checkbox-size);
     margin-inline-end: var(--gaia-checkbox-gap);
+  }
+
+  /* Card: v2's unpadded root whose header, body and footer each carry 12px. */
+  .card {
+    gap: 0;
+    padding: 0;
+  }
+  .card__header,
+  .card__content,
+  .card__footer {
+    padding: var(--gaia-card-section-padding);
+  }
+
+  /* Chip type scale: v2's 12/14/16px for sm/md/lg (v3 runs a step smaller). */
+  .chip {
+    font-size: var(--gaia-chip-md-font-size);
+  }
+  .chip--sm {
+    font-size: var(--gaia-chip-sm-font-size);
+  }
+  .chip--lg {
+    font-size: var(--gaia-chip-lg-font-size);
+    padding-inline: var(--gaia-chip-lg-padding-x);
+  }
+
+  /* Fields: v2 filled the row (fullWidth by default), sat 40px tall on the
+     zinc-800 field fill. */
+  .textfield,
+  .select,
+  .search-field,
+  .combo-box {
+    width: 100%;
+  }
+  .input,
+  .input-group,
+  .select__trigger,
+  .search-field__group,
+  .combo-box__input-group {
+    min-height: var(--gaia-field-height);
+  }
+
+  /* ComboBoxInput's clear button: v2 showed it only on hover or focus. */
+  .combo-box__input-group:not(:hover, :focus-within) .gaia-combo-clear {
+    display: none;
   }
 
   /* inputVariants({ size: "sm" }): v2's small field, 32px with an 8px inset. */
