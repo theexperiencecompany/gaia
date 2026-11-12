@@ -25,6 +25,7 @@ from app.services.short_link_service import (
     ShortLinkExhaustedError,
     get_public_file,
     get_public_view,
+    live_link_for_slug,
     live_share_url,
     optional_short_link,
     record_open,
@@ -421,3 +422,26 @@ class TestLiveShareUrl:
 
         repo.create.assert_not_awaited()
         capture.assert_not_called()
+
+
+class TestLiveLinkForSlug:
+    async def test_a_live_link_of_the_asked_type_is_returned(self, repo):
+        link = _link("abc", target_type=ShortLinkTargetType.OPENUI_ARTIFACT)
+        repo.get_by_slug.return_value = link
+
+        assert await live_link_for_slug("abc", ShortLinkTargetType.OPENUI_ARTIFACT) == link
+        repo.get_by_slug.assert_awaited_once_with("abc")
+
+    async def test_a_link_to_another_type_is_none(self, repo):
+        repo.get_by_slug.return_value = _link("abc", target_type=TODO)
+
+        assert await live_link_for_slug("abc", ShortLinkTargetType.OPENUI_ARTIFACT) is None
+
+    async def test_a_revoked_or_unknown_slug_is_none(self, repo):
+        repo.get_by_slug.return_value = _link(
+            "abc", target_type=ShortLinkTargetType.OPENUI_ARTIFACT, revoked=True
+        )
+        assert await live_link_for_slug("abc", ShortLinkTargetType.OPENUI_ARTIFACT) is None
+
+        repo.get_by_slug.return_value = None
+        assert await live_link_for_slug("abc", ShortLinkTargetType.OPENUI_ARTIFACT) is None

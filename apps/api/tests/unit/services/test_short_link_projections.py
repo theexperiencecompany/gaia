@@ -430,6 +430,50 @@ class TestOpenUIArtifact:
             assert leaked not in body
         artifacts.get.assert_awaited_once_with("a1", user_id="owner")
 
+    @pytest.mark.parametrize("owner_name", [None, ""])
+    async def test_an_owner_without_a_name_shares_anonymously(self, owner_name):
+        artifact = OpenUIArtifact(
+            id="a1",
+            user_id="owner",
+            kind=ArtifactKind.REPORT,
+            title="Pilot",
+            program='root = Artifact("Pilot", "s", [], [])',
+            brief_hash="h",
+            model="gpt-6-luna",
+        )
+        owner = AsyncMock()
+        owner.name = owner_name
+        with (
+            patch(f"{_MOD}.openui_artifact_repository") as artifacts,
+            patch(f"{_MOD}.user_repository") as users,
+        ):
+            artifacts.get = AsyncMock(return_value=artifact)
+            users.get = AsyncMock(return_value=owner)
+            view = await project_target(ShortLinkTargetType.OPENUI_ARTIFACT, "owner", "a1")
+
+        assert view is not None and view.shared_by is None
+        users.get.assert_awaited_once_with("owner")
+
+    async def test_a_vanished_owner_shares_anonymously(self):
+        artifact = OpenUIArtifact(
+            id="a1",
+            user_id="owner",
+            kind=ArtifactKind.REPORT,
+            title="Pilot",
+            program='root = Artifact("Pilot", "s", [], [])',
+            brief_hash="h",
+            model="gpt-6-luna",
+        )
+        with (
+            patch(f"{_MOD}.openui_artifact_repository") as artifacts,
+            patch(f"{_MOD}.user_repository") as users,
+        ):
+            artifacts.get = AsyncMock(return_value=artifact)
+            users.get = AsyncMock(return_value=None)
+            view = await project_target(ShortLinkTargetType.OPENUI_ARTIFACT, "owner", "a1")
+
+        assert view is not None and view.shared_by is None
+
     async def test_someone_elses_artifact_projects_to_nothing(self):
         with patch(f"{_MOD}.openui_artifact_repository") as artifacts:
             artifacts.get = AsyncMock(return_value=None)

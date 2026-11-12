@@ -8,8 +8,9 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 ARTIFACT_VALIDATOR_BUNDLE = REPO_ROOT / "tools" / "artifact-validate" / "dist" / "validate.cjs"
 ARTIFACT_VALIDATOR_TIMEOUT_SECONDS = 20
 
-# Generated per-kind system prompts (scripts/openui/generate-artifact-prompt.ts).
-ARTIFACT_PROMPTS_DIR = REPO_ROOT / "apps" / "api" / "app" / "agents" / "prompts" / "artifacts"
+# Generated per-kind system prompts (scripts/openui/generate-artifact-prompt.ts), found from the
+# app package so the mutation lane's relocated copy of app/ still reads them.
+ARTIFACT_PROMPTS_DIR = Path(__file__).resolve().parents[1] / "agents" / "prompts" / "artifacts"
 
 # One generation, repair included, gives up after this long and the tool reports a timeout.
 ARTIFACT_GENERATION_TIMEOUT_SECONDS = 120
