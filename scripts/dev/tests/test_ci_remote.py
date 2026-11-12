@@ -20,8 +20,9 @@ Every assertion here is about that gap closing:
   - `--json` carries the same four things so an agent can parse them.
 
 The network seam is HTTP: every read goes through the real lib/github.py client
-(retries included) to scripts/ci/tests/github_fake.py's local server. Only
-`gh run rerun`, the one write, still shells out to `gh`.
+(retries included) to scripts/ci/tests/github_fake.py's local server, the PR
+lookup and the `--rerun-timeouts` write included. Only `gh stack view`, which
+reads the local gh-stack extension, still shells out.
 
 Run: uv run pytest scripts/dev/tests/test_ci_remote.py -p no:xdist
 """
@@ -92,6 +93,12 @@ PR_META: dict[str, Any] = {
     "reviewDecision": None,
     "reviewThreads": {"totalCount": 1, "nodes": [{"isResolved": True}]},
 }
+OPEN_PR_NODE: dict[str, Any] = {
+    "number": 7,
+    "url": "https://github.com/o/r/pull/7",
+    "headRefOid": "abc123",
+    "state": "OPEN",
+}
 
 FAILED_CHECK: dict[str, Any] = {
     "name": "mutation (shard 3/6 (19 modules))",
@@ -139,21 +146,31 @@ class FakeGh:
         # Keyed by artifact id; the None key is served for any artifact id.
         self.zip_blobs = zip_blobs or {}
         self.job_log = job_log
+        # Every PR ever opened from the branch, newest first, as the lookup serves them.
+        self.branch_prs = [OPEN_PR_NODE]
         self.calls: list[str] = []
 
     def respond(self, req: Request) -> Reply:
         path = req.path
         self.calls.append(path)
         if path == "/graphql":
-            return Reply(body={"data": {"repository": {"pullRequest": self.pr_meta}}})
-        if path.endswith("/check-runs"):
-            return Reply(body={"check_runs": self.checks})
-        if path.endswith("/status"):
-            return Reply(body={"statuses": self.statuses})
-        if path.endswith("/actions/runs"):
-            return Reply(body={"workflow_runs": self.workflow_runs})
-        if path.endswith("/artifacts"):
-            return Reply(body={"artifacts": self.artifacts})
+            query = req.body.get("query", "") if isinstance(req.body, dict) else ""
+            if "pullRequests(headRefName" in query:
+                repository = {"pullRequests": {"nodes": self.branch_prs}}
+            else:
+                repository = {"pullRequest": self.pr_meta}
+            return Reply(body={"data": {"repository": repository}})
+        if req.method == "POST" and path.endswith("/rerun-failed-jobs"):
+            return Reply(201)
+        listings = {
+            "/check-runs": ("check_runs", self.checks),
+            "/status": ("statuses", self.statuses),
+            "/actions/runs": ("workflow_runs", self.workflow_runs),
+            "/artifacts": ("artifacts", self.artifacts),
+        }
+        for suffix, (key, items) in listings.items():
+            if path.endswith(suffix):
+                return Reply(body={key: items})
         if path.endswith("/zip"):
             artifact_id = int(path.rsplit("/", 2)[-2])
             return Reply(body=self.zip_blobs.get(artifact_id, self.zip_blobs.get(None, b"")))
@@ -170,10 +187,6 @@ def api(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeGitHub]:
         yield fake_api
 
 
-def no_gh(*args: object, **kwargs: object) -> tuple[int, str, str]:
-    raise AssertionError(f"unexpected gh subprocess call: {args}")
-
-
 @pytest.fixture
 def wire(api: FakeGitHub, monkeypatch: pytest.MonkeyPatch):
     """Serve a FakeGh's payloads over HTTP and stub the git / gh-stack lookups around it."""
@@ -182,14 +195,8 @@ def wire(api: FakeGitHub, monkeypatch: pytest.MonkeyPatch):
         # Looked up per request, so a test can swap fake.respond after wiring.
         for method in ("GET", "POST"):
             api.on(method, ".*", responder=lambda req: fake.respond(req))
-        monkeypatch.setattr(ci_remote, "gh", no_gh)
         monkeypatch.setattr(ci_remote, "parse_repo", lambda: ("o", "r"))
         monkeypatch.setattr(ci_remote, "current_branch", lambda: "feat/thing")
-        monkeypatch.setattr(
-            ci_remote,
-            "resolve_pr",
-            lambda *_a, **_k: (7, "https://github.com/o/r/pull/7", "abc123"),
-        )
         monkeypatch.setattr(ci_remote, "fetch_stack", lambda _repo: stack)
         # Off the box by default: the real call shells out to runner.py, and a
         # suite whose output depends on the host's load average is not a test.
@@ -349,6 +356,59 @@ def test_a_failing_verdict_whose_lane_matches_no_check_is_still_printed(
     assert "3 unused exports" in out
 
 
+# ---------------------------------------------------------------------------- PR lookup
+
+
+def graphql_variables(api: FakeGitHub, marker: str) -> list[Any]:
+    """List the variables of every GraphQL request whose query contains marker."""
+    return [
+        r.body["variables"]
+        for r in api.requests
+        if r.path == "/graphql" and isinstance(r.body, dict) and marker in r.body["query"]
+    ]
+
+
+def test_a_branch_with_no_pr_says_so_and_exits_zero(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeGh(checks=[PASSED_CHECK])
+    fake.branch_prs = []
+    wire(fake)
+    assert run_cli(monkeypatch, []) == 0
+    assert "ci:remote: no open PR for 'feat/thing'" in capsys.readouterr().out
+
+
+def test_the_open_pr_wins_over_a_newer_closed_one_on_the_same_branch(
+    wire, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = FakeGh(checks=[PASSED_CHECK])
+    fake.branch_prs = [dict(OPEN_PR_NODE, number=9, state="CLOSED"), OPEN_PR_NODE]
+    wire(fake)
+    run_cli(monkeypatch, [])
+    [lookup] = graphql_variables(api, "pullRequests(headRefName")
+    assert lookup == {"owner": "o", "name": "r", "branch": "feat/thing"}
+    assert [v["number"] for v in graphql_variables(api, "reviewDecision")] == [7]
+
+
+def test_a_branch_whose_only_pr_merged_still_reports_that_pr(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeGh(checks=[PASSED_CHECK])
+    fake.branch_prs = [dict(OPEN_PR_NODE, state="MERGED")]
+    wire(fake)
+    assert run_cli(monkeypatch, []) == 0
+    assert "PR #7 feat: a thing" in capsys.readouterr().out
+
+
+def test_a_pr_number_is_looked_up_by_number_not_as_a_branch(
+    wire, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(FakeGh(checks=[PASSED_CHECK]))
+    assert run_cli(monkeypatch, ["#7"]) == 0
+    assert graphql_variables(api, "pullRequests(headRefName") == []
+    assert "PR #7 feat: a thing" in capsys.readouterr().out
+
+
 # -------------------------------------------------------------------- output discipline
 
 
@@ -439,14 +499,12 @@ def stacked(wire, monkeypatch: pytest.MonkeyPatch):
         fake = FakeGh(checks=[PASSED_CHECK])
         wire(fake, stack=STACK)
         rollup = stack_rollup(*prs)
-        seen = {"graphql": 0}
         respond = fake.respond
 
         def router(req: Request) -> Reply:
-            if req.path == "/graphql":
-                seen["graphql"] += 1
-                if seen["graphql"] > 1:  # first is PR state, second is the stack rollup
-                    return Reply(body=rollup)
+            query = req.body.get("query", "") if isinstance(req.body, dict) else ""
+            if req.path == "/graphql" and "mergeStateStatus" in query:
+                return Reply(body=rollup)
             return respond(req)
 
         monkeypatch.setattr(fake, "respond", router)
@@ -1062,17 +1120,20 @@ def test_a_one_module_shard_finds_its_record_by_the_module_its_row_names(
 def test_rerun_timeouts_reruns_the_failed_jobs_when_nothing_survived(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    wire_shard_record(wire, [ERROR_MODULE], NO_STATE_LOG)
-    reruns: list[list[str]] = []
-
-    def rerun(args: list[str], timeout_s: int) -> tuple[int, str, str]:
-        reruns.append(args)
-        return 0, "", ""
-
-    monkeypatch.setattr(ci_remote, "gh", rerun)
+    fake = wire_shard_record(wire, [ERROR_MODULE], NO_STATE_LOG)
     assert run_cli(monkeypatch, ["--rerun-timeouts"]) == 0
-    assert reruns == [["run", "rerun", "99", "--failed"]]
+    posts = [c for c in fake.calls if c.endswith("/rerun-failed-jobs")]
+    assert posts == ["/repos/o/r/actions/runs/99/rerun-failed-jobs"]
     assert "re-ran the failed jobs of run 99" in capsys.readouterr().out
+
+
+def test_a_refused_rerun_exits_one_and_names_the_endpoint(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = wire_shard_record(wire, [ERROR_MODULE], NO_STATE_LOG)
+    answer(monkeypatch, fake, "/rerun-failed-jobs", Reply(403, {"message": "forbidden"}))
+    assert run_cli(monkeypatch, ["--rerun-timeouts"]) == 1
+    assert "rerun-failed-jobs failed after 1 attempt(s) — HTTP 403" in capsys.readouterr().err
 
 
 def test_rerun_timeouts_refuses_when_a_mutant_actually_survived(

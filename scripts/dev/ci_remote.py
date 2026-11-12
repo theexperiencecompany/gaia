@@ -58,14 +58,7 @@ import zipfile
 
 sys.path.insert(0, str(__file__.rsplit("/", 1)[0]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ci"))
-from gaia_gh import (
-    classify_failure,
-    current_branch,
-    eprint,
-    gh,
-    parse_repo,
-    resolve_pr,
-)
+from gaia_gh import current_branch, eprint, exit_code, parse_repo, resolve_pr
 from lib.github import GitHub, GitHubError
 
 SCHEMA_VERSION = 2
@@ -81,8 +74,6 @@ DETAIL_PREVIEW_LINES = 3
 SHOWN_LINE_CHARS = 220
 MAX_CHECK_PAGE_SIZE = 100
 FAILING = ("failed", "error", "timeout")
-# Exit 1 like gaia_gh.classify_failure's auth bucket; any other permanent API error is exit 2.
-AUTH_FAILURES = frozenset({HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN})
 # The one required check: ci.yml's aggregate over every gated job.
 GATE_CHECK = "quality-gate"
 # The app slug a commit status is filed under once it is read as a check.
@@ -1444,11 +1435,8 @@ def rerun_timeouts(repo: Repo, report: dict) -> int:
         return 1
 
     for run_id in sorted(runs):
-        rc, _, err = gh(["run", "rerun", str(run_id), "--failed"], repo.timeout_s)
-        if rc != 0:
-            eprint(f"ci:remote: gh run rerun {run_id} --failed failed:\n{err.strip()[:400]}")
-            return classify_failure(err, rc)
-        print(f"--rerun-timeouts: re-ran the failed jobs of run {run_id} (gh run rerun --failed).")
+        repo.github.post(repo.api(f"actions/runs/{run_id}/rerun-failed-jobs"))
+        print(f"--rerun-timeouts: re-ran the failed jobs of run {run_id}.")
     print(f"--rerun-timeouts: {plural(len(runs), 'run')} re-queued. `--watch` to follow them.")
     return 0
 
@@ -1593,7 +1581,7 @@ def main() -> int:
         return run(Repo(owner, name, options.timeout_s, github), args.branch, options)
     except GitHubError as err:
         eprint(f"ci:remote: {err}")
-        return 1 if err.transient or err.status in AUTH_FAILURES else 2
+        return exit_code(err)
 
 
 def run(repo: Repo, branch_arg: str | None, options: Options) -> int:
@@ -1606,11 +1594,11 @@ def run(repo: Repo, branch_arg: str | None, options: Options) -> int:
         return exit_code
 
     branch = branch_arg or current_branch()
-    resolved = resolve_pr(repo.slug, branch, options.timeout_s)
-    if resolved is None:
+    pr = resolve_pr(repo.github, repo.owner, repo.name, branch)
+    if pr is None:
         print(f"ci:remote: no open PR for '{branch}' — push first or check the branch name.")
         return 0
-    pr_number, _, _ = resolved
+    pr_number = pr.number
 
     if options.watch:
         report, exit_code = watch(repo, pr_number, branch, options)
