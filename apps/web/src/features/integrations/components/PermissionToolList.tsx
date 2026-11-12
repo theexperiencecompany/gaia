@@ -2,6 +2,7 @@
 
 import { Button, InputGroup, Switch } from "@heroui/react";
 import { Search01Icon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   type IntegrationPermissions,
   useToolFilter,
@@ -12,7 +13,6 @@ import {
   SEARCH_THRESHOLD,
   TOOL_SECTIONS,
 } from "@/features/integrations/utils/permissionCopy";
-
 import { PermissionCard } from "./PermissionCard";
 
 interface PermissionToolListProps {
@@ -59,15 +59,15 @@ export const PermissionToolList = ({
           <p className="flex-1 text-xs leading-relaxed text-amber-400">
             Nothing here will stop GAIA until you change the setting above.
           </p>
-          <Button
+          <GaiaButton
             size="sm"
-            variant="tertiary"
+            variant="default-soft"
             className="h-7 shrink-0"
             isPending={permissions.isSavingMode}
             onPress={() => permissions.changeMode("auto")}
           >
             Turn on
-          </Button>
+          </GaiaButton>
         </div>
       )}
 

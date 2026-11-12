@@ -28,7 +28,7 @@ export default function MemoryModal({ isOpen, onClose }: MemoryModalProps) {
             </Modal.Body>
 
             <Modal.Footer>
-              <Button variant="tertiary" onPress={onClose}>
+              <Button variant="ghost" onPress={onClose}>
                 Close
               </Button>
             </Modal.Footer>

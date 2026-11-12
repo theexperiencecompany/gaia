@@ -8,6 +8,7 @@ import {
   ZapIcon,
 } from "@icons";
 import type React from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { IntegrationConnectCard } from "@/components/shared/IntegrationConnectCard";
 
 export interface CardAction {
@@ -98,14 +99,14 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
         </div>
         {hasMenu && (
           <Dropdown className="text-foreground">
-            <Button
+            <GaiaButton
               size="sm"
-              variant="tertiary"
+              variant="default-soft"
               className="text-xs text-zinc-400"
             >
               Ask GAIA
               <ArrowUpRight01Icon className="h-3.5 w-3.5" />
-            </Button>
+            </GaiaButton>
             <Dropdown.Popover placement="bottom end">
               <Dropdown.Menu aria-label={`${title} actions`} className="w-100">
                 {hasActions ? (

@@ -1,7 +1,8 @@
 "use client";
 
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { skillsApi } from "../api/skillsApi";
 import type { BuiltinSkillInfo } from "../api/types";
@@ -71,14 +72,14 @@ export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-900/60 px-6 py-12 text-center">
         <p className="text-sm text-zinc-400">Couldn't load built-in skills.</p>
-        <Button
+        <GaiaButton
           size="sm"
-          variant="tertiary"
+          variant="default-soft"
           className="rounded-xl"
           onPress={() => load()}
         >
           Retry
-        </Button>
+        </GaiaButton>
       </div>
     );
   }

@@ -7,6 +7,7 @@ import { formatDistanceToNow } from "date-fns";
 import { type ReactNode, useEffect, useState, useTransition } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
@@ -164,18 +165,16 @@ export function CoreDocuments() {
           setDraft(null);
         }}
       >
-        <Tabs.List>
-          {CORE_DOCUMENTS.map((doc) => (
-            <Tabs.Tab key={doc.docType} id={doc.docType}>
-              {doc.fileName}
-            </Tabs.Tab>
-          ))}
-        </Tabs.List>
-        {CORE_DOCUMENTS.map((doc) => (
-          <Tabs.Panel key={doc.docType} id={doc.docType}>
-            {null}
-          </Tabs.Panel>
-        ))}
+        <Tabs.ListContainer>
+          <Tabs.List aria-label="Core documents">
+            {CORE_DOCUMENTS.map((doc) => (
+              <Tabs.Tab key={doc.docType} id={doc.docType}>
+                {doc.fileName}
+                <Tabs.Indicator />
+              </Tabs.Tab>
+            ))}
+          </Tabs.List>
+        </Tabs.ListContainer>
       </Tabs>
 
       <div className="rounded-2xl bg-zinc-800 px-5 py-4">
@@ -200,15 +199,15 @@ export function CoreDocuments() {
                 </span>
               </p>
               {draft === null && (
-                <Button
+                <GaiaButton
                   size="sm"
-                  variant="tertiary"
+                  variant="default-soft"
                   className="shrink-0 rounded-xl"
                   onPress={() => setDraft(document.content)}
                 >
                   <PencilEdit02Icon className="size-4" />
                   Edit
-                </Button>
+                </GaiaButton>
               )}
             </div>
           </>

@@ -2,8 +2,8 @@ import { Button, Tooltip } from "@heroui/react";
 import { CheckmarkCircle02Icon } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
-
 import {
   type NotificationAction,
   NotificationStatus,
@@ -61,14 +61,14 @@ export const NotificationItem = ({
         {isUnread && (
           <div className="flex shrink-0 items-center gap-1">
             <Tooltip>
-              <Button
-                variant="tertiary"
+              <GaiaButton
+                variant="default-soft"
                 size="sm"
                 isIconOnly
                 onPress={() => onMarkAsRead(notification.id)}
               >
                 <CheckmarkCircle02Icon className="h-[18px] w-[18px]" />
-              </Button>
+              </GaiaButton>
               <Tooltip.Content>Mark as Read</Tooltip.Content>
             </Tooltip>
           </div>

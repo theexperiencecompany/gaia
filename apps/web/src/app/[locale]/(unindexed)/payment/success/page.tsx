@@ -1,7 +1,7 @@
 "use client";
 import "../../../../styles/marketing.css";
 
-import { Button, Spinner } from "@heroui/react";
+import { Spinner } from "@heroui/react";
 import {
   Alert02Icon,
   CheckmarkCircle02Icon,
@@ -11,6 +11,7 @@ import {
 import * as m from "motion/react-m";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { PaymentBackdrop } from "@/features/pricing/components/PaymentBackdrop";
@@ -224,13 +225,13 @@ export default function PaymentSuccessPage() {
               {isRestarting ? "Starting checkout" : "Try again"}
               {!isRestarting && <RedoIcon className="size-4" />}
             </RaisedButton>
-            <Button
-              variant="tertiary"
+            <GaiaButton
+              variant="default-soft"
               className="w-full rounded-xl"
               onPress={() => router.push("/pricing")}
             >
               Back to pricing
-            </Button>
+            </GaiaButton>
           </div>
         </div>
       )}

@@ -9,6 +9,7 @@ import {
 } from "@icons";
 import { useHotkeys } from "react-hotkeys-hook";
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   useCreateEventAction,
   useDaysToShow,
@@ -118,14 +119,14 @@ export default function CalendarHeader() {
           <Button isIconOnly size="sm" variant="ghost" onPress={goToNextDay}>
             <ArrowRight01Icon className="h-5 w-5 text-zinc-400" />
           </Button>
-          <Button
-            variant="tertiary"
+          <GaiaButton
+            variant="default-soft"
             onPress={goToToday}
             size="sm"
             className="ml-"
           >
             Today
-          </Button>
+          </GaiaButton>
         </div>
 
         {createEventAction && (

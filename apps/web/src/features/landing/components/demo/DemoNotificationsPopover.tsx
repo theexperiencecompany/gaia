@@ -92,14 +92,14 @@ export default function DemoNotificationsPopover({
                       {n.unread && (
                         <div className="flex shrink-0 items-center gap-1">
                           <Tooltip>
-                            <Button
-                              variant="tertiary"
+                            <GaiaButton
+                              variant="default-soft"
                               size="sm"
                               isIconOnly
                               aria-label="Mark as read"
                             >
                               <CheckmarkBadge01Icon className="h-3.5 w-3.5" />
-                            </Button>
+                            </GaiaButton>
 
                             <Tooltip.Content>Mark as read</Tooltip.Content>
                           </Tooltip>

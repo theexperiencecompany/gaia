@@ -3,6 +3,7 @@
 import { Button, Chip } from "@heroui/react";
 import { usePathname, useRouter } from "next/navigation";
 
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import {
   BILLING_ONLY_SETTINGS_KEYS,
@@ -45,14 +46,8 @@ export default function SettingsSidebar() {
             : false;
           const Icon = item.icon;
 
-          return (
-            <Button
-              key={item.key}
-              onPress={() => item.href && handleNavigation(item.href)}
-              size="sm"
-              variant={isActive ? "secondary" : "ghost"}
-              className={`group ${isActive ? "text-primary" : "text-zinc-400 hover:text-white"} flex w-full justify-start`}
-            >
+          const label = (
+            <>
               {item.iconElement ??
                 (Icon && (
                   <Icon
@@ -66,6 +61,29 @@ export default function SettingsSidebar() {
                   New
                 </Chip>
               )}
+            </>
+          );
+          const navigate = () => item.href && handleNavigation(item.href);
+
+          return isActive ? (
+            <GaiaButton
+              key={item.key}
+              onPress={navigate}
+              size="sm"
+              variant="accent-soft"
+              className="group flex w-full justify-start text-primary"
+            >
+              {label}
+            </GaiaButton>
+          ) : (
+            <Button
+              key={item.key}
+              onPress={navigate}
+              size="sm"
+              variant="ghost"
+              className="group flex w-full justify-start text-zinc-400 hover:text-white"
+            >
+              {label}
             </Button>
           );
         })}

@@ -32,7 +32,7 @@ export function LiveKeyboard({ live, className }: LiveKeyboardProps) {
       <GaiaButton
         shape="pill"
         size="sm"
-        variant="tertiary"
+        variant="default-soft"
         className={className}
         onPress={live.openKeyboard}
       >

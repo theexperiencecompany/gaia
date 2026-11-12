@@ -1,4 +1,4 @@
-import { Button, Tooltip } from "@heroui/react";
+import { Tooltip } from "@heroui/react";
 import {
   Download01Icon,
   MoveIcon,
@@ -8,6 +8,7 @@ import {
 } from "@icons";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 // Mermaid SDK init lives here, not CodeBlock, so it's only pulled into
 // the bundle when this renders; combined with `dynamic({ ssr: false })`,
@@ -190,26 +191,42 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
       </div>
       <div className="absolute right-2 bottom-2 flex flex-col items-center gap-1">
         <Tooltip>
-          <Button size="sm" onPress={handleZoomOut} isIconOnly>
+          <GaiaButton
+            variant="default-solid"
+            size="sm"
+            onPress={handleZoomOut}
+            isIconOnly
+          >
             <ZoomOutAreaIcon size={18} />
-          </Button>
+          </GaiaButton>
           <Tooltip.Content>Zoom Out</Tooltip.Content>
         </Tooltip>
         <Tooltip>
-          <Button size="sm" onPress={resetZoom} isIconOnly>
+          <GaiaButton
+            variant="default-solid"
+            size="sm"
+            onPress={resetZoom}
+            isIconOnly
+          >
             <RedoIcon width={18} height={18} />
-          </Button>
+          </GaiaButton>
           <Tooltip.Content>Reset Zoom</Tooltip.Content>
         </Tooltip>
         <Tooltip>
-          <Button size="sm" onPress={handleZoomIn} isIconOnly>
+          <GaiaButton
+            variant="default-solid"
+            size="sm"
+            onPress={handleZoomIn}
+            isIconOnly
+          >
             <ZoomInAreaIcon size={18} />
-          </Button>
+          </GaiaButton>
           <Tooltip.Content>Zoom In</Tooltip.Content>
         </Tooltip>
 
         <Tooltip>
-          <Button
+          <GaiaButton
+            variant="default-solid"
             size="sm"
             onPress={() => {
               resetPan();
@@ -218,14 +235,19 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
             isIconOnly
           >
             <MoveIcon size={18} />
-          </Button>
+          </GaiaButton>
           <Tooltip.Content>Reset Pan &amp; Zoom</Tooltip.Content>
         </Tooltip>
 
         <Tooltip>
-          <Button size="sm" onPress={handleDownload} isIconOnly>
+          <GaiaButton
+            variant="default-solid"
+            size="sm"
+            onPress={handleDownload}
+            isIconOnly
+          >
             <Download01Icon size={18} />
-          </Button>
+          </GaiaButton>
           <Tooltip.Content>Download Flowchart (.svg)</Tooltip.Content>
         </Tooltip>
       </div>

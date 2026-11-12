@@ -17,7 +17,7 @@ const WAKE_ICONS = {
 export function TodoRunWakeIndicator({ wake }: TodoRunWakeIndicatorProps) {
   const Icon = WAKE_ICONS[wake.kind];
   return (
-    <Chip variant="secondary" className="mx-3 mt-2 mb-1">
+    <Chip variant="soft" className="mx-3 mt-2 mb-1">
       <Icon width={16} height={16} className="mx-1" />
       <Chip.Label>{describeTodoRunWake(wake)}</Chip.Label>
     </Chip>

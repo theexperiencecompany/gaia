@@ -14,7 +14,7 @@ export default function ContactSupport() {
         <Tooltip>
           <GaiaButton
             shape="pill"
-            variant="tertiary"
+            variant="default-soft"
             fullWidth
             className="text-left flex justify-center text-zinc-300 h-7"
             size="sm"

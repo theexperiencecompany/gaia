@@ -234,7 +234,7 @@ export default function ApprovalReviewSheet({
                             <Button
                               size="sm"
                               variant={
-                                picked === "approve" ? "primary" : "secondary"
+                                picked === "approve" ? "primary" : "tertiary"
                               }
                               onPress={() =>
                                 toggle(item.approval_id, "approve")
@@ -245,7 +245,7 @@ export default function ApprovalReviewSheet({
                             <Button
                               size="sm"
                               variant={
-                                picked === "deny" ? "primary" : "secondary"
+                                picked === "deny" ? "danger" : "tertiary"
                               }
                               onPress={() => toggle(item.approval_id, "deny")}
                             >

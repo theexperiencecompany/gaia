@@ -70,7 +70,7 @@ export function WhatsNewCard() {
         <GaiaButton
           shape="pill"
           isIconOnly
-          variant="tertiary"
+          variant="default-soft"
           size="sm"
           onPress={handleDismiss}
           aria-label="Dismiss what's new"

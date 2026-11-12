@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Modal, ScrollShadow, Skeleton, Tooltip } from "@heroui/react";
+import { Modal, ScrollShadow, Skeleton, Tooltip } from "@heroui/react";
 import {
   AiWebBrowsingIcon,
   Comment01Icon,
@@ -219,9 +219,13 @@ export function BrowserTaskHistory() {
       ) : error ? (
         <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-800/40 p-6 text-center text-sm text-zinc-400">
           <span>Couldn&apos;t load your browser tasks.</span>
-          <Button size="sm" variant="tertiary" onPress={() => void refetch()}>
+          <GaiaButton
+            size="sm"
+            variant="default-soft"
+            onPress={() => void refetch()}
+          >
             Retry
-          </Button>
+          </GaiaButton>
         </div>
       ) : tasks.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-zinc-800/40 p-8 text-center">

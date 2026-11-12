@@ -8,6 +8,7 @@ import {
   Folder01Icon,
   Link04Icon,
 } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   BRIDGE_ADD_COMMAND,
   BRIDGE_CLI_NAME,
@@ -131,9 +132,13 @@ function PairedDevices({
     return (
       <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-800 p-6 text-center text-sm text-zinc-400">
         <span>Couldn&apos;t load your devices.</span>
-        <Button size="sm" variant="tertiary" onPress={() => void refetch()}>
+        <GaiaButton
+          size="sm"
+          variant="default-soft"
+          onPress={() => void refetch()}
+        >
           Retry
-        </Button>
+        </GaiaButton>
       </div>
     );
   }

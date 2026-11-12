@@ -159,6 +159,7 @@ export default function RightSide({
       {isVoiceAvailable && (
         <Tooltip>
           <GaiaButton
+            variant="default-solid"
             shape="pill"
             isIconOnly
             aria-label="Voice Mode"
@@ -166,7 +167,6 @@ export default function RightSide({
             type="button"
             onMouseEnter={onVoiceModeHover}
             onPress={() => setvoiceModeActive()}
-            variant="secondary"
           >
             <AudioWave01Icon className="text-zinc-400" />
           </GaiaButton>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Chip, Skeleton } from "@heroui/react";
+import { Chip, Skeleton } from "@heroui/react";
 import {
   AlertCircleIcon,
   CheckmarkCircle02Icon,
@@ -10,8 +10,8 @@ import {
 import { useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
 import { useMemo } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight } from "@/components/shared/icons";
-
 import { useWorkflowExecutions } from "../hooks/useWorkflowExecutions";
 import type { WorkflowExecution } from "../types/workflowExecutionTypes";
 import PanelHeader from "./workflow-modal/PanelHeader";
@@ -194,15 +194,15 @@ export default function WorkflowExecutionHistory({
         ))}
       </div>
       {hasMore && (
-        <Button
+        <GaiaButton
           size="sm"
-          variant="tertiary"
+          variant="default-soft"
           className="w-full"
           onPress={loadMore}
           isPending={isLoading}
         >
           Load More
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );

@@ -1,7 +1,8 @@
-import { Button, Link } from "@heroui/react";
+import { Link } from "@heroui/react";
 import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import type { z } from "zod";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { sanitizeRedirectUrl } from "@/lib/url-safety";
 import { useSafeTriggerAction } from "../hooks/useSafeTriggerAction";
 import { ToolCard } from "../primitives/ToolCard";
@@ -139,14 +140,14 @@ function TimelineView(props: z.infer<typeof timelineSchema>) {
                         );
                       })}
                       {item.actions?.map((action) => (
-                        <Button
+                        <GaiaButton
                           key={`${item.title}-${action.value}`}
                           size="sm"
-                          variant="tertiary"
+                          variant="default-soft"
                           onPress={() => triggerAction(action.value)}
                         >
                           {action.label}
-                        </Button>
+                        </GaiaButton>
                       ))}
                     </div>
                   )}

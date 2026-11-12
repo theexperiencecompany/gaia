@@ -6,6 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronDown, ChevronRight } from "@/components/shared/icons";
 import { LinkButton } from "@/components/shared/LinkButton";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
@@ -351,7 +352,7 @@ function MobileSection() {
             Sign up for waitlist <ChevronRight width={17} height={17} />
           </LinkButton>
           <div className="flex flex-wrap gap-2">
-            <Button variant="tertiary" isDisabled>
+            <GaiaButton variant="default-soft" isDisabled>
               <div className="relative h-4 w-4">
                 <Image
                   src="/images/icons/apple.svg"
@@ -363,8 +364,8 @@ function MobileSection() {
                 />
               </div>
               App Store
-            </Button>
-            <Button variant="tertiary" isDisabled>
+            </GaiaButton>
+            <GaiaButton variant="default-soft" isDisabled>
               <div className="relative h-4 w-4">
                 <Image
                   src="/images/icons/google_play.svg"
@@ -376,7 +377,7 @@ function MobileSection() {
                 />
               </div>
               Google Play
-            </Button>
+            </GaiaButton>
           </div>
         </div>
       }

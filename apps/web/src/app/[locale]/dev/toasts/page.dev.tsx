@@ -143,7 +143,7 @@ export default function ToastPlaygroundPage() {
                   shape="pill"
                   key={t.label}
                   size="sm"
-                  variant="tertiary"
+                  variant="default-soft"
                   onPress={t.run}
                 >
                   {t.label}

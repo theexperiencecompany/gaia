@@ -48,14 +48,14 @@ function StatusChip({
   // Adding an account leaves the integration connected while the card asks for more.
   if (isConnected || (state === "add_account" && !failed)) {
     return (
-      <Chip size="sm" variant="tertiary" color="success">
+      <Chip size="sm" variant="soft" color="success">
         Connected
       </Chip>
     );
   }
   const isDanger = failed || state === "expired";
   return (
-    <Chip size="sm" variant="tertiary" color={isDanger ? "danger" : "warning"}>
+    <Chip size="sm" variant="soft" color={isDanger ? "danger" : "warning"}>
       {failed
         ? "Failed"
         : state === "expired"
@@ -180,7 +180,7 @@ function IntegrationConnectCard({
             <span className="text-xs text-zinc-400">Already connected</span>
             <div className="flex flex-wrap gap-1.5">
               {connectedAccounts.map((name) => (
-                <Chip key={name} size="sm" variant="tertiary">
+                <Chip key={name} size="sm" variant="soft">
                   {name}
                 </Chip>
               ))}

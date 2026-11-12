@@ -1,5 +1,4 @@
 import {
-  Button,
   Chip,
   Description,
   Dropdown,
@@ -23,7 +22,7 @@ import {
   ToggleOnIcon,
 } from "@icons";
 import { type Control, Controller, type FieldErrors } from "react-hook-form";
-
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { cn } from "@/lib/utils";
 import type { Workflow } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
@@ -120,9 +119,9 @@ export default function WorkflowHeader({
 
             <Dropdown>
               <DropdownTrigger>
-                <Button variant="tertiary" size="sm" isIconOnly>
+                <GaiaButton variant="default-soft" size="sm" isIconOnly>
                   <MoreVerticalIcon className="h-4 w-4" />
-                </Button>
+                </GaiaButton>
               </DropdownTrigger>
               <DropdownPopover placement="bottom end" className="w-64">
                 <DropdownMenu

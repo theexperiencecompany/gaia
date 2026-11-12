@@ -12,7 +12,7 @@ const CopyButton: React.FC<CopyButtonProps> = ({ copied, onPress }) => (
     className="text-xs text-foreground hover:text-gray-300"
     size="sm"
     isIconOnly
-    variant="tertiary"
+    variant="ghost"
     onPress={onPress}
   >
     {copied ? (
