@@ -11,7 +11,7 @@
 # The PR that fixes a finding drops its line, and a finding not listed fails.
 
 score:Content=74
-score:Core SEO=83
+score:Core SEO=86
 score:Crawlability=88
 score:Images=92
 score:Links=87
@@ -47,9 +47,9 @@ score:URL Structure=93
 *	content/duplicate-title/duplicate-title	ai auto-draft replies with gmail | gaia
 *	content/duplicate-title/duplicate-title	ai integration marketplace: connect your tools to gaia
 *	content/duplicate-title/duplicate-title	ai 어시스턴트 비교: gaia vs chatgpt, motion 외
-*	content/duplicate-title/duplicate-title	ai·생산성 용어집: 쉽게 풀어 쓴 정의 | gaia
+*	content/duplicate-title/duplicate-title	ai·생산성 용어집: 에이전트와 자동화 용어를 쉽게 풀어 쓴 정의 | gaia
 *	content/duplicate-title/duplicate-title	aiアシスタント比較：gaia vs chatgpt・motionほか
-*	content/duplicate-title/duplicate-title	ai・生産性用語集：やさしい解説 | gaia
+*	content/duplicate-title/duplicate-title	ai・生産性用語集：エージェントや自動化の用語をやさしく解説 | gaia
 *	content/duplicate-title/duplicate-title	automate any two tools together with gaia
 *	content/duplicate-title/duplicate-title	automatisez n'importe quels deux outils avec gaia
 *	content/duplicate-title/duplicate-title	automatiza cualquier combinación de herramientas con gaia
@@ -58,8 +58,8 @@ score:URL Structure=93
 *	content/duplicate-title/duplicate-title	comparatifs d'assistants ia : gaia vs chatgpt et plus
 *	content/duplicate-title/duplicate-title	comparativas de asistentes de ia: gaia vs chatgpt y más
 *	content/duplicate-title/duplicate-title	comparativos de assistentes de ia: gaia vs chatgpt e mais
-*	content/duplicate-title/duplicate-title	gaiaで任意の2つのツールを自動化する
-*	content/duplicate-title/duplicate-title	gaia로 어떤 두 도구든 자동화하기
+*	content/duplicate-title/duplicate-title	gaiaでツール同士を自動化：gmailやslackなど2つのアプリをつなぐ
+*	content/duplicate-title/duplicate-title	gaia로 두 도구를 함께 자동화: gmail, slack 등 앱을 잇는 ai
 *	content/duplicate-title/duplicate-title	glosario de ia y productividad: definiciones claras | gaia
 *	content/duplicate-title/duplicate-title	glossaire ia et productivité : définitions claires | gaia
 *	content/duplicate-title/duplicate-title	glossário de ia e produtividade: definições claras | gaia
@@ -70,9 +70,9 @@ score:URL Structure=93
 *	core/title-unique/title-unique	ai auto-draft replies with gmail | gaia
 *	core/title-unique/title-unique	ai integration marketplace: connect your tools to gaia
 *	core/title-unique/title-unique	ai 어시스턴트 비교: gaia vs chatgpt, motion 외
-*	core/title-unique/title-unique	ai·생산성 용어집: 쉽게 풀어 쓴 정의 | gaia
+*	core/title-unique/title-unique	ai·생산성 용어집: 에이전트와 자동화 용어를 쉽게 풀어 쓴 정의 | gaia
 *	core/title-unique/title-unique	aiアシスタント比較：gaia vs chatgpt・motionほか
-*	core/title-unique/title-unique	ai・生産性用語集：やさしい解説 | gaia
+*	core/title-unique/title-unique	ai・生産性用語集：エージェントや自動化の用語をやさしく解説 | gaia
 *	core/title-unique/title-unique	automate any two tools together with gaia
 *	core/title-unique/title-unique	automatisez n'importe quels deux outils avec gaia
 *	core/title-unique/title-unique	automatiza cualquier combinación de herramientas con gaia
@@ -81,8 +81,8 @@ score:URL Structure=93
 *	core/title-unique/title-unique	comparatifs d'assistants ia : gaia vs chatgpt et plus
 *	core/title-unique/title-unique	comparativas de asistentes de ia: gaia vs chatgpt y más
 *	core/title-unique/title-unique	comparativos de assistentes de ia: gaia vs chatgpt e mais
-*	core/title-unique/title-unique	gaiaで任意の2つのツールを自動化する
-*	core/title-unique/title-unique	gaia로 어떤 두 도구든 자동화하기
+*	core/title-unique/title-unique	gaiaでツール同士を自動化：gmailやslackなど2つのアプリをつなぐ
+*	core/title-unique/title-unique	gaia로 두 도구를 함께 자동화: gmail, slack 등 앱을 잇는 ai
 *	core/title-unique/title-unique	glosario de ia y productividad: definiciones claras | gaia
 *	core/title-unique/title-unique	glossaire ia et productivité : définitions claires | gaia
 *	core/title-unique/title-unique	glossário de ia e produtividade: definições claras | gaia
@@ -90,7 +90,6 @@ score:URL Structure=93
 *	core/title-unique/title-unique	ki-assistenten im vergleich: gaia vs chatgpt und mehr
 *	crawl/schema-noindex-conflict/schema-noindex
 *	images/image-file-size/image-file-size-warn	/_next/image?url=%2Fimages%2Fwallpapers%2Fbands_gradient_1.png&w=1920&q=75
-*	images/image-file-size/image-file-size-warn	/_next/image?url=%2Fimages%2Fwallpapers%2Fswiss_night.png&w=1920&q=75
 *	perf/critical-request-chains/critical-request-chains	CSS: /_next/static/chunks/*.css
 *	perf/css-file-size/css-file-size-warn	/_next/static/chunks/*.css
 *	perf/lazy-above-fold/lazy-above-fold	/_next/image?url=%2Fimages%2Flogos%2Flogo.webp&w=64&q=75
@@ -207,7 +206,6 @@ score:URL Structure=93
 /automate/discord-todoist	content/keyword-stuffing/keyword-stuffing	discord
 /automate/discord-todoist	content/keyword-stuffing/keyword-stuffing	tasks
 /automate/discord-todoist	content/keyword-stuffing/keyword-stuffing	todoist
-/automate/discord-trello	content/keyword-stuffing/keyword-stuffing	discord
 /automate/discord-trello	content/keyword-stuffing/keyword-stuffing	trello
 /automate/drive-notion	content/keyword-stuffing/keyword-stuffing	drive
 /automate/drive-notion	content/keyword-stuffing/keyword-stuffing	notion
@@ -253,7 +251,6 @@ score:URL Structure=93
 /automate/hubspot-slack	content/keyword-stuffing/keyword-stuffing	hubspot
 /automate/hubspot-zoom	content/keyword-stuffing/keyword-stuffing	call
 /automate/jira-figma	content/keyword-stuffing/keyword-stuffing	design
-/automate/jira-trello	content/keyword-stuffing/keyword-stuffing	bug
 /automate/linear-figma	content/keyword-stuffing/keyword-stuffing	design
 /automate/linear-loom	content/keyword-stuffing/keyword-stuffing	issue
 /automate/linear-stripe	content/keyword-stuffing/keyword-stuffing	payment
@@ -369,8 +366,6 @@ score:URL Structure=93
 /brand	links/no-contextual-inbound/no-contextual-inbound
 /brand	perf/cache-headers/cache-control
 /cli	core/meta-description/meta-description
-/cli	links/orphan-pages/orphan-pages
-/cli	links/weak-internal-links/weak-internal-links
 /cli	perf/cache-headers/cache-control
 /compare/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /compare/apple-reminders	content/keyword-stuffing/keyword-stuffing	apple
@@ -425,7 +420,6 @@ score:URL Structure=93
 /compare/page/3	crawl/sitemap-coverage/sitemap-coverage
 /compare/page/3	i18n/hreflang/hreflang-self
 /compare/page/3	links/no-contextual-inbound/no-contextual-inbound
-/compare/quip	content/keyword-stuffing/keyword-stuffing	salesforce
 /compare/reclaim	content/keyword-stuffing/keyword-stuffing	calendar
 /compare/sanebox	content/keyword-stuffing/keyword-stuffing	email
 /compare/shortwave	content/keyword-stuffing/keyword-stuffing	email
@@ -700,7 +694,6 @@ score:URL Structure=93
 /de/automate/salesforce-slack	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/slack-asana	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/slack-asana	core/meta-description/meta-description
-/de/automate/slack-clickup	content/keyword-stuffing/keyword-stuffing	clickup
 /de/automate/slack-clickup	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/slack-github	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/slack-github	core/meta-description/meta-description
@@ -774,7 +767,6 @@ score:URL Structure=93
 /de/automate/with/github	core/meta-description/meta-description
 /de/automate/with/gmail	content/keyword-stuffing/keyword-stuffing	automatisch
 /de/automate/with/gmail	content/keyword-stuffing/keyword-stuffing	mails
-/de/automate/with/gmail	content/keyword-stuffing/keyword-stuffing	posteingang
 /de/automate/with/gmail	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/gmail	content/word-count/word-count
 /de/automate/with/gmail	core/meta-description/meta-description
@@ -859,8 +851,6 @@ score:URL Structure=93
 /de/automate/with/zoom	content/word-count/word-count
 /de/automate/with/zoom	core/meta-description/meta-description
 /de/automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	aufgaben
-/de/automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	clickup
-/de/automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	meeting
 /de/automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/zoom-clickup	core/meta-description/meta-description
 /de/automate/zoom-drive	content/keyword-stuffing/keyword-stuffing	und
@@ -1088,13 +1078,11 @@ score:URL Structure=93
 /de/learn/context-awareness	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/context-switching	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/cron-job	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/cron-job	content/unrendered-markup/unrendered-markup
 /de/learn/daily-standup	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/deep-work	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/digital-assistant	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/digital-detox	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/digital-executive-assistant	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/digital-minimalism	content/keyword-stuffing/keyword-stuffing	die
 /de/learn/dot-app	content/keyword-stuffing/keyword-stuffing	sie
 /de/learn/dot-app	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/eisenhower-matrix	content/keyword-stuffing/keyword-stuffing	die
@@ -1293,7 +1281,6 @@ score:URL Structure=93
 /es/alternative-to/lindy-ai	content/keyword-stuffing/keyword-stuffing	lindy
 /es/alternative-to/linear	content/keyword-stuffing/keyword-stuffing	linear
 /es/alternative-to/missive	content/keyword-stuffing/keyword-stuffing	email
-/es/alternative-to/morgen	content/keyword-stuffing/keyword-stuffing	que
 /es/alternative-to/motion	content/keyword-stuffing/keyword-stuffing	para
 /es/alternative-to/notion	content/keyword-stuffing/keyword-stuffing	que
 /es/alternative-to/notion-ai	content/keyword-stuffing/keyword-stuffing	notion
@@ -1304,7 +1291,6 @@ score:URL Structure=93
 /es/alternative-to/openclaw	content/keyword-stuffing/keyword-stuffing	que
 /es/alternative-to/perplexity	content/keyword-stuffing/keyword-stuffing	perplexity
 /es/alternative-to/poke	content/keyword-stuffing/keyword-stuffing	que
-/es/alternative-to/reclaim	content/keyword-stuffing/keyword-stuffing	reclaim
 /es/alternative-to/roam-research	content/keyword-stuffing/keyword-stuffing	roam
 /es/alternative-to/saner-ai	content/keyword-stuffing/keyword-stuffing	que
 /es/alternative-to/siri	content/keyword-stuffing/keyword-stuffing	siri
@@ -1892,7 +1878,6 @@ score:URL Structure=93
 /es/learn/availability-window	content/keyword-stuffing/keyword-stuffing	para
 /es/learn/bee	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/body-doubling	content/keyword-stuffing/keyword-stuffing	body
-/es/learn/body-doubling	content/keyword-stuffing/keyword-stuffing	con
 /es/learn/buffer-time	content/keyword-stuffing/keyword-stuffing	margen
 /es/learn/buffer-time	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/buffer-time	content/keyword-stuffing/keyword-stuffing	reuniones
@@ -1940,7 +1925,6 @@ score:URL Structure=93
 /es/learn/context-awareness	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/context-awareness	content/keyword-stuffing/keyword-stuffing	una
 /es/learn/context-window	content/keyword-stuffing/keyword-stuffing	contexto
-/es/learn/cron-job	content/unrendered-markup/unrendered-markup
 /es/learn/data-sovereignty	content/keyword-stuffing/keyword-stuffing	datos
 /es/learn/data-sovereignty	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/data-sovereignty	content/keyword-stuffing/keyword-stuffing	que
@@ -1954,7 +1938,6 @@ score:URL Structure=93
 /es/learn/dot-app	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/email-deliverability	content/keyword-stuffing/keyword-stuffing	electr
 /es/learn/email-deliverability	content/keyword-stuffing/keyword-stuffing	los
-/es/learn/email-summarization	content/keyword-stuffing/keyword-stuffing	electr
 /es/learn/email-threading	content/keyword-stuffing/keyword-stuffing	correo
 /es/learn/email-triage	content/keyword-stuffing/keyword-stuffing	electr
 /es/learn/embeddings	content/keyword-stuffing/keyword-stuffing	embeddings
@@ -1970,7 +1953,6 @@ score:URL Structure=93
 /es/learn/foundation-model	content/keyword-stuffing/keyword-stuffing	modelo
 /es/learn/foundation-model	content/keyword-stuffing/keyword-stuffing	modelos
 /es/learn/friend-pendant	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/function-calling	content/keyword-stuffing/keyword-stuffing	herramientas
 /es/learn/function-calling	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/gdpr	content/keyword-stuffing/keyword-stuffing	datos
 /es/learn/gdpr	content/keyword-stuffing/keyword-stuffing	los
@@ -2090,7 +2072,6 @@ score:URL Structure=93
 /es/learn/token	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/token	content/keyword-stuffing/keyword-stuffing	tokens
 /es/learn/tokenization	content/keyword-stuffing/keyword-stuffing	los
-/es/learn/tokenization	content/keyword-stuffing/keyword-stuffing	tokens
 /es/learn/tool-use	content/keyword-stuffing/keyword-stuffing	herramientas
 /es/learn/transactional-email	content/keyword-stuffing/keyword-stuffing	correos
 /es/learn/transactional-email	content/keyword-stuffing/keyword-stuffing	electr
@@ -2125,11 +2106,9 @@ score:URL Structure=93
 /features/contacts	perf/cache-headers/cache-control
 /features/custom-integrations	perf/cache-headers/cache-control
 /features/dashboard	content/keyword-stuffing/keyword-stuffing	dashboard
-/features/dashboard	images/svg-inline/svg-inline
 /features/dashboard	links/orphan-pages/orphan-pages
 /features/dashboard	links/weak-internal-links/weak-internal-links
 /features/dashboard	perf/cache-headers/cache-control
-/features/deep-research	images/svg-inline/svg-inline
 /features/deep-research	perf/cache-headers/cache-control
 /features/discord-bot	content/keyword-stuffing/keyword-stuffing	discord
 /features/discord-bot	perf/cache-headers/cache-control
@@ -2157,16 +2136,13 @@ score:URL Structure=93
 /features/reminders	content/keyword-stuffing/keyword-stuffing	reminder
 /features/reminders	perf/cache-headers/cache-control
 /features/rich-responses	core/meta-description/meta-description
-/features/rich-responses	images/svg-inline/svg-inline
 /features/rich-responses	perf/cache-headers/cache-control
 /features/scheduled-automation	perf/cache-headers/cache-control
 /features/skills	content/keyword-stuffing/keyword-stuffing	skill
 /features/skills	perf/cache-headers/cache-control
 /features/slack-bot	content/keyword-stuffing/keyword-stuffing	slack
 /features/slack-bot	perf/cache-headers/cache-control
-/features/smart-chat	images/svg-inline/svg-inline
 /features/smart-chat	perf/cache-headers/cache-control
-/features/subagents	images/svg-inline/svg-inline
 /features/subagents	perf/cache-headers/cache-control
 /features/telegram-bot	content/keyword-stuffing/keyword-stuffing	telegram
 /features/telegram-bot	perf/cache-headers/cache-control
@@ -2191,7 +2167,6 @@ score:URL Structure=93
 /fr/alternative-to/asana	content/keyword-stuffing/keyword-stuffing	les
 /fr/alternative-to/bear	content/keyword-stuffing/keyword-stuffing	notes
 /fr/alternative-to/bee	content/keyword-stuffing/keyword-stuffing	bee
-/fr/alternative-to/calendly	content/keyword-stuffing/keyword-stuffing	pour
 /fr/alternative-to/chatgpt-atlas	content/keyword-stuffing/keyword-stuffing	atlas
 /fr/alternative-to/clickup	content/keyword-stuffing/keyword-stuffing	clickup
 /fr/alternative-to/coda	content/keyword-stuffing/keyword-stuffing	coda
@@ -2373,7 +2348,6 @@ score:URL Structure=93
 /fr/automate/jira-airtable	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/jira-clickup	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/jira-clickup	core/meta-description/meta-description
-/fr/automate/jira-drive	content/keyword-stuffing/keyword-stuffing	des
 /fr/automate/jira-drive	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/jira-figma	content/keyword-stuffing/keyword-stuffing	design
 /fr/automate/jira-figma	content/keyword-stuffing/keyword-stuffing	les
@@ -2607,7 +2581,6 @@ score:URL Structure=93
 /fr/automate/with/zoom	core/meta-description/meta-description
 /fr/automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	ches
 /fr/automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/zoom-drive	content/keyword-stuffing/keyword-stuffing	drive
 /fr/automate/zoom-drive	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/zoom-drive	core/meta-description/meta-description
 /fr/automate/zoom-figma	content/keyword-stuffing/keyword-stuffing	les
@@ -2903,7 +2876,6 @@ score:URL Structure=93
 /fr/learn/context-window	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/cron-job	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/cron-job	content/keyword-stuffing/keyword-stuffing	une
-/fr/learn/cron-job	content/unrendered-markup/unrendered-markup
 /fr/learn/daily-standup	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/daily-standup	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/data-sovereignty	content/keyword-stuffing/keyword-stuffing	des
@@ -2928,7 +2900,6 @@ score:URL Structure=93
 /fr/learn/email-threading	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/email-triage	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/email-triage	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/embeddings	content/keyword-stuffing/keyword-stuffing	embeddings
 /fr/learn/embeddings	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/energy-management	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/energy-management	content/keyword-stuffing/keyword-stuffing	les
@@ -2963,7 +2934,6 @@ score:URL Structure=93
 /fr/learn/gemini-assistant	content/keyword-stuffing/keyword-stuffing	assistant
 /fr/learn/gemini-assistant	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/getting-things-done	content/keyword-stuffing/keyword-stuffing	des
-/fr/learn/getting-things-done	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/graph-based-memory	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/graph-based-memory	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/graph-based-memory	content/keyword-stuffing/keyword-stuffing	moire
@@ -3237,7 +3207,6 @@ score:URL Structure=93
 /ja/learn/category/productivity	links/orphan-pages/orphan-pages
 /ja/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
 /ja/learn/category/task-management	links/orphan-pages/orphan-pages
-/ja/learn/cron-job	content/unrendered-markup/unrendered-markup
 /ja/learn/page/2	crawl/pagination/pagination-canonical
 /ja/learn/page/2	crawl/sitemap-coverage/sitemap-coverage
 /ja/learn/page/2	i18n/hreflang/hreflang-self
@@ -3306,7 +3275,6 @@ score:URL Structure=93
 /ko/learn/category/productivity	links/orphan-pages/orphan-pages
 /ko/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
 /ko/learn/category/task-management	links/orphan-pages/orphan-pages
-/ko/learn/cron-job	content/unrendered-markup/unrendered-markup
 /ko/learn/local-llm	content/dev-leakage/dev-leakage	localhost
 /ko/learn/page/2	crawl/pagination/pagination-canonical
 /ko/learn/page/2	crawl/sitemap-coverage/sitemap-coverage
@@ -3372,7 +3340,6 @@ score:URL Structure=93
 /learn/constitutional-ai	content/keyword-stuffing/keyword-stuffing	human
 /learn/context-window	content/keyword-stuffing/keyword-stuffing	context
 /learn/cron-job	content/keyword-stuffing/keyword-stuffing	cron
-/learn/cron-job	content/unrendered-markup/unrendered-markup
 /learn/data-sovereignty	content/keyword-stuffing/keyword-stuffing	data
 /learn/deep-work	content/keyword-stuffing/keyword-stuffing	work
 /learn/digital-minimalism	content/keyword-stuffing/keyword-stuffing	digital
@@ -3411,7 +3378,6 @@ score:URL Structure=93
 /learn/low-code	content/keyword-stuffing/keyword-stuffing	code
 /learn/meeting-fatigue	content/keyword-stuffing/keyword-stuffing	meeting
 /learn/meeting-intelligence	content/keyword-stuffing/keyword-stuffing	meeting
-/learn/meeting-scheduling	content/keyword-stuffing/keyword-stuffing	meeting
 /learn/memory-augmented-ai	content/keyword-stuffing/keyword-stuffing	memory
 /learn/model-context-protocol	content/keyword-stuffing/keyword-stuffing	mcp
 /learn/named-entity-recognition	content/keyword-stuffing/keyword-stuffing	ner
@@ -3446,7 +3412,6 @@ score:URL Structure=93
 /learn/rpa	content/keyword-stuffing/keyword-stuffing	automation
 /learn/rpa	content/keyword-stuffing/keyword-stuffing	rpa
 /learn/screen-sharing	content/keyword-stuffing/keyword-stuffing	screen
-/learn/screen-sharing	content/keyword-stuffing/keyword-stuffing	sharing
 /learn/semantic-search	content/keyword-stuffing/keyword-stuffing	search
 /learn/single-sign-on	content/keyword-stuffing/keyword-stuffing	sso
 /learn/smart-reply	content/keyword-stuffing/keyword-stuffing	email
@@ -3478,13 +3443,12 @@ score:URL Structure=93
 /learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	zero
 /manifesto	links/no-contextual-inbound/no-contextual-inbound
 /manifesto	perf/cache-headers/cache-control
+/marketplace/adspo-mcp-other	content/keyword-stuffing/keyword-stuffing	adspo
 /marketplace/adspo-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
 /marketplace/agentmail	content/keyword-stuffing/keyword-stuffing	email
 /marketplace/arxiv-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
 /marketplace/asana	perf/dom-size/dom-max-children
 /marketplace/astro-docs-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
-/marketplace/astro-docs-mcp-developer	links/orphan-pages/orphan-pages
-/marketplace/astro-docs-mcp-developer	links/weak-internal-links/weak-internal-links
 /marketplace/bible-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
 /marketplace/brave-search-mcp-other	content/keyword-stuffing/keyword-stuffing	search
 /marketplace/brave-search-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	l8nwDVzfVQS1OxvB-z4c4C6v8H3o30SH4zlVhVnG6gQ
@@ -3504,9 +3468,6 @@ score:URL Structure=93
 /marketplace/gmail	perf/dom-size/dom-max-children
 /marketplace/google-classroom-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
 /marketplace/google-scholar-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI
-/marketplace/google_maps	images/svg-inline/svg-inline
-/marketplace/google_maps	perf/cache-headers/cache-control
-/marketplace/google_maps	url/hyphens/url-hyphens
 /marketplace/googlecalendar	content/keyword-stuffing/keyword-stuffing	calendar
 /marketplace/googlecalendar	content/placeholder-contact/placeholder-contact	email
 /marketplace/googledocs	content/keyword-stuffing/keyword-stuffing	document
@@ -3531,17 +3492,9 @@ score:URL Structure=93
 /marketplace/linear	content/keyword-stuffing/keyword-stuffing	issue
 /marketplace/manufact-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	server
 /marketplace/manufact-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
-/marketplace/manufact-mcp-capabilities	links/orphan-pages/orphan-pages
-/marketplace/manufact-mcp-capabilities	links/weak-internal-links/weak-internal-links
-/marketplace/microsoft_teams	content/keyword-stuffing/keyword-stuffing	team
-/marketplace/microsoft_teams	content/keyword-stuffing/keyword-stuffing	teams
-/marketplace/microsoft_teams	content/placeholder-contact/placeholder-contact	email
-/marketplace/microsoft_teams	images/svg-inline/svg-inline
-/marketplace/microsoft_teams	perf/cache-headers/cache-control
-/marketplace/microsoft_teams	url/hyphens/url-hyphens
+/marketplace/microsoft-teams	content/keyword-stuffing/keyword-stuffing	teams
+/marketplace/microsoft-teams	content/placeholder-contact/placeholder-contact	email
 /marketplace/neon-database-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
-/marketplace/neon-database-mcp-developer	links/orphan-pages/orphan-pages
-/marketplace/neon-database-mcp-developer	links/weak-internal-links/weak-internal-links
 /marketplace/open-web-search-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	search
 /marketplace/open-web-search-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
 /marketplace/outlook	content/keyword-stuffing/keyword-stuffing	calendar
@@ -3565,11 +3518,11 @@ score:URL Structure=93
 /marketplace/postman-code-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
 /marketplace/postman-full-eu-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
 /marketplace/postman-full-mcp-developer	content/keyword-stuffing/keyword-stuffing	api
+/marketplace/postman-full-mcp-developer	content/keyword-stuffing/keyword-stuffing	postman
 /marketplace/postman-full-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
+/marketplace/postman-minimal-eu-mcp-developer	content/keyword-stuffing/keyword-stuffing	postman
 /marketplace/postman-minimal-eu-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
 /marketplace/postman-minimal-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
-/marketplace/postman-minimal-mcp-developer	links/orphan-pages/orphan-pages
-/marketplace/postman-minimal-mcp-developer	links/weak-internal-links/weak-internal-links
 /marketplace/prisma-mcp-developer	content/keyword-stuffing/keyword-stuffing	database
 /marketplace/prisma-mcp-developer	content/keyword-stuffing/keyword-stuffing	postgres
 /marketplace/prisma-mcp-developer	content/keyword-stuffing/keyword-stuffing	prisma
@@ -3577,8 +3530,6 @@ score:URL Structure=93
 /marketplace/pumpgtm-mcp-other	content/placeholder-text/placeholder-content	unrendered-template
 /marketplace/pumpgtm-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
 /marketplace/render-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
-/marketplace/render-mcp-developer	links/orphan-pages/orphan-pages
-/marketplace/render-mcp-developer	links/weak-internal-links/weak-internal-links
 /marketplace/resend-mcp-communication	content/placeholder-contact/placeholder-contact	email
 /marketplace/resend-mcp-communication	content/placeholder-text/placeholder-content	js-artifact
 /marketplace/resend-mcp-communication	content/placeholder-text/placeholder-content	unrendered-template
@@ -3590,8 +3541,6 @@ score:URL Structure=93
 /marketplace/slack	perf/dom-size/dom-max-children
 /marketplace/strava-mcp-personal	images/offscreen-lazy/offscreen-images-not-lazy	dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI
 /marketplace/supabase-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	l8nwDVzfVQS1OxvB-z4c4C6v8H3o30SH4zlVhVnG6gQ
-/marketplace/supabase-mcp-developer	links/orphan-pages/orphan-pages
-/marketplace/supabase-mcp-developer	links/weak-internal-links/weak-internal-links
 /marketplace/todoist	content/keyword-stuffing/keyword-stuffing	need
 /marketplace/todoist	content/keyword-stuffing/keyword-stuffing	use
 /marketplace/todoist	perf/dom-size/dom-max-children
@@ -3610,17 +3559,11 @@ score:URL Structure=93
 /marketplace/zoom	content/keyword-stuffing/keyword-stuffing	meeting
 /marketplace/zoom	content/placeholder-contact/placeholder-contact	address
 /marketplace?search=Discord	content/word-count/word-count
-/marketplace?search=Discord	perf/cache-headers/cache-control
 /marketplace?search=Figma	content/word-count/word-count
-/marketplace?search=Figma	perf/cache-headers/cache-control
 /marketplace?search=Loom	content/word-count/word-count
-/marketplace?search=Loom	perf/cache-headers/cache-control
 /marketplace?search=Microsoft+Teams	content/word-count/word-count
-/marketplace?search=Microsoft+Teams	perf/cache-headers/cache-control
 /marketplace?search=Salesforce	content/word-count/word-count
-/marketplace?search=Salesforce	perf/cache-headers/cache-control
 /marketplace?search=Stripe	content/word-count/word-count
-/marketplace?search=Stripe	perf/cache-headers/cache-control
 /open-source-ai-assistant	perf/cache-headers/cache-control
 /pricing	perf/cache-headers/cache-control
 /privacy	perf/cache-headers/cache-control
@@ -3738,7 +3681,6 @@ score:URL Structure=93
 /pt-br/automate/google-calendar-stripe	core/meta-description/meta-description
 /pt-br/automate/google-calendar-teams	content/keyword-stuffing/keyword-stuffing	agenda
 /pt-br/automate/google-calendar-teams	content/keyword-stuffing/keyword-stuffing	google
-/pt-br/automate/google-calendar-teams	content/keyword-stuffing/keyword-stuffing	microsoft
 /pt-br/automate/google-calendar-teams	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/automate/google-calendar-trello	content/keyword-stuffing/keyword-stuffing	agenda
 /pt-br/automate/google-calendar-trello	content/keyword-stuffing/keyword-stuffing	google
@@ -4066,7 +4008,6 @@ score:URL Structure=93
 /pt-br/learn/conflict-resolution	content/keyword-stuffing/keyword-stuffing	dados
 /pt-br/learn/context-awareness	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/context-window	content/keyword-stuffing/keyword-stuffing	contexto
-/pt-br/learn/cron-job	content/unrendered-markup/unrendered-markup
 /pt-br/learn/data-sovereignty	content/keyword-stuffing/keyword-stuffing	dados
 /pt-br/learn/digital-executive-assistant	content/keyword-stuffing/keyword-stuffing	assistente
 /pt-br/learn/digital-executive-assistant	content/keyword-stuffing/keyword-stuffing	que
@@ -4084,7 +4025,6 @@ score:URL Structure=93
 /pt-br/learn/foundation-model	content/keyword-stuffing/keyword-stuffing	modelo
 /pt-br/learn/foundation-model	content/keyword-stuffing/keyword-stuffing	modelos
 /pt-br/learn/friend-pendant	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/learn/function-calling	content/keyword-stuffing/keyword-stuffing	chamada
 /pt-br/learn/function-calling	content/keyword-stuffing/keyword-stuffing	fun
 /pt-br/learn/function-calling	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/gdpr	content/keyword-stuffing/keyword-stuffing	dados
@@ -4228,83 +4168,43 @@ score:URL Structure=93
 /thanks	links/orphan-pages/orphan-pages
 /thanks	perf/cache-headers/cache-control
 /use-cases/add-deadlines-to-calendar	content/word-count/word-count
-/use-cases/add-deadlines-to-calendar	links/orphan-pages/orphan-pages
-/use-cases/add-deadlines-to-calendar	links/weak-internal-links/weak-internal-links
 /use-cases/assignment-tracker	content/keyword-stuffing/keyword-stuffing	due
 /use-cases/assignment-tracker	content/word-count/word-count
-/use-cases/assignment-tracker	links/orphan-pages/orphan-pages
-/use-cases/auto-draft-replies	links/orphan-pages/orphan-pages
-/use-cases/auto-draft-replies	links/weak-internal-links/weak-internal-links
 /use-cases/auto-draft-replies-3c3bbe	crawl/sitemap-coverage/sitemap-coverage
 /use-cases/auto-draft-replies-3c3bbe	links/orphan-pages/orphan-pages
 /use-cases/auto-draft-replies-3c3bbe	links/weak-internal-links/weak-internal-links
 /use-cases/birthday-gift-ideas	content/word-count/word-count
-/use-cases/birthday-gift-ideas	links/orphan-pages/orphan-pages
 /use-cases/code-review-reminders	content/word-count/word-count
-/use-cases/code-review-reminders	links/orphan-pages/orphan-pages
-/use-cases/code-review-reminders	links/weak-internal-links/weak-internal-links
 /use-cases/competitor-watch	content/word-count/word-count
-/use-cases/competitor-watch	links/orphan-pages/orphan-pages
 /use-cases/drink-water-reminder	content/word-count/word-count
-/use-cases/drink-water-reminder	links/orphan-pages/orphan-pages
 /use-cases/email-to-task	content/word-count/word-count
-/use-cases/email-to-task	links/orphan-pages/orphan-pages
 /use-cases/exam-revision-pack	content/word-count/word-count
-/use-cases/exam-revision-pack	links/orphan-pages/orphan-pages
-/use-cases/exam-revision-pack	links/weak-internal-links/weak-internal-links
 /use-cases/focus-time	content/word-count/word-count
-/use-cases/focus-time	links/orphan-pages/orphan-pages
-/use-cases/focus-time	links/weak-internal-links/weak-internal-links
 /use-cases/follow-up-reminders	content/word-count/word-count
-/use-cases/follow-up-reminders	links/orphan-pages/orphan-pages
-/use-cases/follow-up-reminders	links/weak-internal-links/weak-internal-links
 /use-cases/hackernewsfrontpage-6763ab	content/word-count/word-count
 /use-cases/inbox-triage	content/keyword-stuffing/keyword-stuffing	action
-/use-cases/inbox-triage	links/orphan-pages/orphan-pages
-/use-cases/inbox-triage	links/weak-internal-links/weak-internal-links
 /use-cases/lecture-notes-summarizer	content/keyword-stuffing/keyword-stuffing	notes
 /use-cases/lecture-notes-summarizer	content/word-count/word-count
-/use-cases/lecture-notes-summarizer	links/orphan-pages/orphan-pages
 /use-cases/meeting-notes-summary	content/keyword-stuffing/keyword-stuffing	action
 /use-cases/meeting-notes-summary	content/word-count/word-count
-/use-cases/meeting-notes-summary	links/orphan-pages/orphan-pages
 /use-cases/meeting-prep	content/word-count/word-count
-/use-cases/meeting-prep	links/orphan-pages/orphan-pages
 /use-cases/meeting-reminder	content/word-count/word-count
-/use-cases/meeting-reminder	links/orphan-pages/orphan-pages
 /use-cases/monthly-subscription-audit	content/word-count/word-count
-/use-cases/monthly-subscription-audit	links/orphan-pages/orphan-pages
 /use-cases/morning-briefing	content/word-count/word-count
-/use-cases/morning-briefing	links/orphan-pages/orphan-pages
-/use-cases/morning-briefing	links/weak-internal-links/weak-internal-links
 /use-cases/morning-priority-map	content/word-count/word-count
-/use-cases/morning-priority-map	links/orphan-pages/orphan-pages
 /use-cases/nightly-gratitude	content/word-count/word-count
-/use-cases/nightly-gratitude	links/orphan-pages/orphan-pages
 /use-cases/nightly-review	content/word-count/word-count
-/use-cases/nightly-review	links/orphan-pages/orphan-pages
 /use-cases/post-meeting-follow-ups	content/word-count/word-count
-/use-cases/post-meeting-follow-ups	links/orphan-pages/orphan-pages
 /use-cases/rent-reminder	content/word-count/word-count
-/use-cases/rent-reminder	links/orphan-pages/orphan-pages
 /use-cases/research-to-outline	content/word-count/word-count
-/use-cases/research-to-outline	links/orphan-pages/orphan-pages
 /use-cases/save-the-bug	content/word-count/word-count
-/use-cases/save-the-bug	links/orphan-pages/orphan-pages
-/use-cases/save-the-bug	links/weak-internal-links/weak-internal-links
 /use-cases/social-post-drafts	content/word-count/word-count
-/use-cases/social-post-drafts	links/orphan-pages/orphan-pages
 /use-cases/study-plan-today	content/word-count/word-count
-/use-cases/study-plan-today	links/orphan-pages/orphan-pages
 /use-cases/weekly-content-ideas	content/word-count/word-count
-/use-cases/weekly-content-ideas	links/orphan-pages/orphan-pages
 /use-cases/weekly-meal-plan	content/word-count/word-count
-/use-cases/weekly-meal-plan	links/orphan-pages/orphan-pages
 /use-cases/weekly-productivity-check-in	content/word-count/word-count
-/use-cases/weekly-productivity-check-in	links/orphan-pages/orphan-pages
 /use-cases/weekly-work-summary	content/word-count/word-count
-/use-cases/weekly-work-summary	links/orphan-pages/orphan-pages
-/use-cases/weekly-work-summary	links/weak-internal-links/weak-internal-links
+/use-cases/workflow-229fb7	content/keyword-stuffing/keyword-stuffing	daily
 /use-cases/workflow-229fb7	content/word-count/word-count
 /use-cases/workflow-229fb7	links/orphan-pages/orphan-pages
 /use-cases/workflow-229fb7	links/weak-internal-links/weak-internal-links
