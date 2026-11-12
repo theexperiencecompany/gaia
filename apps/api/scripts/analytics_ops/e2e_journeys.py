@@ -271,6 +271,8 @@ ARTIFACT_BRIEF = (
     "Sign-ups 1,840 in seven days against a target of 1,500. Daily sign-ups Tue to Mon: "
     "310, 420, 270, 230, 210, 190, 210. Paid: 96."
 )
+#: Someone other than the owner opening the shared link: the owner's own opens never count.
+ARTIFACT_READER = "delivered+analytics-e2e-reader@resend.dev"
 ARTIFACT_ID_PATTERN = re.compile(r'"artifact_id":\s*"([0-9a-f]{24})"')
 CONVERSATION_ID_PATTERN = re.compile(r'"conversation_id":\s*"([^"]+)"')
 #: The executor runs after comms' reply closes the stream; its card lands on the conversation.
@@ -332,6 +334,12 @@ def artifact(stack: Stack) -> None:
             raise JourneyError("create_artifact left the artifact without a link")
         slug = url.rsplit("/", 1)[-1]
         _expect(api.get(f"/l/{slug}"), HTTPStatus.OK)
+        # the page's open beacon, from a reader who is not the owner
+        _expect(api.post("/dev/users", json={"email": ARTIFACT_READER}), HTTPStatus.OK)
+        _expect(
+            api.post(f"/l/{slug}/opened", headers={DEV_USER_HEADER: ARTIFACT_READER}),
+            HTTPStatus.NO_CONTENT,
+        )
         _expect(api.get(f"/l/{slug}/pdf"), HTTPStatus.OK)
 
 

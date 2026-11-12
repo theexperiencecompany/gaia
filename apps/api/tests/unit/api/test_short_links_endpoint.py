@@ -3,11 +3,18 @@
 from typing import Final
 from unittest.mock import AsyncMock, patch
 
+from fastapi import FastAPI
 from httpx import AsyncClient
 import pytest
 
+from app.api.v1.dependencies.oauth_dependencies import get_optional_user
 from app.config.settings import settings
-from app.models.short_link_models import PublicTodoDeliverable, ShortLinkTargetType
+from app.models.short_link_models import (
+    LinkViewer,
+    LinkViewerKind,
+    PublicTodoDeliverable,
+    ShortLinkTargetType,
+)
 from app.services.storage import JuiceFSUnavailable
 from app.utils.log_identifiers import hash_short_link_slug
 from tests.conftest import FAKE_USER
@@ -35,17 +42,7 @@ class TestResolveShortLink:
         assert response.status_code == 200
         assert response.json() == _VIEW.model_dump(mode="json")
         assert response.headers["cache-control"] == "no-store"
-        resolve.assert_awaited_once_with(SLUG, count_open=True)
-
-    @pytest.mark.asyncio
-    async def test_the_pdf_exports_own_read_is_not_counted_as_an_open(
-        self, client: AsyncClient
-    ) -> None:
-        with patch(f"{_ENDPOINT}.get_public_view", AsyncMock(return_value=_VIEW)) as resolve:
-            response = await client.get(f"{BASE}/{SLUG}", params={"print": "1"})
-
-        assert response.status_code == 200
-        resolve.assert_awaited_once_with(SLUG, count_open=False)
+        resolve.assert_awaited_once_with(SLUG)
 
     @pytest.mark.asyncio
     async def test_the_wide_event_names_the_slug_hash_and_what_it_resolved_to(
@@ -68,6 +65,57 @@ class TestResolveShortLink:
 
         assert response.status_code == 404
         assert response.json()["message"] == "Short link not found"
+
+
+class TestRecordOpen:
+    """Tests for POST /l/{slug}/opened, which the viewer's browser sends once the page shows."""
+
+    @pytest.mark.asyncio
+    async def test_a_signed_out_viewer_is_counted_by_address_and_browser(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        with patch(
+            f"{_ENDPOINT}.record_open", AsyncMock(return_value=LinkViewerKind.RECIPIENT)
+        ) as record:
+            async with captured_wide_event() as event:
+                response = await unauthed_client.post(
+                    f"{BASE}/{SLUG}/opened", headers={"user-agent": "Safari/605"}
+                )
+
+        assert response.status_code == 204
+        ((slug, viewer), _) = record.await_args
+        assert slug == SLUG
+        assert viewer == LinkViewer(user_id=None, ip="127.0.0.1", user_agent="Safari/605")
+        assert event["short_link"] == {
+            "operation": "opened",
+            "slug_hash": hash_short_link_slug(SLUG),
+            "viewer_kind": "recipient",
+        }
+        assert SLUG not in str(event)
+
+    @pytest.mark.asyncio
+    async def test_a_signed_in_viewer_is_named_so_the_owner_is_recognised(
+        self, client: AsyncClient, test_app: FastAPI
+    ) -> None:
+        test_app.dependency_overrides[get_optional_user] = lambda: FAKE_USER
+        try:
+            with patch(
+                f"{_ENDPOINT}.record_open", AsyncMock(return_value=LinkViewerKind.OWNER)
+            ) as record:
+                response = await client.post(f"{BASE}/{SLUG}/opened")
+        finally:
+            del test_app.dependency_overrides[get_optional_user]
+
+        assert response.status_code == 204
+        ((_, viewer), _) = record.await_args
+        assert viewer.user_id == FAKE_USER.user_id
+
+    @pytest.mark.asyncio
+    async def test_a_dead_link_is_404(self, unauthed_client: AsyncClient) -> None:
+        with patch(f"{_ENDPOINT}.record_open", AsyncMock(return_value=None)):
+            response = await unauthed_client.post(f"{BASE}/{SLUG}/opened")
+
+        assert response.status_code == 404
 
 
 class TestResolveStorageOutage:
@@ -128,9 +176,38 @@ class TestShortLinkFile:
             response = await client.get(f"{BASE}/{SLUG}/file")
 
         assert response.status_code == 200
-        assert response.headers["content-security-policy"] == "sandbox"
+        assert response.headers["content-security-policy"] == "default-src 'none'; sandbox"
         assert response.headers["cache-control"] == "no-store"
         assert "attachment" in response.headers["content-disposition"]
+
+    @pytest.mark.asyncio
+    async def test_a_pdf_downloads_rather_than_rendering_on_the_session_cookie_host(
+        self, client: AsyncClient, tmp_path
+    ) -> None:
+        """A PDF viewer is active content, and the API host holds the session cookie."""
+        pdf = tmp_path / "report.pdf"
+        pdf.write_bytes(b"%PDF-1.7\n")
+        with patch(f"{_ENDPOINT}.get_public_file", AsyncMock(return_value=pdf)):
+            response = await client.get(f"{BASE}/{SLUG}/file")
+
+        assert response.headers["content-type"] == "application/pdf"
+        assert response.headers["content-disposition"].startswith("attachment")
+        assert response.headers["content-security-policy"] == "default-src 'none'; sandbox"
+
+    @pytest.mark.asyncio
+    async def test_an_image_renders_inline_but_can_load_and_run_nothing(
+        self, client: AsyncClient, tmp_path
+    ) -> None:
+        image = tmp_path / "chart.png"
+        image.write_bytes(b"\x89PNG\r\n\x1a\n")
+        with patch(f"{_ENDPOINT}.get_public_file", AsyncMock(return_value=image)):
+            response = await client.get(f"{BASE}/{SLUG}/file")
+
+        assert "content-disposition" not in response.headers
+        assert response.headers["content-security-policy"] == "default-src 'none'; sandbox"
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["referrer-policy"] == "no-referrer"
+        assert response.headers["x-robots-tag"] == "noindex, nofollow"
 
 
 class TestCreateShortLink:

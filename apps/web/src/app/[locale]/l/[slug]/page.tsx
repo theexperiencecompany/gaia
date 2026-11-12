@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 
+import { LinkOpenBeacon } from "@/features/short-links/components/LinkOpenBeacon";
 import { PublicLinkView } from "@/features/short-links/components/PublicLinkView";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
+import { viewerForwardingHeaders } from "@/lib/viewerForwardingHeaders";
 import type {
   PublicShortLinkView,
   ShortLinkTargetType,
@@ -47,18 +50,21 @@ const PREVIEW_COPY: Record<
  * The public view behind a slug, fetched on the server with no caching —
  * the owner can revoke a link at any moment. `null` means unknown, revoked or
  * deleted (the API answers 404 for all three); any other failure throws.
- * `cache` dedupes the call between `generateMetadata` and the page.
+ * `cache` dedupes the call between `generateMetadata` and the page. It names
+ * the viewer, so the API rate-limits each viewer rather than this server.
  */
 const fetchPublicView = cache(
-  async (slug: string, print: boolean): Promise<PublicShortLinkView | null> => {
+  async (slug: string): Promise<PublicShortLinkView | null> => {
     const apiBaseUrl = getServerApiBaseUrl();
     if (!apiBaseUrl) {
       throw new Error("API base URL is not configured for server rendering");
     }
     const response = await fetch(
-      // the PDF export's own read is not a reader opening the link
-      `${apiBaseUrl}/l/${encodeURIComponent(slug)}${print ? "?print=1" : ""}`,
-      { cache: "no-store" },
+      `${apiBaseUrl}/l/${encodeURIComponent(slug)}`,
+      {
+        cache: "no-store",
+        headers: viewerForwardingHeaders(await headers()),
+      },
     );
     if (response.status === 404) return null;
     if (!response.ok) {
@@ -71,10 +77,9 @@ const fetchPublicView = cache(
 
 export async function generateMetadata({
   params,
-  searchParams,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const view = await fetchPublicView(slug, (await searchParams).print === "1");
+  const view = await fetchPublicView(slug);
   if (!view) notFound();
   const copy = PREVIEW_COPY[view.target_type];
   return {
@@ -95,7 +100,14 @@ export default async function ShortLinkPage({
 }: PageProps) {
   const { slug } = await params;
   const print = (await searchParams).print === "1";
-  const view = await fetchPublicView(slug, print);
+  const view = await fetchPublicView(slug);
   if (!view) notFound();
-  return <PublicLinkView slug={slug} view={view} print={print} />;
+  // the PDF export's own render is not a reader opening the link
+  if (print) return <PublicLinkView slug={slug} view={view} print />;
+  return (
+    <>
+      <LinkOpenBeacon slug={slug} />
+      <PublicLinkView slug={slug} view={view} />
+    </>
+  );
 }

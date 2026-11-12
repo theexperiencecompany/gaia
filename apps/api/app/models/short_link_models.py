@@ -11,6 +11,7 @@ recipient should see and nothing else: no ids, no thread ids, no addresses, no
 raw canvas.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Annotated, Literal
@@ -32,6 +33,23 @@ class ShortLinkTargetType(StrEnum):
     SESSION_ARTIFACT = "session_artifact"
     WORKFLOW_RUN = "workflow_run"
     OPENUI_ARTIFACT = "openui_artifact"
+
+
+class LinkViewerKind(StrEnum):
+    """Who opened a link, as far as counting opens is concerned."""
+
+    OWNER = "owner"
+    UNFURL_BOT = "unfurl_bot"
+    RECIPIENT = "recipient"
+
+
+@dataclass(frozen=True, slots=True)
+class LinkViewer:
+    """Whoever opened a link: their session user (None when signed out), address and browser."""
+
+    user_id: str | None
+    ip: str
+    user_agent: str
 
 
 class ShortLink(UserScopedDocument):

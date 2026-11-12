@@ -15,6 +15,8 @@ import pytest
 from app.db.repositories.short_links import LIVE_TARGET_UNIQUE_INDEX, SLUG_UNIQUE_INDEX
 from app.models.openui_artifact_models import ArtifactKind
 from app.models.short_link_models import (
+    LinkViewer,
+    LinkViewerKind,
     PublicOpenUIArtifact,
     PublicTodoDeliverable,
     ShortLink,
@@ -27,11 +29,12 @@ from app.services.short_link_service import (
     get_public_view,
     live_share_url,
     optional_short_link,
+    record_open,
     share_short_link,
     stop_sharing,
 )
 from app.utils.log_identifiers import hash_short_link_slug
-from shared.py.analytics import UserId
+from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.artifacts import ArtifactOpened
 from shared.py.analytics.catalog.short_links import (
     ShortLinkCreated,
@@ -166,7 +169,8 @@ class TestGetPublicView:
             assert await get_public_view("abc") == view
         project.assert_awaited_once_with(TODO, OWNER, "t9")
         repo.get_by_slug.assert_awaited_once_with("abc")
-        capture.assert_called_once_with(UserId(OWNER), ShortLinkOpened(target_type=TODO.value))
+        # Resolving is a read: SSR, prefetchers and unfurl bots all resolve, so none of it is an open.
+        capture.assert_not_called()
 
     async def test_a_revoked_link_resolves_to_nothing(self, repo):
         repo.get_by_slug.return_value = _link("abc", revoked=True)
@@ -174,24 +178,45 @@ class TestGetPublicView:
             assert await get_public_view("abc") is None
         project.assert_not_awaited()
 
-    async def test_a_deleted_target_resolves_to_nothing_and_counts_no_open(self, repo, capture):
+    async def test_a_deleted_target_resolves_to_nothing(self, repo, capture):
         repo.get_by_slug.return_value = _link("abc")
         with patch(f"{_SVC}.project_target", AsyncMock(return_value=None)):
             assert await get_public_view("abc") is None
         capture.assert_not_called()
 
-    async def test_an_uncounted_read_projects_the_view_and_captures_nothing(self, repo, capture):
-        repo.get_by_slug.return_value = _link("abc", user_id=OWNER, target_id="t9")
-        view = PublicTodoDeliverable(
-            target_type=TODO, title="Plan", completed=False, content="Result"
-        )
-        with patch(f"{_SVC}.project_target", AsyncMock(return_value=view)):
-            assert await get_public_view("abc", count_open=False) == view
-        capture.assert_not_called()
 
-    async def test_an_opened_artifact_link_also_counts_an_artifact_open(self, repo, capture):
+VIEWER_IP = "198.51.100.7"
+BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/605.1.15 Safari/605.1.15"
+OTHER_USER = "507f1f77bcf86cd799439022"
+
+
+def _anonymous(ip: str = VIEWER_IP, user_agent: str = BROWSER_UA) -> LinkViewer:
+    return LinkViewer(user_id=None, ip=ip, user_agent=user_agent)
+
+
+def _opened_dedupe(capture) -> Dedupe:
+    ((_, _, dedupe), _) = capture.call_args
+    return dedupe
+
+
+class TestRecordOpen:
+    async def test_a_recipient_opening_the_link_counts_once_for_the_owner(self, repo, capture):
+        repo.get_by_slug.return_value = _link("abc")
+
+        kind = await record_open("abc", _anonymous())
+
+        assert kind is LinkViewerKind.RECIPIENT
+        ((distinct_id, event, dedupe), _) = capture.call_args
+        assert distinct_id == UserId(OWNER)
+        assert event == ShortLinkOpened(target_type=TODO.value, viewer_signed_in=False)
+        assert dedupe.occurred_at.tzinfo is not None
+        assert VIEWER_IP not in dedupe.key
+
+    async def test_a_recipient_opening_an_artifact_link_also_counts_an_artifact_open(
+        self, repo, capture
+    ):
         repo.get_by_slug.return_value = _link(
-            "abc", user_id=OWNER, target_type=ShortLinkTargetType.OPENUI_ARTIFACT, target_id="a1"
+            "abc", target_type=ShortLinkTargetType.OPENUI_ARTIFACT, target_id="a1"
         )
         view = PublicOpenUIArtifact(
             target_type=ShortLinkTargetType.OPENUI_ARTIFACT,
@@ -202,33 +227,112 @@ class TestGetPublicView:
             created_at=datetime(2026, 11, 12, tzinfo=UTC),
         )
         with patch(f"{_SVC}.project_target", AsyncMock(return_value=view)):
-            await get_public_view("abc")
-        assert capture.call_args_list[-1].args == (
-            UserId(OWNER),
+            await record_open("abc", _anonymous())
+
+        opens = [c.args for c in capture.call_args_list]
+        assert [args[1] for args in opens] == [
+            ShortLinkOpened(target_type="openui_artifact", viewer_signed_in=False),
             ArtifactOpened(kind="report", via="link"),
+        ]
+        assert opens[1][0] == UserId(OWNER)
+        assert opens[1][2].key != opens[0][2].key
+
+    async def test_the_owner_opening_their_own_link_is_not_an_open(self, repo, capture):
+        repo.get_by_slug.return_value = _link("abc")
+
+        kind = await record_open(
+            "abc", LinkViewer(user_id=OWNER, ip=VIEWER_IP, user_agent=BROWSER_UA)
         )
+
+        assert kind is LinkViewerKind.OWNER
+        capture.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "user_agent",
+        [
+            "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)",
+            "facebookexternalhit/1.1 Facebot Twitterbot/1.0",
+            "WhatsApp/2.23.20.0",
+            "TelegramBot (like TwitterBot)",
+            "Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)",
+            "LinkedInBot/1.0 (compatible; Mozilla/5.0; Apache-HttpClient +http://www.linkedin.com)",
+            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+        ],
+    )
+    async def test_an_unfurl_bot_fetching_a_preview_is_not_an_open(self, repo, capture, user_agent):
+        repo.get_by_slug.return_value = _link("abc")
+
+        kind = await record_open("abc", _anonymous(user_agent=user_agent))
+
+        assert kind is LinkViewerKind.UNFURL_BOT
+        capture.assert_not_called()
+
+    async def test_the_same_viewer_reopening_the_same_day_is_the_same_open(self, repo, capture):
+        repo.get_by_slug.return_value = _link("abc")
+
+        await record_open("abc", _anonymous())
+        first = _opened_dedupe(capture)
+        await record_open("abc", _anonymous())
+
+        assert _opened_dedupe(capture) == first
+
+    async def test_another_viewer_or_another_day_is_another_open(self, repo, capture):
+        repo.get_by_slug.return_value = _link("abc")
+
+        await record_open("abc", _anonymous())
+        first = _opened_dedupe(capture)
+        await record_open("abc", _anonymous(ip="203.0.113.9"))
+        other_viewer = _opened_dedupe(capture)
+        with patch(f"{_SVC}.datetime") as clock:
+            clock.now.return_value = datetime(2030, 1, 2, 12, tzinfo=UTC)
+            await record_open("abc", _anonymous())
+        other_day = _opened_dedupe(capture)
+
+        assert len({first.key, other_viewer.key, other_day.key}) == 3
+        assert other_day.occurred_at != first.occurred_at
+
+    async def test_a_signed_in_viewer_is_one_viewer_on_any_network(self, repo, capture):
+        repo.get_by_slug.return_value = _link("abc")
+
+        await record_open(
+            "abc", LinkViewer(user_id=OTHER_USER, ip=VIEWER_IP, user_agent=BROWSER_UA)
+        )
+        at_home = _opened_dedupe(capture)
+        await record_open(
+            "abc", LinkViewer(user_id=OTHER_USER, ip="203.0.113.9", user_agent="Other")
+        )
+
+        assert _opened_dedupe(capture) == at_home
+        ((_, event, _), _) = capture.call_args
+        assert event.viewer_signed_in is True
+
+    async def test_a_dead_link_records_nothing(self, repo, capture):
+        repo.get_by_slug.return_value = _link("abc", revoked=True)
+
+        assert await record_open("abc", _anonymous()) is None
+        capture.assert_not_called()
 
 
 class TestGetPublicFile:
-    async def test_only_session_artifacts_serve_a_raw_file(self, repo):
-        """A todo, briefing or workflow slug never reaches the file route."""
-        repo.get_by_slug.return_value = _link("abc", target_type=TODO)
-        with patch(f"{_SVC}.session_artifact_file", AsyncMock()) as file_lookup:
-            assert await get_public_file("abc") is None
-        file_lookup.assert_not_awaited()
-
-    async def test_a_session_artifact_slug_streams_the_owners_file(self, repo, tmp_path):
+    async def test_the_links_own_target_names_the_file(self, repo, tmp_path):
+        """The file is whatever the link's target type locates, read as its owner."""
         repo.get_by_slug.return_value = _link(
             "abc",
             target_type=ShortLinkTargetType.SESSION_ARTIFACT,
             target_id="conv-1/report.pdf",
         )
-        with patch(
-            f"{_SVC}.session_artifact_file", AsyncMock(return_value=tmp_path)
-        ) as file_lookup:
+        with patch(f"{_SVC}.target_file", AsyncMock(return_value=tmp_path)) as file_lookup:
             assert await get_public_file("abc") == tmp_path
-        file_lookup.assert_awaited_once_with(OWNER, "conv-1/report.pdf")
+        file_lookup.assert_awaited_once_with(
+            ShortLinkTargetType.SESSION_ARTIFACT, OWNER, "conv-1/report.pdf"
+        )
         repo.get_by_slug.assert_awaited_once_with("abc")
+
+    async def test_a_revoked_link_serves_no_file(self, repo):
+        repo.get_by_slug.return_value = _link("abc", revoked=True)
+        with patch(f"{_SVC}.target_file", AsyncMock()) as file_lookup:
+            assert await get_public_file("abc") is None
+        file_lookup.assert_not_awaited()
 
 
 class TestOptionalShortLink:
