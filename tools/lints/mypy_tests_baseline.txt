@@ -88,8 +88,6 @@ apps/api/tests/integration/test_websocket_lifecycle.py	assignment
 apps/api/tests/integration/test_websocket_lifecycle.py	method-assign
 apps/api/tests/integration/test_websocket_lifecycle.py	misc
 apps/api/tests/meta/conftest.py	attr-defined
-apps/api/tests/meta/test_route_contract.py	arg-type
-apps/api/tests/meta/test_route_contract.py	attr-defined
 apps/api/tests/model_onboarding/test_tool_media_support.py	arg-type
 apps/api/tests/stress/test_arq_idempotency.py	arg-type
 apps/api/tests/stress/test_arq_idempotency.py	misc
