@@ -84,7 +84,7 @@ describe("wideLog.set namespace merging", () => {
     // them with) — and admitting one here would split from Python's isinstance(x, dict) reject.
 
     // The Date still serializes to `{}` rather than an ISO string — a separate, pre-existing
-    // serializer bug in logger.ts's toJsonValue (rebuilds objects from Object.entries()). What
+    // serializer bug in logger.ts's toLogValue (rebuilds objects from Object.entries()). What
     // this test pins is only that the stale `a` key does not survive.
     const event = await captureEvent(async () => {
       wideLog.set({ ctx: { a: 1 } });
