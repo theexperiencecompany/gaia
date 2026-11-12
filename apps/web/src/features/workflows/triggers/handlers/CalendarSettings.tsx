@@ -10,9 +10,8 @@
 
 import { ListBox, Select, Spinner } from "@heroui/react";
 import { useMemo } from "react";
-
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { useCalendarsQuery } from "@/features/calendar/hooks/useCalendarsQuery";
-
 import { IntervalPicker } from "../components/IntervalPicker";
 import {
   TriggerSettingRow,
@@ -144,7 +143,10 @@ export function CalendarSettings({
           aria-label="Select calendars"
           placeholder="Select calendars to monitor"
           selectionMode="multiple"
-          className="w-full"
+          className={fieldVariants({
+            labelPlacement: "inside",
+            className: "w-full",
+          })}
           value={Array.from(selectedCalendars)}
           onChange={(keys) => handleSelectionChange(new Set(keys as string[]))}
         >

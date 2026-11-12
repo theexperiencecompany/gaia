@@ -11,6 +11,7 @@ import {
   TextField,
 } from "@heroui/react";
 import { useState } from "react";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { todoApi } from "@/features/todo/api/todoApi";
 import { toast } from "@/lib/toast";
 import type { ProjectCreate } from "@/types/features/todoTypes";
@@ -83,6 +84,7 @@ export default function AddProjectModal({
               <div className="flex flex-col gap-4">
                 {/* Name */}
                 <TextField
+                  className={fieldVariants({ labelPlacement: "inside" })}
                   isRequired
                   value={formData.name}
                   onChange={(name) =>
@@ -95,6 +97,7 @@ export default function AddProjectModal({
 
                 {/* Description */}
                 <TextField
+                  className={fieldVariants({ labelPlacement: "inside" })}
                   value={formData.description || ""}
                   onChange={(description) =>
                     setFormData((prev) => ({ ...prev, description }))

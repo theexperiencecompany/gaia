@@ -3,6 +3,7 @@
 import { Modal, Spinner } from "@heroui/react";
 import { ArrowLeft02Icon, ArrowRight02Icon, ArrowUpRight01Icon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { modalVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { track } from "@/lib/analytics";
@@ -80,7 +81,7 @@ export function WhatsNewModal() {
     <Modal isOpen={isModalOpen} onOpenChange={closeModal}>
       <Modal.Backdrop>
         <Modal.Container size="lg">
-          <Modal.Dialog>
+          <Modal.Dialog className={modalVariants({ size: "2xl" })}>
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Header>What&apos;s new in GAIA</Modal.Header>
 

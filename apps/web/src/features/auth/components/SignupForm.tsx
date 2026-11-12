@@ -4,6 +4,7 @@ import { Button, Input, Label, TextField } from "@heroui/react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { FormError } from "@/components/shared/FormError";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { SecretInput } from "@/components/shared/SecretInput";
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
 import { RegistrationClosedNotice } from "@/features/auth/components/RegistrationClosedNotice";
@@ -80,11 +81,17 @@ export function SignupForm({
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
-      <TextField value={name} onChange={setName} isDisabled={isSubmitting}>
+      <TextField
+        className={fieldVariants({ labelPlacement: "inside" })}
+        value={name}
+        onChange={setName}
+        isDisabled={isSubmitting}
+      >
         <Label>Name</Label>
         <Input placeholder="Optional" autoComplete="name" />
       </TextField>
       <TextField
+        className={fieldVariants({ labelPlacement: "inside" })}
         value={email}
         onChange={setEmail}
         isRequired

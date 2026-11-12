@@ -10,6 +10,7 @@ import {
 import type { ComponentType } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { tabsVariants } from "@/components/shared/controlVariants";
 import { shapeVariants } from "@/components/shared/shape";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { track } from "@/lib/analytics";
@@ -91,7 +92,10 @@ export default function SkillsManagement() {
       {/* Tabs, search, and New skill share one row. */}
       <div className="flex items-center gap-3">
         <Tabs
-          className={shapeVariants({ shape: "pill", className: "shrink-0" })}
+          className={tabsVariants({
+            color: "accent",
+            className: shapeVariants({ shape: "pill", className: "shrink-0" }),
+          })}
           variant="primary"
           selectedKey={tab}
           onSelectionChange={(key) => setTab(key as string)}

@@ -14,6 +14,7 @@ import {
 import { Comment01Icon, HelpCircleIcon, PencilEdit01Icon } from "@icons";
 import { useState } from "react";
 import { z } from "zod";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { Separator } from "@/components/ui/separator";
 import { supportApi } from "@/features/support/api/supportApi";
@@ -98,6 +99,7 @@ function EditTicketModal({
               {/* Title Field */}
               <div className="mb-4">
                 <TextField
+                  className={fieldVariants({ labelPlacement: "inside" })}
                   value={editData.title}
                   onChange={(value) => onChange({ title: value })}
                   isInvalid={!!errors.title}
@@ -111,6 +113,7 @@ function EditTicketModal({
               {/* Description Field */}
               <div>
                 <TextField
+                  className={fieldVariants({ labelPlacement: "inside" })}
                   value={editData.description}
                   onChange={(value) => onChange({ description: value })}
                   isInvalid={!!errors.description}

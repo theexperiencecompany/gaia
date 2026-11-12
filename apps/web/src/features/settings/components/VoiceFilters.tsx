@@ -1,8 +1,9 @@
 "use client";
 
 import {
-  Autocomplete,
   Avatar,
+  ComboBox,
+  Input,
   ListBox,
   SearchField,
   Select,
@@ -13,7 +14,7 @@ import {
   MaleSymbolIcon,
   Search01Icon,
 } from "@icons";
-import { type ReactNode, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
 import {
@@ -51,7 +52,6 @@ export function VoiceFilters({
   countryFilter,
   onCountryFilterChange,
 }: Readonly<VoiceFiltersProps>) {
-  const [countryQuery, setCountryQuery] = useState("");
   // Distinct filter options derived from the loaded voices.
   const genderOptions = useMemo(
     () =>
@@ -70,24 +70,6 @@ export function VoiceFilters({
       .map(([accent, countryCode]) => ({ accent, countryCode }))
       .sort((a, b) => a.accent.localeCompare(b.accent));
   }, [voices]);
-
-  // Resolved ahead of the JSX so the trigger content is a plain expression,
-  // not a component defined inline in the render tree. Shows the chosen
-  // country's flag inline in the trigger, not just inside the open list.
-  let countryStartContent: ReactNode;
-  if (countryFilter !== ALL_FILTER) {
-    const code = countryOptions.find(
-      (c) => c.accent === countryFilter,
-    )?.countryCode;
-    countryStartContent = code ? (
-      <Avatar className="h-4 w-4 shrink-0">
-        <Avatar.Image src={flagUrl(code)} alt={`${countryFilter} flag`} />
-        <Avatar.Fallback />
-      </Avatar>
-    ) : (
-      <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
-    );
-  }
 
   const genderLabel =
     genderFilter === ALL_FILTER ? "All genders" : genderFilter;
@@ -135,7 +117,7 @@ export function VoiceFilters({
           </ListBox>
         </Select.Popover>
       </Select>
-      <Autocomplete
+      <ComboBox
         aria-label="Filter by country"
         selectedKey={countryFilter}
         onSelectionChange={(key) =>
@@ -143,45 +125,35 @@ export function VoiceFilters({
         }
         className="sm:max-w-44"
       >
-        <Autocomplete.Trigger>
-          {countryStartContent}
-          <Autocomplete.Value />
-          <Autocomplete.Indicator />
-        </Autocomplete.Trigger>
-        <Autocomplete.Popover>
-          <Autocomplete.Filter>
-            <SearchField
-              aria-label="Search countries"
-              value={countryQuery}
-              onChange={setCountryQuery}
-            >
-              <SearchField.Input placeholder="Country" />
-            </SearchField>
-            <ListBox aria-label="Countries">
-              <ListBox.Item id={ALL_FILTER} textValue="All countries">
-                <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
-                All countries
+        <ComboBox.InputGroup>
+          <Input placeholder="Country" />
+          <ComboBox.Trigger />
+        </ComboBox.InputGroup>
+        <ComboBox.Popover>
+          <ListBox aria-label="Countries">
+            <ListBox.Item id={ALL_FILTER} textValue="All countries">
+              <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
+              All countries
+            </ListBox.Item>
+            {countryOptions.map(({ accent, countryCode }) => (
+              <ListBox.Item key={accent} id={accent} textValue={accent}>
+                {countryCode ? (
+                  <Avatar className="h-4 w-4 shrink-0">
+                    <Avatar.Image
+                      src={flagUrl(countryCode)}
+                      alt={`${accent} flag`}
+                    />
+                    <Avatar.Fallback />
+                  </Avatar>
+                ) : (
+                  <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
+                )}
+                {accent}
               </ListBox.Item>
-              {countryOptions.map(({ accent, countryCode }) => (
-                <ListBox.Item key={accent} id={accent} textValue={accent}>
-                  {countryCode ? (
-                    <Avatar className="h-4 w-4 shrink-0">
-                      <Avatar.Image
-                        src={flagUrl(countryCode)}
-                        alt={`${accent} flag`}
-                      />
-                      <Avatar.Fallback />
-                    </Avatar>
-                  ) : (
-                    <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
-                  )}
-                  {accent}
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Autocomplete.Filter>
-        </Autocomplete.Popover>
-      </Autocomplete>
+            ))}
+          </ListBox>
+        </ComboBox.Popover>
+      </ComboBox>
     </div>
   );
 }

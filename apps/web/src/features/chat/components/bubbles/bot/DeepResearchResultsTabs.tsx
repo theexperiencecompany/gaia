@@ -6,6 +6,7 @@ import {
   SearchIcon,
 } from "@icons";
 import { useState } from "react";
+import { tabsVariants } from "@/components/shared/controlVariants";
 import { safeUrl } from "@/features/chat/utils/safeUrl";
 import {
   ACCORDION_INDICATOR,
@@ -61,7 +62,12 @@ export default function DeepResearchResultsTabs({
             </Accordion.Trigger>
           </Accordion.Heading>
           <Accordion.Panel className={ACCORDION_PANEL_COMPACT}>
-            <Tabs className={`p-0 ${TABS_ROOT}`}>
+            <Tabs
+              className={tabsVariants({
+                color: "accent",
+                className: `p-0 ${TABS_ROOT}`,
+              })}
+            >
               <Tabs.List
                 aria-label="Deep Research Results"
                 className={TABS_LIST_LIGHT}

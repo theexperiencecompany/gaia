@@ -1,10 +1,10 @@
 import {
-  Autocomplete,
+  ComboBox,
+  EmptyState,
   Header,
   Input,
   Label,
   ListBox,
-  SearchField,
   Skeleton,
 } from "@heroui/react";
 import type React from "react";
@@ -117,50 +117,37 @@ export function TriggerAutocomplete({
 
   return (
     <div className="w-full space-y-2">
-      <Autocomplete
+      <ComboBox
         aria-label="Choose an event"
         className="w-full"
+        allowsEmptyCollection
+        defaultFilter={() => true}
+        inputValue={filterValue}
+        onInputChange={handleInputChange}
         selectedKey={normalizedSelectedKey}
         onSelectionChange={handleSelectionChange}
-        onClear={() => {
-          setFilterValue("");
-          onTriggerChange(null);
-        }}
       >
         <Label>Event</Label>
-        <Autocomplete.Trigger>
-          {selectedSchema &&
-            getToolCategoryIcon(selectedSchema.integration_id, {
-              width: 20,
-              height: 20,
-              showBackground: false,
-            })}
-          <Autocomplete.Value />
-          <Autocomplete.ClearButton />
-          <Autocomplete.Indicator />
-        </Autocomplete.Trigger>
-        <Autocomplete.Popover>
-          <Autocomplete.Filter filter={() => true}>
-            <SearchField
-              aria-label="Search apps and events"
-              value={filterValue}
-              onChange={handleInputChange}
-            >
-              <Input placeholder="Search apps and events..." />
-            </SearchField>
-            <ListBox
-              aria-label="Triggers"
-              className={`${
-                Object.keys(groupedTriggers).length > 2
-                  ? "min-h-[300px]"
-                  : "h-fit"
-              } p-1`}
-            >
-              {renderTriggerSections(groupedTriggers, integrationStatusMap)}
-            </ListBox>
-          </Autocomplete.Filter>
-        </Autocomplete.Popover>
-      </Autocomplete>
+        <ComboBox.InputGroup>
+          <Input placeholder="Search apps and events..." />
+          <ComboBox.Trigger />
+        </ComboBox.InputGroup>
+        <ComboBox.Popover>
+          <ListBox
+            aria-label="Triggers"
+            className={`${
+              Object.keys(groupedTriggers).length > 2
+                ? "min-h-[300px]"
+                : "h-fit"
+            } p-1`}
+            renderEmptyState={() => (
+              <EmptyState>No matching triggers found.</EmptyState>
+            )}
+          >
+            {renderTriggerSections(groupedTriggers, integrationStatusMap)}
+          </ListBox>
+        </ComboBox.Popover>
+      </ComboBox>
 
       {selectedSchema && (
         <p className="px-1 text-xs text-zinc-500">

@@ -4,7 +4,6 @@
 
 @import "@heroui/styles/components/accordion.css" layer(components);
 @import "@heroui/styles/components/alert.css" layer(components);
-@import "@heroui/styles/components/autocomplete.css" layer(components);
 @import "@heroui/styles/components/avatar.css" layer(components);
 @import "@heroui/styles/components/badge.css" layer(components);
 @import "@heroui/styles/components/button.css" layer(components);
@@ -16,6 +15,7 @@
 @import "@heroui/styles/components/combo-box.css" layer(components);
 @import "@heroui/styles/components/description.css" layer(components);
 @import "@heroui/styles/components/dropdown.css" layer(components);
+@import "@heroui/styles/components/empty-state.css" layer(components);
 @import "@heroui/styles/components/field-error.css" layer(components);
 @import "@heroui/styles/components/header.css" layer(components);
 @import "@heroui/styles/components/input.css" layer(components);

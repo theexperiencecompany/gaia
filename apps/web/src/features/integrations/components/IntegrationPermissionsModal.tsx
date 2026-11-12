@@ -1,9 +1,9 @@
 "use client";
 
 import { Modal } from "@heroui/react";
+import { modalVariants } from "@/components/shared/controlVariants";
 import type { IntegrationPermissions } from "@/features/integrations/hooks/useIntegrationPermissions";
 import type { IntegrationToolEntry } from "@/features/integrations/hooks/useIntegrationTools";
-
 import { PermissionModeDecision } from "./PermissionModeDecision";
 import { PermissionToolList } from "./PermissionToolList";
 
@@ -30,7 +30,7 @@ export const IntegrationPermissionsModal = ({
   <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
     <Modal.Backdrop>
       <Modal.Container size="lg">
-        <Modal.Dialog>
+        <Modal.Dialog className={modalVariants({ size: "xl" })}>
           <Modal.CloseTrigger aria-label="Close" />
           <Modal.Header className="flex-col items-start gap-1 pb-3">
             <Modal.Heading className="text-base font-semibold text-zinc-100">

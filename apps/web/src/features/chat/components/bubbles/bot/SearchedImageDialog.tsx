@@ -1,6 +1,6 @@
 import { Modal } from "@heroui/react";
 import Image from "next/image";
-
+import { modalVariants } from "@/components/shared/controlVariants";
 import { useImageDialog } from "@/stores/uiStore";
 
 export default function SearchedImageDialog() {
@@ -10,7 +10,12 @@ export default function SearchedImageDialog() {
     <Modal isOpen={isOpen} onOpenChange={closeDialog}>
       <Modal.Backdrop>
         <Modal.Container size="lg">
-          <Modal.Dialog className="h-full max-w-5xl text-foreground dark">
+          <Modal.Dialog
+            className={modalVariants({
+              size: "5xl",
+              className: "h-full max-w-5xl text-foreground dark",
+            })}
+          >
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Body className="max-h-[80vh] overflow-auto">
               {selectedImage && (

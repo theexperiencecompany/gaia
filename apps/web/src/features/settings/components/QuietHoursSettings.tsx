@@ -2,6 +2,7 @@
 
 import { Slider, Switch } from "@heroui/react";
 import { Moon02Icon } from "@icons";
+import { sliderVariants } from "@/components/shared/controlVariants";
 import { useQuietHours } from "@/features/settings/hooks/useQuietHours";
 import {
   formatHour,
@@ -71,10 +72,13 @@ export function QuietHoursSettings() {
         </div>
         <Slider
           aria-label="Quiet hours window"
-          className={cn(
-            "mt-4 transition-opacity duration-200",
-            !hours.enabled && "pointer-events-none opacity-40",
-          )}
+          className={sliderVariants({
+            size: "sm",
+            className: cn(
+              "mt-4 transition-opacity duration-200",
+              !hours.enabled && "pointer-events-none opacity-40",
+            ),
+          })}
           minValue={QUIET_AXIS_START}
           maxValue={QUIET_AXIS_END}
           step={1}

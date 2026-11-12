@@ -34,6 +34,7 @@ function random(): number {
   return crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
 }
 
+import { sliderVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { Dices, TwitterIcon } from "@/components/shared/icons";
 import { holoCardApi } from "@/features/onboarding/api/holoCardApi";
@@ -307,7 +308,10 @@ const EditorToolbar = ({
                   maxValue={100}
                   value={opacity}
                   onChange={(value) => onOpacityChange(value as number)}
-                  className="max-w-md"
+                  className={sliderVariants({
+                    size: "sm",
+                    className: "max-w-md",
+                  })}
                 >
                   <Slider.Track>
                     <Slider.Fill />
