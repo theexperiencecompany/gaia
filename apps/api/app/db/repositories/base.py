@@ -111,7 +111,8 @@ def _translate_public_methods(cls: type) -> None:
     cover them, so a driver error would escape them untranslated.
     """
     for name in dir(cls):
-        if name.startswith("_"):
+        # A public API name is ASCII; mutmut adds non-ASCII twins (xǁClassǁname__mutmut_orig).
+        if name.startswith("_") or not name.isascii():
             continue
         method = inspect.getattr_static(cls, name)
         target = method.__func__ if isinstance(method, (staticmethod, classmethod)) else method

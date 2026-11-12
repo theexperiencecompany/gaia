@@ -349,7 +349,12 @@ def test_a_public_sync_method_and_a_private_coroutine_are_left_unwrapped() -> No
     async def _helper(self: object) -> None:
         return None
 
-    repo_class = _concrete(label=label, _helper=_helper)
+    async def twin(self: object) -> None:
+        return None
+
+    twin_name = "xǁThingRepositoryǁ_helper__mutmut_orig"
+    repo_class = _concrete(label=label, _helper=_helper, **{twin_name: twin})
 
     assert repo_class.__dict__["label"] is label
     assert repo_class.__dict__["_helper"] is _helper
+    assert repo_class.__dict__[twin_name] is twin
