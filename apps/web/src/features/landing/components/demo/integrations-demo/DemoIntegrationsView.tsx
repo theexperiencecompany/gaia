@@ -379,7 +379,7 @@ export default function DemoIntegrationsView({
           {DEMO_CATEGORIES.map((cat) => (
             <Chip
               key={cat}
-              variant="primary"
+              variant={selectedCategory === cat ? "primary" : "soft"}
               color={selectedCategory === cat ? "accent" : "default"}
               className="cursor-pointer select-none"
               onClick={() => setSelectedCategory(cat)}

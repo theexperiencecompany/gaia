@@ -8,6 +8,7 @@ import {
   UserGroupIcon,
   ZapIcon,
 } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   DEMO_COMMUNITY_WORKFLOWS,
@@ -142,14 +143,24 @@ function DemoWorkflowCard({
                 {creatorName.charAt(0)}
               </div>
             )}
-            <Button
-              size="sm"
-              variant={variant === "user" ? "tertiary" : "primary"}
-              className={`font-medium rounded-xl ${variant === "user" ? "text-primary" : ""}`}
-            >
-              {variant === "user" ? "Run" : "Create"}
-              {variant !== "user" ? <ZapIcon width={16} height={16} /> : null}
-            </Button>
+            {variant === "user" ? (
+              <GaiaButton
+                size="sm"
+                variant="accent-soft"
+                className="font-medium rounded-xl"
+              >
+                Run
+              </GaiaButton>
+            ) : (
+              <Button
+                size="sm"
+                variant="primary"
+                className="font-medium rounded-xl"
+              >
+                Create
+                <ZapIcon width={16} height={16} />
+              </Button>
+            )}
           </div>
         </div>
       </div>

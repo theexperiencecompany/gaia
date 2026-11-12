@@ -116,7 +116,7 @@ export default function DemoNotificationsPopover({
               <GaiaButton variant="default-solid" size="sm" fullWidth>
                 Mark all as read
               </GaiaButton>
-              <Button size="sm" variant="secondary" fullWidth>
+              <Button size="sm" variant="outline" fullWidth>
                 View all notifications
               </Button>
             </div>

@@ -35,16 +35,22 @@ const LazyContributors = lazy(() =>
           {contributors.slice(0, 8).map((contributor) => (
             <Avatar
               key={contributor.login}
+              asChild
               className="cursor-pointer transition-transform hover:scale-110"
-              onClick={() => window.open(contributor.html_url, "_blank")}
             >
-              <Avatar.Image
-                src={contributor.avatar_url}
-                alt={contributor.login}
-              />
-              <Avatar.Fallback>
-                {contributor.login.slice(0, 2).toUpperCase()}
-              </Avatar.Fallback>
+              <Link
+                href={contributor.html_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Avatar.Image
+                  src={contributor.avatar_url}
+                  alt={contributor.login}
+                />
+                <Avatar.Fallback>
+                  {contributor.login.slice(0, 2).toUpperCase()}
+                </Avatar.Fallback>
+              </Link>
             </Avatar>
           ))}
         </AvatarGroup>
