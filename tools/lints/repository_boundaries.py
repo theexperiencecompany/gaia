@@ -4,7 +4,7 @@
 repositories; raw ``ObjectId``, Mongo filters, and dict-shaped documents never
 cross that boundary. mypy strictness alone cannot catch a leak (a strict module
 can still hand a ``dict[str, Any]`` outward), so this AST rule mechanically holds
-four lines:
+five lines:
 
 1. ``app.db.mongodb.collections`` may be imported only inside ``app/db/repositories/``
    and ``app/db/mongodb/`` — everywhere else goes through a repository.
@@ -22,10 +22,16 @@ four lines:
    stops a NEW service from hand-caching a repository-managed entity behind the
    repository's back, where it would drift from the entity CachePolicy. The raw
    ``redis_cache`` client (locks / rate-limits) is a different concern, not banned.
+5. The Mongo client itself — ``app.db.mongodb.mongodb`` (``MongoDB`` /
+   ``init_mongodb``) and any ``.get_collection(...)`` call — stays inside
+   ``app/db/`` and ``app/scripts/``. A service handed a ``MongoDB`` builds its own
+   collection handle and never imports ``collections``, so check 1 cannot see it.
 
 Checks 1, 2 and 4 carry ratchet ``ALLOWLIST``s of the call sites that predate the
 repository layer. Entries are removed as each domain is migrated — never added. A
 new violation cannot be allowlisted away; it must be fixed, which is the point.
+Check 5's two allowlists are not debt: they name the startup caller and the
+Chroma call sites, and grow only for another caller of that same kind.
 """
 
 from __future__ import annotations
@@ -39,7 +45,9 @@ RULE = "repository-boundaries"
 WHY = "services must reach Mongo through typed repositories; raw collections/ObjectId/dict must not cross the boundary"
 DOC = "tools/lints/README.md#repository-boundaries"
 
-_COLLECTIONS_MODULE = "app.db.mongodb.collections"
+_MONGODB_PACKAGE = "app.db.mongodb"
+_COLLECTIONS_SUBMODULE = "collections"
+_CLIENT_SUBMODULE = "mongodb"
 
 # Directories where each restricted import is legitimately allowed.
 _COLLECTIONS_ALLOWED_DIRS = ("db/repositories/", "db/mongodb/")
@@ -73,6 +81,29 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "models/blog_models.py",
         # utils/
         "utils/profile_card.py",
+    }
+)
+
+# Where the Mongo client module and raw ``.get_collection(...)`` calls may live.
+_CLIENT_ALLOWED_DIRS = ("db/", "scripts/")
+
+# Files outside those directories that import ``app.db.mongodb.mongodb``.
+CLIENT_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        # Startup opens the connection and builds the indexes before any
+        # repository runs; it never reads or writes a collection.
+        "helpers/lifespan_helpers.py",
+    }
+)
+
+# Files outside those directories that call ``.get_collection(...)``. The AST
+# cannot tell a Chroma client from a Mongo database, so the Chroma call sites
+# are named here; a Mongo call site is never added.
+GET_COLLECTION_CALL_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        # chromadb AsyncClientAPI.get_collection — a vector collection, not Mongo.
+        "memory/chroma_store.py",
+        "utils/canvas_vector_utils.py",
     }
 )
 
@@ -139,21 +170,31 @@ def _app_relative(path: Path) -> str | None:
     return posix[idx + len(marker) :]
 
 
-def _collections_imports(tree: ast.Module) -> list[tuple[int, str]]:
+def _mongodb_submodule_imports(tree: ast.Module, submodule: str) -> list[tuple[int, str]]:
+    """Return every import of app.db.mongodb.<submodule>, in any of its three spellings."""
+    module = f"{_MONGODB_PACKAGE}.{submodule}"
     hits: list[tuple[int, str]] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
-            if node.module == _COLLECTIONS_MODULE:
-                hits.append((node.lineno, "from app.db.mongodb.collections import ..."))
-            elif node.module == "app.db.mongodb" and any(
-                a.name == "collections" for a in node.names
-            ):
-                hits.append((node.lineno, "from app.db.mongodb import collections"))
+            if node.module == module:
+                hits.append((node.lineno, f"from {module} import ..."))
+            elif node.module == _MONGODB_PACKAGE and any(a.name == submodule for a in node.names):
+                hits.append((node.lineno, f"from {_MONGODB_PACKAGE} import {submodule}"))
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name == _COLLECTIONS_MODULE:
-                    hits.append((node.lineno, "import app.db.mongodb.collections"))
+                if alias.name == module:
+                    hits.append((node.lineno, f"import {module}"))
     return hits
+
+
+def _get_collection_calls(tree: ast.Module) -> list[int]:
+    return [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "get_collection"
+    ]
 
 
 def _bson_imports(tree: ast.Module) -> list[tuple[int, str]]:
@@ -268,8 +309,36 @@ def _collections_violations(path: Path, app_rel: str, tree: ast.Module) -> list[
             detail=f"imports collections outside the repository layer ({detail})",
             fix="call the domain repository in app.db.repositories instead of the collection",
         )
-        for line, detail in _collections_imports(tree)
+        for line, detail in _mongodb_submodule_imports(tree, _COLLECTIONS_SUBMODULE)
     ]
+
+
+def _client_violations(path: Path, app_rel: str, tree: ast.Module) -> list[Violation]:
+    if any(app_rel.startswith(d) for d in _CLIENT_ALLOWED_DIRS):
+        return []
+    fix = "call the domain repository in app.db.repositories; only app/db/ holds a Mongo handle"
+    violations: list[Violation] = []
+    if app_rel not in CLIENT_IMPORT_ALLOWLIST:
+        violations.extend(
+            Violation(
+                path=path,
+                line=line,
+                detail=f"imports the Mongo client outside app/db/ ({detail})",
+                fix=fix,
+            )
+            for line, detail in _mongodb_submodule_imports(tree, _CLIENT_SUBMODULE)
+        )
+    if app_rel not in GET_COLLECTION_CALL_ALLOWLIST:
+        violations.extend(
+            Violation(
+                path=path,
+                line=line,
+                detail="calls .get_collection() outside app/db/",
+                fix=fix,
+            )
+            for line in _get_collection_calls(tree)
+        )
+    return violations
 
 
 def _bson_violations(path: Path, app_rel: str, tree: ast.Module) -> list[Violation]:
@@ -316,6 +385,7 @@ def check(files: list[Path]) -> list[Violation]:
 
         violations.extend(_collections_violations(path, app_rel, tree))
         violations.extend(_bson_violations(path, app_rel, tree))
+        violations.extend(_client_violations(path, app_rel, tree))
 
         if app_rel.startswith("db/repositories/"):
             for line, detail, fix in _signature_violations(tree):
