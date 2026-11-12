@@ -16,11 +16,6 @@
    ========================================================================== */
 (() => {
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  // "GitHub, Gmail and Slack": the apps the brief read, as a sentence names them.
-  const appList = (sources) => {
-    const n = sources.map((x) => x.name);
-    return n.length < 2 ? n.join("") : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
-  };
   const B = EXPLORER.blocks;
 
   /* Every texture, tilt and noise seed is drawn from the edition's date, so one day always prints the same envelope. */
@@ -300,7 +295,7 @@ ${star(cx - 47.5)}${star(cx + 47.5)}`;
   ${ps}
   <p class="sign">Yours, always on watch,<br><span class="sig">GAIA</span></p>
   <div class="lfoot tw"><span>Posted ${esc(ed.time)} · GAIA Post</span><span>Edition No. ${ed.editionNo}</span></div>
-  ${ed.sources.length ? `<p class="src tw" data-block="sources"><span class="logos">${ed.sources.map((x) => EXPLORER.blocks.logo(x.logo, { mode: "color", cls: "" })).join("")}</span><span>Written from your ${esc(appList(ed.sources))}</span></p>` : ""}
+  ${ed.sources.length ? `<p class="src tw" data-block="sources"><span class="logos">${ed.sources.map((x) => EXPLORER.blocks.logo(x.logo, { mode: "color", cls: "" })).join("")}</span><span>Written from your ${esc(EXPLORER.blocks.appList(ed.sources))}</span></p>` : ""}
 </div></article>`;
     },
   });

@@ -30,15 +30,16 @@ async def test_health_route_serves_requests() -> None:
 
 
 async def test_health_never_counts_against_the_rate_limit_store() -> None:
-    """The hermetic run has no Redis; the app-wide limit must be off, not stored."""
+    """Probes bypass the limiter, so a dead counter store cannot take /health down."""
     from app.main import app
 
     transport = ASGITransport(app=app)
     with patch(
-        "app.api.v1.middleware.rate_limiter.sync_check_limits",
+        "app.api.v1.middleware.rate_limiter._hit",
         side_effect=ConnectionError("no redis in the hermetic run"),
-    ):
+    ) as hit:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.get("/health")
 
     assert response.status_code == 200
+    hit.assert_not_called()

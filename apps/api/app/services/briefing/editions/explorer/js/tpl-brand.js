@@ -4,11 +4,6 @@
    Reading order: headline -> the brief's blocks as GAIA composed them -> stats.
    ========================================================================== */
 (() => {
-  // "GitHub, Gmail and Slack": the apps the brief read, as a sentence names them.
-  const appList = (sources) => {
-    const n = sources.map((s) => s.name);
-    return n.length < 2 ? n.join("") : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
-  };
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const grain = (id, freq) =>
     `<svg class="grain" aria-hidden="true"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="${freq}" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#${id})"/></svg>`;
@@ -129,7 +124,7 @@ ${grain("bd-g", 0.9)}
   ${EXPLORER.fold(secs).join("")}
   ${figs}
   <p class="foot">Edition No. ${ed.editionNo} · Generated ${esc(ed.time)} by GAIA</p>
-  ${ed.sources.length ? `<p class="foot src" data-block="sources"><span class="logos">${ed.sources.map((s) => EXPLORER.blocks.logo(s.logo, { mode: "color", cls: "" })).join("")}</span>Made from your ${esc(appList(ed.sources))}</p>` : ""}
+  ${ed.sources.length ? `<p class="foot src" data-block="sources"><span class="logos">${ed.sources.map((s) => EXPLORER.blocks.logo(s.logo, { mode: "color", cls: "" })).join("")}</span>Made from your ${esc(EXPLORER.blocks.appList(ed.sources))}</p>` : ""}
 </div></article>`;
     },
   });
@@ -249,7 +244,7 @@ ${grain("pf-g", 0.8)}${skin.watermark.id === "on" ? `<div class="wm" aria-hidden
 ${EXPLORER.fold(secs).join("")}
 ${figs}
 <p class="col">Edition No ${ed.editionNo} · set by GAIA at ${esc(ed.time)}${s && s.you && s.gaia ? ` · yesterday ${s.you} by you, ${s.gaia} by GAIA` : ""}</p>
-${ed.sources.length ? `<div class="src" data-block="sources"><p class="logos">${ed.sources.map((x) => EXPLORER.blocks.logo(x.logo, { cls: "" })).join("")}</p><p class="col">Made from your ${esc(appList(ed.sources))}</p></div>` : ""}
+${ed.sources.length ? `<div class="src" data-block="sources"><p class="logos">${ed.sources.map((x) => EXPLORER.blocks.logo(x.logo, { cls: "" })).join("")}</p><p class="col">Made from your ${esc(EXPLORER.blocks.appList(ed.sources))}</p></div>` : ""}
 </article>`;
     },
   });

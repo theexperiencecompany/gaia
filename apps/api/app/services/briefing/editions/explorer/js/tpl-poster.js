@@ -3,11 +3,6 @@
    Reading order: headline -> the brief's blocks as GAIA composed them -> stats.
    ========================================================================== */
 (() => {
-  // "GitHub, Gmail and Slack": the apps the brief read, as a sentence names them.
-  const appList = (sources) => {
-    const n = sources.map((s) => s.name);
-    return n.length < 2 ? n.join("") : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
-  };
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const grain = (id, freq) =>
     `<svg class="grain" aria-hidden="true"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="${freq}" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#${id})"/></svg>`;
@@ -129,7 +124,7 @@ ${grain("sw-g", 0.9)}<i class="fold" aria-hidden="true"></i>${crops}
   <p class="deck">${esc(ed.deck)}</p>
   ${EXPLORER.fold(secs).join("")}
   ${figs}
-  ${ed.sources.length ? `<div class="src" data-block="sources"><span class="logos">${ed.sources.map((x) => EXPLORER.blocks.logo(x.logo, { cls: "" })).join("")}</span><span>Made from your ${esc(appList(ed.sources))}</span></div>` : ""}
+  ${ed.sources.length ? `<div class="src" data-block="sources"><span class="logos">${ed.sources.map((x) => EXPLORER.blocks.logo(x.logo, { cls: "" })).join("")}</span><span>Made from your ${esc(EXPLORER.blocks.appList(ed.sources))}</span></div>` : ""}
   <p class="colo">Edition No ${ed.editionNo} · Generated ${esc(ed.time)} by GAIA</p>
 </div></article>`;
     },
