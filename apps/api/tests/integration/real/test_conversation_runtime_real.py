@@ -19,7 +19,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 from redis.asyncio import Redis
 
-from app.agents.context.slots import TIME_CONTEXT_MARKER, mark
+from app.agents.context.slots import TIME_CONTEXT_MARKER, PromptSlot, mark, slot_of
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.graph_manager import GraphManager
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
@@ -53,8 +53,12 @@ from app.models.message_models import ReplyToMessageData
 from app.models.tool_data_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation.bot_followers import list_active_bot_conversations
-from app.services.conversation.comms_runner import CommsGraphRunner, CommsTurn
-from app.services.conversation.comms_turn import step_turn_ref
+from app.services.conversation.comms_runner import (
+    CommsGraphRunner,
+    CommsTurn,
+    CommsTurnBuilder,
+)
+from app.services.conversation.comms_turn import build_comms_turn, step_turn_ref
 from app.services.conversation.composition import RuntimeEffects, running_steps
 from app.services.conversation.event_stream import (
     RedisStreamFrames,
@@ -172,7 +176,10 @@ class RigFactory(Protocol):
     """Builds a conversation answered by model, holding history as the entries migration leaves it."""
 
     def __call__(
-        self, model: GatedModel, history: Sequence[dict[str, str]] = ()
+        self,
+        model: GatedModel,
+        history: Sequence[dict[str, str]] = (),
+        build_turn: CommsTurnBuilder | None = None,
     ) -> Awaitable[Rig]: ...
 
 
@@ -228,7 +235,11 @@ async def rig_for(
     """Build a step-run conversation whose comms graph answers with model."""
     async with AsyncExitStack() as stack:
 
-        async def build(model: GatedModel, history: Sequence[dict[str, str]] = ()) -> Rig:
+        async def build(
+            model: GatedModel,
+            history: Sequence[dict[str, str]] = (),
+            build_turn: CommsTurnBuilder | None = None,
+        ) -> Rig:
             conversation_id = f"convrt-{uuid4().hex[:10]}"
             await make_conversation(user_id, conversation_id, messages=list(history))
             turns: list[tuple[StepClaim, Batch]] = []
@@ -239,7 +250,8 @@ async def rig_for(
             ports = RuntimePorts(
                 log=log,
                 runner=CommsGraphRunner(
-                    _turn_builder(turns, user_id), cancel_confirm_seconds=_CONFIRM_SECONDS
+                    build_turn or _turn_builder(turns, user_id),
+                    cancel_confirm_seconds=_CONFIRM_SECONDS,
                 ),
                 frames=frames,
                 effects=effects,
@@ -729,3 +741,22 @@ async def test_a_restarted_bot_finds_the_conversation_whose_work_is_still_runnin
         a.conversation_id != rig.conversation_id
         for a in await list_active_bot_conversations("telegram")
     )
+
+
+@pytest.mark.service
+async def test_the_production_turn_builder_frames_the_message_with_prompt_context_and_clock(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("it is noon")
+    rig = await rig_for(model, build_turn=build_comms_turn)
+    await rig.send("m1", "what time is it?")
+    await rig.settle()
+    prompt = model.prompts[0]
+    system = "\n".join(str(m.content) for m in prompt if isinstance(m, SystemMessage))
+    shown = humans(prompt)
+    asked = shown.index("what time is it?")
+    assert "Tasks in flight" in system
+    assert PromptSlot.DYNAMIC_STABLE in {slot_of(m) for m in prompt}
+    assert any(m.additional_kwargs.get(TIME_CONTEXT_MARKER) for m in prompt[asked + 1 :])
+    assert shown.count("what time is it?") == 1
+    assert [reply.text for reply in await rig.of(Reply)] == ["it is noon"]
