@@ -147,8 +147,6 @@ apps/api/tests/unit/api/test_tiered_rate_limiter.py	index
 apps/api/tests/unit/api/test_tiered_rate_limiter.py	method-assign
 apps/api/tests/unit/api/v1/endpoints/test_browser.py	attr-defined
 apps/api/tests/unit/api/v1/endpoints/test_instructions.py	misc
-apps/api/tests/unit/app/test_main_smoke.py	arg-type
-apps/api/tests/unit/app/test_main_smoke.py	attr-defined
 apps/api/tests/unit/browser_host/test_cdp_mux.py	attr-defined
 apps/api/tests/unit/browser_host/test_memory.py	attr-defined
 apps/api/tests/unit/browser_host/test_metrics.py	attr-defined
@@ -157,7 +155,6 @@ apps/api/tests/unit/browser_host/test_proxy.py	attr-defined
 apps/api/tests/unit/browser_host/test_proxy.py	index
 apps/api/tests/unit/browser_host/test_proxy.py	var-annotated
 apps/api/tests/unit/browser_host/test_storage.py	arg-type
-apps/api/tests/unit/config/test_deployment.py	unused-ignore
 apps/api/tests/unit/config/test_oauth_config.py	attr-defined
 apps/api/tests/unit/config/test_prod_isolation.py	arg-type
 apps/api/tests/unit/config/test_prod_isolation.py	attr-defined
