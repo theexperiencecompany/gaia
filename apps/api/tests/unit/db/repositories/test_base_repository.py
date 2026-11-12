@@ -157,3 +157,14 @@ async def test_find_one_asks_its_own_collection_with_the_filter_and_order() -> N
     assert found is None
     get_collection.assert_called_once_with("things")
     collection.find_one.assert_awaited_once_with({"name": "x"}, sort=[("name", -1)])
+
+
+def test_a_sibling_collection_resolves_by_its_own_name_through_the_patched_binding() -> None:
+    sibling = MagicMock()
+    with patch(
+        "app.db.repositories.base.get_async_collection", return_value=sibling
+    ) as get_collection:
+        handle = _concrete()()._sibling_collection("things_log")
+
+    assert handle is sibling
+    get_collection.assert_called_once_with("things_log")

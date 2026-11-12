@@ -368,6 +368,7 @@ class TestPinMessage:
         result = await pin_message("conv_abc", "msg_1", True, test_user)
         assert result.pinned is True
         assert "pinned successfully" in result.message
+        mock_repo.exists.assert_awaited_once_with("conv_abc", user_id=USER_ID)
         mock_repo.get_message.assert_awaited_once_with("conv_abc", "msg_1", user_id=USER_ID)
         mock_repo.set_message_pinned.assert_awaited_once_with(
             "conv_abc", user_id=USER_ID, message_id="msg_1", pinned=True
