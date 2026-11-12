@@ -1,11 +1,11 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { Cancel01Icon, LinkBackwardIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useRef } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useComposerUI } from "@/stores/composerStore";
 import type { ReplyToMessageData } from "@/stores/composerStore.types";
 
@@ -151,9 +151,15 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
 
             <div className="absolute right-2">
               {onRemove && (
-                <Button type="button" onPress={onRemove} isIconOnly size="sm">
+                <GaiaButton
+                  variant="default-solid"
+                  type="button"
+                  onPress={onRemove}
+                  isIconOnly
+                  size="sm"
+                >
                   <Cancel01Icon width={14} height={14} />
-                </Button>
+                </GaiaButton>
               )}
             </div>
           </m.div>

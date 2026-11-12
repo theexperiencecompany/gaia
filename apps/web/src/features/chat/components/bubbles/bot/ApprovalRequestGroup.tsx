@@ -141,7 +141,7 @@ export default function ApprovalRequestGroup({
           </Button>
           {pending.length >= 3 && (
             <Button
-              variant="secondary"
+              variant="outline"
               size="sm"
               isDisabled={batchSubmitting !== null}
               onPress={() => setSheetOpen(true)}

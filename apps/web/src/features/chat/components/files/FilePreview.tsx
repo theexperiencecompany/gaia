@@ -48,7 +48,7 @@ const FileChip: React.FC<{
       <Button
         isIconOnly
         size="sm"
-        variant="secondary"
+        variant="tertiary"
         isDisabled={file.isUploading}
         className="absolute top-0 right-0 z-10 h-6 w-6 min-w-0 scale-90 rounded-full opacity-0 transition-opacity group-hover:opacity-100"
         onPress={() => onRemove(file.id)}

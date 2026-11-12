@@ -5,6 +5,7 @@ import { ArrowUp02Icon, Clock01Icon, StopIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { TextMorph } from "torph/react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   type ComposerSendMode,
   useComposerSendMode,
@@ -93,28 +94,31 @@ export default function SendStopButton({
     }
   };
 
-  const { contentColor } = getButtonStyle(showStop, hasContent, isUploading);
+  const { bg, contentColor } = getButtonStyle(
+    showStop,
+    hasContent,
+    isUploading,
+  );
 
   // Queue widens into a labelled pill; stop/send stay icon-only square buttons.
   const stopCursor = showStop ? "cursor-pointer" : "";
   const shapeClass = showQueue
     ? "h-9 min-h-9 gap-1.5 rounded-xl px-3"
-    : `${className} ${stopCursor}`;
+    : `${className} rounded-full ${stopCursor}`;
 
-  return (
-    <Button
-      isIconOnly={!showQueue}
-      aria-label={MODE_ARIA_LABEL[mode]}
-      className={`transition-all duration-300 ${contentColor} ${shapeClass}`}
-      // Stop (abort the stream) is always pressable; send/queue is gated on
-      // readiness — there must be content AND no in-flight upload, otherwise the
-      // submit is dropped by the composer's uploading guard.
-      isDisabled={!showStop && (!hasContent || isUploading)}
-      // In stop mode the button aborts the stream rather than submitting, so it
-      // must not trigger the composer form. Only send/queue submit.
-      type={showStop ? "button" : "submit"}
-      onPress={handlePress}
-    >
+  const buttonProps = {
+    isIconOnly: !showQueue,
+    "aria-label": MODE_ARIA_LABEL[mode],
+    className: `transition-all duration-300 ${contentColor} ${shapeClass}`,
+    // Stop (abort the stream) is always pressable; send/queue is gated on
+    // readiness — there must be content AND no in-flight upload, otherwise the
+    // submit is dropped by the composer's uploading guard.
+    isDisabled: !showStop && (!hasContent || isUploading),
+    // In stop mode the button aborts the stream rather than submitting, so it
+    // must not trigger the composer form. Only send/queue submit.
+    type: showStop ? ("button" as const) : ("submit" as const),
+    onPress: handlePress,
+    children: (
       <AnimatePresence mode="wait" initial={false}>
         <m.span
           key={mode}
@@ -127,6 +131,12 @@ export default function SendStopButton({
           {renderModeContent(mode)}
         </m.span>
       </AnimatePresence>
-    </Button>
+    ),
+  };
+
+  return bg === "primary" ? (
+    <Button variant="primary" {...buttonProps} />
+  ) : (
+    <GaiaButton variant="default-solid" {...buttonProps} />
   );
 }

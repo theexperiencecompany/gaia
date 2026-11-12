@@ -255,7 +255,7 @@ function RecipientRow({
           <Button
             size="sm"
             onPress={onEdit}
-            variant="tertiary"
+            variant={emails.length === 0 ? "tertiary" : "ghost"}
             isIconOnly={emails.length !== 0}
           >
             {emails.length !== 0 && (

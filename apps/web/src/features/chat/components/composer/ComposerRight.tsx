@@ -1,5 +1,6 @@
-import { Button, Kbd, Tooltip } from "@heroui/react";
+import { Kbd, Tooltip } from "@heroui/react";
 import { AudioWave01Icon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import SendStopButton from "@/features/chat/components/composer/SendStopButton";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useComposerSendMode } from "@/features/chat/hooks/useComposerSendMode";
@@ -157,17 +158,17 @@ export default function RightSide({
     <div className="ml-2 flex items-center gap-2">
       {isVoiceAvailable && (
         <Tooltip>
-          <Button
+          <GaiaButton
+            variant="default-solid"
             isIconOnly
             aria-label="Voice Mode"
             className="h-9 min-h-9 w-9 max-w-9 min-w-9 rounded-full"
             type="button"
             onMouseEnter={onVoiceModeHover}
             onPress={() => setvoiceModeActive()}
-            variant="secondary"
           >
             <AudioWave01Icon className="text-zinc-400" />
-          </Button>
+          </GaiaButton>
           <Tooltip.Content placement="left" showArrow>
             Voice Mode
           </Tooltip.Content>

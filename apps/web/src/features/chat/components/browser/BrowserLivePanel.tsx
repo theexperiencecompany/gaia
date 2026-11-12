@@ -208,7 +208,7 @@ function Omnibox({
               href={pageUrl}
               target="_blank"
               rel="noopener noreferrer"
-              variant="tertiary"
+              variant="ghost"
               size="sm"
               isIconOnly
               className="shrink-0 text-zinc-400"

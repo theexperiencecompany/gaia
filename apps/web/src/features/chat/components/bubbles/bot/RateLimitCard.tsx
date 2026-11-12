@@ -1,12 +1,15 @@
 import { Button, Chip, Separator } from "@heroui/react";
 import { Clock01Icon, UploadCircle01Icon } from "@icons";
 import type { RateLimitData } from "@shared/chat";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useRateLimitCard } from "@/features/chat/hooks/useRateLimitCard";
 import { DailyLimitBody, UpgradeRequiredBody } from "./RateLimitCardBody";
 
 interface RateLimitCardProps {
   data: RateLimitData;
 }
+
+const CTA_CLASS = "w-full rounded-xl font-medium";
 
 export default function RateLimitCard({ data }: RateLimitCardProps) {
   const {
@@ -80,14 +83,25 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
 
           {/* Footer CTA */}
           <div className="p-3">
-            <Button
-              size="sm"
-              variant={isUpgradeRequired ? "primary" : "tertiary"}
-              onPress={openPlans}
-              className="w-full rounded-xl font-medium"
-            >
-              {isUpgradeRequired ? `Upgrade to ${planName}` : "View Plans"}
-            </Button>
+            {isUpgradeRequired ? (
+              <Button
+                size="sm"
+                variant="primary"
+                onPress={openPlans}
+                className={CTA_CLASS}
+              >
+                {`Upgrade to ${planName}`}
+              </Button>
+            ) : (
+              <GaiaButton
+                size="sm"
+                variant="accent-soft"
+                onPress={openPlans}
+                className={CTA_CLASS}
+              >
+                View Plans
+              </GaiaButton>
+            )}
           </div>
         </>
       )}
