@@ -47,15 +47,15 @@ export default function WorkflowFooter({
       <div className="flex items-center gap-2">
         {isExisting && (
           <Tooltip>
-            <Button
-              variant="secondary"
+            <GaiaButton
+              variant="success-soft"
               onPress={onRunWorkflow}
               isDisabled={!hasSteps}
               className="active:scale-[0.97] transition-transform duration-150"
             >
               <PlayIcon className="h-4 w-4" />
               Run
-            </Button>
+            </GaiaButton>
             <Tooltip.Content placement="top">
               {!hasSteps
                 ? "Generate steps before running"

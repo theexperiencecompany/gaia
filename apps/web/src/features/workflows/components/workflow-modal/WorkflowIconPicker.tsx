@@ -2,6 +2,7 @@ import { Button, Input, Popover, Tooltip } from "@heroui/react";
 import { PlusSignIcon, Search01Icon } from "@icons";
 import { useMemo, useState } from "react";
 import { type Control, useController } from "react-hook-form";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { cn } from "@/lib/utils";
 import {
@@ -136,7 +137,10 @@ export default function WorkflowIconPicker({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search icons..."
-              className="bg-transparent"
+              className={inputVariants({
+                size: "sm",
+                className: "bg-transparent",
+              })}
             />
           </div>
 

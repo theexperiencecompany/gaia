@@ -1,7 +1,7 @@
 import { Input, ListBox, Select, TextField } from "@heroui/react";
 import { Clock01Icon, InformationCircleIcon } from "@icons";
 import { useEffect, useMemo, useState } from "react";
-
+import { inputVariants } from "@/components/shared/controlVariants";
 import { getTimezoneList, normalizeTimezone } from "@/utils/timezoneUtils";
 import { useCronValidation } from "../hooks/useCronValidation";
 import {
@@ -270,7 +270,7 @@ function TimeOfDayInput({
         max="12"
         value={hour12.toString()}
         onChange={(e) => onHour12Change(e.target.value)}
-        className="w-12"
+        className={inputVariants({ size: "sm", className: "w-12" })}
       />
       <span className="text-zinc-500">:</span>
       <Input
@@ -279,7 +279,7 @@ function TimeOfDayInput({
         max="59"
         value={minute.padStart(2, "0")}
         onChange={(e) => onMinuteChange(e.target.value)}
-        className="w-12"
+        className={inputVariants({ size: "sm", className: "w-12" })}
       />
       <CompactSelect
         ariaLabel="Select AM or PM"
@@ -537,7 +537,10 @@ export const ScheduleBuilder = ({
               value={customCron}
               onChange={handleCustomCronChange}
               isInvalid={showCronError}
-              className="w-40 shrink-0"
+              className={inputVariants({
+                size: "sm",
+                className: "w-40 shrink-0",
+              })}
             >
               <Input placeholder="0 9 * * *" />
             </TextField>

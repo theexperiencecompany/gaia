@@ -1331,6 +1331,14 @@ html {
   --gaia-modal-3xl: 48rem;
   --gaia-modal-4xl: 56rem;
   --gaia-modal-5xl: 64rem;
+  --gaia-modal-padding-x: 1.5rem;
+  --gaia-modal-header-padding-y: 1rem;
+  --gaia-modal-body-padding-y: 0.5rem;
+  --gaia-modal-body-gap: 0.75rem;
+  --gaia-modal-footer-padding-y: 1rem;
+  --gaia-input-sm-height: 2rem;
+  --gaia-input-sm-padding-x: 0.5rem;
+  --gaia-input-sm-font-size: 0.875rem;
   --gaia-switch-track-off: #3f3f46;
   --gaia-switch-padding: 0.25rem;
   --gaia-switch-sm-width: 2.5rem;
@@ -1411,6 +1419,24 @@ html {
     width: var(--gaia-checkbox-size);
     height: var(--gaia-checkbox-size);
     margin-inline-end: var(--gaia-checkbox-gap);
+  }
+
+  /* inputVariants({ size: "sm" }): v2's small field, 32px with an 8px inset. */
+  .gaia-input-sm .input,
+  .gaia-input-sm .input-group,
+  .gaia-input-sm .search-field__group,
+  .input.gaia-input-sm {
+    min-height: var(--gaia-input-sm-height);
+    height: var(--gaia-input-sm-height);
+    font-size: var(--gaia-input-sm-font-size);
+    border-radius: var(--gaia-radius-sm);
+  }
+  .gaia-input-sm .input,
+  .input.gaia-input-sm,
+  .gaia-input-sm .input-group__input,
+  .gaia-input-sm .search-field__input {
+    padding-block: 0;
+    padding-inline: var(--gaia-input-sm-padding-x);
   }
 
   /* Field placeholders: v2's zinc-500 at normal weight, in light and dark. */
@@ -1596,6 +1622,32 @@ html {
   .slider.gaia-slider-sm .slider__thumb::after {
     width: var(--gaia-slider-sm-thumb-inner);
     height: var(--gaia-slider-sm-thumb-inner);
+  }
+
+  /* Modal: v2's section rhythm. The dialog has no padding of its own; the
+     header, body and footer carry it, and the body is a column of 12px gaps in
+     the dialog's own text colour (v3 mutes and shrinks it). */
+  .modal__dialog {
+    padding: 0;
+  }
+  .modal__header {
+    padding: var(--gaia-modal-header-padding-y) var(--gaia-modal-padding-x);
+  }
+  .modal__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gaia-modal-body-gap);
+    margin: 0;
+    padding: var(--gaia-modal-body-padding-y) var(--gaia-modal-padding-x);
+    color: inherit;
+    font-size: inherit;
+    line-height: inherit;
+  }
+  .modal__header + .modal__body {
+    margin-top: 0;
+  }
+  .modal__footer {
+    padding: var(--gaia-modal-footer-padding-y) var(--gaia-modal-padding-x);
   }
 
   /* shape="pill" (components/shared/shape.ts): v2's radius="full", one class for

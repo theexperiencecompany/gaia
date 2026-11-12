@@ -56,8 +56,8 @@ function DeviceRow({
           </div>
         </div>
         <Button
-          size="sm"
           variant="danger-soft"
+          size="sm"
           isPending={isRevoking}
           onPress={() => onRevoke(device.id)}
         >

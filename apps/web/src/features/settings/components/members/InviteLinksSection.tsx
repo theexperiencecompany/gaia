@@ -4,6 +4,7 @@ import { Button, InputGroup } from "@heroui/react";
 import { Copy01Icon, UserAdd01Icon } from "@icons";
 import type { InviteResponse } from "@shared/api/generated";
 import { useRef, useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { inviteLink } from "@/features/settings/hooks/useMembers";
@@ -64,7 +65,7 @@ export function InviteLinksSection({
       </SettingsRow>
       {newLink && (
         <div className="px-4 py-3.5">
-          <InputGroup>
+          <InputGroup className={inputVariants({ size: "sm" })}>
             <InputGroup.Input
               ref={linkField}
               aria-label="New invite link"
@@ -92,8 +93,8 @@ export function InviteLinksSection({
           description={`Expires ${formatRelativeDate(invite.expires_at)}`}
         >
           <Button
-            size="sm"
             variant="danger-soft"
+            size="sm"
             isPending={revokingInviteId === invite.id}
             onPress={() => onRevoke(invite.id)}
           >

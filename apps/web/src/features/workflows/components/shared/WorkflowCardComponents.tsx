@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  Button,
-  ButtonGroup,
-  Chip,
-  Dropdown,
-  Menu,
-  Tooltip,
-} from "@heroui/react";
+import { ButtonGroup, Chip, Dropdown, Menu, Tooltip } from "@heroui/react";
 import {
   Alert01Icon,
   ArrowDown01Icon,
@@ -307,15 +300,15 @@ export function MissingIntegrationsAlert({
       </span>
 
       {missingIntegrations.length === 1 ? (
-        <Button
-          variant="tertiary"
+        <GaiaButton
+          variant="warning-soft"
           size="sm"
           isPending={!!connectingId}
           isDisabled={!!connectingId}
           onPress={() => onConnect(missingIntegrations[0].id)}
         >
           Connect {missingIntegrations[0].name}
-        </Button>
+        </GaiaButton>
       ) : (
         <ButtonGroup size="sm">
           <GaiaButton

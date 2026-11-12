@@ -1,4 +1,5 @@
 import { Chip, Input, ListBox, Select, TextField } from "@heroui/react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import type { ComposioIntegrationSetup } from "@/features/settings/api/composioSetupApi";
@@ -91,6 +92,7 @@ export function ComposioAuthConfigRow({
           </Select>
         ) : (
           <TextField
+            className={inputVariants({ size: "sm" })}
             aria-label={`${row.name} auth config id`}
             value={value}
             onChange={onChange}

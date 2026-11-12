@@ -464,9 +464,9 @@ function DemoTodoSidebar({
           })}
         </span>
         <Button
+          variant="danger-soft"
           isIconOnly
           size="sm"
-          variant="danger-soft"
           aria-label="Delete todo"
         >
           <Delete02Icon className="size-5" />

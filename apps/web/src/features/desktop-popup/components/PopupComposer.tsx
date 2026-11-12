@@ -3,6 +3,7 @@
 import { InputGroup, TextField } from "@heroui/react";
 import { Cancel01Icon } from "@icons";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { sendMessage } from "@/features/chat/stream/sendMessage";
@@ -77,7 +78,12 @@ export default function PopupComposer({
 
   return (
     <div data-popup-composer>
-      <TextField value={text} onChange={setText} isDisabled={disabled}>
+      <TextField
+        className={inputVariants({ size: "sm" })}
+        value={text}
+        onChange={setText}
+        isDisabled={disabled}
+      >
         <InputGroup
           className="
             bg-transparent shadow-none border-none outline-none ring-0 py-0 pl-0.5 pr-2
