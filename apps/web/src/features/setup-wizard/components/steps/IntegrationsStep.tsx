@@ -14,8 +14,8 @@ import {
   integrationConnectionState,
 } from "@shared/utils";
 import * as m from "motion/react-m";
-import Link from "next/link";
 import { useMemo } from "react";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { MOTION_FADE_UP } from "@/features/onboarding/constants/motion";
@@ -88,19 +88,14 @@ export function IntegrationsStep({ status, catalog }: IntegrationsStepProps) {
                 ? "need enabling on this instance first."
                 : "need a Composio key first."}
             </p>
-            <Button
-              render={(props) => (
-                <Link
-                  {...(props as unknown as React.ComponentProps<typeof Link>)}
-                  href={COMPOSIO_SETUP_PATH}
-                />
-              )}
+            <LinkButton
+              href={COMPOSIO_SETUP_PATH}
               size="sm"
               variant="secondary"
               className="shrink-0"
             >
               {hasComposioKey ? "Set them up" : "Add Composio key"}
-            </Button>
+            </LinkButton>
           </div>
         )}
 
@@ -183,20 +178,15 @@ export function IntegrationsStep({ status, catalog }: IntegrationsStepProps) {
         />
       </div>
 
-      <Button
-        render={(props) => (
-          <Link
-            {...(props as unknown as React.ComponentProps<typeof Link>)}
-            href="/integrations"
-          />
-        )}
+      <LinkButton
+        href="/integrations"
         variant="ghost"
         size="sm"
         className="self-start rounded-full text-zinc-400"
       >
         Browse all integrations
         <CircleArrowUpRight02Icon className="size-4" />
-      </Button>
+      </LinkButton>
     </m.div>
   );
 }

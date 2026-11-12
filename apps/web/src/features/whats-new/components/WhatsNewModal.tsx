@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, buttonVariants, Modal, Spinner } from "@heroui/react";
+import { Button, Modal, Spinner } from "@heroui/react";
 import { ArrowLeft02Icon, ArrowRight02Icon, ArrowUpRight01Icon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { track } from "@/lib/analytics";
 import { useWhatsNewModal, useWhatsNewStore } from "@/stores/whatsNewStore";
 import { useReleases } from "../hooks/useReleases";
@@ -114,24 +115,21 @@ export function WhatsNewModal() {
 
             {showControls && (
               <Modal.Footer className="flex items-center justify-between">
-                <a
-                  href={release?.docsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={buttonVariants({
-                    variant: "tertiary",
-                    size: "sm",
-                  })}
-                  onClick={() =>
-                    release &&
-                    track("whats_new:docs_clicked", {
-                      releaseId: release.id,
-                    })
-                  }
-                >
-                  View all release notes
-                  <ArrowUpRight01Icon className="h-3.5 w-3.5" />
-                </a>
+                {release && (
+                  <LinkButton
+                    href={release.docsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      track("whats_new:docs_clicked", { releaseId: release.id })
+                    }
+                  >
+                    View all release notes
+                    <ArrowUpRight01Icon className="h-3.5 w-3.5" />
+                  </LinkButton>
+                )}
                 <div className="flex items-center gap-1">
                   <Button
                     isIconOnly

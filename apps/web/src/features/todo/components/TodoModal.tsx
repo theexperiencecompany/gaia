@@ -455,7 +455,7 @@ export default function TodoModal({
               </Modal.Body>
 
               <Modal.Footer>
-                <Button variant="tertiary" onPress={() => onOpenChange(false)}>
+                <Button variant="ghost" onPress={() => onOpenChange(false)}>
                   Cancel
                 </Button>
                 <Button

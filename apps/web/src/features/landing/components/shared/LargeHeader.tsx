@@ -35,7 +35,7 @@ export default function LargeHeader({
         )}
 
         {chipText2 && (
-          <Chip variant="tertiary" color="danger">
+          <Chip variant="soft" color="danger">
             {chipText2}
           </Chip>
         )}

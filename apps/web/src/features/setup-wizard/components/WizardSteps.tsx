@@ -126,7 +126,7 @@ export function WizardSteps({
                   {step.title}
                 </h1>
                 {step.optional && (
-                  <Chip size="sm" variant="tertiary">
+                  <Chip size="sm" variant="soft">
                     Optional
                   </Chip>
                 )}

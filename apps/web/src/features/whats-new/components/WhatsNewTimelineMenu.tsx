@@ -93,7 +93,7 @@ export function WhatsNewTimelineMenu({ onClose }: WhatsNewTimelineMenuProps) {
       {/* Footer */}
       <div className="px-3">
         <Button
-          variant="tertiary"
+          variant="ghost"
           size="sm"
           onPress={handleViewAll}
           className="justify-start text-zinc-500"

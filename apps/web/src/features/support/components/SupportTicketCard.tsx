@@ -124,7 +124,7 @@ function EditTicketModal({
               </div>
             </Modal.Body>
             <Modal.Footer>
-              <Button variant="tertiary" onPress={onClose}>
+              <Button variant="ghost" onPress={onClose}>
                 Cancel
               </Button>
               <Button onPress={onSave} variant="primary">
@@ -244,7 +244,7 @@ export default function SupportTicketCard({
         <div className="flex items-center justify-between px-6 py-1">
           <div className="flex flex-row items-center gap-2 pt-3 pb-2">
             {getTypeIcon()}
-            <Chip size="sm" color={getTypeColor()} variant="tertiary">
+            <Chip size="sm" color={getTypeColor()} variant="soft">
               {getTypeDisplay()}
             </Chip>
           </div>
@@ -259,7 +259,7 @@ export default function SupportTicketCard({
             <Button
               isIconOnly
               size="sm"
-              variant="tertiary"
+              variant="ghost"
               onPress={handleEditClick}
               className="h-8 w-8 text-zinc-500 hover:text-zinc-200"
             >

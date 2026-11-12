@@ -63,8 +63,7 @@ const DISMISS_CLS = "bg-white/5 text-white/70 data-[hover=true]:bg-white/10";
 // larger radius would exceed half the height and clamp into a full pill.
 const BTN_BASE = "h-7 min-w-0 rounded-xl px-3 font-medium text-xs";
 
-// Sileo renders each toast as a <button>, so the controls inside it render as a
-// div (a nested button would be invalid HTML) while keeping Button's press behaviour.
+// sileo renders the toast as a <button>, so its controls can't be buttons; HeroUI's render type only allows one.
 const renderAsDiv = (
   props: DetailedHTMLProps<
     ButtonHTMLAttributes<HTMLButtonElement>,

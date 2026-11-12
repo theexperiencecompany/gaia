@@ -103,7 +103,7 @@ export default function PopupComposer({
             <Button
               isIconOnly
               size="sm"
-              variant="tertiary"
+              variant="ghost"
               onPress={dismissPopup}
               aria-label="Close"
               className="h-6 min-h-6 w-6 max-w-6 min-w-6 shrink-0 text-zinc-500 hover:text-zinc-200"

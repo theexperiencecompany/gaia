@@ -123,7 +123,7 @@ function SelfHostedSupportModal({
               <SelfHostedSupportNotice />
             </Modal.Body>
             <Modal.Footer>
-              <Button variant="tertiary" onPress={onOpenChange}>
+              <Button variant="ghost" onPress={onOpenChange}>
                 Close
               </Button>
             </Modal.Footer>

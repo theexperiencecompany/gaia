@@ -84,7 +84,7 @@ export default function WorkflowFooter({
       <div className="flex items-center gap-2">
         <Tooltip>
           <Button
-            variant="tertiary"
+            variant="ghost"
             onPress={onCancel}
             className="active:scale-[0.97] transition-transform duration-150"
           >

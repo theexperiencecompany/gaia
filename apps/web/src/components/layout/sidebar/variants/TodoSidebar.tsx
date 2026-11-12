@@ -125,7 +125,7 @@ function SidebarSection({
             key={item.href}
             fullWidth
             className={`justify-start px-2 text-start text-sm ${activeItem === item.href ? "bg-zinc-800 text-zinc-300" : "text-zinc-500 hover:text-zinc-300"}`}
-            variant="tertiary"
+            variant="ghost"
             size="sm"
             onPress={() => onItemClick(item)}
           >
@@ -322,7 +322,7 @@ export default function TodoSidebar() {
                 <Button
                   isIconOnly
                   size="sm"
-                  variant="tertiary"
+                  variant="ghost"
                   onPress={() => setAddProjectOpen(true)}
                   className="h-6 w-6 min-w-6"
                 >

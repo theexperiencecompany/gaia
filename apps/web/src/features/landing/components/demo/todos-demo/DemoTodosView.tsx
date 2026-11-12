@@ -124,7 +124,7 @@ function DemoTodoItem({
                       ? "danger"
                       : "default"
                 }
-                variant="tertiary"
+                variant="soft"
               >
                 <CalendarCheckOut01Icon
                   width={16}
@@ -138,7 +138,7 @@ function DemoTodoItem({
             {todo.priority !== "none" && (
               <Chip
                 size="sm"
-                variant="tertiary"
+                variant="soft"
                 className={`px-2 ${priorityChipClassNames[todo.priority]}`}
               >
                 <Flag02Icon width={15} height={15} className="mx-1" />
@@ -152,7 +152,7 @@ function DemoTodoItem({
             {project && (
               <Chip
                 size="sm"
-                variant="tertiary"
+                variant="soft"
                 className="px-1 text-zinc-400"
                 style={{ color: project.color }}
               >
@@ -165,7 +165,7 @@ function DemoTodoItem({
               <Chip
                 key={label}
                 size="sm"
-                variant="tertiary"
+                variant="soft"
                 className="flex items-center px-1 text-zinc-400"
               >
                 <Tag01Icon width={17} height={17} className="mx-1" />
@@ -176,7 +176,7 @@ function DemoTodoItem({
             ))}
 
             {todo.subtasks.length > 0 && (
-              <Chip size="sm" variant="tertiary" className="px-1 text-zinc-400">
+              <Chip size="sm" variant="soft" className="px-1 text-zinc-400">
                 <CheckmarkCircle02Icon
                   width={15}
                   height={15}
@@ -268,7 +268,7 @@ function DemoWorkflowSteps({ steps }: { steps: DemoWorkflowStep[] }) {
               {/* Step content */}
               <div className="flex-1 space-y-1 pt-0.5">
                 <div className="flex items-center gap-2">
-                  <Chip size="sm" variant="tertiary" className="h-6 text-xs">
+                  <Chip size="sm" variant="soft" className="h-6 text-xs">
                     {IconComponent}
                     <Chip.Label>
                       {step.category

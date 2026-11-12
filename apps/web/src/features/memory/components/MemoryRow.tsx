@@ -76,7 +76,7 @@ export function MemoryRow({
             </span>
           )}
           {showCategory && memory.category_path && (
-            <Chip size="sm" variant="tertiary" className="h-5 bg-zinc-800">
+            <Chip size="sm" variant="soft" className="h-5 bg-zinc-800">
               <Chip.Label className="px-1.5 text-xs text-zinc-400">
                 {memory.category_path}
               </Chip.Label>
@@ -85,7 +85,7 @@ export function MemoryRow({
           {memory.version > 1 && (
             <Chip
               size="sm"
-              variant="tertiary"
+              variant="soft"
               onClick={toggleHistory}
               className="h-5 cursor-pointer bg-zinc-800 data-[hover=true]:bg-zinc-700"
             >
@@ -136,7 +136,7 @@ export function MemoryRow({
         <Button
           isIconOnly
           size="sm"
-          variant="tertiary"
+          variant="ghost"
           aria-label="Edit memory"
           onPress={() => onEdit(memory)}
         >

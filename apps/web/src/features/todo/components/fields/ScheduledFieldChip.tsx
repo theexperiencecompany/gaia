@@ -152,7 +152,7 @@ export default function ScheduledFieldChip({
 
           {/* Quick schedule options */}
           <Button
-            variant="tertiary"
+            variant="ghost"
             fullWidth
             className="justify-start gap-2 px-3 text-zinc-500"
             onPress={() => handleQuickSchedule(1, onClose)}
@@ -161,7 +161,7 @@ export default function ScheduledFieldChip({
             In 1 hour
           </Button>
           <Button
-            variant="tertiary"
+            variant="ghost"
             fullWidth
             className="justify-start gap-2 px-3 text-zinc-500"
             onPress={() => handleQuickSchedule(4, onClose)}
@@ -170,7 +170,7 @@ export default function ScheduledFieldChip({
             In 4 hours
           </Button>
           <Button
-            variant="tertiary"
+            variant="ghost"
             fullWidth
             className="justify-start gap-2 px-3 text-zinc-500"
             onPress={() => handleQuickSchedule(24, onClose)}
@@ -184,7 +184,7 @@ export default function ScheduledFieldChip({
             <>
               <Separator className="my-1 bg-zinc-700" />
               <Button
-                variant="tertiary"
+                variant="ghost"
                 fullWidth
                 className="justify-start gap-2 px-3 text-red-400"
                 onPress={() => {

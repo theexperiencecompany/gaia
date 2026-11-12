@@ -54,7 +54,7 @@ export function IntegrationAccountRenameModal({
               </TextField>
             </Modal.Body>
             <Modal.Footer>
-              <Button variant="tertiary" onPress={onClose}>
+              <Button variant="ghost" onPress={onClose}>
                 Cancel
               </Button>
               <Button onPress={save} variant="primary">

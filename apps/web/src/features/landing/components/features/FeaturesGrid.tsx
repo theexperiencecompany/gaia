@@ -79,7 +79,7 @@ export function FeaturesGrid({ children }: { children?: ReactNode }) {
           className="relative z-10 mb-6"
         >
           <Chip
-            variant="tertiary"
+            variant="soft"
             color="accent"
             size="md"
             className="text-primary"

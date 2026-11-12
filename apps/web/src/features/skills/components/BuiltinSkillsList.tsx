@@ -1,8 +1,8 @@
 "use client";
 
 import { Button, Chip } from "@heroui/react";
-import NextLink from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { skillsApi } from "../api/skillsApi";
 import type { BuiltinSkillInfo } from "../api/types";
 import { skillMatchesQuery } from "../utils";
@@ -110,7 +110,7 @@ export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
                 <div className="flex shrink-0 items-center gap-2">
                   <Chip
                     size="sm"
-                    variant="tertiary"
+                    variant="soft"
                     color="warning"
                     className="bg-warning/15"
                   >
@@ -118,21 +118,14 @@ export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
                       Not connected
                     </Chip.Label>
                   </Chip>
-                  <Button
-                    render={(props) => (
-                      <NextLink
-                        {...(props as unknown as React.ComponentProps<
-                          typeof NextLink
-                        >)}
-                        href={`/integrations?id=${encodeURIComponent(group.icon)}`}
-                      />
-                    )}
+                  <LinkButton
+                    href={`/integrations?id=${encodeURIComponent(group.icon)}`}
                     size="sm"
                     variant="tertiary"
                     className="rounded-lg"
                   >
                     Connect
-                  </Button>
+                  </LinkButton>
                 </div>
               )
             }

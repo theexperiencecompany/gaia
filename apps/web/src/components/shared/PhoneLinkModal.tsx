@@ -1,8 +1,8 @@
 "use client";
 
 import { Button, FieldError, Input, Modal, TextField } from "@heroui/react";
-import type { AnchorHTMLAttributes } from "react";
 import { useState } from "react";
+import { LinkButton } from "@/components/shared/LinkButton";
 import CopyButton from "@/components/ui/CopyButton";
 
 const E164_PHONE_PATTERN = /^\+[1-9]\d{6,14}$/;
@@ -119,20 +119,15 @@ export function PhoneLinkModal({
                   <CopyableValue label="Send" value={target.command} />
                   {target.actionLink && (
                     <div className="pt-1">
-                      <Button
-                        render={(props) => (
-                          <a
-                            {...(props as unknown as AnchorHTMLAttributes<HTMLAnchorElement>)}
-                            href={target.actionLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          />
-                        )}
+                      <LinkButton
+                        href={target.actionLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         variant="tertiary"
                         size="sm"
                       >
                         Open in Messages
-                      </Button>
+                      </LinkButton>
                       <p className="pt-1.5 text-xs text-zinc-500">
                         Opens the Messages app on iPhone and Mac only.
                       </p>

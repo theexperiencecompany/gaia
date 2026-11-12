@@ -1,10 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { ArrowRight02Icon } from "@icons";
 import Link from "next/link";
-import type { ComponentProps } from "react";
 import FAQAccordion from "@/components/seo/FAQAccordion";
+import { LinkButton } from "@/components/shared/LinkButton";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
 
 interface IntegrationRichContentProps {
@@ -85,18 +84,10 @@ export function IntegrationRichContent({
           communication, productivity, and more, letting you build cross-tool
           automations in plain English without writing a single line of code.
         </p>
-        <Button
-          render={(props) => (
-            <Link
-              {...(props as unknown as ComponentProps<typeof Link>)}
-              href={directoryHref}
-            />
-          )}
-          variant="tertiary"
-        >
+        <LinkButton href={directoryHref} variant="tertiary">
           Browse all integrations
           <ArrowRight02Icon className="h-3.5 w-3.5" aria-hidden="true" />
-        </Button>
+        </LinkButton>
       </section>
 
       {/* Cross-links to comparison and alternative guides when they exist */}

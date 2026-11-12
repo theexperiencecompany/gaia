@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Description,
   Link as HeroLink,
   Label,
@@ -10,8 +9,8 @@ import {
   Skeleton,
 } from "@heroui/react";
 import { SquareArrowUpRight02Icon } from "@icons";
-import Link from "next/link";
 import { useMemo, useState } from "react";
+import { LinkButton } from "@/components/shared/LinkButton";
 import type {
   CredentialProvider,
   ProviderCatalog,
@@ -149,19 +148,14 @@ export function FeatureProviderPicker({
           )}
 
           {managedAt ? (
-            <Button
-              render={(props) => (
-                <Link
-                  {...(props as unknown as React.ComponentProps<typeof Link>)}
-                  href={managedAt.href}
-                />
-              )}
+            <LinkButton
+              href={managedAt.href}
               variant="secondary"
               size="sm"
               className="self-start"
             >
               {managedAt.label}
-            </Button>
+            </LinkButton>
           ) : configs.isLoading ? (
             <Skeleton className="h-14 w-full rounded-xl" />
           ) : (

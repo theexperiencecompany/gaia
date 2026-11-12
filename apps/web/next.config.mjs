@@ -45,7 +45,6 @@ const posthogAssetsHost = POSTHOG_HOST.replace(
 );
 
 const nextConfig = {
-  poweredByHeader: false,
   // Dev only (ignored in prod): Next 15+ refuses to serve /_next/* to any origin
   // but localhost, so opening the dev server from a phone on LAN/Tailscale got
   // 403 scripts and never hydrated. These are the private ranges devices sit on.
@@ -230,7 +229,7 @@ const nextConfig = {
           {
             key: "Cache-Control",
             value:
-              "public, max-age=60, s-maxage=60, stale-while-revalidate=86400",
+              "public, max-age=0, s-maxage=60, stale-while-revalidate=86400",
           },
           { key: "Last-Modified", value: buildLastModified },
         ],

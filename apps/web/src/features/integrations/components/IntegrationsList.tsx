@@ -34,7 +34,7 @@ const NoIntegrationsFound: React.FC<NoIntegrationsFoundProps> = ({
         ? `No integrations found for "${searchQuery}"`
         : `No ${getCategoryLabel(selectedCategory).toLowerCase()} integrations found`}
     </p>
-    <Button onPress={clearFilters} variant="tertiary" size="sm">
+    <Button onPress={clearFilters} variant="ghost" size="sm">
       Clear filters
     </Button>
   </div>

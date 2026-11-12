@@ -43,7 +43,7 @@ function DeviceRow({
               <Chip
                 size="sm"
                 color={device.online ? "success" : "default"}
-                variant="tertiary"
+                variant="soft"
               >
                 {device.online ? "Online" : "Offline"}
               </Chip>

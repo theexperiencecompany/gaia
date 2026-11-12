@@ -73,7 +73,7 @@ export function SubscriptionSettings() {
           </div>
           <Chip
             color={statusColor}
-            variant="tertiary"
+            variant="soft"
             size="sm"
             className="mt-1 text-xs"
           >

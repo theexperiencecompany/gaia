@@ -89,7 +89,7 @@ export default function RightSidebarSlot() {
     <div className="flex w-full items-center justify-end px-3 pt-3 pb-1">
       <Button
         onPress={close}
-        variant="tertiary"
+        variant="ghost"
         isIconOnly
         size="sm"
         aria-label="Close"

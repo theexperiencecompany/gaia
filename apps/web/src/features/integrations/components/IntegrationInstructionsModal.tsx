@@ -247,7 +247,7 @@ export const IntegrationInstructionsModal = ({
 
             <Modal.Footer>
               <Button
-                variant="tertiary"
+                variant="ghost"
                 onPress={handleClose}
                 isDisabled={isSaving}
               >

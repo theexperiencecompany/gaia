@@ -148,7 +148,7 @@ export default function WorkflowDescriptionField({
         <span className="inline-flex">
           <Button
             size="sm"
-            variant="tertiary"
+            variant="ghost"
             className="h-7 px-2 text-xs"
             isPending={isGenerating}
             isDisabled={isGenerating || !canGenerate}

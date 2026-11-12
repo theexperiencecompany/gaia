@@ -70,7 +70,7 @@ export default function BaseFieldChip({
       }}
     >
       <Button
-        variant="tertiary"
+        variant="ghost"
         size="sm"
         aria-label={`${label} selection. Current value: ${hasValue ? (typeof value === "string" ? value : "selected") : "none selected"}`}
         className={cn(

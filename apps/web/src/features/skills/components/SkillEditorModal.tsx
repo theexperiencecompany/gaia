@@ -168,7 +168,7 @@ function SkillEditorFooter({
 }>) {
   return (
     <Modal.Footer>
-      <Button variant="tertiary" className="rounded-xl" onPress={onClose}>
+      <Button variant="ghost" className="rounded-xl" onPress={onClose}>
         {isWriting ? "Cancel" : "Done"}
       </Button>
       {isWriting && (

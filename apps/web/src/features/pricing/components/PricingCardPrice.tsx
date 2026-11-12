@@ -86,7 +86,7 @@ export function PricingCardPrice({
           </>
         )}
         {showSavings && (
-          <Chip color="success" size="sm" variant="tertiary">
+          <Chip color="success" size="sm" variant="soft">
             <MonthsFree
               monthsFree={list.monthsFree}
               offerMonthsFree={offer?.monthsFree ?? null}

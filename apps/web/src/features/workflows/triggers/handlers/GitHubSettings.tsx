@@ -204,7 +204,7 @@ export function GitHubSettings({
             {hasNextPage && !isLoading && (
               <Button
                 size="sm"
-                variant="tertiary"
+                variant="ghost"
                 className="w-full text-xs"
                 onPress={() => fetchNextPage()}
                 isPending={isFetchingNextPage}

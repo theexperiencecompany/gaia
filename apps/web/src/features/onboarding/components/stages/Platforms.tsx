@@ -116,10 +116,10 @@ export function Platforms({ state, dispatch, onConfirmed }: PlatformsProps) {
             >
               Open {BOT_PLATFORM_LABELS[awaitingPlatform]} again
             </Button>
-            <Button variant="tertiary" size="md" onPress={chooseAnother}>
+            <Button variant="ghost" size="md" onPress={chooseAnother}>
               {AWAITING_LINK_OTHER_APP_LABEL}
             </Button>
-            <Button variant="tertiary" size="md" onPress={skip}>
+            <Button variant="ghost" size="md" onPress={skip}>
               {AWAITING_LINK_SKIP_LABEL}
             </Button>
           </div>

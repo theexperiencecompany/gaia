@@ -30,7 +30,7 @@ export function ExperimentalFeatureRow({
       }
     >
       <div className="flex items-center gap-3">
-        <Chip size="sm" variant="tertiary" color="warning">
+        <Chip size="sm" variant="soft" color="warning">
           {FEATURE_STAGE_LABELS[feature.stage]}
         </Chip>
         <Switch

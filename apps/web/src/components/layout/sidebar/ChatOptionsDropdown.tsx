@@ -253,7 +253,7 @@ export default function ChatOptionsDropdown({
                 </TextField>
               </Modal.Body>
               <Modal.Footer>
-                <Button variant="tertiary" onPress={closeEditModal}>
+                <Button variant="ghost" onPress={closeEditModal}>
                   Cancel
                 </Button>
                 <Button onPress={handleEdit} variant="primary">

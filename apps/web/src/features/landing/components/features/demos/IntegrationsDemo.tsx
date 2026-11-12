@@ -61,7 +61,7 @@ export default function IntegrationsDemo() {
             >
               <Chip
                 size="sm"
-                variant="tertiary"
+                variant="soft"
                 className="border-0 bg-zinc-800 text-xs font-medium text-zinc-300"
               >
                 {icon ? <span className="ml-1">{icon}</span> : undefined}

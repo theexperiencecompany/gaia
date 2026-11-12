@@ -131,7 +131,7 @@ export default function WorkflowCreatedCard({
           </div>
           <Chip
             size="sm"
-            variant="tertiary"
+            variant="soft"
             color="success"
             className="shrink-0 bg-success/15 text-xs font-medium"
           >
@@ -148,7 +148,7 @@ export default function WorkflowCreatedCard({
         {/* Trigger display */}
         <Chip
           size="sm"
-          variant="tertiary"
+          variant="soft"
           color={trigger.color}
           className={`${trigger.bgColor} shrink-0 text-xs font-medium`}
         >

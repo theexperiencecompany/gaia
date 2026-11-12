@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, buttonVariants, Spinner } from "@heroui/react";
+import { Button, Spinner } from "@heroui/react";
 import {
   Alert01Icon,
   CheckmarkCircle02Icon,
@@ -10,6 +10,7 @@ import {
   ShieldUserIcon,
   StopCircleIcon,
 } from "@icons";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { browserApi } from "@/features/browser/api/browserApi";
 import {
   type PostHandoffDecision,
@@ -223,14 +224,15 @@ function TakeOverButton({
   const className = "flex-1 bg-[#00bbff] font-semibold text-zinc-900";
   if (href) {
     return (
-      <a
+      <LinkButton
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className={`${buttonVariants({ variant: "primary" })} ${className}`}
+        variant="primary"
+        className={className}
       >
         {cta}
-      </a>
+      </LinkButton>
     );
   }
   return (

@@ -15,7 +15,7 @@ export default function DevicesSettings() {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-medium">Devices</h2>
-            <Chip size="sm" variant="tertiary" color="success">
+            <Chip size="sm" variant="soft" color="success">
               Beta
             </Chip>
           </div>

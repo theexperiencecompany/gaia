@@ -269,7 +269,7 @@ const EditorToolbar = ({
                 <span className="text-sm text-white/70">Color Picker</span>
                 <Button
                   size="sm"
-                  variant="tertiary"
+                  variant="ghost"
                   isIconOnly
                   onPress={onResetColor}
                   aria-label="Reset Color"

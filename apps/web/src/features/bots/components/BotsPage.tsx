@@ -1,9 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import Image from "next/image";
 import Link from "next/link";
-import type { ComponentProps } from "react";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { BOT_PLATFORM_ICONS } from "@/config/botPlatforms";
 import type { BotConfig } from "../constants";
 import { useBotCards } from "../hooks/useBotCards";
@@ -75,38 +74,26 @@ function BotCard({
       )}
       <div className="flex w-full flex-col gap-2 @min-[22rem]:flex-row @min-[22rem]:justify-end">
         {primaryAction && (
-          <Button
-            render={(props) => (
-              <Link
-                {...(props as unknown as ComponentProps<"a">)}
-                href={primaryAction.href}
-                target={primaryAction.external ? "_blank" : "_self"}
-                rel={primaryAction.external ? "noopener noreferrer" : undefined}
-              />
-            )}
+          <LinkButton
+            href={primaryAction.href}
+            target={primaryAction.external ? "_blank" : "_self"}
+            rel={primaryAction.external ? "noopener noreferrer" : undefined}
             className="w-full @min-[22rem]:w-auto"
             variant="primary"
           >
             {primaryAction.label}
-          </Button>
+          </LinkButton>
         )}
         {secondaryAction && (
-          <Button
-            render={(props) => (
-              <Link
-                {...(props as unknown as ComponentProps<"a">)}
-                href={secondaryAction.href}
-                target={secondaryAction.external ? "_blank" : "_self"}
-                rel={
-                  secondaryAction.external ? "noopener noreferrer" : undefined
-                }
-              />
-            )}
+          <LinkButton
+            href={secondaryAction.href}
+            target={secondaryAction.external ? "_blank" : "_self"}
+            rel={secondaryAction.external ? "noopener noreferrer" : undefined}
             variant="tertiary"
             className="w-full @min-[22rem]:w-auto"
           >
             {secondaryAction.label}
-          </Button>
+          </LinkButton>
         )}
       </div>
     </div>

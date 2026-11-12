@@ -81,7 +81,7 @@ export function TriggerTagInput({
       {values.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {values.map((value) => (
-            <Chip key={value} variant="tertiary">
+            <Chip key={value} variant="soft">
               <span className="font-mono text-xs">{value}</span>
               <button
                 type="button"
