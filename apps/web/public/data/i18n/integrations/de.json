@@ -600,7 +600,7 @@
   "slack-todoist": {
     "toolA": "Slack",
     "toolB": "Todoist",
-    "tagline": "Aufgaben aus Slack in Todoist sichern, ohne aus dem Flow zu kommen",
+    "tagline": "To-dos aus Slack in Todoist sichern, ohne aus dem Flow zu kommen",
     "metaTitle": "Slack + Todoist: Aufgaben per Emoji-Reaktion sichern",
     "metaDescription": "Reagieren Sie auf eine Slack-Nachricht, um sie als Todoist-Aufgabe zu speichern, und erhalten Sie ein morgendliches Aufgaben-Briefing. GAIA verfolgt Team-Zusagen.",
     "keywords": [
@@ -2443,7 +2443,7 @@
   "todoist-asana": {
     "toolA": "Todoist",
     "toolB": "Asana",
-    "tagline": "Persönliche Todoist-Aufgaben ohne Doppelerfassung mit Team-Asana-Projekten verbinden",
+    "tagline": "Persönliche Todoist-Listen ohne Doppelerfassung mit Team-Asana-Projekten verbinden",
     "metaTitle": "Todoist + Asana Integration: Asana-Zuordnungen in Todoist",
     "metaDescription": "Synchronisieren Sie Ihre Asana-Zuordnungen nach Todoist und aktualisieren Sie Asana, wenn Sie sie erledigen. GAIA hält persönliche und Team-Aufgabenlisten im Takt.",
     "keywords": [
@@ -6458,7 +6458,7 @@
   "todoist-clickup": {
     "toolA": "Todoist",
     "toolB": "ClickUp",
-    "tagline": "Persönliche Aufgabenerfassung in Todoist mit Team-Projektmanagement in ClickUp verbinden",
+    "tagline": "Persönliche To-do-Erfassung in Todoist mit Team-Projektmanagement in ClickUp verbinden",
     "metaTitle": "Todoist + ClickUp Integration: Persönliche und Team-Aufgaben",
     "metaDescription": "Erfassen Sie Aufgaben in Todoist und setzen Sie sie in ClickUp um – Erledigung wird beidseitig synchronisiert. GAIA zieht Ihre Zuordnungen heran.",
     "keywords": [
@@ -6524,7 +6524,7 @@
   "todoist-trello": {
     "toolA": "Todoist",
     "toolB": "Trello",
-    "tagline": "Persönliche Todoist-Aufgaben ohne manuelles Kopieren mit Team-Trello-Boards synchronisieren",
+    "tagline": "Persönliche Todoist-Einträge ohne manuelles Kopieren mit Team-Trello-Boards synchronisieren",
     "metaTitle": "Todoist + Trello: Karten und Aufgaben beidseitig",
     "metaDescription": "Veröffentlichen Sie Todoist-Aufgaben als Trello-Karten und ziehen Sie zugeordnete Karten nach Todoist – Erledigung bleibt synchron. GAIA aktualisiert Kunden-Boards.",
     "keywords": [
@@ -6788,7 +6788,7 @@
   "todoist-drive": {
     "toolA": "Todoist",
     "toolB": "Google Drive",
-    "tagline": "Dateien an Todoist-Aufgaben anhängen und Aufgaben aus Drive-Aktivität automatisch anlegen",
+    "tagline": "Dateien an Todoist-Einträge anhängen und To-dos aus Drive-Aktivität automatisch anlegen",
     "metaTitle": "Todoist + Google Drive: Aufgaben aus Docs und Sheets",
     "metaDescription": "Erhalten Sie eine Todoist-Aufgabe, wenn Docs, Sheets, Slides oder PDFs mit Ihnen geteilt werden – mit angehängter Datei. GAIA trackt Review-Fristen.",
     "keywords": [
@@ -6920,7 +6920,7 @@
   "todoist-hubspot": {
     "toolA": "Todoist",
     "toolB": "HubSpot",
-    "tagline": "Todoist-Follow-up-Aufgaben aus HubSpot-CRM-Aktivitäten erstellen und Deal-Aufgaben automatisch synchronisieren",
+    "tagline": "Todoist-Follow-ups aus HubSpot-CRM-Aktivitäten erstellen und Deal-Schritte automatisch synchronisieren",
     "metaTitle": "HubSpot Todoist Integration: Deal-Follow-ups als Aufgaben",
     "metaDescription": "Erstellen Sie Todoist-Follow-ups bei HubSpot-Deal-Phasenwechseln und protokollieren Sie erledigte Aufgaben zurück nach HubSpot. GAIA bereitet auch Meetings vor.",
     "keywords": [
@@ -7666,7 +7666,7 @@
   "todoist-salesforce": {
     "toolA": "Todoist",
     "toolB": "Salesforce",
-    "tagline": "Salesforce-Aufgaben in Todoist einblenden und Arbeit automatisch zurückprotokollieren",
+    "tagline": "Salesforce-Aktivitäten in Todoist einblenden und Arbeit automatisch zurückprotokollieren",
     "metaTitle": "Todoist + Salesforce Integration: Deal-Phasen zu Aufgaben",
     "metaDescription": "Erstellen Sie Todoist-Aufgaben aus Salesforce-Opportunity-Phasen und protokollieren Sie Erledigungen als Aktivitäten. GAIA markiert stagnierte Deals.",
     "keywords": [
@@ -7806,7 +7806,7 @@
   "todoist-teams": {
     "toolA": "Todoist",
     "toolB": "Microsoft Teams",
-    "tagline": "Todoist-Aufgaben in Teams einblenden und Aufgaben aus Chats erfassen",
+    "tagline": "Todoist-Listen in Teams einblenden und To-dos aus Chats erfassen",
     "metaTitle": "Todoist + Microsoft Teams: Aufgabenwarnungen in Teams",
     "metaDescription": "Starten Sie jeden Tag wissend, was fällig ist. GAIA sendet ein Todoist-Briefing und Fälligkeitswarnungen an Microsoft Teams.",
     "keywords": [
@@ -7876,7 +7876,7 @@
   "todoist-figma": {
     "toolA": "Todoist",
     "toolB": "Figma",
-    "tagline": "Designarbeit in Figma mit Aufgaben-Tracking in Todoist verbinden",
+    "tagline": "Designarbeit in Figma mit Fortschritts-Tracking in Todoist verbinden",
     "metaTitle": "Todoist + Figma: Figma-Kommentare zu Todoist-Aufgaben",
     "metaDescription": "Verwandeln Sie Figma-Kommentare in Todoist-Aufgaben, verlinken Sie Frames mit Designaufgaben und fahren Sie eine Handoff-Checkliste.",
     "keywords": [
@@ -7946,7 +7946,7 @@
   "todoist-stripe": {
     "toolA": "Todoist",
     "toolB": "Stripe",
-    "tagline": "Stripe-Zahlungsereignisse automatisch in umsetzbare Aufgaben verwandeln",
+    "tagline": "Stripe-Zahlungsereignisse automatisch in umsetzbare To-dos verwandeln",
     "metaTitle": "Todoist + Stripe Integration: Zahlungsereignisse zu Aufgaben",
     "metaDescription": "Erstellen Sie Todoist-Aufgaben für Fehlzahlungen, Storno-Win-backs und Neukunden-Onboarding. GAIA verwandelt Stripe-Ereignisse in Follow-ups.",
     "keywords": [
@@ -8016,7 +8016,7 @@
   "todoist-airtable": {
     "toolA": "Todoist",
     "toolB": "Airtable",
-    "tagline": "Airtable-Datensätze mit Todoist-Aufgaben für strukturiertes Projekt-Tracking synchronisieren",
+    "tagline": "Airtable-Datensätze mit Todoist-Einträgen für strukturiertes Projekt-Tracking synchronisieren",
     "metaTitle": "Todoist + Airtable: Datensätze zu Aufgaben und zurück",
     "metaDescription": "Erstellen Sie Todoist-Aufgaben aus Ihnen zugeordneten Airtable-Datensätzen und synchronisieren Sie Erledigungen zurück nach Airtable. GAIA trackt auch Meilensteine.",
     "keywords": [
@@ -8086,7 +8086,7 @@
   "todoist-loom": {
     "toolA": "Todoist",
     "toolB": "Loom",
-    "tagline": "Loom-Videofeedback in Todoist-Aufgaben verwandeln und Videos an Arbeitseinträge anhängen",
+    "tagline": "Loom-Videofeedback in konkrete Todoist-Schritte verwandeln und Videos an Arbeitseinträge anhängen",
     "metaTitle": "Todoist + Loom: Loom-Feedback zu Todoist-Aufgaben",
     "metaDescription": "Ziehen Sie Todoist-Aufgaben aus Loom-Transkripten heran und hängen Sie Videos an Aufgaben an. GAIA verwandelt Videofeedback in Arbeitseinträge.",
     "keywords": [
@@ -13171,7 +13171,7 @@
   "zoom-clickup": {
     "toolA": "Zoom",
     "toolB": "ClickUp",
-    "tagline": "Zoom-Meeting-Aufgaben automatisch in ClickUp-Aufgaben posten",
+    "tagline": "Action Items aus Zoom-Meetings automatisch als ClickUp-Aufgaben posten",
     "metaTitle": "Zoom + ClickUp Integration: Meeting-Aufgaben zu Tasks",
     "metaDescription": "Verlassen Sie jeden Zoom-Anruf mit zugeordneten Aufgaben. GAIA verwandelt Meeting-Aufgaben in ClickUp-Aufgaben und postet die Zusammenfassung in ClickUp-Dokumente.",
     "keywords": [
@@ -14445,7 +14445,7 @@
   "todoist-google-sheets": {
     "toolA": "Todoist",
     "toolB": "Google Sheets",
-    "tagline": "Erledigte Todoist-Aufgaben in Google Sheets protokollieren und Sheet-Zeilen in Aufgaben verwandeln",
+    "tagline": "Erledigte Todoist-Aufgaben in Google Sheets protokollieren und Sheet-Zeilen in neue Einträge verwandeln",
     "metaTitle": "Todoist + Google Sheets: Erledigten-Aufgaben-Protokoll",
     "metaDescription": "Protokollieren Sie erledigte Todoist-Aufgaben in Google Sheets und erhalten Sie wöchentliche Produktivitätszusammenfassungen. GAIA erstellt Aufgaben aus Zeilen.",
     "keywords": [

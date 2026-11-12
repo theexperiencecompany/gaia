@@ -636,7 +636,7 @@
     ],
     "metaDescription": "Reaja a uma mensagem do Slack para salvá-la como tarefa do Todoist e receba um resumo matinal. O GAIA acompanha compromissos da equipe. Veja como configurar.",
     "metaTitle": "Integração Todoist + Slack: salve tarefas com emoji",
-    "tagline": "Capture tarefas do Slack para o Todoist sem perder o ritmo",
+    "tagline": "Capture pendências do Slack para o Todoist sem perder o ritmo",
     "toolA": "Slack",
     "toolB": "Todoist",
     "useCases": [
@@ -2480,7 +2480,7 @@
     ],
     "metaDescription": "Sincronize suas atribuições do Asana no Todoist e atualize o Asana ao concluí-las. O GAIA mantém listas pessoais e de equipe alinhadas. Veja como configurar.",
     "metaTitle": "Integração Todoist + Asana: tarefas da equipe",
-    "tagline": "Conecte tarefas pessoais do Todoist a projetos de equipe no Asana",
+    "tagline": "Conecte listas pessoais do Todoist a projetos de equipe no Asana",
     "toolA": "Todoist",
     "toolB": "Asana",
     "useCases": [
@@ -6561,7 +6561,7 @@
     ],
     "metaDescription": "Publique tarefas do Todoist como cards do Trello e puxe cards atribuídos para o Todoist, com conclusão sincronizada. O GAIA atualiza quadros. Veja como configurar.",
     "metaTitle": "Integração Trello + Todoist: cards e tarefas",
-    "tagline": "Sincronize tarefas pessoais do Todoist com quadros de equipe no Trello",
+    "tagline": "Sincronize pendências pessoais do Todoist com quadros de equipe no Trello",
     "toolA": "Todoist",
     "toolB": "Trello",
     "useCases": [
@@ -6825,7 +6825,7 @@
     ],
     "metaDescription": "Ganhe uma tarefa quando Docs, Planilhas, Slides ou PDFs forem compartilhados com você, com o arquivo anexado. O GAIA acompanha prazos.",
     "metaTitle": "Integração Todoist + Drive: tarefas de docs",
-    "tagline": "Anexe arquivos a tarefas do Todoist e crie tarefas da atividade no Drive",
+    "tagline": "Anexe arquivos a itens do Todoist e crie pendências a partir do Drive",
     "toolA": "Todoist",
     "toolB": "Google Drive",
     "useCases": [
@@ -6957,7 +6957,7 @@
     ],
     "metaDescription": "Crie follow-ups no Todoist quando estágios de negócio do HubSpot mudarem e registre tarefas concluídas no HubSpot. O GAIA prepara reuniões. Veja como configurar.",
     "metaTitle": "Integração HubSpot + Todoist: follow-ups",
-    "tagline": "Crie tarefas de follow-up no Todoist de atividades do CRM e sincronize",
+    "tagline": "Crie follow-ups no Todoist de atividades do CRM e sincronize",
     "toolA": "Todoist",
     "toolB": "HubSpot",
     "useCases": [
@@ -7777,7 +7777,7 @@
     ],
     "metaDescription": "Puxe ações de transcrições do Zoom para o Todoist e receba um briefing de tarefas antes das calls. O GAIA cuida do follow-up. Veja como configurar.",
     "metaTitle": "Integração Todoist + Zoom: ações viram tarefas",
-    "tagline": "Transforme resultados de reunião do Zoom em tarefas no automático",
+    "tagline": "Transforme resultados de reunião do Zoom em itens do Todoist no automático",
     "toolA": "Todoist",
     "toolB": "Zoom",
     "useCases": [
@@ -7847,7 +7847,7 @@
     ],
     "metaDescription": "Comece cada dia sabendo o que vence. O GAIA envia um briefing do Todoist e alertas de prazo ao Teams e salva mensagens como tarefas. Veja como configurar.",
     "metaTitle": "Integração Todoist + Teams: alertas no Teams",
-    "tagline": "Mostre tarefas do Todoist no Teams e capture ações dos chats",
+    "tagline": "Mostre suas pendências do Todoist no Teams e capture ações dos chats",
     "toolA": "Todoist",
     "toolB": "Microsoft Teams",
     "useCases": [
@@ -7987,7 +7987,7 @@
     ],
     "metaDescription": "Crie tarefas no Todoist para falhas de pagamento, reconquistas e onboarding de assinantes. O GAIA vira eventos em follow-ups. Veja como configurar.",
     "metaTitle": "Integração Todoist + Stripe: eventos viram tarefas",
-    "tagline": "Transforme eventos de pagamento da Stripe em tarefas acionáveis no automático",
+    "tagline": "Transforme eventos de pagamento da Stripe em ações concretas no automático",
     "toolA": "Todoist",
     "toolB": "Stripe",
     "useCases": [
@@ -8127,7 +8127,7 @@
     ],
     "metaDescription": "Puxe tarefas do Todoist de transcrições do Loom e anexe vídeos às tarefas. O GAIA transforma feedback em vídeo em itens de trabalho. Veja como configurar.",
     "metaTitle": "Integração Todoist + Loom: feedback vira tarefas",
-    "tagline": "Transforme feedback em vídeo do Loom em tarefas e anexe vídeos aos itens",
+    "tagline": "Transforme feedback em vídeo do Loom em atividades e anexe vídeos aos itens",
     "toolA": "Todoist",
     "toolB": "Loom",
     "useCases": [
@@ -14490,7 +14490,7 @@
     ],
     "metaDescription": "Registre tarefas concluídas do Todoist no Google Sheets e receba resumos semanais de produtividade. O GAIA cria tarefas de linhas. Veja como configurar.",
     "metaTitle": "Integração Todoist + Sheets: registro de concluídas",
-    "tagline": "Registre tarefas concluídas do Todoist no Google Sheets e crie tarefas de linhas",
+    "tagline": "Registre tarefas concluídas do Todoist no Google Sheets e crie itens de linhas",
     "toolA": "Todoist",
     "toolB": "Google Sheets",
     "useCases": [
