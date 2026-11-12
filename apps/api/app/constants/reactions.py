@@ -152,12 +152,3 @@ REACTION_PALETTE: Final[Mapping[str, str]] = MappingProxyType(
         "💻": "code, repos, GitHub, the computer or desktop",
     }
 )
-
-#: Told to comms when the instant reaction landed before its input was built: it stops a second acknowledgement.
-REACTION_NOTE_TEMPLATE: Final = (
-    "[GAIA already reacted {emoji} to the user's message below. That reaction is the "
-    "acknowledgement: do not acknowledge it again.]"
-)
-
-#: How long a finished turn waits for its instant reaction to land: the decision bound plus one write.
-REACTION_SETTLE_SECONDS: Final = REACTION_TIMEOUT_SECONDS + 1.0

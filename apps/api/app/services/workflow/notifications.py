@@ -86,39 +86,3 @@ async def send_workflow_completion_notification(
             conversation_id=conversation_id,
             user_id=user_id,
         )
-
-
-async def send_workflow_failure_notification(
-    *,
-    workflow_id: str,
-    workflow_title: str,
-    user_id: str,
-) -> None:
-    """Send the "workflow failed" notification when the executor run errors."""
-    try:
-        await notification_service.create_notification(
-            NotificationRequest(
-                user_id=user_id,
-                source=NotificationSourceEnum.WORKFLOW_FAILED,
-                type=NotificationType.ERROR,
-                content=NotificationContent(
-                    title=f"couldn't finish {workflow_title}",
-                    body=(
-                        f"'{workflow_title}' ran into an error and stopped partway. "
-                        "you can re-run it whenever you're ready."
-                    ),
-                ),
-                metadata={"workflow_id": workflow_id},
-            )
-        )
-        log.info(
-            f"{LogTag.WORKFLOW} Workflow failure notification sent for", workflow_id=workflow_id
-        )
-    except Exception as e:
-        log.error(
-            f"{LogTag.WORKFLOW} Failed to send workflow failure notification for",
-            workflow_id=workflow_id,
-            error=str(e),
-            error_type=type(e).__name__,
-            user_id=user_id,
-        )

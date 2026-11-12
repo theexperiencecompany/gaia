@@ -957,46 +957,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cancel-stream/{stream_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cancel Stream Endpoint
-         * @description Cancel a running stream owned by the requesting user.
-         */
-        post: operations["chat_cancel_stream_endpoint"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/chat-stream": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Chat Stream Endpoint
-         * @description Stream a chat turn. Continues in the background if the client disconnects.
-         */
-        post: operations["chat_chat_stream_endpoint"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/conversations": {
         parameters: {
             query?: never;
@@ -4582,30 +4542,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/stream/{stream_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Subscribe Executor Stream
-         * @description Subscribe to a background executor SSE stream by stream_id.
-         *
-         *     Used by the frontend to receive live tool events for queued executor tasks.
-         *     The stream_id is delivered via the `executor.stream_started` WebSocket event.
-         *     Verifies stream ownership before allowing subscription.
-         */
-        get: operations["chat_subscribe_executor_stream"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/support/rate-limit-status": {
         parameters: {
             query?: never;
@@ -6626,10 +6562,6 @@ export interface components {
          * @description The conversations a client's sync request found stale.
          */
         BatchSyncResponse: {
-            /** Active Streams */
-            active_streams: {
-                [key: string]: string;
-            };
             /** Conversations */
             conversations: components["schemas"]["ConversationSyncRow"][];
             /** Missing */
@@ -7279,21 +7211,6 @@ export interface components {
         CalendarPreferencesUpdateResponse: {
             /** Message */
             message: string;
-        };
-        /**
-         * CancelStreamResponse
-         * @description Outcome of a stream-cancellation request.
-         *
-         *     ``error`` is set only when the stream could not be cancelled at all (it was
-         *     never started, or already expired from Redis).
-         */
-        CancelStreamResponse: {
-            /** Error */
-            error?: string | null;
-            /** Stream Id */
-            stream_id: string;
-            /** Success */
-            success: boolean;
         };
         /**
          * ChangePasswordRequest
@@ -11410,16 +11327,6 @@ export interface components {
             /** Message Id */
             message_id: string;
         };
-        /**
-         * MessageDict
-         * @description One chat turn as {role, content} for LLM history payloads.
-         */
-        MessageDict: {
-            /** Content */
-            content: string;
-            /** Role */
-            role: string;
-        };
         /** MessageFeedbackRequest */
         MessageFeedbackRequest: {
             /**
@@ -11524,58 +11431,6 @@ export interface components {
         MessageRequest: {
             /** Message */
             message: string;
-        };
-        /**
-         * MessageRequestWithHistory
-         * @description Chat-stream request carrying the full message history and attachments.
-         */
-        MessageRequestWithHistory: {
-            /** Comms Model */
-            comms_model?: string | null;
-            /** Conversation Id */
-            conversation_id?: string | null;
-            /** Executor Model */
-            executor_model?: string | null;
-            /**
-             * Filedata
-             * @default []
-             */
-            fileData?: components["schemas"]["FileData"][] | null;
-            /**
-             * Fileids
-             * @default []
-             */
-            fileIds?: string[] | null;
-            /**
-             * Is Onboarding Demo
-             * @default false
-             */
-            is_onboarding_demo?: boolean;
-            /**
-             * Is Retry
-             * @default false
-             */
-            is_retry?: boolean;
-            /** Message */
-            message: string;
-            /** Messages */
-            messages: components["schemas"]["MessageDict"][];
-            /** Platform Message Id */
-            platform_message_id?: string | null;
-            replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
-            selectedCalendarEvent?: components["schemas"]["SelectedCalendarEventData"] | null;
-            /** Selectedtool */
-            selectedTool?: string | null;
-            selectedWorkflow?: components["schemas"]["SelectedWorkflowDataInput"] | null;
-            /** Toolcategory */
-            toolCategory?: string | null;
-            /** Turn Id */
-            turn_id?: string | null;
-            /**
-             * Use Default Models
-             * @default true
-             */
-            use_default_models?: boolean;
         };
         /**
          * MessageSearchResult
@@ -17668,7 +17523,6 @@ export type CalendarListResponse = components['schemas']['CalendarListResponse']
 export type CalendarPreferencesResponse = components['schemas']['CalendarPreferencesResponse'];
 export type CalendarPreferencesUpdateRequest = components['schemas']['CalendarPreferencesUpdateRequest'];
 export type CalendarPreferencesUpdateResponse = components['schemas']['CalendarPreferencesUpdateResponse'];
-export type CancelStreamResponse = components['schemas']['CancelStreamResponse'];
 export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest'];
 export type ChannelConfig = components['schemas']['ChannelConfig'];
 export type ChannelDeliveryStatus = components['schemas']['ChannelDeliveryStatus'];
@@ -17898,13 +17752,11 @@ export type MemoryTreeResponse = components['schemas']['MemoryTreeResponse'];
 export type MessageAccepted = components['schemas']['MessageAccepted'];
 export type MessageBoundaryEvent = components['schemas']['MessageBoundaryEvent'];
 export type MessageBoundaryPayload = components['schemas']['MessageBoundaryPayload'];
-export type MessageDict = components['schemas']['MessageDict'];
 export type MessageFeedbackRequest = components['schemas']['MessageFeedbackRequest'];
 export type MessageFeedbackResponse = components['schemas']['MessageFeedbackResponse'];
 export type MessageModel = components['schemas']['MessageModel'];
 export type MessageReaction = components['schemas']['MessageReaction'];
 export type MessageRequest = components['schemas']['MessageRequest'];
-export type MessageRequestWithHistory = components['schemas']['MessageRequestWithHistory'];
 export type MessageSearchResult = components['schemas']['MessageSearchResult'];
 export type MintPlatformLinkCodeResponse = components['schemas']['MintPlatformLinkCodeResponse'];
 export type MobileLoginUrlResponse = components['schemas']['MobileLoginUrlResponse'];
@@ -20822,107 +20674,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CalendarPreferencesUpdateResponse"];
                 };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    chat_cancel_stream_endpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                stream_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CancelStreamResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    chat_chat_stream_endpoint: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description Browser timezone fallback */
-                "x-timezone"?: string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MessageRequestWithHistory"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Unprocessable Entity */
             422: {
@@ -30550,53 +30301,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SkillTargetsResponse"];
                 };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    chat_subscribe_executor_stream: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                stream_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Unprocessable Entity */
             422: {

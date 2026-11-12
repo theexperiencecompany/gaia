@@ -199,12 +199,6 @@ class FollowUpActionsFrame(BaseModel):
     follow_up_actions: list[str]
 
 
-class ErrorFrame(BaseModel):
-    """Terminal error for the stream."""
-
-    error: str
-
-
 class ModelFallbackFrame(BaseModel):
     """One-time notice that the primary model failed and a backup answered.
 
@@ -247,12 +241,6 @@ class TodoProgressFrame(BaseModel):
     todo_progress: dict[str, Any]
 
 
-class ConversationDescriptionFrame(BaseModel):
-    """A freshly generated conversation title/description."""
-
-    conversation_description: str
-
-
 class ConversationInitializedFrame(BaseModel):
     """Identity frame sent first: conversation + message ids for the turn.
 
@@ -274,9 +262,3 @@ class ConversationInitializedFrame(BaseModel):
     user_message_content: str
     bot_message_id: str
     stream_id: str
-
-
-class ReplyPlacedFrame(BaseModel):
-    """The reply took its place in the order, when first shown or else when saved: the seq its bubble sorts by."""
-
-    bot_message_seq: int

@@ -5,11 +5,15 @@ Constants for authentication and JWT operations.
 """
 
 from enum import StrEnum
+import re
 
 JWT_ALGORITHM = "HS256"
 
 # Token expiration defaults (minutes)
 AGENT_TOKEN_EXPIRY_MINUTES = 20
+
+# The routes the voice worker calls with its agent token: send a turn, report a barge-in, follow the events.
+AGENT_TOKEN_PATHS = re.compile(r"/api/v1/conversations/[^/]+/(messages|barge-in|events)")
 
 # Login-free integration-connect magic link: opaque, single-use, server-side
 # bound to one (user, integration). 12 bytes -> 96 bits of entropy, unguessable

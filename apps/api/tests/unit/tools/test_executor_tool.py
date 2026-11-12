@@ -44,7 +44,6 @@ from app.constants.cache import (
     EXECUTOR_INBOX_PREFIX,
 )
 from app.constants.hil import EXECUTOR_INBOX_TTL
-from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import AsyncRedisCommands, redis_cache
@@ -1304,25 +1303,6 @@ class TestMalformedInboxEntries:
 
 
 class TestCancelBroadcast:
-    async def test_clients_are_told_about_an_agent_initiated_cancel(
-        self,
-        fake_redis: AsyncRedisCommands,
-        broadcast: AsyncMock,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
-        await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
-
-        await run_cancel_executor(config=config_for(), task_ids=[])
-
-        broadcast.assert_awaited_once_with(
-            "user-1",
-            {
-                "type": WS_EVENT_EXECUTOR_CANCELLED,
-                "conversation_id": CONVERSATION_ID,
-            },
-        )
-
     async def test_no_user_id_means_no_broadcast_attempt(
         self,
         fake_redis: AsyncRedisCommands,

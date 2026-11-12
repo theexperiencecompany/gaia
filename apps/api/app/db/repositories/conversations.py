@@ -48,7 +48,6 @@ from app.db.repositories.conversation_entries import (
     at_log_head,
     committed_at,
     entry_of,
-    filled,
     head_fields,
     head_from_raw,
     head_with_existing,
@@ -68,10 +67,8 @@ from app.models.chat_models import (
     ConversationSource,
     ConversationSyncItem,
     MessageModel,
-    MessageReaction,
     SavedSubagentGroup,
     SystemPurpose,
-    ToolDataEntry,
 )
 from app.models.conversation_models import (
     ConversationDescriptionHit,
@@ -452,74 +449,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         await self._set_fields(conversation_id, user_id)
         return True
 
-    async def set_message_reaction(
-        self,
-        conversation_id: str,
-        *,
-        user_id: str,
-        message_id: str,
-        reaction: MessageReaction,
-        only_if_unset: bool = False,
-    ) -> bool:
-        """Set a user message's reaction and advance updatedAt; False when nothing was written.
-
-        only_if_unset writes only while the message has no reaction, so a late one never replaces an earlier pick.
-        """
-        match: dict[str, object] = {"id": message_id, "type": USER_MESSAGE_TYPE}
-        if only_if_unset:
-            match["reaction"] = None
-        if not await self._update_entry(
-            conversation_id,
-            user_id,
-            match,
-            {"$set": {"reaction": reaction.model_dump()}},
-        ):
-            return False
-        await self._set_fields(conversation_id, user_id)
-        return True
-
-    async def update_artifact(
-        self, conversation_id: str, *, user_id: str, path: str, fields: Mapping[str, object]
-    ) -> bool:
-        """Patch the registry entry at path; False when no entry exists yet."""
-        matched = await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id, "artifacts.path": path},
-            {
-                "$set": {f"artifacts.$.{key}": value for key, value in fields.items()},
-                "$currentDate": {"updatedAt": True},
-            },
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
-        )
-        return matched > 0
-
-    async def push_artifact(
-        self, conversation_id: str, *, user_id: str, path: str, element: Mapping[str, object]
-    ) -> None:
-        """Append a registry entry, but only when path is not already present.
-
-        The $ne guard is what makes concurrent inserts idempotent: of two
-        racing pushes for the same path, only one can match the filter.
-        """
-        await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id, "artifacts.path": {"$ne": path}},
-            {"$push": {"artifacts": element}, "$currentDate": {"updatedAt": True}},
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
-        )
-
-    async def remove_artifact(self, conversation_id: str, *, user_id: str, path: str) -> None:
-        """Remove one artifact entry from the conversation's artifact registry."""
-        await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id},
-            {"$pull": {"artifacts": {"path": path}}, "$currentDate": {"updatedAt": True}},
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
-        )
-
     async def list_artifacts(
         self, conversation_id: str, *, user_id: str
     ) -> list[ArtifactRegistryEntry]:
@@ -567,17 +496,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             ],
         )
 
-    async def fill_message(
-        self, conversation_id: str, *, user_id: str, message: MessageModel
-    ) -> bool:
-        """Replace an opened entry's content with message in place, keeping its seq; False when absent.
-
-        Cards folded into the entry since it was opened stay, after message's own.
-        """
-        return await self._update_entry(
-            conversation_id, user_id, {"id": message.message_id}, filled(message)
-        )
-
     async def fail_unfinished_replies(
         self, *, opened_before: datetime, error: str, owners: set[tuple[str, str]]
     ) -> int:
@@ -620,25 +538,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         owners = [_ConversationOwnerRow.model_validate(row) for row in rows]
         return {(owner.user_id, owner.conversation_id) for owner in owners}
 
-    async def set_message_response(
-        self, conversation_id: str, *, user_id: str, message_id: str, response: str
-    ) -> bool:
-        """Set a message's response text in place; does not advance updatedAt."""
-        return await self._update_entry(
-            conversation_id, user_id, {"id": message_id}, {"$set": {"response": response}}
-        )
-
-    async def set_message_tool_data(
-        self, conversation_id: str, *, user_id: str, message_id: str, entries: list[ToolDataEntry]
-    ) -> bool:
-        """Replace a message's tool_data wholesale; does not advance updatedAt."""
-        return await self._update_entry(
-            conversation_id,
-            user_id,
-            {"id": message_id},
-            {"$set": {"tool_data": [dict(entry) for entry in entries]}},
-        )
-
     async def set_message_approval_status(
         self, conversation_id: str, *, user_id: str, approval_id: str, status: str
     ) -> bool:
@@ -653,14 +552,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             {"$set": {"tool_data.$[entry].data.status": status}},
             array_filters=[{"entry.data.approval_id": approval_id}],
             every_match=True,
-        )
-
-    async def set_message_follow_up_actions(
-        self, conversation_id: str, *, user_id: str, message_id: str, actions: list[str]
-    ) -> bool:
-        """Set a message's follow-up actions; does not advance updatedAt."""
-        return await self._update_entry(
-            conversation_id, user_id, {"id": message_id}, {"$set": {"follow_up_actions": actions}}
         )
 
     # ---- targeted / projected reads ----
@@ -681,14 +572,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             conversation_id, user_id=user_id, window=EntryWindow(ids=[message_id])
         )
         return entries[0] if entries else None
-
-    async def list_recent_messages(
-        self, conversation_id: str, *, user_id: str, limit: int
-    ) -> list[ConversationEntry]:
-        """Return the conversation's newest limit messages, oldest first; empty when it does not exist."""
-        return await self._read_entries(
-            conversation_id, user_id=user_id, window=EntryWindow(limit=limit)
-        )
 
     async def get_source(self, conversation_id: str, *, user_id: str) -> ConversationSource | None:
         """Return the conversation's source enum, or None when it doesn't exist."""

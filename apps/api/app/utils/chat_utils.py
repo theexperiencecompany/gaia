@@ -3,16 +3,13 @@ from dataclasses import dataclass
 from langchain_core.messages import AnyMessage, BaseMessage, HumanMessage, SystemMessage
 from langsmith import traceable
 from pydantic import BaseModel, ConfigDict
-from uuid_extensions import uuid7str
 
 from app.agents.llm.chatbot import chatbot
 from app.agents.prompts.convo_prompts import CONVERSATION_DESCRIPTION_GENERATOR
 from app.constants.log_tags import LogTag
-from app.models.chat_models import ConversationModel
 from app.models.message_models import MessageDict, SelectedWorkflowData
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import (
-    create_conversation_service,
     update_conversation_description,
 )
 from shared.py.wide_events import log
@@ -72,41 +69,6 @@ async def _generate_description_from_message(
             error_type=type(e).__name__,
         )
         return "New Chat"
-
-
-@traceable(name="Create Conversation")
-async def create_conversation(
-    last_message: MessageDict | None,
-    user: AuthenticatedUser,
-    selectedTool: str | None | None,
-    selectedWorkflow: SelectedWorkflowData | None | None = None,
-    generate_description: bool = True,
-    conversation_id: str | None = None,
-) -> ConversationModel:
-    """Create a new conversation with optional description generation.
-
-    Args:
-        generate_description: if False, uses "New Chat" as a placeholder instead of generating one
-        conversation_id: optional pre-generated id, for background streaming
-    """
-    log.set(user_id=user.user_id, selected_tool=selectedTool)
-    # Use provided ID or generate new one
-    uuid_value = conversation_id or uuid7str()
-
-    description = (
-        "New Chat"
-        if not generate_description
-        else await _generate_description_from_message(last_message, selectedTool, selectedWorkflow)
-    )
-
-    conversation = ConversationModel(
-        conversation_id=str(uuid_value),
-        description=description,
-    )
-
-    await create_conversation_service(conversation, user)
-
-    return conversation
 
 
 @traceable(name="Generate Conversation Description")

@@ -1,39 +1,33 @@
 """Core agent helpers: config building, state init, and graph execution (streaming and silent)."""
 
-from collections.abc import AsyncGenerator, Mapping, Sequence
+from collections.abc import AsyncGenerator, Mapping
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
 import json
 import time
 from typing import Any, cast
 from uuid import uuid4
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
-from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, BaseMessage, ToolMessage
-from langsmith import traceable
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolMessage
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.background.session import claim_tool_output
 from app.agents.core.comms_directive import visible_comms_text, visible_comms_text_so_far
-from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.held_replies import (
     HeldReplies,
     MessageBoundaryEvent,
     drop_retracted_text,
     last_ai_message,
 )
-from app.agents.core.interruption import record_interruption
 from app.agents.llm.lane import AgentRole, ModelLane, inherits_lane, resolve_lane
 from app.agents.llm.reasoning import extract_reasoning_delta
 from app.agents.llm.ttft import LLMTtftCallback
 from app.config.langfuse import build_langfuse_callback
-from app.constants.hil import HIL_JUDGE_MAX_TURN_CHARS, HIL_JUDGE_MAX_USER_TURNS
+from app.constants.hil import HIL_JUDGE_MAX_TURN_CHARS
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     DevModelOption,
 )
-from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
 from app.models.agent_models import (
     AgentConfigurable,
     AgentConfigurableView,
@@ -42,12 +36,10 @@ from app.models.agent_models import (
     ExecutionMode,
     LlmCallMetadata,
     StreamChunkMetadata,
-    read_agent_configurable,
     run_analytics_context,
 )
-from app.models.chat_models import ConversationSource, SourceCategory, ToolDataEntry
+from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.mcp_app_models import McpUiMetadata, McpUiResource
-from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.payment_models import PlanType
 from app.models.presence_models import PresenceSnapshot
 from app.models.stream_events import (
@@ -57,7 +49,6 @@ from app.models.stream_events import (
     ToolOutputPayload,
 )
 from app.services.delivery.presence import read_presence
-from app.services.latency_metrics import observe_comms_graph, span
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
     NodeMessagesUpdate,
@@ -65,7 +56,6 @@ from app.utils.agent_utils import (
     format_sse_data,
     format_sse_response,
     format_tool_call_entry,
-    process_custom_event_for_tools,
 )
 from app.utils.general_utils import clip_text
 from app.utils.multimodal import MessageContent, extract_text_content, has_media_blocks
@@ -86,23 +76,6 @@ class _AgentUser(BaseModel):
     email: str | None = None
     name: str | None = ""
     timezone: str | None = None
-
-
-class _HistoryTurn(BaseModel):
-    """One ``MessageDict`` of the request history, as the HIL judge reads it."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    role: str = ""
-    content: str | None = None
-
-
-class _RunConfigView(BaseModel):
-    """The GAIA-owned key of an ``AgentRunnableConfig`` the drivers read."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    agent_name: str = ""
 
 
 class _SubagentToolOutput(BaseModel):
@@ -295,37 +268,6 @@ def _inherit_from_parent_configurable(
         presence=current.presence or parent.presence,
         stream_id=parent.stream_id,
     )
-
-
-def opens_thread(history: list[MessageDict], current: str) -> bool:
-    """Whether this turn starts its conversation: no turn precedes it in the history."""
-    # Clients usually append the current turn to history already; it is not a prior one.
-    if not history:
-        return True
-    latest: MessageDict = history[-1]
-    return len(history) == 1 and (latest["content"] or "").strip() == current.strip()
-
-
-def recent_user_messages(history: list[MessageDict], current: str) -> list[str]:
-    """Return the user's own recent turns, verbatim and oldest first, ending with current.
-
-    Intent routinely spans turns — "draft an email to Bob" … "looks good, send it" — so
-    the latest message alone cannot be grounded against. Only role == "user" turns
-    are kept: the HIL intent judge must never see assistant text, or the agent can talk
-    it into approving (see services/hil/intent.py).
-    """
-    turns = [
-        text
-        for message in history
-        if (turn := _HistoryTurn.model_validate(message)).role == "user"
-        and (text := (turn.content or "").strip())
-    ]
-    current = current.strip()
-    # The client usually already appends this turn to `messages`; don't duplicate it, and
-    # guarantee it ends the list either way — the judge treats the last as the live request.
-    if current and (not turns or turns[-1] != current):
-        turns.append(current)
-    return [clip_text(text, HIL_JUDGE_MAX_TURN_CHARS) for text in turns[-HIL_JUDGE_MAX_USER_TURNS:]]
 
 
 def background_authorization(
@@ -741,169 +683,6 @@ async def build_agent_config(
     return config
 
 
-def build_initial_state(
-    request: MessageRequestWithHistory,
-    user_id: str,
-    conversation_id: str,
-    history: list[AnyMessage],
-) -> dict[str, object]:
-    """Construct the initial LangGraph state (query, history, tool selections)."""
-    state: dict[str, object] = {
-        "query": request.message,
-        "intent": request.message,
-        "messages": history,
-        "current_datetime": datetime.now(UTC).isoformat(),
-        "memory_user_id": user_id,
-        "conversation_id": conversation_id,
-        "integration_usernames": {},
-        "selected_tool": request.selectedTool,
-        "selected_workflow": request.selectedWorkflow,
-        "selected_calendar_event": request.selectedCalendarEvent,
-    }
-
-    return state
-
-
-async def _collect_silent_tool_entries(
-    messages: Sequence[object],
-    emitted_tool_calls: set[str],
-    entries: list[ToolDataEntry],
-    user_id: str | None,
-) -> None:
-    """Append a tool_data entry for each not-yet-emitted tool call in a node update."""
-    for msg in messages:
-        if not isinstance(msg, AIMessage) or not msg.tool_calls:
-            continue
-        for tc in msg.tool_calls:
-            call = ToolCallView.model_validate(tc)
-            if not call.id or call.id in emitted_tool_calls:
-                continue
-
-            # Todo tools already stream todo_progress; suppress tool_data noise.
-            # Safe: doesn't affect agent state; only avoids redundant UI events.
-            if call.name in {"plan_tasks", "update_tasks"}:
-                continue
-
-            tool_entry = await format_tool_call_entry(tc, user_id=user_id)
-            if tool_entry:
-                entries.append(tool_entry)
-                emitted_tool_calls.add(call.id)
-
-
-@dataclass(slots=True)
-class _SilentAccumulators:
-    """The per-run state execute_graph_silent folds the stream into."""
-
-    complete_message: str = ""
-    entries: list[ToolDataEntry] = field(default_factory=list)
-    # Accumulate todo_progress by source
-    todo_progress: dict[str, dict[str, object]] = field(default_factory=dict)
-    held: HeldReplies = field(default_factory=HeldReplies)
-    # Track tool calls to avoid duplicate emissions (same as streaming)
-    emitted_tool_calls: set[str] = field(default_factory=set)
-
-
-def _accumulate_silent_custom_event(payload: object, acc: _SilentAccumulators) -> None:
-    """Fold one custom stream event into the silent run's accumulated tool data."""
-    drop_retracted_text(payload, acc.held.texts)
-    if not isinstance(payload, dict):
-        return
-    # Accumulate todo_progress for persistence
-    snapshot = _CustomEvent.model_validate(payload).todo_progress
-    if snapshot is not None:
-        acc.todo_progress[snapshot.source] = snapshot.model_dump(exclude_unset=True)
-
-    acc.entries.extend(process_custom_event_for_tools(payload).tool_data)
-
-
-@traceable(run_type="llm", name="Call Agent Silent")
-def _hold_silent_chunk(
-    payload: tuple[BaseMessage, StreamChunkMetadata],
-    is_comms: bool,
-    acc: _SilentAccumulators,
-) -> None:
-    """One "messages"-mode event of a silent run: hold the chunk's text by message."""
-    metadata: StreamChunkMetadata
-    chunk, metadata = payload
-
-    if metadata.get("silent"):
-        return  # Skip silent chunks (e.g. follow-up actions generation)
-
-    if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
-        acc.held.hold(chunk, metadata, reply_tier=is_comms)
-
-
-async def execute_graph_silent(
-    graph: CompiledAgentGraph,
-    initial_state: Mapping[str, object],
-    config: AgentRunnableConfig,
-) -> tuple[str, list[ToolDataEntry]]:
-    """Execute LangGraph in silent mode, accumulating the full message and tool data.
-
-    Used for background processing and workflow triggers that don't need streaming.
-    Stores intermediate messages and tool outputs as they happen, like normal chat.
-    Returns (complete_message, tool_data).
-    """
-    acc = _SilentAccumulators()
-    is_comms = _RunConfigView.model_validate(config).agent_name == "comms_agent"
-
-    # Get user_id for metadata lookup (not for storage - caller handles that)
-    user_id = read_agent_configurable(config).user_id
-
-    # A list `stream_mode` plus `subgraphs=True` makes astream yield
-    # (namespace, mode, payload) triples, which langgraph's own overload return
-    # type does not express (same cast as subagent_runner's driver).
-    silent_stream = cast(
-        AsyncGenerator[tuple[tuple[str, ...], str, Any], None],
-        graph.astream(
-            initial_state,
-            stream_mode=["messages", "custom", "updates"],
-            config=config,
-            subgraphs=True,
-        ),
-    )
-    async for event in silent_stream:
-        _ns, stream_mode, payload = event
-
-        # Process "updates" events - same logic as execute_graph_streaming
-        if stream_mode == "updates":
-            for node_name, state_update in payload.items():
-                # Only collect tool_data from the LLM node — pre-model hooks
-                # produce updates containing historical messages with old tool_calls.
-                if node_name != "agent":
-                    continue
-                if isinstance(state_update, dict):
-                    messages = NodeMessagesUpdate.model_validate(state_update).messages
-                    await _collect_silent_tool_entries(
-                        messages, acc.emitted_tool_calls, acc.entries, user_id
-                    )
-
-                    acc.complete_message, _boundary_id, _discarded = acc.held.settle(
-                        messages, acc.complete_message
-                    )
-            continue
-
-        if stream_mode == "messages":
-            _hold_silent_chunk(payload, is_comms, acc)
-
-        elif stream_mode == "custom":
-            _accumulate_silent_custom_event(payload, acc)
-
-    acc.complete_message = acc.held.flush(acc.complete_message)
-
-    # Inject accumulated todo_progress as a single tool_data entry
-    if acc.todo_progress:
-        acc.entries.append(
-            {
-                "tool_name": "todo_progress",
-                "data": acc.todo_progress,
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-        )
-
-    return acc.complete_message, acc.entries
-
-
 def _json_safe_tool_result(content: MessageContent) -> object:
     """Return the raw tool result handed to an MCP-UI iframe, as JSON-serializable data.
 
@@ -1241,20 +1020,6 @@ async def _stream_custom(
                 yield frame
 
 
-async def _record_interruption_quietly(
-    graph: CompiledAgentGraph, config: AgentRunnableConfig
-) -> None:
-    """Record the run's interruption; the cancel ack must still reach the client."""
-    try:
-        await record_interruption(graph, config)
-    except Exception as e:  # the cancel ack must still reach the client
-        log.error(
-            f"{LogTag.AGENT} Failed to record interruption",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-
-
 def _parse_stream_event(event: tuple[object, ...]) -> tuple[str, object] | None:
     """Return the (mode, payload) of a stream event; handles the 2-tuple and 3-tuple shapes, else None.
 
@@ -1314,86 +1079,3 @@ def flush_held_frames(state: StreamAccumulators) -> list[str]:
     ]
     state.complete_message = state.held.flush(state.complete_message)
     return frames
-
-
-async def execute_graph_streaming(
-    graph: CompiledAgentGraph,
-    initial_state: Mapping[str, object],
-    config: AgentRunnableConfig,
-) -> AsyncGenerator[str, None]:
-    """Execute LangGraph in streaming mode, yielding SSE-formatted updates.
-
-    Cancellable via stream_id in config (through stream_manager). Handles
-    LangGraph's three stream modes: "updates" (tool_data), "messages"
-    (text/tool_output), and "custom" (forwarded as-is).
-    """
-    scope = read_agent_configurable(config)
-    stream_id = scope.stream_id
-    user_id = scope.user_id
-    is_comms = _RunConfigView.model_validate(config).agent_name == "comms_agent"
-
-    # ``state.held`` holds streamed text per message until known to be
-    # a real reply, not a handoff preamble (text deltas precede tool-call deltas
-    # on the wire). Keyed by message id since delegated-tier chunks interleave.
-    state = StreamAccumulators()
-
-    cancelled = False
-    graph_status = "success"
-    run_start = time.perf_counter()
-    # Yields (namespace, mode, payload) triples — occasionally (mode, payload)
-    # pairs, handled below — and is a real async generator, so it supports
-    # aclose(); langgraph's astream overloads express neither.
-    stream = cast(
-        AsyncGenerator[tuple[Any, ...], None],
-        graph.astream(
-            initial_state,
-            stream_mode=["messages", "custom", "updates"],
-            config=config,
-            subgraphs=True,
-        ),
-    )
-    with span() as elapsed_graph:
-        try:
-            async for event in stream:
-                # Check for cancellation at each event
-                if stream_id and await stream_manager.is_cancelled(stream_id):
-                    cancelled = True
-                    break
-                async for frame in frames_for_stream_event(
-                    event, state, is_comms, stream_id, user_id
-                ):
-                    yield frame
-        except GeneratorExit:
-            # Abandoned mid-stream without cancellation (server shutdown path):
-            # neither success nor cancelled, and neither label may claim it.
-            graph_status = "abandoned"
-            raise
-        except Exception:
-            graph_status = "error"
-            raise
-        finally:
-            observe_comms_graph(
-                elapsed_graph(), status=graph_status if not cancelled else "cancelled"
-            )
-
-    for frame in flush_held_frames(state):
-        yield frame
-    if state.pipeline_ttft_perf is not None:
-        log.set(comms_pipeline_ttft_ms=round((state.pipeline_ttft_perf - run_start) * 1000.0, 2))
-
-    if cancelled:
-        # aclose() raises GeneratorExit at the run's yield point so LangGraph
-        # cancels in-flight work and commits nothing further before the state
-        # read by record_interruption.
-        await stream.aclose()
-        await _record_interruption_quietly(graph, config)
-        yield (
-            "nostream: "
-            f"{json.dumps({'complete_message': state.complete_message, 'cancelled': True})}"
-        )
-        yield "data: [DONE]\n\n"
-        return
-
-    # Yield complete message for DB storage
-    yield f"nostream: {json.dumps({'complete_message': state.complete_message})}"
-    yield "data: [DONE]\n\n"

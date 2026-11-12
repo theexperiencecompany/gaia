@@ -16,7 +16,7 @@ import fakeredis.aioredis
 import pytest
 
 from app.agents.context.slots import PromptSlot
-from app.agents.core.messages import MessageScope, construct_langchain_messages
+from app.agents.core.messages import MessageScope
 from app.agents.core.subagents.subagent_runner import (
     compose_executor_brief,
     prepare_executor_execution,
@@ -28,7 +28,7 @@ from app.memory import retrieval
 from app.models import agent_models
 from app.models.agent_models import AgentConfigurable
 from app.models.memory_db_models import MemoryRecord
-from tests._harness.context_chain import message_in_slot, text_of
+from tests._harness.context_chain import comms_turn_messages, message_in_slot, text_of
 from tests._harness.context_sources import ContextSources, fake_context_sources
 
 CONFIDENT_LOGIT = 5.0
@@ -125,7 +125,7 @@ async def _run_turn(stores: MemoryStores, request: str, task: str) -> str:
             )
         )
 
-        await construct_langchain_messages(
+        await comms_turn_messages(
             query=request,
             scope=MessageScope(user_id=user_id, conversation_id="conv-1"),
         )

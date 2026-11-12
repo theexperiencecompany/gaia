@@ -1,9 +1,9 @@
-"""The hosted voice chain: a WorkOS session mints /token, and the voice worker replays its agent token on chat-stream.
+"""The hosted voice chain: a WorkOS session mints /token, and the voice worker replays its agent token on its routes.
 
 The worker reads agentToken out of the LiveKit participant metadata and sends
-it as a Bearer token on POST /api/v1/chat-stream, the one agent-only path. The
-real WorkOS middleware runs on both legs; only the chat-stream handler is a
-probe, so no agent turn runs.
+it as a Bearer token when it sends a turn, follows the conversation's events and
+reports a barge-in. The real WorkOS middleware runs on both legs; the
+conversation handlers are probes, so no agent turn runs.
 """
 
 from collections.abc import Callable
@@ -54,22 +54,31 @@ def voice_user(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(user_repository, "touch_last_active", AsyncMock())
 
 
+CONVERSATION = "/api/v1/conversations/conv-1"
+# The voice worker's calls, as apps/voice-agent/src/conversation.py makes them.
+VOICE_CALLS = [
+    ("POST", f"{CONVERSATION}/messages"),
+    ("POST", f"{CONVERSATION}/barge-in"),
+    ("GET", f"{CONVERSATION}/events"),
+]
+
+
 @pytest.fixture
-def chat_stream_app(workos_client: AsyncWorkOSClient, voice_user: None) -> FastAPI:
-    """Put the real middleware in front of a chat-stream probe that reports who it authenticated."""
+def voice_routes_app(workos_client: AsyncWorkOSClient, voice_user: None) -> FastAPI:
+    """Put the real middleware in front of probes of the voice worker's routes that report who they authenticated."""
     app = FastAPI()
 
-    @app.post("/api/v1/chat-stream")
-    async def chat_stream(
-        user: AuthenticatedUser = Depends(get_current_user),
-    ) -> dict[str, str | None]:
+    async def whoami(user: AuthenticatedUser = Depends(get_current_user)) -> dict[str, str | None]:
         return {"user_id": user.user_id, "email": user.email}
 
+    for method, path in [*VOICE_CALLS, ("POST", f"{CONVERSATION}/stop")]:
+        app.add_api_route(path.replace("conv-1", "{conversation_id}"), whoami, methods=[method])
     app.add_middleware(WorkOSAuthMiddleware, workos_client=workos_client)
     return app
 
 
-async def _mint_agent_token(
+@pytest.fixture
+async def agent_token(
     workos_client: AsyncWorkOSClient,
     workos_signing_key: rsa.RSAPrivateKey,
     workos_cookie_password: str,
@@ -106,34 +115,38 @@ async def _mint_agent_token(
     return agent_token
 
 
-async def _chat_stream(app: FastAPI, bearer: str) -> httpx.Response:
+async def _call(app: FastAPI, method: str, path: str, bearer: str) -> httpx.Response:
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        return await client.post(
-            "/api/v1/chat-stream", headers={"Authorization": f"Bearer {bearer}"}
-        )
+        return await client.request(method, path, headers={"Authorization": f"Bearer {bearer}"})
 
 
-async def test_the_voice_token_agent_credential_authenticates_chat_stream_as_its_user(
-    chat_stream_app: FastAPI,
-    workos_client: AsyncWorkOSClient,
-    workos_signing_key: rsa.RSAPrivateKey,
-    workos_cookie_password: str,
-    real_auth_app: Callable[[AsyncWorkOSClient | None], FastAPI],
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(("method", "path"), VOICE_CALLS)
+async def test_the_voice_token_agent_credential_authenticates_the_voice_calls_as_its_user(
+    method: str,
+    path: str,
+    voice_routes_app: FastAPI,
+    agent_token: str,
 ) -> None:
-    agent_token = await _mint_agent_token(
-        workos_client, workos_signing_key, workos_cookie_password, real_auth_app, monkeypatch
-    )
-
-    response = await _chat_stream(chat_stream_app, agent_token)
+    response = await _call(voice_routes_app, method, path, agent_token)
 
     assert response.status_code == 200, response.text
     assert response.json() == {"user_id": USER_ID, "email": USER_EMAIL}
 
 
+async def test_the_agent_credential_authenticates_nobody_off_the_voice_calls(
+    voice_routes_app: FastAPI,
+    agent_token: str,
+) -> None:
+    response = await _call(voice_routes_app, "POST", f"{CONVERSATION}/stop", agent_token)
+
+    assert response.status_code == 401, response.text
+
+
 @pytest.mark.parametrize("kind", [*sorted(hostile_jwts({}, "s")), "device_token", "bot_role"])
-async def test_a_bad_agent_token_is_401_on_chat_stream(chat_stream_app: FastAPI, kind: str) -> None:
+async def test_a_bad_agent_token_is_401_on_a_voice_send(
+    voice_routes_app: FastAPI, kind: str
+) -> None:
     claims = {"sub": USER_ID, "role": "agent", "exp": int(time.time()) + 600}
     tokens = {
         **hostile_jwts(claims, settings.AGENT_SECRET),
@@ -141,6 +154,6 @@ async def test_a_bad_agent_token_is_401_on_chat_stream(chat_stream_app: FastAPI,
         "bot_role": forge_jwt({**claims, "role": "bot"}, settings.AGENT_SECRET),
     }
 
-    response = await _chat_stream(chat_stream_app, tokens[kind])
+    response = await _call(voice_routes_app, "POST", f"{CONVERSATION}/messages", tokens[kind])
 
     assert response.status_code == 401, response.text

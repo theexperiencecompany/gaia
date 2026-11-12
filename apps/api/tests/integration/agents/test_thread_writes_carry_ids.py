@@ -8,9 +8,6 @@ summary on it. Drives the real writers against a real checkpointed State graph.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from unittest.mock import AsyncMock, patch
-
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
@@ -18,28 +15,11 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 import pytest
 
-from app.agents.core.background.comms_narrator import (
-    record_executor_cancellation,
-)
 from app.agents.core.interruption import record_interruption
 from app.override.langgraph_bigtool.utils import State
 
 THREAD = "thread-ids"
 CONFIG: RunnableConfig = {"configurable": {"thread_id": THREAD}}
-
-
-@pytest.fixture
-def thread_graph() -> Iterator[CompiledStateGraph]:
-    """Build a checkpointed graph over GAIA's real State and route the narrator to it."""
-    builder = StateGraph(State)
-    builder.add_node("tools", lambda _state: {})
-    builder.set_entry_point("tools")
-    graph = builder.compile(checkpointer=InMemorySaver())
-    with patch(
-        "app.agents.core.background.comms_narrator.GraphManager.get_graph",
-        AsyncMock(return_value=graph),
-    ):
-        yield graph
 
 
 async def _seed(graph: CompiledStateGraph, *messages: object) -> None:
@@ -48,6 +28,15 @@ async def _seed(graph: CompiledStateGraph, *messages: object) -> None:
 
 async def _ids(graph: CompiledStateGraph) -> list[str | None]:
     return [m.id for m in (await graph.aget_state(CONFIG)).values["messages"]]
+
+
+@pytest.fixture
+def thread_graph() -> CompiledStateGraph:
+    """Build a checkpointed graph over GAIA's real State."""
+    builder = StateGraph(State)
+    builder.add_node("tools", lambda _state: {})
+    builder.set_entry_point("tools")
+    return builder.compile(checkpointer=InMemorySaver())
 
 
 @pytest.mark.integration
@@ -79,11 +68,3 @@ class TestOutOfBandThreadWritesCarryIds:
         snapshot = await graph.aget_state(CONFIG)
         assert snapshot.next == ()
         assert None not in [message.id for message in snapshot.values["messages"]]
-
-    async def test_executor_cancellation_record(self, thread_graph: CompiledStateGraph) -> None:
-        await _seed(thread_graph, HumanMessage("start"))
-
-        await record_executor_cancellation(THREAD, "task-1", "the task")
-
-        ids = await _ids(thread_graph)
-        assert len(ids) == 2 and None not in ids

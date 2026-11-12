@@ -8,7 +8,6 @@ get_active_stream_id, progress tracking, and error recording.
 
 from collections.abc import Generator
 from dataclasses import asdict
-import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -24,15 +23,8 @@ from app.constants.cache import (
     STREAM_SIGNAL_PREFIX,
     STREAM_TTL,
 )
-from app.constants.log_tags import LogTag
-from app.constants.streaming import (
-    STREAM_CANCELLED_SIGNAL,
-    STREAM_DONE_SIGNAL,
-    STREAM_ERROR_SIGNAL,
-)
+from app.constants.streaming import STREAM_CANCELLED_SIGNAL, STREAM_DONE_SIGNAL
 from app.core.stream_manager import StreamManager, StreamProgress
-from app.utils.message_breaks import split_message_bubbles
-from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -73,11 +65,6 @@ def _progress_get(progress: dict[str, Any]) -> AsyncMock:
 def _entries_batch(*entries: tuple[str, str]) -> XReadBatch:
     """Build an XREAD result batch: [(events_key, [(entry_id, {"data": ...})])]."""
     return [(EVENTS_KEY, [(entry_id, {"data": data}) for entry_id, data in entries])]
-
-
-def _error_entry_batch(entry_id: str, error: str) -> XReadBatch:
-    """Build the XREAD batch for the ERROR control entry set_error appends, message included."""
-    return [(EVENTS_KEY, [(entry_id, {"data": STREAM_ERROR_SIGNAL, "error": error})])]
 
 
 def _stream_client(xread_batches: list[XReadBatch] | None = None) -> MagicMock:
@@ -240,30 +227,6 @@ class TestCleanup:
         yield
         patcher.stop()
 
-    async def test_deletes_progress_signal_and_active_keys(self) -> None:
-        await StreamManager.cleanup("s1")
-
-        calls = [c[0][0] for c in self.mock_delete.call_args_list]
-        assert ACTIVE_KEY in calls
-        assert f"{STREAM_PROGRESS_PREFIX}s1" in calls
-        assert f"{STREAM_SIGNAL_PREFIX}s1" in calls
-
-    async def test_keeps_replayable_event_log(self) -> None:
-        """The event log must survive cleanup so late re-attach can still replay."""
-        await StreamManager.cleanup("s1")
-
-        calls = [c[0][0] for c in self.mock_delete.call_args_list]
-        assert EVENTS_KEY not in calls
-
-    async def test_skips_active_index_when_progress_missing(self) -> None:
-        self.progress = None
-        await StreamManager.cleanup("s1")
-
-        calls = [c[0][0] for c in self.mock_delete.call_args_list]
-        assert ACTIVE_KEY not in calls
-        assert f"{STREAM_PROGRESS_PREFIX}s1" in calls
-        assert f"{STREAM_SIGNAL_PREFIX}s1" in calls
-
 
 # ---------------------------------------------------------------------------
 # get_active_stream_id
@@ -374,211 +337,6 @@ class TestPublishChunk:
 # ---------------------------------------------------------------------------
 # subscribe_stream
 # ---------------------------------------------------------------------------
-
-
-class TestSubscribeStream:
-    def _patch_redis(self, client: MagicMock, get: AsyncMock | None = None) -> Any:
-        return patch(
-            "app.core.stream_manager.redis_cache",
-            new=MagicMock(redis=client, get=get or AsyncMock(return_value=None)),
-        )
-
-    async def _collect(self, stream_id: str = "s1", **kwargs: Any) -> list[str]:
-        chunks: list[str] = []
-        async for chunk in StreamManager.subscribe_stream(stream_id, **kwargs):
-            chunks.append(chunk)
-        return chunks
-
-    async def test_yields_id_tagged_frames_until_done(self) -> None:
-        client = _stream_client(
-            [
-                _entries_batch(
-                    ("1-0", "data: chunk1\n\n"),
-                    ("2-0", "data: chunk2\n\n"),
-                    ("3-0", STREAM_DONE_SIGNAL),
-                ),
-            ]
-        )
-
-        with self._patch_redis(client):
-            chunks = await self._collect()
-
-        assert chunks == [
-            "id: 1-0\ndata: chunk1\n\n",
-            "id: 2-0\ndata: chunk2\n\n",
-        ]
-
-    async def test_entry_missing_a_data_field_yields_empty_data_not_a_placeholder(self) -> None:
-        # A Stream entry with no "data" field defaults to the empty string, so the
-        # frame carries an empty body — never "None" or a placeholder token.
-        client = _stream_client(
-            [[(EVENTS_KEY, [("1-0", {}), ("2-0", {"data": STREAM_DONE_SIGNAL})])]]
-        )
-
-        with self._patch_redis(client):
-            chunks = await self._collect()
-
-        assert chunks == ["id: 1-0\n"]
-
-    async def test_reads_from_beginning_by_default(self) -> None:
-        client = _stream_client([_entries_batch(("1-0", STREAM_DONE_SIGNAL))])
-
-        with self._patch_redis(client):
-            await self._collect()
-
-        client.xread.assert_awaited_once_with({EVENTS_KEY: "0-0"}, block=15000, count=256)
-
-    async def test_resumes_from_last_event_id(self) -> None:
-        client = _stream_client([_entries_batch(("6-0", STREAM_DONE_SIGNAL))])
-
-        with self._patch_redis(client):
-            await self._collect(last_event_id="5-0")
-
-        first_call = client.xread.await_args_list[0]
-        assert first_call[0][0] == {EVENTS_KEY: "5-0"}
-
-    async def test_advances_cursor_between_reads(self) -> None:
-        client = _stream_client(
-            [
-                _entries_batch(("1-0", "data: a\n\n"), ("2-0", "data: b\n\n")),
-                _entries_batch(("3-0", STREAM_DONE_SIGNAL)),
-            ]
-        )
-
-        with self._patch_redis(client):
-            chunks = await self._collect()
-
-        assert chunks == ["id: 1-0\ndata: a\n\n", "id: 2-0\ndata: b\n\n"]
-        second_call = client.xread.await_args_list[1]
-        assert second_call[0][0] == {EVENTS_KEY: "2-0"}
-
-    async def test_cancelled_signal_yields_done_marker(self) -> None:
-        client = _stream_client(
-            [
-                _entries_batch(
-                    ("1-0", "data: chunk1\n\n"),
-                    ("2-0", STREAM_CANCELLED_SIGNAL),
-                ),
-            ]
-        )
-
-        with self._patch_redis(client):
-            chunks = await self._collect()
-
-        assert chunks == ["id: 1-0\ndata: chunk1\n\n", "data: [DONE]\n\n"]
-
-    async def test_error_signal_yields_the_error_its_entry_carries(self) -> None:
-        client = _stream_client([_error_entry_batch("1-0", "Something failed")])
-
-        with self._patch_redis(client):
-            chunks = await self._collect()
-
-        assert chunks == ['data: {"error": "Something failed"}\n\n']
-
-    async def test_error_signal_without_a_message_uses_default(self) -> None:
-        client = _stream_client([_entries_batch(("1-0", STREAM_ERROR_SIGNAL))])
-
-        with self._patch_redis(client):
-            chunks = await self._collect()
-
-        payload = json.loads(chunks[0].removeprefix("data: ").strip())
-        assert payload["error"] == "An unexpected error occurred"
-
-    async def test_error_signal_never_depends_on_progress_and_is_logged(self) -> None:
-        """Progress can expire mid-turn, so the frame comes from the entry alone; the failure lands on the wide event."""
-        client = _stream_client([_error_entry_batch("1-0", "x")])
-        with (
-            self._patch_redis(client),
-            patch.object(StreamManager, "get_progress", new=AsyncMock()) as get_progress,
-        ):
-            async with captured_wide_event() as event:
-                _ = [chunk async for chunk in StreamManager.subscribe_stream("sid-9")]
-
-        get_progress.assert_not_awaited()
-        (error,) = [e for e in event["errors"] if "Stream encountered" in e["msg"]]
-        assert error["msg"] == f"{LogTag.STARTUP} Stream encountered an error"
-        assert error["stream_id"] == "sid-9"
-
-    async def test_warns_when_the_stream_ends_without_any_chunk(self) -> None:
-        # DONE with no data frames before it: the client got nothing, which is
-        # the one condition worth an operator warning.
-        client = _stream_client([_entries_batch(("1-0", STREAM_DONE_SIGNAL))])
-        with self._patch_redis(client):
-            async with captured_wide_event() as event:
-                _ = await self._collect(stream_id="sid-empty")
-        warnings = [w for w in event["warnings"] if "without receiving any chunks" in w["msg"]]
-        assert len(warnings) == 1
-        assert warnings[0]["stream_id"] == "sid-empty"
-
-    async def test_no_warning_when_a_chunk_was_delivered(self) -> None:
-        client = _stream_client(
-            [_entries_batch(("1-0", "data: hi\n\n"), ("2-0", STREAM_DONE_SIGNAL))]
-        )
-        with self._patch_redis(client):
-            async with captured_wide_event() as event:
-                _ = await self._collect()
-        assert [
-            w for w in event.get("warnings", []) if "without receiving any chunks" in w["msg"]
-        ] == []
-
-    async def test_subscription_error_is_logged_and_yields_an_error_frame(self) -> None:
-        client = _stream_client()
-        client.xread = AsyncMock(side_effect=RuntimeError("redis blew up"))
-        with self._patch_redis(client):
-            async with captured_wide_event() as event:
-                chunks = await self._collect()
-        assert chunks == ['data: {"error": "Stream subscription failed"}\n\n']
-        (error,) = [e for e in event["errors"] if "Error in stream subscription" in e["msg"]]
-        assert error["msg"] == f"{LogTag.STARTUP} Error in stream subscription"
-        assert error["error_type"] == "RuntimeError"
-
-    async def test_keepalive_on_idle_read(self) -> None:
-        """An empty XREAD (idle interval) yields a keepalive frame with no id line."""
-        client = _stream_client(
-            [
-                [],  # blocked read timed out -> keepalive
-                _entries_batch(("1-0", STREAM_DONE_SIGNAL)),
-            ]
-        )
-
-        with self._patch_redis(client):
-            chunks = await self._collect(keepalive_interval=0.01)
-
-        assert chunks == ['data: {"keepalive":true}\n\n']
-
-    async def test_returns_immediately_when_redis_unavailable(self) -> None:
-        with patch(
-            "app.core.stream_manager.redis_cache",
-            new=MagicMock(redis=None),
-        ):
-            chunks = await self._collect()
-
-        assert chunks == []
-
-    async def test_exception_during_read_yields_error(self) -> None:
-        client = MagicMock()
-        client.xread = AsyncMock(side_effect=RuntimeError("connection lost"))
-
-        with self._patch_redis(client):
-            chunks = await self._collect()
-
-        assert len(chunks) == 1
-        payload = json.loads(chunks[0].removeprefix("data: ").strip())
-        assert payload["error"] == "Stream subscription failed"
-
-    async def test_warning_logged_when_no_chunks_received(self) -> None:
-        """When stream ends with zero data chunks, a warning should be logged."""
-        client = _stream_client([_entries_batch(("1-0", STREAM_DONE_SIGNAL))])
-
-        with (
-            self._patch_redis(client),
-            patch("app.core.stream_manager.log") as mock_log,
-        ):
-            async for _ in StreamManager.subscribe_stream("s1"):
-                pass
-
-        mock_log.warning.assert_called_once()
-        assert "without receiving any chunks" in mock_log.warning.call_args[0][0]
 
 
 # ---------------------------------------------------------------------------
@@ -692,150 +450,6 @@ class TestIsCancelled:
 # ---------------------------------------------------------------------------
 
 
-class TestUpdateProgress:
-    @pytest.fixture(autouse=True)
-    def _patch_redis(self) -> Generator[None, None, None]:
-        self.progress = _progress_dict()
-        self.mock_get = _progress_get(self.progress)
-        self.mock_set = AsyncMock()
-        patcher = patch(
-            "app.core.stream_manager.redis_cache",
-            # ``redis`` must be async: update_progress also refreshes the resume
-            # index through it (see _refresh_active_index). TTL behaviour itself
-            # is covered against a real client in tests/unit/core/test_stream_resume.py.
-            new=MagicMock(get=self.mock_get, set=self.mock_set, redis=AsyncMock()),
-        )
-        patcher.start()
-        yield
-        patcher.stop()
-
-    async def test_appends_message_chunk_to_the_unsettled_message(self) -> None:
-        """Streamed text is held until its message ends: a tool-call announcement is a preamble the user is told to drop."""
-        self.progress["pending_message"] = "Hello "
-        await StreamManager.update_progress("s1", message_chunk="World")
-
-        saved = self.mock_set.call_args[0][1]
-        assert saved["pending_message"] == "Hello World"
-        assert saved["complete_message"] == ""
-
-    async def test_a_kept_message_becomes_a_bubble_of_the_reply(self) -> None:
-        self.progress["pending_message"] = "Here's the three-liner."
-        await StreamManager.settle_message_progress("s1", discarded=False)
-
-        saved = self.mock_set.call_args[0][1]
-        assert saved["complete_message"] == "Here's the three-liner."
-        assert saved["pending_message"] == ""
-
-    async def test_a_discarded_preamble_never_reaches_the_reply(self) -> None:
-        """The exact production artifact: a retracted preamble was still recovered from Redis glued onto the real answer."""
-        self.progress["complete_message"] = ""
-        self.progress["pending_message"] = "Let me start by gathering context."
-        await StreamManager.settle_message_progress("s1", discarded=True)
-
-        saved = self.mock_set.call_args[0][1]
-        assert saved["complete_message"] == ""
-        assert saved["pending_message"] == ""
-
-    async def test_two_kept_messages_are_separate_bubbles_not_one_sentence(self) -> None:
-        self.progress["complete_message"] = "First."
-        self.progress["pending_message"] = "Second."
-        await StreamManager.settle_message_progress("s1", discarded=False)
-
-        saved = self.mock_set.call_args[0][1]
-        assert saved["complete_message"] != "First.Second."
-        assert split_message_bubbles(saved["complete_message"]) == ["First.", "Second."]
-
-    async def test_merges_tool_data(self) -> None:
-        self.progress["tool_data"] = {"existing": "data"}
-        await StreamManager.update_progress("s1", tool_data={"new_key": "new_value"})
-
-        saved = self.mock_set.call_args[0][1]
-        assert saved["tool_data"]["existing"] == "data"
-        assert saved["tool_data"]["new_key"] == "new_value"
-
-    async def test_merges_tool_data_arrays(self) -> None:
-        """When both existing and new have 'tool_data' key, arrays are concatenated."""
-        self.progress["tool_data"] = {"tool_data": [{"id": 1}]}
-        await StreamManager.update_progress("s1", tool_data={"tool_data": [{"id": 2}]})
-
-        saved = self.mock_set.call_args[0][1]
-        assert saved["tool_data"]["tool_data"] == [{"id": 1}, {"id": 2}]
-
-    async def test_the_first_tool_data_keeps_its_companion_fields(self) -> None:
-        incoming = {"tool_data": [{"id": 1}], "other_data": {"k": "v"}}
-        await StreamManager.update_progress("s1", tool_data=incoming)
-
-        saved = self.mock_set.call_args[0][1]
-        assert saved["tool_data"] == incoming
-
-    async def test_companion_fields_land_beside_accumulated_tool_data(self) -> None:
-        self.progress["tool_data"] = {"tool_data": [{"id": 1}]}
-        await StreamManager.update_progress("s1", tool_data={"tool_output": {"ok": True}})
-
-        saved = self.mock_set.call_args[0][1]
-        assert saved["tool_data"] == {"tool_data": [{"id": 1}], "tool_output": {"ok": True}}
-
-    async def test_a_record_without_tool_data_accepts_the_first_tool_data(self) -> None:
-        """StreamProgressRecord promises every read tolerates a missing key, tool_data included."""
-        del self.progress["tool_data"]
-        await StreamManager.update_progress("s1", tool_data={"tool_data": [{"id": 1}]})
-
-        saved = self.mock_set.call_args[0][1]
-        assert saved["tool_data"] == {"tool_data": [{"id": 1}]}
-
-    async def test_noop_when_progress_missing(self) -> None:
-        await StreamManager.update_progress("s-without-progress", message_chunk="hello")
-        self.mock_set.assert_not_awaited()
-
-    async def test_no_update_when_no_chunk_or_tool_data(self) -> None:
-        """Even with empty args, set is still called (progress_data exists)."""
-        await StreamManager.update_progress("s1")
-        # set is still called because progress_data was found
-        self.mock_set.assert_awaited_once()
-
-    async def test_message_chunk_appends_to_empty(self) -> None:
-        self.progress["pending_message"] = ""
-        await StreamManager.update_progress("s1", message_chunk="first")
-
-        saved = self.mock_set.call_args[0][1]
-        assert saved["pending_message"] == "first"
-
-    async def test_a_record_predating_the_pending_field_starts_from_empty(self) -> None:
-        """A progress record written before pending_message existed must have the read supply the empty string itself."""
-        del self.progress["pending_message"]
-        await StreamManager.update_progress("s1", message_chunk="first token")
-
-        saved = self.mock_set.call_args[0][1]
-        assert saved["pending_message"] == "first token"
-
-    async def test_settling_a_record_without_a_pending_field_keeps_the_reply(self) -> None:
-        """Same record, settled instead of appended to: the already-settled reply must survive the boundary untouched."""
-        del self.progress["pending_message"]
-        self.progress["complete_message"] = "The answer."
-        await StreamManager.settle_message_progress("s1", discarded=False)
-
-        saved = self.mock_set.call_args[0][1]
-        assert saved["complete_message"] == "The answer."
-        assert saved["pending_message"] == ""
-
-    async def test_the_first_kept_bubble_is_the_whole_reply(self) -> None:
-        """Nothing settled yet, so the bubble is the reply verbatim, with no separator or leading text."""
-        del self.progress["complete_message"]
-        self.progress["pending_message"] = "Here it is."
-        await StreamManager.settle_message_progress("s1", discarded=False)
-
-        saved = self.mock_set.call_args[0][1]
-        assert saved["complete_message"] == "Here it is."
-
-    async def test_settle_writes_this_streams_progress_key_with_the_full_ttl(self) -> None:
-        """A settled boundary must re-arm the full TTL, or a shortened one expires the record mid-turn."""
-        self.progress["pending_message"] = "Done."
-        await StreamManager.settle_message_progress("s1", discarded=False)
-
-        assert self.mock_set.call_args[0][0] == f"{STREAM_PROGRESS_PREFIX}s1"
-        assert self.mock_set.call_args.kwargs == {"ttl": STREAM_TTL}
-
-
 # ---------------------------------------------------------------------------
 # get_progress
 # ---------------------------------------------------------------------------
@@ -889,26 +503,6 @@ class TestSetError:
         patcher.start()
         yield
         patcher.stop()
-
-    async def test_records_error_and_appends_error_signal(self) -> None:
-        await StreamManager.set_error("s1", "kaboom")
-
-        saved = self.mock_set.call_args[0][1]
-        assert saved["error"] == "kaboom"
-
-        self.mock_redis_client.xadd.assert_awaited_once_with(
-            EVENTS_KEY,
-            {"data": STREAM_ERROR_SIGNAL, "error": "kaboom"},
-            maxlen=STREAM_EVENTS_MAXLEN,
-            approximate=True,
-        )
-
-    async def test_appends_error_even_when_progress_missing(self) -> None:
-        await StreamManager.set_error("s-without-progress", "kaboom")
-
-        self.mock_set.assert_not_awaited()
-        # Error signal should still be appended
-        self.mock_redis_client.xadd.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

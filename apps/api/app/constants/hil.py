@@ -20,10 +20,6 @@ ApprovalResolution = Literal[ApprovalDecision, "timeout", "abandon"]
 # The launch switch is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (the
 # default mode is a HILPreferences field default, so it lives with the model).
 
-# auto mode: what the intent judge is shown. Intent routinely spans turns
-# ("draft an email to Bob" ... "looks good, send it"), so the latest message
-# alone cannot be grounded against. Only USER turns are carried; bounded because these ride in `configurable`.
-HIL_JUDGE_MAX_USER_TURNS = 6
 HIL_JUDGE_MAX_TURN_CHARS = 800
 
 # The pending call's arguments, and the run's earlier tool calls (provenance for
@@ -111,10 +107,6 @@ class ReplyChoice(StrEnum):
     LEAVE = "leave"
     UNRELATED = "unrelated"
 
-
-# The only statuses a `Command(resume=...)` payload may carry. Anything else
-# is treated as a denial. "abandoned" is absent: resolution.py maps it to a deny before sending.
-HIL_RESUMABLE_STATUSES: frozenset[str] = frozenset({"approved", "denied", "timeout"})
 
 # Statuses meaning "decided, so the paused run must be re-dispatched" — the
 # sweep's crashed-resume pass matches on these. "auto_approved" is absent: it

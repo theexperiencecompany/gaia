@@ -67,12 +67,9 @@ def _tool_result(text: str = "result") -> ToolMessage:
 
 
 def _result_narration() -> HumanMessage:
-    """Return the comms turn that re-voices an executor result: instructions + payload."""
+    """Return the retired narrator's comms turn, as a replayed checkpoint still carries it."""
     return HumanMessage(
-        content=(
-            wrap_agent_payload(AgentTag.DELIVERY_INSTRUCTIONS, "follow these")
-            + wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "created the todo")
-        ),
+        content=wrap_agent_payload(AgentTag.DELIVERY_INSTRUCTIONS, "follow these"),
         name=BACKGROUND_EXECUTOR_NAME,
     )
 
@@ -84,11 +81,11 @@ def _user_interjection(text: str = "actually, make it blue") -> HumanMessage:
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
-        ("<executor_result>done</executor_result>", AgentTag.EXECUTOR_RESULT),
+        ("<last_run>done</last_run>", AgentTag.LAST_RUN),
         ('<subagent_result agent="research">done</subagent_result>', AgentTag.SUBAGENT_RESULT),
         ("<USER_INTERJECTION>hi</USER_INTERJECTION>", AgentTag.USER_INTERJECTION),
         ("plain user text", None),
-        ("I said <executor_result> earlier", None),
+        ("I said <last_run> earlier", None),
         ("<not_a_tag>text</not_a_tag>", None),
     ],
 )

@@ -135,9 +135,6 @@ USER_SKILLS_CACHE_KEY = "skills:user:{user_id}:agent:{agent_name}"
 # v2: the listing now merges in-memory builtin skills; bump busts stale empty entries.
 SKILLS_TEXT_CACHE_KEY = "skills:text:v2:{user_id}:{agent_name}"
 USER_INSTRUCTIONS_CACHE_KEY = "user_instructions:{user_id}"
-# Conversation-level artifact registry; long TTL with event-driven invalidation
-# on every upsert/remove — a chat turn reads it once instead of re-scanning the costly JuiceFS dir.
-CONV_ARTIFACTS_CACHE_PATTERN = "conv_artifacts:{user_id}:{conv_id}"
 # A user's uploaded-file listings; busted on every file upload/update/delete.
 FILES_CACHE_PATTERN = "files:{user_id}:*"
 STREAM_SIGNAL_PREFIX = "stream:signal:"
@@ -149,10 +146,6 @@ STREAM_EVENTS_MAXLEN = 4096
 # Reverse index {user_id}:{conversation_id} -> stream_id for the in-flight chat
 # turn, so a reloaded client can rediscover and re-attach to a live stream.
 STREAM_ACTIVE_PREFIX = "stream:active:"
-# Turn-send dedup: {user_id}:{turn_id} -> stream_id, claimed atomically (SETNX)
-# so a retried POST can't persist the same turn twice.
-STREAM_TURN_DEDUP_PREFIX = "stream:turn:"
-STREAM_TURN_DEDUP_TTL = TEN_MINUTES_TTL
 STATE_KEY_PREFIX = "oauth_state"
 # Single-use login-free integration-connect codes: code -> {user_id, integration_id}.
 CONNECT_LINK_PREFIX = "connect_link"
@@ -248,10 +241,6 @@ RUNNING_SUBAGENTS_TTL = ONE_HOUR_TTL
 # One live run per subagent checkpoint thread (SET NX, value = subagent_id): two
 # runs on one LangGraph thread corrupt its checkpoint. Held for the run's lifetime.
 RUNNING_SUBAGENT_THREAD_PREFIX = "subagents:thread:"
-# Max time a caller waits for a detached executor to finish before draining
-# whatever tool events were collected. Matches the busy lock TTL — the executor
-# cannot outlive its lock, so waiting longer would be pointless.
-EXECUTOR_WAIT_TIMEOUT = THIRTY_MINUTES_TTL
 #: Shorter than the worker's job timeout on purpose: waiting as long as the job
 #: means the job gets cut first mid-bookkeeping. Seen live: a stopped-mid-run
 #: executor left a record stuck 'running'.

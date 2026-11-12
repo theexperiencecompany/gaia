@@ -16,7 +16,6 @@ from starlette.types import Receive, Scope, Send
 
 from app.api.v1.middleware import timeout as timeout_module
 from app.api.v1.middleware.timeout import (
-    TIMEOUT_EXCLUDE_PREFIXES,
     TIMEOUT_RETRY_AFTER_SECONDS,
     RequestTimeoutMiddleware,
 )
@@ -92,11 +91,21 @@ async def test_a_request_inside_its_budget_is_untouched() -> None:
     assert response.text == "quick"
 
 
-async def test_a_long_lived_path_is_never_cut_off() -> None:
-    """SSE and websocket paths are long-lived; a timeout would close every stream."""
-    excluded = TIMEOUT_EXCLUDE_PREFIXES[0]
-    async with _client(_slow_app, timeout=0.01, exclude_prefixes=(excluded,)) as client:
+@pytest.mark.parametrize(
+    "path",
+    ["/api/v1/conversations/conv-1/events", "/api/v1/ws/connect", "/api/v1/sse/thing"],
+)
+async def test_a_long_lived_path_is_never_cut_off(path: str) -> None:
+    """A conversation's events, SSE and websocket paths are long-lived; a timeout would close every stream."""
+    async with _client(_slow_app, timeout=0.01) as client:
         with anyio.move_on_after(0.2) as scope:
-            await client.get(f"{excluded}/thing")
+            await client.get(path)
 
     assert scope.cancelled_caught, "an excluded path must outlive the budget, not 504"
+
+
+async def test_a_conversation_route_that_is_not_its_events_keeps_the_budget() -> None:
+    async with _client(_slow_app, timeout=0.01) as client:
+        response = await client.post("/api/v1/conversations/conv-1/messages")
+
+    assert response.status_code == 504

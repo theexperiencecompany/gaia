@@ -3,11 +3,10 @@
 Spawned by the call_executor tool (live runs) or the previous run's finalize
 step (queued runs) via asyncio.create_task(). Runs the executor agent graph
 with a Redis stream writer for tool events, then finalizes: signals
-executor-done so a waiting chat stream can close its SSE; routes the terminal
-outcome through exactly one delivery entry point (deliver_result, or
-persist_cancelled_run for self-owned tool_data — see result_delivery); for
-queued runs tears down the session and closes the stream; then hands the busy
-lock to the next queued task, or releases it.
+executor-done so a waiting todo run can read the result; logs the run's end as
+WorkFinished, which the conversation step narrates; for queued runs tears down
+the session and closes the stream; then hands the busy lock to the next queued
+task, or releases it.
 
 The executor:busy Redis key prevents concurrent executor spawns per
 conversation. TTL of 30 minutes is a safety net — released explicitly.
@@ -23,12 +22,8 @@ from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
 from langsmith import traceable
 
-from app.agents.core.background.comms_narrator import record_executor_cancellation
 from app.agents.core.background.confirmation_gate import record_confirmation_asked
-from app.agents.core.background.executor_capture import (
-    build_returned_to_frontend_note,
-    drain_executor_tool_data,
-)
+from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.executor_channel import ExecutorInbox, decide_drain
 from app.agents.core.background.executor_progress import ProgressRecorder, StreamWriter
 from app.agents.core.background.executor_queue import (
@@ -45,7 +40,6 @@ from app.agents.core.background.executor_queue import (
     release_lock_if_owned,
 )
 from app.agents.core.background.redis_writer import make_redis_stream_writer
-from app.agents.core.background.result_delivery import deliver_result, persist_cancelled_run
 from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
@@ -235,7 +229,7 @@ async def _run_executor(
             finally:
                 alive.cancel()
                 await _finalize_executor_run(
-                    run, task, result_text, result_type, run_ctx, stopped=stopped
+                    run, result_text, result_type, run_ctx, stopped=stopped
                 )
                 if resume is not None:
                     # This run held the conversation's resume slot (claimed at dispatch).
@@ -496,7 +490,7 @@ async def _nothing_to_drain() -> None:
 def _stream_writer(run: ExecutorRun) -> tuple[StreamWriter, Callable[[], Awaitable[None]]]:
     """Return the run's stream writer and what drains it; a step-dispatched run also publishes its cards."""
     writer = make_redis_stream_writer(run.stream_id)
-    if not run.work_logged or not run.task_id:
+    if not run.task_id:
         return writer, _nothing_to_drain
     deltas = WorkDeltas(run.conversation_id, run.task_id)
     return deltas.wrap(writer), deltas.drain
@@ -504,7 +498,6 @@ def _stream_writer(run: ExecutorRun) -> tuple[StreamWriter, Callable[[], Awaitab
 
 async def _finalize_executor_run(
     run: ExecutorRun,
-    task: str,
     result_text: str,
     result_type: str,
     ctx: SubagentExecutionContext | None = None,
@@ -525,16 +518,9 @@ async def _finalize_executor_run(
         bool(run.stream_id) and not finished and await StreamManager.is_cancelled(run.stream_id)
     )
 
-    # Snapshot returned-cards BEFORE signalling done: live streams tear down the
-    # session in parallel once done_event fires, so reading after would race it.
-    # Only meaningful where cards render — a bot/workflow delivery has no card to fall back on.
-    build_note = not was_cancelled and run.renders_native_cards
-    returned_note = build_returned_to_frontend_note(run.stream_id) if build_note else ""
-
-    # Snapshot cards delivery will persist, same reason: every comms consumer
-    # tears the session down the moment done_event fires, so a read from inside
-    # delivery comes back empty. None means a live run — comms owns those cards.
-    tool_data = drain_executor_tool_data(run.stream_id) if run.executor_owns_tool_data else None
+    # Snapshot the cards WorkFinished carries BEFORE signalling done: a waiting todo
+    # run tears the session down the moment done_event fires.
+    tool_data = drain_executor_tool_data(run.stream_id)
 
     # Held approval cards go live here, before the done signal so the session is
     # still alive; failure only skips the live push, never finalize — the drain
@@ -572,32 +558,19 @@ async def _finalize_executor_run(
             result_type=result_type,
         )
 
-    step_outcome: TerminalOutcome | None = None
-    # Delivery is best-effort: a failure here must NOT skip the lock release and
-    # queue handoff below, or queued tasks strand and the busy lock leaks until
-    # its TTL. The lock lifecycle is the load-bearing step — always run it.
-    try:
-        if not abandoned:
-            review = (
-                await _review_outcome(run.conversation_id, ctx)
-                if ctx is not None and result_type == "final"
-                else NOT_REVIEWED
-            )
-            outcome = TerminalOutcome(
-                result_text=result_text,
-                result_type=result_type,
-                was_cancelled=was_cancelled,
-                returned_note=returned_note,
-                tool_data=tool_data,
-                review=review,
-            )
-            step_outcome = await _deliver_unless_stepped(run, task, outcome)
-    except Exception as e:  # never let delivery failure strand the queue
-        log.error(
-            f"{LogTag.AGENT} Executor finalize delivery failed",
-            stream_id=run.stream_id,
-            task_id=run.task_id,
-            error=str(e),
+    outcome: TerminalOutcome | None = None
+    if not abandoned:
+        review = (
+            await _review_outcome(run.conversation_id, ctx)
+            if ctx is not None and result_type == "final"
+            else NOT_REVIEWED
+        )
+        outcome = TerminalOutcome(
+            result_text=result_text,
+            result_type=result_type,
+            was_cancelled=was_cancelled,
+            tool_data=tool_data,
+            review=review,
         )
 
     # Release the busy lock now, not at end of finalize: held longer, comms'
@@ -614,7 +587,7 @@ async def _finalize_executor_run(
             error=str(e),
         )
 
-    await _log_work_finished(run, step_outcome, stopped=stopped)
+    await _log_work_finished(run, outcome, stopped=stopped)
 
     end_status = (
         "error" if result_type == "error" else ("cancelled" if was_cancelled else "success")
@@ -643,7 +616,7 @@ async def _finalize_executor_run(
 
 async def _log_approvals_requested(run: ExecutorRun, approval_ids: tuple[str, ...]) -> None:
     """Log each approval a step-dispatched run paused on, so the conversation shows it awaiting the user."""
-    if not run.work_logged or not run.task_id:
+    if not run.task_id:
         return
     for approval_id in approval_ids:
         record = await get_approval(approval_id)
@@ -722,16 +695,12 @@ async def _finalize_paused_run(run: ExecutorRun) -> None:
 
 @dataclass(frozen=True)
 class TerminalOutcome:
-    """The terminal facts of one executor run, as _finalize_run snapshotted them.
-
-    tool_data is None for a live run, whose cards the comms stream owns.
-    """
+    """The terminal facts of one executor run, as _finalize_run snapshotted them."""
 
     result_text: str
     result_type: str
     was_cancelled: bool
-    returned_note: str
-    tool_data: list[ToolDataEntry] | None
+    tool_data: list[ToolDataEntry]
     review: OutcomeReview = NOT_REVIEWED
 
 
@@ -744,20 +713,10 @@ def _work_outcome(outcome: TerminalOutcome, *, stopped: bool) -> WorkOutcome:
     return WorkOutcome.DONE
 
 
-async def _deliver_unless_stepped(
-    run: ExecutorRun, task: str, outcome: TerminalOutcome
-) -> TerminalOutcome | None:
-    """Deliver the result the legacy way; a step-dispatched run returns it for the step to narrate instead."""
-    if not run.work_logged:
-        await _deliver_terminal_outcome(run, task, outcome)
-        return None
-    return outcome
-
-
 async def _log_work_finished(
     run: ExecutorRun, outcome: TerminalOutcome | None, *, stopped: bool
 ) -> None:
-    """Log a step-dispatched run's end once its busy lock is free; the step narrates it in the task's reply."""
+    """Log the run's end once its busy lock is free; the step narrates it in the task's reply."""
     if outcome is None or not run.task_id:
         return
     review = outcome.review
@@ -768,46 +727,11 @@ async def _log_work_finished(
         _work_outcome(outcome, stopped=stopped),
         WorkReport(
             outcome.result_text,
-            outcome.tool_data or (),
+            outcome.tool_data,
             note=outcome_delivery_note(review.declared, review.problem),
             nothing_for_user=review.nothing_for_user,
         ),
     )
-
-
-async def _deliver_terminal_outcome(
-    run: ExecutorRun,
-    task: str,
-    outcome: TerminalOutcome,
-) -> None:
-    """Route the run's terminal outcome to exactly one delivery entry point.
-
-    A cancelled run's already-streamed cards must not vanish: self-owning runs
-    persist them here, live runs defer to comms' attach step (None means that) —
-    persisting here too would duplicate cards. A completed run with text narrates and delivers.
-    """
-    if outcome.was_cancelled:
-        # Regardless of who owns the tool_data, comms' context must record the
-        # cancellation — otherwise its last knowledge stays 'Handed to the executor...
-        # I'm on it' and later turns claim the task is still running or done.
-        await record_executor_cancellation(run.conversation_id, run.task_id, task)
-        if outcome.tool_data is None:
-            log.info(
-                f"{LogTag.AGENT} Live executor cancelled; comms stream owns tool_data persistence",
-                task_id=run.task_id,
-                stream_id=run.stream_id,
-            )
-        else:
-            await persist_cancelled_run(run, outcome.tool_data)
-    elif outcome.result_text:
-        await deliver_result(
-            run,
-            outcome.result_text,
-            outcome.result_type,
-            outcome.returned_note,
-            tool_data=outcome.tool_data,
-            review=outcome.review,
-        )
 
 
 async def _close_queued_stream(run: ExecutorRun, was_cancelled: bool) -> None:

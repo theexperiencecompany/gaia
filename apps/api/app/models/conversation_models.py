@@ -381,9 +381,6 @@ class BatchSyncResponse(ResponseModel):
     # Requested ids the user has no conversation for: a client drops them, as it
     # cannot learn of a deleted chat that is never listed (a tracked todo's).
     missing: list[str] = Field(default_factory=list)
-    # Stream id of each requested conversation's in-flight turn, stale or not, so a
-    # reloading client re-attaches without refetching a history it already holds.
-    active_streams: dict[str, str] = Field(default_factory=dict)
 
 
 class ConversationActionResponse(BaseModel):

@@ -29,10 +29,11 @@ from app.models.conversation_log_models import (
     WorkflowFired,
     WorkflowRun,
 )
+from app.services.chat.workspace import schedule_last_active_touch
 from app.services.conversation.comms_runner import CommsTurn
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.todo_wake import todo_runs_reported
-from app.services.delivery.presence import read_presence
+from app.services.delivery.presence import presence_before
 from app.utils.auth_utils import require_owner
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.analytics.catalog.agents import AgentRunStarted
@@ -53,7 +54,9 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
         user, mode = user.with_timezone(fired.timezone), "background"
     source = _source(said)
     pinned = next((message for message in reversed(said) if message.selected_tool), None)
-    presence = await read_presence(claim.user_id)
+    presence = await presence_before(claim.user_id, said[-1] if said else None)
+    if said:
+        schedule_last_active_touch(claim.user_id, claim.conversation_id)
     todo_id = await conversation_repository.get_todo_id(
         claim.conversation_id, user_id=claim.user_id
     )

@@ -16,7 +16,6 @@ from enum import StrEnum
 from typing import Any
 
 from app.constants.log_tags import LogTag
-from app.models.agent_config import work_is_logged
 from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
@@ -148,9 +147,6 @@ class ExecutorRun:
     queued: bool = False
     #: Dispatch time, carried from ``RunIdentity`` — see its comment.
     dispatched_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    #: The run's work is on its conversation's log (see work_is_logged): its end is
-    #: logged as WorkFinished for the step to narrate. False on the legacy stream path.
-    work_logged: bool = False
 
     @classmethod
     def from_configurable(
@@ -185,7 +181,6 @@ class ExecutorRun:
             t_dispatch_perf=identity.t_dispatch_perf,
             queued=identity.queued,
             dispatched_at=identity.dispatched_at,
-            work_logged=work_is_logged(configurable),
         )
 
     @property
@@ -222,28 +217,6 @@ class ExecutorRun:
     def render_message_id(self) -> str | None:
         """The chat message this run's frames render into: the live turn's, a resumed turn's, or its own placeholder."""
         return self.bot_message_id or (self.task_id if self.owns_stream else None)
-
-    @property
-    def renders_native_cards(self) -> bool:
-        """Whether this run's items reach the user as cards rather than as words.
-
-        Only first-party clients render tool cards. A bot conversation gets plain
-        text over its platform API and a scheduled workflow gets a notification,
-        so telling comms "these items are already on the user's screen" there
-        suppresses the only copy of the data the user would ever see.
-        """
-        return self.source_category is SourceCategory.UI
-
-    @property
-    def executor_owns_tool_data(self) -> bool:
-        """Whether this run persists its own tool_data.
-
-        The real axis is live-streamed vs background-detached: live-streamed
-        attaches tool_data to the comms message; a run with no comms consumer
-        (detached, a workflow's, a tracked todo's, one the conversation step
-        dispatched, whose cards ride its WorkFinished) self-persists.
-        """
-        return self.owns_stream or self.workflow_id is not None or self.work_logged
 
 
 # ── Session registry ─────────────────────────────────────────────────

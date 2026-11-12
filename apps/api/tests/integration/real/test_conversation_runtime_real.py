@@ -893,7 +893,7 @@ class _Spawned:
 
     def spawn(self, prepared: PreparedQueuedTask, conversation_id: str) -> None:
         task_id = prepared.run.task_id
-        assert task_id is not None and prepared.run.work_logged
+        assert task_id is not None
         self.task_ids.append(task_id)
         if self.finish_with is not None:
             finished = record_work_finished(
@@ -989,7 +989,7 @@ def _fake_executor(
     """Do what the executor's finalize does for a run on the log: log how its work ended."""
 
     async def run(run: ExecutorRun, task: str, configurable: AgentConfigurable) -> None:
-        assert run.work_logged and run.task_id is not None
+        assert run.task_id is not None
         await record_work_finished(
             run.conversation_id,
             run.user.user_id,

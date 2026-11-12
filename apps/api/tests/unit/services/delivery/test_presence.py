@@ -10,10 +10,12 @@ from app.constants.notifications import (
     PRESENCE_RETENTION_SECONDS,
 )
 from app.models.chat_models import ConversationSource
+from app.models.conversation_log_models import UserMessage
 from app.models.presence_models import PresenceSnapshot
 from app.services.delivery import presence as presence_module
 from app.services.delivery.presence import (
     active_surface,
+    presence_before,
     previous_surface,
     read_presence,
     record_turn_presence,
@@ -204,3 +206,37 @@ class TestActiveSurface:
 
     def test_no_entries_is_none(self) -> None:
         assert active_surface(_snapshot(), NOW) is None
+
+
+class TestPresenceBeforeAMessage:
+    async def test_a_typed_message_stamps_its_surface_and_returns_the_presence_before_it(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        await fake_redis.hset(KEY, mapping={"web": str(NOW - 1500)})
+
+        before = await presence_before(USER_ID, _said(ConversationSource.TELEGRAM))
+
+        assert before["last_seen"] == {"web": NOW - 1500}
+        assert (await fake_redis.hgetall(KEY)).keys() == {"web", "telegram"}
+
+    async def test_a_call_cannot_be_messaged_so_it_stamps_nothing(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        await fake_redis.hset(KEY, mapping={"web": str(NOW - 1500)})
+
+        before = await presence_before(USER_ID, _said(ConversationSource.WEB, voice=True))
+
+        assert before["last_seen"] == {"web": NOW - 1500}
+        assert await fake_redis.hgetall(KEY) == {"web": str(NOW - 1500)}
+
+    async def test_a_turn_no_one_typed_stamps_nothing(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        await presence_before(USER_ID, None)
+        await presence_before(USER_ID, _said(ConversationSource.BACKGROUND))
+
+        assert await fake_redis.hgetall(KEY) == {}
+
+
+def _said(surface: ConversationSource, *, voice: bool = False) -> UserMessage:
+    return UserMessage(id="u1", text="hi", surface=surface, voice=voice)

@@ -539,21 +539,6 @@ OUTPUT CONTRACT
 """
 
 
-# Prepended to an interactive background result: a repeat check that found
-# nothing new is noise even on something the user asked GAIA to watch.
-SILENCE_NOTE = wrap_agent_payload(
-    AgentTag.DELIVERY_INSTRUCTIONS,
-    "If this background update has nothing new for the user (a routine check, a no-op, "
-    "or a repeat check that found nothing since your last message, even on something "
-    "they asked you to watch), reply with exactly one line and nothing else: "
-    f"{SILENCE_DIRECTIVE}. Never write a message and the tag together: no summary or "
-    "reminder before or after it. NEVER use it for the first result of something they asked "
-    "for, for a run that hit errors (say what did not work), or for anything that created, "
-    "sent, deleted, booked, or changed their data: report those in full. When unsure, reply "
-    "normally.",
-)
-
-
 PLATFORM_DELIVERY_NOTE = wrap_agent_payload(
     AgentTag.PLATFORM_DELIVERY,
     "This is an automated WORKFLOW result. It ran on its own in the background, so "
@@ -660,26 +645,6 @@ def tracked_todo_delivery_note(
         f'This is the result of a background run of the user\'s tracked todo "{todo_title}". '
         f"{_RUN_CANNOT_MESSAGE}{_run_record(run_history)}{when_to_send}{_HOW_IT_READS}{rules}",
     )
-
-
-# Prepended to an interactive executor result so the delivery rules sit right
-# next to the write; the same rules only in the distant system prompt proved
-# probabilistic (components and bubble splits were skipped).
-INTERACTIVE_DELIVERY_NOTE = wrap_agent_payload(
-    AgentTag.DELIVERY_INSTRUCTIONS,
-    "When you reply, follow Delivering results and this channel's output rules: what "
-    "matters first, the data in its best form for this channel (a component where the "
-    f"channel renders them), conversational beats split with {NEW_MESSAGE_BREAKER}, any "
-    "list, steps, table or component whole in one bubble, and nothing after the answer "
-    "except, when it fits, one concrete offer of a next step you can take. "
-    "Text it like a person who just handled it (see TEXT IT LIKE A PERSON): the point "
-    "first, plain words, no report formatting, and never a word about the screen or a "
-    "card on it. Call it done only where the result shows it happened; anything it does not show "
-    "is not done, so say what is unconfirmed. Say what they get, never how: no tracked "
-    "todos, triggers, subscriptions, runs, tasks, agents, tools or ids unless they used "
-    "that word first, and never which app, channel or notification it reaches them "
-    "through unless they asked for one.",
-)
 
 
 # The reply shape for each verified outcome. Appended to the executor result

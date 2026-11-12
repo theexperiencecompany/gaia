@@ -11,8 +11,6 @@ from app.agents.core.background.executor_queue import decode_raw_item, parse_loc
 from app.agents.core.background.running_registry import RunningSubagents, stop_stream
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
-from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
-from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import RunningSubagent
 from app.models.work_cancel_models import WorkCancelled
@@ -55,7 +53,7 @@ async def cancel_all_work(
         approval_ids=approvals,
         browser_jobs=browser_jobs,
     )
-    await _settle(conversation_id, user_id, work, redirect)
+    await _settle(conversation_id, work, redirect)
     return work
 
 
@@ -82,7 +80,7 @@ async def cancel_named_work(
         pending_task_ids=await inbox.discard(set(task_ids)),
         approval_ids=approvals,
     )
-    await _settle(conversation_id, user_id, work, redirect)
+    await _settle(conversation_id, work, redirect)
     return work
 
 
@@ -120,10 +118,8 @@ async def _close_approvals(conversation_id: str, user_id: str) -> list[str]:
     return [*barrier, *ledger]
 
 
-async def _settle(
-    conversation_id: str, user_id: str, work: WorkCancelled, redirect: str | None
-) -> None:
-    """Tell the next executor run the work was stopped, and the user's clients that it ended."""
+async def _settle(conversation_id: str, work: WorkCancelled, redirect: str | None) -> None:
+    """Tell the next executor run the work was stopped."""
     if not work.stopped_anything:
         return
     # Only when a run actually died: a spared live executor would drain the notice as its own.
@@ -138,16 +134,3 @@ async def _settle(
         approvals=len(work.approval_ids),
         browser_jobs=len(work.browser_jobs),
     )
-    if user_id:
-        await _broadcast_executor_cancelled(user_id, conversation_id)
-
-
-async def _broadcast_executor_cancelled(user_id: str, conversation_id: str) -> None:
-    """Tell the user's clients a cancel they may not have made happened, so pending executor state clears."""
-    try:
-        await websocket_manager.broadcast_to_user(
-            user_id,
-            {"type": WS_EVENT_EXECUTOR_CANCELLED, "conversation_id": conversation_id},
-        )
-    except Exception:  # best-effort UI signal; the warning records the error
-        log.warning(f"{LogTag.TOOL} Failed to broadcast executor.cancelled")

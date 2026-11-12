@@ -4,8 +4,10 @@ Request timeout middleware.
 Pure ASGI middleware (not BaseHTTPMiddleware) using anyio structured concurrency.
 Cancels HTTP requests that exceed a time limit and returns 504 Gateway Timeout.
 
-SSE, WebSocket, and stream paths are excluded — they are long-lived by design.
+SSE, WebSocket, and conversation events paths are excluded — they are long-lived by design.
 """
+
+import re
 
 import anyio
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -16,12 +18,7 @@ from app.constants.log_tags import LogTag
 from app.schemas.errors import ErrorEnvelope, error_response
 from shared.py.wide_events import log
 
-TIMEOUT_EXCLUDE_PREFIXES: tuple[str, ...] = (
-    "/api/v1/chat-stream",
-    "/api/v1/ws/",
-    "/api/v1/stream/",
-    "/api/v1/sse/",
-)
+TIMEOUT_EXCLUDED_PATHS = re.compile(r"/api/v1/(ws/|sse/|conversations/[^/]+/events$)")
 
 DEFAULT_TIMEOUT_SECONDS: float = 300.0  # 5 minutes — enough for long agent runs
 
@@ -41,13 +38,11 @@ class RequestTimeoutMiddleware:
         self,
         app: ASGIApp,
         timeout: float | None = None,
-        exclude_prefixes: tuple[str, ...] = TIMEOUT_EXCLUDE_PREFIXES,
     ) -> None:
         self.app = app
         # Resolved here, not as a default argument: a default is bound at class
         # definition, so the module constant would stop being the live budget.
         self.timeout = DEFAULT_TIMEOUT_SECONDS if timeout is None else timeout
-        self.exclude_prefixes = exclude_prefixes
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         parsed = AsgiScope.model_validate(scope)
@@ -56,7 +51,7 @@ class RequestTimeoutMiddleware:
             return
 
         path = parsed.path
-        if any(path.startswith(prefix) for prefix in self.exclude_prefixes):
+        if TIMEOUT_EXCLUDED_PATHS.match(path):
             await self.app(scope, receive, send)
             return
 

@@ -37,10 +37,7 @@ from app.models.workflow_models import TriggerType, WorkflowStep
 from app.services.conversation.outcome import EntryOutcome
 from app.services.workflow.conversation_service import build_selected_workflow_data
 from app.services.workflow.execution_service import WorkflowFireTimedOut, WorkflowTurnFailed
-from app.services.workflow.notifications import (
-    send_workflow_completion_notification,
-    send_workflow_failure_notification,
-)
+from app.services.workflow.notifications import send_workflow_completion_notification
 from app.utils import auth_utils
 from app.utils.errors import AppError
 from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
@@ -1172,22 +1169,6 @@ class TestWorkflowNotificationSenders:
             "workflow_id": "wf_1",
             "conversation_id": "conv_xyz",
         }
-
-    async def test_failure_notification_sent_with_workflow_failed_source(self):
-        """send_workflow_failure_notification sends a WORKFLOW_FAILED notification."""
-        with patch(
-            "app.services.workflow.notifications.notification_service",
-        ) as mock_notif:
-            mock_notif.create_notification = AsyncMock()
-            await send_workflow_failure_notification(
-                workflow_id="wf_1",
-                workflow_title="Morning Briefing",
-                user_id=USER_ID,
-            )
-
-        mock_notif.create_notification.assert_awaited_once()
-        notif_req = mock_notif.create_notification.call_args[0][0]
-        assert notif_req.source == NotificationSourceEnum.WORKFLOW_FAILED
 
 
 # ---------------------------------------------------------------------------

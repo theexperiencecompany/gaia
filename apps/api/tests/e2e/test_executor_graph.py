@@ -43,12 +43,13 @@ from tests.e2e._harness.graph_run import (
     NUDGE_NODE,
     REJECT_NODE,
     TOOLS_NODE,
+    StreamingScriptedModel,
     ToolCall,
     call,
     executor_graph,
     run_graph,
+    streaming_model,
 )
-from tests.e2e.test_agent_chain import StreamingScriptedModel, streaming_model
 
 pytestmark = pytest.mark.e2e
 

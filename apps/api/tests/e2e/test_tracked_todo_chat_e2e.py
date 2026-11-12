@@ -91,9 +91,8 @@ from app.workers.tasks.tracked_todo_tasks import (
 )
 from tests.conftest import FAKE_USER, FAKE_USER_2
 from tests.e2e._harness.background import drain_background_runs
-from tests.e2e._harness.graph_run import call
+from tests.e2e._harness.graph_run import StreamingScriptedModel, call, streaming_model
 from tests.e2e._harness.transcript import Transcript
-from tests.e2e.test_agent_chain import StreamingScriptedModel, streaming_model
 from tests.helpers import stored_conversation, worker_redis_url
 
 pytestmark = pytest.mark.e2e

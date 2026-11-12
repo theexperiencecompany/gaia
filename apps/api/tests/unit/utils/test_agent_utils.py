@@ -15,7 +15,6 @@ from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.browser import BROWSER_TOOL_CATEGORY
 from app.constants.cache import CUSTOM_INT_METADATA_CACHE_PREFIX, CUSTOM_INT_METADATA_TTL
 from app.models.integration_models import Integration
-from app.models.stream_events import ToolOutputPayload
 from app.services.browser.captions import describe_action
 from app.services.composio.instance_toolkits import (
     InstanceToolkitRecord,
@@ -30,10 +29,7 @@ from app.utils.agent_utils import (
     format_sse_data,
     format_sse_response,
     format_tool_call_entry,
-    process_custom_event_for_tools,
-    strip_internal_agent_tags,
 )
-from app.utils.stream_publishers import ExtractedToolData, publish_tool_output
 
 
 def _integration(integration_id: str, name: str) -> Integration:
@@ -242,33 +238,6 @@ class TestFormatBrowserActionEntry:
 # ---------------------------------------------------------------------------
 # _integration_display: reached for integration tools missing an icon_url or name
 # ---------------------------------------------------------------------------
-
-
-class TestPublishToolOutput:
-    @pytest.mark.asyncio
-    async def test_an_empty_output_is_streamed_but_never_captured_for_the_saved_turn(self) -> None:
-        tool_outputs: dict[str, str] = {}
-        new_data = ExtractedToolData(tool_output=ToolOutputPayload(tool_call_id="tc-1", output=""))
-
-        with patch("app.utils.stream_publishers.stream_manager") as sm:
-            sm.publish_chunk = AsyncMock()
-            await publish_tool_output("stream-1", new_data, tool_outputs)
-
-        assert tool_outputs == {}
-        sm.publish_chunk.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_a_non_empty_output_is_captured_under_its_tool_call(self) -> None:
-        tool_outputs: dict[str, str] = {}
-        new_data = ExtractedToolData(
-            tool_output=ToolOutputPayload(tool_call_id="tc-1", output="42 results")
-        )
-
-        with patch("app.utils.stream_publishers.stream_manager") as sm:
-            sm.publish_chunk = AsyncMock()
-            await publish_tool_output("stream-1", new_data, tool_outputs)
-
-        assert tool_outputs == {"tc-1": "42 results"}
 
 
 class TestResolveMcpUiMetadata:
@@ -734,41 +703,6 @@ class TestSSEFormatters:
 # ---------------------------------------------------------------------------
 
 
-class TestProcessCustomEventForTools:
-    def test_with_payload(self) -> None:
-        with patch(
-            "app.utils.agent_utils.extract_tool_data",
-            return_value={"tool_data": [{"tool_name": "t", "data": 1}]},
-        ) as mock_extract:
-            result = process_custom_event_for_tools({"some": "payload"})
-        assert result == ExtractedToolData(tool_data=[{"tool_name": "t", "data": 1}])
-        assert mock_extract.call_args.args == ('{"some": "payload"}',)
-
-    def test_with_none_payload(self) -> None:
-        with patch(
-            "app.utils.agent_utils.extract_tool_data",
-            return_value=None,
-        ):
-            result = process_custom_event_for_tools(None)
-        assert result == ExtractedToolData()
-
-    def test_extract_returns_none(self) -> None:
-        with patch(
-            "app.utils.agent_utils.extract_tool_data",
-            return_value=None,
-        ):
-            result = process_custom_event_for_tools({"x": 1})
-        assert result == ExtractedToolData()
-
-    def test_exception_returns_empty(self) -> None:
-        with patch(
-            "app.utils.agent_utils.extract_tool_data",
-            side_effect=RuntimeError("parse fail"),
-        ):
-            result = process_custom_event_for_tools({"x": 1})
-        assert result == ExtractedToolData()
-
-
 # ---------------------------------------------------------------------------
 # internal agent channel tags
 # ---------------------------------------------------------------------------
@@ -776,8 +710,8 @@ class TestProcessCustomEventForTools:
 
 class TestWrapAgentPayload:
     def test_body_is_framed_by_an_open_and_close_tag(self) -> None:
-        assert wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "3 unread") == (
-            "<executor_result>\n3 unread\n</executor_result>\n"
+        assert wrap_agent_payload(AgentTag.LAST_RUN, "3 unread") == (
+            "<last_run>\n3 unread\n</last_run>\n"
         )
 
     def test_the_producing_agent_is_named_on_the_opening_tag(self) -> None:
@@ -787,48 +721,17 @@ class TestWrapAgentPayload:
 
     def test_a_payload_with_no_producing_agent_carries_no_attribute(self) -> None:
         """A tag with an empty agent attribute still matches the strip pattern but reads as broken markup."""
-        assert wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "done", agent=None) == (
-            "<executor_result>\ndone\n</executor_result>\n"
+        assert wrap_agent_payload(AgentTag.LAST_RUN, "done", agent=None) == (
+            "<last_run>\ndone\n</last_run>\n"
         )
 
     def test_consecutive_blocks_concatenate_without_running_together(self) -> None:
         """The trailing newline is load-bearing: without it, joined blocks' tags land on one line."""
-        joined = wrap_agent_payload(AgentTag.RETURNED_TO_FRONTEND, "a card is up") + (
-            wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "3 unread")
+        joined = wrap_agent_payload(AgentTag.PLATFORM_DELIVERY, "a card is up") + (
+            wrap_agent_payload(AgentTag.LAST_RUN, "3 unread")
         )
 
         assert joined == (
-            "<returned_to_frontend>\na card is up\n</returned_to_frontend>\n"
-            "<executor_result>\n3 unread\n</executor_result>\n"
+            "<platform_delivery>\na card is up\n</platform_delivery>\n"
+            "<last_run>\n3 unread\n</last_run>\n"
         )
-
-
-class TestStripInternalAgentTags:
-    def test_a_parroted_block_keeps_its_words_and_loses_the_frame(self) -> None:
-        text = wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "you have 3 unread")
-
-        assert strip_internal_agent_tags(text) == "you have 3 unread"
-
-    def test_a_lone_closing_tag_is_stripped(self) -> None:
-        """Covers the common half-leak: the model writes its reply then closes the handed block."""
-        assert strip_internal_agent_tags("3 unread</executor_result>") == "3 unread"
-
-    def test_an_attributed_tag_is_stripped(self) -> None:
-        assert (
-            strip_internal_agent_tags('<subagent_result agent="gmail">\nsent\n</subagent_result>')
-            == "sent"
-        )
-
-    def test_case_is_ignored(self) -> None:
-        assert strip_internal_agent_tags("<Executor_Result> done") == "done"
-
-    def test_ordinary_markup_in_a_reply_survives(self) -> None:
-        """A reply with legitimate angle brackets (code, HTML, comparisons) must pass through untouched."""
-        reply = "use `<div>` for that, and 3 < 5 is true"
-
-        assert strip_internal_agent_tags(reply) == reply
-
-    @pytest.mark.parametrize("tag", list(AgentTag))
-    def test_every_declared_tag_is_covered_by_the_strip(self, tag: AgentTag) -> None:
-        """Drift guard: a new AgentTag member extends the backstop for free, unlike a hand-listed pattern."""
-        assert strip_internal_agent_tags(wrap_agent_payload(tag, "payload")) == "payload"

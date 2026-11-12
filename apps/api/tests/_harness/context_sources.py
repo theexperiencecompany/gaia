@@ -168,10 +168,9 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
                 AsyncMock(return_value=sources.workflow_integrations_hint),
             )
         )
-        # Roots with no presence read it (comms in _core_agent_logic, others in
-        # build_agent_config); a background note reads it live with its target.
+        # Roots with no presence read it in build_agent_config; a background note
+        # reads it live with its target.
         for reader in (
-            "app.agents.core.agent.read_presence",
             "app.helpers.agent_helpers.read_presence",
             "app.agents.context.presence_note.read_presence",
         ):

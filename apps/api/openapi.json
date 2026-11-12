@@ -1597,13 +1597,6 @@
       "BatchSyncResponse": {
         "description": "The conversations a client's sync request found stale.",
         "properties": {
-          "active_streams": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Active Streams",
-            "type": "object"
-          },
           "conversations": {
             "items": {
               "$ref": "#/components/schemas/ConversationSyncRow"
@@ -1621,8 +1614,7 @@
         },
         "required": [
           "conversations",
-          "missing",
-          "active_streams"
+          "missing"
         ],
         "title": "BatchSyncResponse",
         "type": "object"
@@ -2956,36 +2948,6 @@
           "message"
         ],
         "title": "CalendarPreferencesUpdateResponse",
-        "type": "object"
-      },
-      "CancelStreamResponse": {
-        "description": "Outcome of a stream-cancellation request.\n\n``error`` is set only when the stream could not be cancelled at all (it was\nnever started, or already expired from Redis).",
-        "properties": {
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "stream_id": {
-            "title": "Stream Id",
-            "type": "string"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "success",
-          "stream_id"
-        ],
-        "title": "CancelStreamResponse",
         "type": "object"
       },
       "ChangePasswordRequest": {
@@ -11585,25 +11547,6 @@
         "title": "MessageBoundaryPayload",
         "type": "object"
       },
-      "MessageDict": {
-        "description": "One chat turn as {role, content} for LLM history payloads.",
-        "properties": {
-          "content": {
-            "title": "Content",
-            "type": "string"
-          },
-          "role": {
-            "title": "Role",
-            "type": "string"
-          }
-        },
-        "required": [
-          "role",
-          "content"
-        ],
-        "title": "MessageDict",
-        "type": "object"
-      },
       "MessageFeedbackRequest": {
         "properties": {
           "is_positive": {
@@ -11995,185 +11938,6 @@
           "message"
         ],
         "title": "MessageRequest",
-        "type": "object"
-      },
-      "MessageRequestWithHistory": {
-        "description": "Chat-stream request carrying the full message history and attachments.",
-        "properties": {
-          "comms_model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Comms Model"
-          },
-          "conversation_id": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_-]{1,64}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Conversation Id"
-          },
-          "executor_model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Executor Model"
-          },
-          "fileData": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/FileData"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": [],
-            "title": "Filedata"
-          },
-          "fileIds": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": [],
-            "title": "Fileids"
-          },
-          "is_onboarding_demo": {
-            "default": false,
-            "title": "Is Onboarding Demo",
-            "type": "boolean"
-          },
-          "is_retry": {
-            "default": false,
-            "title": "Is Retry",
-            "type": "boolean"
-          },
-          "message": {
-            "maxLength": 50000,
-            "title": "Message",
-            "type": "string"
-          },
-          "messages": {
-            "items": {
-              "$ref": "#/components/schemas/MessageDict"
-            },
-            "title": "Messages",
-            "type": "array"
-          },
-          "platform_message_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Platform Message Id"
-          },
-          "replyToMessage": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ReplyToMessageData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "selectedCalendarEvent": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SelectedCalendarEventData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "selectedTool": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Selectedtool"
-          },
-          "selectedWorkflow": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SelectedWorkflowDataInput"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "toolCategory": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Toolcategory"
-          },
-          "turn_id": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_-]{1,64}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Turn Id"
-          },
-          "use_default_models": {
-            "default": true,
-            "title": "Use Default Models",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "message",
-          "messages"
-        ],
-        "title": "MessageRequestWithHistory",
         "type": "object"
       },
       "MessageSearchResult": {
@@ -27874,138 +27638,6 @@
         ]
       }
     },
-    "/api/v1/cancel-stream/{stream_id}": {
-      "post": {
-        "description": "Cancel a running stream owned by the requesting user.",
-        "operationId": "chat_cancel_stream_endpoint",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "stream_id",
-            "required": true,
-            "schema": {
-              "title": "Stream Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CancelStreamResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Cancel Stream Endpoint",
-        "tags": [
-          "Chat"
-        ]
-      }
-    },
-    "/api/v1/chat-stream": {
-      "post": {
-        "description": "Stream a chat turn. Continues in the background if the client disconnects.",
-        "operationId": "chat_chat_stream_endpoint",
-        "parameters": [
-          {
-            "description": "Browser timezone fallback",
-            "in": "header",
-            "name": "x-timezone",
-            "required": false,
-            "schema": {
-              "default": "",
-              "description": "Browser timezone fallback",
-              "title": "X-Timezone",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MessageRequestWithHistory"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Chat Stream Endpoint",
-        "tags": [
-          "Chat"
-        ]
-      }
-    },
     "/api/v1/conversations": {
       "delete": {
         "description": "Delete all conversations for the authenticated user.",
@@ -40764,62 +40396,6 @@
         "summary": "Enable Skill Endpoint",
         "tags": [
           "Skills"
-        ]
-      }
-    },
-    "/api/v1/stream/{stream_id}": {
-      "get": {
-        "description": "Subscribe to a background executor SSE stream by stream_id.\n\nUsed by the frontend to receive live tool events for queued executor tasks.\nThe stream_id is delivered via the `executor.stream_started` WebSocket event.\nVerifies stream ownership before allowing subscription.",
-        "operationId": "chat_subscribe_executor_stream",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "stream_id",
-            "required": true,
-            "schema": {
-              "title": "Stream Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Subscribe Executor Stream",
-        "tags": [
-          "Chat"
         ]
       }
     },

@@ -48,7 +48,7 @@ def work_queue_arguments(queue_name: str) -> dict[str, Any]:
     }
 
 
-# Every aio-pika await MUST be bounded: chat-stream is exempt from the
+# Every aio-pika await MUST be bounded: background work runs outside the
 # request-timeout middleware, so an unbounded await against a stalled broker
 # hangs forever (observed: a 35-minute hang in dev).
 

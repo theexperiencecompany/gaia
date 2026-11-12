@@ -19,12 +19,7 @@ from app.models.memory_models import (
     MemoryEntry,
     MemorySearchResult,
 )
-from app.models.message_models import (
-    FileData,
-    MessageRequestWithHistory,
-    ReplyToMessageData,
-    SelectedWorkflowData,
-)
+from app.models.message_models import FileData, ReplyToMessageData, SelectedWorkflowData
 from app.models.user_models import (
     NEEDS_MAX_SELECTION,
     PROFESSION_MAX_LENGTH,
@@ -162,21 +157,6 @@ class TestReplyToMessageData:
     def test_missing_fields(self):
         with pytest.raises(ValidationError):
             ReplyToMessageData(id="msg_1")
-
-
-class TestMessageRequestWithHistory:
-    def test_valid(self):
-        m = MessageRequestWithHistory(
-            message="Hello",
-            messages=[{"role": "user", "content": "Hi"}],
-        )
-        assert m.message == "Hello"
-        assert len(m.messages) == 1
-        assert m.fileIds == []
-
-    def test_missing_messages(self):
-        with pytest.raises(ValidationError):
-            MessageRequestWithHistory(message="Hello")
 
 
 class TestUpdateMessagesRequest:

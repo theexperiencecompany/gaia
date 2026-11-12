@@ -28,7 +28,7 @@ END_HOOKS_NODE = "end_graph_hooks"
 
 
 def _run_input(run_no: int) -> dict:
-    """Build a graph input shaped like construct_langchain_messages output.
+    """Build a graph input shaped like comms_turn_messages output.
 
     Fresh message objects per run (new ids), same slots: one static system
     prompt, one dynamic-context system message, one time-context clock line,

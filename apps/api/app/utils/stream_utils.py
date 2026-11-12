@@ -1,7 +1,7 @@
 """Shared helpers for processing LangGraph stream events and tool call data.
 
-Used by the subagent runner, the workflow subagent, the background executor
-collector, and the chat-stream orchestrator's turn finalization.
+Used by the subagent runner, the workflow subagent and the background executor
+collector.
 
 Every entry these helpers move around is a :class:ToolDataEntry — that shape
 is closed and is what reaches MongoDB, so an emitted key it does not declare is
@@ -308,26 +308,6 @@ def absorb_reasoning(reasoning: ReasoningEvent, tool_data: list[ToolDataEntry]) 
     if subagent_id:
         entry["subagent_id"] = subagent_id
     tool_data.append(entry)
-
-
-def absorb_reasoning_delta(reasoning: ReasoningEvent, tool_data: list[ToolDataEntry]) -> None:
-    """Fold one streamed thinking delta into the step it continues, or start a new step.
-
-    Comms streams its thinking chunk by chunk, so deltas with nothing between them
-    are one step; a tool call or another agent's thinking in between starts a new one.
-    """
-    if not reasoning.content:
-        return
-    last: ToolDataEntry | None = tool_data[-1] if tool_data else None
-    if (
-        last is not None
-        and last.get("tool_category") == REASONING_STEP
-        and last.get("subagent_id") == reasoning.subagent_id
-    ):
-        step: _ReasoningStepData = last["data"]
-        step["reasoning"] += reasoning.content
-        return
-    absorb_reasoning(reasoning, tool_data)
 
 
 def apply_outputs_to_tool_data(

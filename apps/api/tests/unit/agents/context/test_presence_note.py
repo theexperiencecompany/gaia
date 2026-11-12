@@ -5,7 +5,12 @@ from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 import pytest
-from tests._harness.context_chain import ContextSeed, effective_context, text_of
+from tests._harness.context_chain import (
+    ContextSeed,
+    comms_turn_messages,
+    effective_context,
+    text_of,
+)
 from tests._harness.context_sources import ContextSources
 
 from app.agents.context import presence_note as presence_note_module
@@ -18,12 +23,10 @@ from app.agents.core import messages as messages_module
 from app.models.agent_models import AgentConfigurable
 from app.models.chat_models import ConversationSource
 from app.models.presence_models import PresenceSnapshot
-from app.services.chat import stream as stream_module
 from app.services.delivery.chat_channel import ChatChannel, InApp
-from app.services.delivery.presence import read_presence, record_turn_presence
 from app.utils import presence_utils
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
-from shared.py.analytics.context import AnalyticsContext, analytics_context
+from shared.py.analytics.context import AnalyticsContext
 
 pytestmark = pytest.mark.unit
 
@@ -286,28 +289,6 @@ VOICE_CALL = AnalyticsContext(
 )
 
 
-class TestAVoiceCall:
-    """A call is not a surface the user can be messaged on: it is never stamped and never noted."""
-
-    @pytest.mark.regression
-    @pytest.mark.parametrize("tier", [AgentTier.COMMS, AgentTier.EXECUTOR])
-    async def test_consecutive_voice_turns_get_no_note(
-        self, tier: AgentTier, fake_redis: object
-    ) -> None:
-        """Each spoken turn was told the user had just switched to Web, one note per turn."""
-        await record_turn_presence(USER_ID, ConversationSource.TELEGRAM)
-
-        with analytics_context(VOICE_CALL):
-            for _ in range(2):
-                assert await stream_module._capture_presence(USER_ID, "web") is None
-                presence = await read_presence(USER_ID)
-                messages = await effective_context(tier, _seed(presence, "web"))
-
-                assert _notes(messages) == []
-
-        assert set((await read_presence(USER_ID))["last_seen"]) == {"telegram"}
-
-
 class TestTheTargetLookup:
     """The delivery target is a user read: only a run that gets a note may pay for it."""
 
@@ -483,7 +464,7 @@ class TestComms:
                 messages_module, "presence_note_message", AsyncMock(return_value=None)
             ) as note,
         ):
-            await messages_module.construct_langchain_messages(
+            await comms_turn_messages(
                 query="hi",
                 scope=messages_module.MessageScope(
                     user_id="user-1",
@@ -524,7 +505,7 @@ class TestAConversationsFirstTurn:
                 AsyncMock(return_value=TELEGRAM_RECENT),
             ),
         ):
-            return await messages_module.construct_langchain_messages(
+            return await comms_turn_messages(
                 query="remind me in 2 minutes to drink water",
                 scope=messages_module.MessageScope(
                     user_id="user-1",

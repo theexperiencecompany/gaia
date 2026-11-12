@@ -121,7 +121,7 @@ class EntitlementMiddleware(BaseHTTPMiddleware):
     def _payment_required(exc: SubscriptionRequiredException) -> JSONResponse:
         """Render the exact body the app's HTTPException handler would emit.
 
-        The web's axios interceptor and the chat-stream client both match on
+        The web's axios interceptor matches on
         code == "subscription_required"; rendering the same envelope the
         generic handler does keeps that contract byte-identical whether a 402
         comes from here or from an imperative in-handler gate.

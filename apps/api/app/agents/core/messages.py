@@ -3,11 +3,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from langchain_core.messages import AnyMessage, HumanMessage
+from langchain_core.messages import AnyMessage
 
 from app.agents.context.assemble import assemble_context
 from app.agents.context.presence_note import presence_note_message
-from app.agents.context.reaction_note import reaction_note_message
 from app.agents.context.section_context import SectionContext
 from app.agents.context.tiers import AgentTier
 from app.helpers.message_helpers import (
@@ -139,30 +138,6 @@ async def build_turn_context(query: str, scope: MessageScope) -> TurnContext:
         presence=note,
         clock=build_current_time_message(user_timezone=user_timezone),
     )
-
-
-async def construct_langchain_messages(
-    query: str,
-    scope: MessageScope | None = None,
-    attachments: MessageAttachments | None = None,
-) -> list[AnyMessage]:
-    """Construct LangChain messages for agent interaction.
-
-    Builds a conversation from system prompt + optional memory + human
-    message. query is the user's turn: the human message and the memory
-    recall query. The checkpointer owns history, so only this turn is built.
-    """
-    scope = scope or MessageScope()
-    attachments = attachments or MessageAttachments()
-    context, content = await asyncio.gather(
-        build_turn_context(query, scope), human_content(scope, attachments, query.strip())
-    )
-    human_msg = HumanMessage(content=content)
-    # Read after the context is built, never awaited: a reaction still deciding costs this turn nothing.
-    reacted = reaction_note_message(scope.instant_reaction)
-    # The notes sit inline just ahead of the turn they describe, and stay in the thread.
-    turn_msgs = [*(m for m in (context.presence, reacted) if m is not None), human_msg]
-    return [*context.chain, *turn_msgs, context.clock]
 
 
 async def human_content(

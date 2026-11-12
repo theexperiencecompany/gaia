@@ -84,14 +84,10 @@ async def redis() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
 
 @pytest.fixture
 def stream_side():
-    """Capture the two side effects a detached run has outside Redis."""
-    with (
-        patch.object(eq, "StreamManager") as stream_manager,
-        patch.object(eq, "websocket_manager") as websocket,
-    ):
+    """Capture the stream a detached run starts outside Redis."""
+    with patch.object(eq, "StreamManager") as stream_manager:
         stream_manager.start_stream = AsyncMock()
-        websocket.broadcast_to_user = AsyncMock()
-        yield SimpleNamespace(stream_manager=stream_manager, websocket=websocket)
+        yield SimpleNamespace(stream_manager=stream_manager)
 
 
 def _no_redis() -> Any:
@@ -496,9 +492,8 @@ class TestPrepareRunFromItem:
 
         assert prepared is None
         assert await redis.get(BUSY_KEY) == held
-        # No stream is minted either — the client must not be told a run started.
+        # No stream is minted either.
         stream_side.stream_manager.start_stream.assert_not_awaited()
-        stream_side.websocket.broadcast_to_user.assert_not_awaited()
 
     async def test_acquire_takes_a_free_conversation(self, redis, stream_side) -> None:
         prepared = await prepare_run_from_item(CONVERSATION, _item(), claim=LockClaim.ACQUIRE)
@@ -546,39 +541,13 @@ class TestPrepareRunFromItem:
         assert prepared.run.kind is RunKind.QUEUED
         assert prepared.run.is_queued is True
 
-    async def test_starts_the_stream_and_tells_the_client_to_subscribe(
-        self, redis, stream_side
-    ) -> None:
+    async def test_starts_the_stream_the_run_writes_to(self, redis, stream_side) -> None:
         prepared = await prepare_run_from_item(CONVERSATION, _item(), claim=LockClaim.SEIZE)
 
         assert prepared is not None
         stream_side.stream_manager.start_stream.assert_awaited_once_with(
             stream_id=prepared.run.stream_id, conversation_id=CONVERSATION, user_id="u1"
         )
-        user_id, event = stream_side.websocket.broadcast_to_user.await_args.args
-        assert user_id == "u1"
-        assert event == {
-            "type": "executor.stream_started",
-            "stream_id": prepared.run.stream_id,
-            "conversation_id": CONVERSATION,
-            "task_id": "task-7",
-            # Present and null rather than absent: the client branches on the
-            # key to decide between folding into an existing message and opening
-            # a fresh placeholder.
-            "bot_message_id": None,
-            # An executor run owns its message: the client folds it as the run's own.
-            "kind": "executor",
-        }
-
-    async def test_an_item_with_no_user_still_prepares_but_announces_nothing(
-        self, redis, stream_side
-    ) -> None:
-        prepared = await prepare_run_from_item(
-            CONVERSATION, _item(configurable={}), claim=LockClaim.SEIZE
-        )
-
-        assert prepared is not None
-        stream_side.websocket.broadcast_to_user.assert_not_awaited()
 
     async def test_carries_the_user_and_workflow_context_from_the_item(
         self, redis, stream_side
@@ -607,8 +576,6 @@ class TestPrepareRunFromItem:
         assert run.workflow_id == "wf-1"
         assert run.workflow_title == "Digest"
         assert run.workflow_notify_on_completion is False
-        # No comms consumer attaches this run's cards, so it self-persists.
-        assert run.executor_owns_tool_data is True
 
     async def test_bot_message_id_threads_into_the_resumed_run(self, redis, stream_side) -> None:
         """A HIL resume continues the ORIGINAL turn's message: the resumed run and the browser both need that id, or the client opens a second placeholder and renders its own tool accordion beside the first."""
@@ -618,8 +585,6 @@ class TestPrepareRunFromItem:
 
         assert prepared is not None
         assert prepared.run.bot_message_id == "orig-msg-1"
-        event = stream_side.websocket.broadcast_to_user.await_args.args[1]
-        assert event["bot_message_id"] == "orig-msg-1"
 
     async def test_an_item_without_a_pause_has_no_bot_message_id(self, redis, stream_side) -> None:
         prepared = await prepare_run_from_item(CONVERSATION, _item(), claim=LockClaim.SEIZE)

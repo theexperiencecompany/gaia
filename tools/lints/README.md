@@ -173,29 +173,23 @@ no conversation on it), a module under `app/` must not:
 
 1. name the comms graph: `GraphName.COMMS`, or the string `"comms_agent"` passed
    to `GraphManager.get_graph` / `providers.get` / `providers.aget`;
-2. call a comms entry wrapper or thread writer (`COMMS_ENTRY_FUNCTIONS`:
-   `call_agent`, `call_agent_silent`, the comms graph constructors and the
-   narrator's `record_*` / `narrate_executor_result` / `_append_to_thread`);
+2. call a comms graph constructor (`COMMS_ENTRY_FUNCTIONS`: `build_comms_graph`,
+   `build_comms_agent`);
 3. in a module that does either, call `astream` / `ainvoke` / `aget_state` /
    `aupdate_state` or their siblings (`GRAPH_THREAD_METHODS`).
 
 **Why:** the comms graph checkpoints each conversation on a thread whose id is
 the conversation id. Two pieces of code running or writing that thread at once
 fork it, and one side's messages vanish from the model's memory. The runner is
-the one owner, and only the step starts it; this rule stops a new writer
-appearing while the old ones move there.
+the one owner, and only the step starts it; this rule stops a second writer
+appearing.
 
 **Fix:** run or write the conversation through the comms runner, driven by the
 conversation step. Executor and subagent threads (prefixed thread ids,
 `GraphName.EXECUTOR`) are not in scope.
 
 **Limitation:** check 3 is syntactic, not data flow: a graph handed to a module
-that names neither the symbol nor a wrapper is not seen.
-
-**Legacy callers** (`LEGACY_CALLERS`): the callers that predate the owner, each
-with the plan PR that moves it. They are not owners; entries are only removed.
-An entry whose file no longer trips the rule, or no longer exists, is reported
-as removable and fails the run.
+that names neither the symbol nor a constructor is not seen.
 
 ---
 

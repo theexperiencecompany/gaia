@@ -41,8 +41,7 @@ class TestSessionRegistry:
         assert created.executor_spawned is False
 
     def test_create_overwrites_existing_session(self) -> None:
-        # register_executor_capture semantics: a new turn on the same stream id
-        # starts from a clean slate (fresh done-event, empty collector).
+        # A new run on the same stream id starts from a clean slate (fresh done-event, empty collector).
         first = create_session("s1", RunKind.LIVE)
         first.tool_events.append({"tool_data": {"x": 1}})
         second = create_session("s1", RunKind.LIVE)
@@ -87,52 +86,8 @@ class TestExecutorLifecycleFlags:
         signal_executor_done("missing")  # must not raise
 
 
-class TestOwnershipRule:
-    """The single source of truth that prevents duplicate/lost tool cards.
-
-    Live runs: the comms path attaches executor tool_data — the executor must
-    NOT self-persist. Queued and workflow runs have no comms consumer, so the
-    executor self-persists. Exactly one owner per stream.
-    """
-
-    @pytest.mark.parametrize(
-        ("kind", "workflow_id", "owns"),
-        [
-            (RunKind.LIVE, None, False),
-            (RunKind.QUEUED, None, True),
-            (RunKind.LIVE, "wf-1", True),
-            (RunKind.QUEUED, "wf-1", True),
-        ],
-    )
-    def test_executor_owns_tool_data_truth_table(self, kind, workflow_id, owns) -> None:
-        run = ExecutorRun(
-            stream_id="s1",
-            conversation_id="conv-1",
-            user=AuthenticatedUser(user_id="u1"),
-            kind=kind,
-            task_id="t1",
-            user_message_id=None,
-            workflow_id=workflow_id,
-        )
-        assert run.executor_owns_tool_data is owns
-
-    @pytest.mark.parametrize("logged", [False, True])
-    def test_a_live_run_on_the_log_keeps_its_own_cards_without_a_message_of_its_own(
-        self, logged: bool
-    ) -> None:
-        """Its cards ride its WorkFinished: no comms turn's message renders or keeps them."""
-        run = ExecutorRun(
-            stream_id="s1",
-            conversation_id="todo-chat",
-            user=AuthenticatedUser(user_id="u1"),
-            kind=RunKind.LIVE,
-            task_id="t1",
-            user_message_id=None,
-            work_logged=logged,
-        )
-        assert run.owns_stream is False
-        assert run.executor_owns_tool_data is logged
-        assert run.render_message_id is None
+class TestExecutorRun:
+    """The run context an executor run is built with."""
 
     def test_is_queued_reflects_kind_not_stream_id(self) -> None:
         # The id prefix is cosmetic; behavior must key on RunKind only.
@@ -182,7 +137,6 @@ class TestOwnershipRule:
         )
         assert run.workflow_id is None
         assert run.workflow_notify_on_completion is True
-        assert run.executor_owns_tool_data is False
 
 
 class TestToolOutputOwnership:

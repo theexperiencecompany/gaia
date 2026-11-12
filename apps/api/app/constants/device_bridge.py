@@ -14,8 +14,8 @@ from typing import Final, Literal
 DeviceServerKind = Literal["stdio", "url", "filesystem"]
 
 # --- Device connect token (short-lived JWT the daemon presents on the WS upgrade) ---
-# Distinct audience so a device token can never be replayed against the chat-stream
-# agent-token path or a WorkOS session — the WS handler checks aud explicitly.
+# Distinct audience so a device token can never be replayed against the voice worker's
+# agent-token paths or a WorkOS session — the WS handler checks aud explicitly.
 DEVICE_TOKEN_AUDIENCE: Final[str] = "device-bridge"
 DEVICE_TOKEN_EXPIRY_MINUTES: Final[int] = 15
 

@@ -22,10 +22,6 @@ from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 class AgentTag(StrEnum):
     """Tag names framing an internal payload passed between agent tiers."""
 
-    EXECUTOR_RESULT = "executor_result"
-    EXECUTOR_ERROR = "executor_error"
-    EXECUTOR_CANCELLED = "executor_cancelled"
-    RETURNED_TO_FRONTEND = "returned_to_frontend"
     PLATFORM_DELIVERY = "platform_delivery"
     DELIVERY_INSTRUCTIONS = "delivery_instructions"
     SUBAGENT_RESULT = "subagent_result"
@@ -65,14 +61,6 @@ def wrap_agent_payload(tag: AgentTag, body: str, agent: str | None = None) -> st
     attribution = f' agent="{agent}"' if agent else ""
     return f"<{tag}{attribution}>\n{body.strip()}\n</{tag}>\n"
 
-
-# Every internal tag, open or close, with or without attributes. Stripped
-# deterministically before delivery (see ``strip_internal_agent_tags``) as the
-# hard backstop for a weak model echoing its context into the reply.
-INTERNAL_AGENT_TAG_PATTERN = re.compile(
-    rf"</?(?:{'|'.join(tag.value for tag in AgentTag)})(?:\s[^>]*)?>",
-    flags=re.IGNORECASE,
-)
 
 #: Tags that frame someone actually asking for something. Every other internal
 #: tag frames a result, instruction or status the graph wrote, so it must never

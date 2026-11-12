@@ -40,15 +40,6 @@ EXECUTOR_ERROR_APPROVAL_LOST = "approval_lost"
 #: The run ended with no answer at all; it is delivered as EXECUTOR_CRASH_MESSAGE.
 EXECUTOR_ERROR_NO_ANSWER = "no_answer"
 
-# When comms narration fails. Never the executor's own text (internal, maybe a raw
-# exception), and never a claim of done: a "final" report can itself describe a failure.
-EXECUTOR_NARRATION_FAILED_MESSAGE = (
-    "I couldn't write up how that went, so I can't confirm it's done. Ask me and I'll check."
-)
-EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE = (
-    "That task didn't finish, and I couldn't write up what went wrong. Please try again."
-)
-
 # Seed task for a run started for inbox work no live run will absorb (late work, a
 # subagent landing on a rested executor). The entries arrive through the drain hook;
 # this only has to get the run to its first model call.

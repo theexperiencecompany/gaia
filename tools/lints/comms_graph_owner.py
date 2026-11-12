@@ -3,21 +3,17 @@
 The comms graph checkpoints each conversation on a thread whose id is the
 conversation id. Two writers on that thread at once fork it, and one side's
 messages drop out of the model's memory. The conversation runtime's comms runner
-(``OWNER``, which the step drives) is the one owner; until every caller has moved
-there, the callers that predate it sit in a shrink-only ``LEGACY_CALLERS``.
+(``OWNER``, which the step drives) is the one owner.
 
 Outside the owner and the builder package (``GRAPH_BUILDERS``, which constructs and
 registers the graph but runs no conversation on it), three checks:
 
 1. R1: no reference to ``GraphName.COMMS``, and no ``"comms_agent"`` string passed
    to a graph lookup (``GraphManager.get_graph`` / ``providers.get`` / ``providers.aget``).
-2. R2: no call to a comms entry wrapper or a comms thread writer (``COMMS_ENTRY_FUNCTIONS``).
+2. R2: no call to a comms graph constructor (``COMMS_ENTRY_FUNCTIONS``).
 3. R3: in a module that trips R1 or R2, no ``astream`` / ``ainvoke`` / state read or
    write call (``GRAPH_THREAD_METHODS``). Syntactic, not data flow: a graph handed to
-   a module that names neither the symbol nor a wrapper is not seen.
-
-A legacy caller that no longer trips any check is reported as removable, as is an
-entry whose file no longer exists.
+   a module that names neither the symbol nor a constructor is not seen.
 """
 
 from __future__ import annotations
@@ -38,19 +34,8 @@ _GRAPH_LOOKUPS = frozenset({"get_graph"})
 _PROVIDER_LOOKUPS = frozenset({"get", "aget"})
 _PROVIDER_REGISTRY = "providers"
 
-COMMS_ENTRY_FUNCTIONS = frozenset(
-    {
-        # app/agents/core/agent.py: the chat and silent comms runs.
-        "call_agent",
-        "call_agent_silent",
-        # app/agents/core/graph_builder/build_graph.py: the graph constructors.
-        "build_comms_graph",
-        "build_comms_agent",
-        # app/agents/core/background/comms_narrator.py: the narration and the cancellation record.
-        "narrate_executor_result",
-        "record_executor_cancellation",
-    }
-)
+# app/agents/core/graph_builder/build_graph.py: the graph constructors.
+COMMS_ENTRY_FUNCTIONS = frozenset({"build_comms_graph", "build_comms_agent"})
 
 GRAPH_THREAD_METHODS = frozenset(
     {
@@ -70,31 +55,13 @@ OWNER = "services/conversation/comms_runner.py"
 GRAPH_BUILDERS = "agents/core/graph_builder/"
 _FIX = f"run or write the conversation through app/{OWNER}, driven by the conversation step"
 
-# Shrink-only: the comms-thread callers that predate the owner. Entries are only
-# ever removed; a new caller goes through the owner.
-LEGACY_CALLERS: frozenset[str] = frozenset(
-    {
-        # Fetches the comms graph and runs it for call_agent; removed with /chat-stream.
-        "agents/core/agent.py",
-        # Runs the interactive /chat-stream turn through call_agent; removed with it.
-        "services/chat/stream.py",
-        # Narrates and records the end of a /chat-stream turn's executor run, the one run
-        # whose work is not on the conversation log; removed with /chat-stream.
-        "agents/core/background/comms_narrator.py",
-        "agents/core/background/result_delivery.py",
-        "agents/core/background/executor_runner.py",
-    }
-)
 
-
-def _app_split(path: Path) -> tuple[Path, str] | None:
-    """Split a path into its ``app/`` package root and the path relative to it."""
+def _app_relative(path: Path) -> str | None:
+    """Return the path relative to its ``app/`` package, or None outside one."""
     posix = path.as_posix()
     marker = "/app/"
     idx = posix.rfind(marker)
-    if idx == -1:
-        return None
-    return Path(posix[: idx + len(marker)]), posix[idx + len(marker) :]
+    return None if idx == -1 else posix[idx + len(marker) :]
 
 
 def _is_owner(app_rel: str) -> bool:
@@ -160,9 +127,7 @@ def _ownership_hits(tree: ast.Module) -> list[tuple[int, str]]:
                 )
             wrapper = _called_wrapper(node.func, aliases)
             if wrapper is not None:
-                hits.append(
-                    (node.lineno, f"calls {wrapper}, which runs or writes the comms thread")
-                )
+                hits.append((node.lineno, f"calls {wrapper}, which builds the comms graph"))
     return hits
 
 
@@ -184,51 +149,15 @@ def _module_hits(tree: ast.Module) -> list[tuple[int, str]]:
     return sorted([*ownership, *_thread_method_hits(tree)])
 
 
-def _entry_line(entry: str) -> int:
-    for number, text in enumerate(Path(__file__).read_text(encoding="utf-8").splitlines(), 1):
-        if f'"{entry}"' in text:
-            return number
-    return 1
-
-
-def _stale(entry: str, reason: str) -> Violation:
-    return Violation(
-        path=Path(__file__),
-        line=_entry_line(entry),
-        detail=f"LEGACY_CALLERS entry '{entry}' {reason}",
-        fix="delete the entry; the legacy callers only shrink",
-    )
-
-
 def check(files: list[Path]) -> list[Violation]:
-    """Flag comms-thread runs and writes outside the owner, plus legacy callers that went stale."""
+    """Flag comms-thread runs and writes outside the owner."""
     violations: list[Violation] = []
-    scanned: set[str] = set()
-    app_roots: set[Path] = set()
     for path in files:
-        split = _app_split(path)
-        if split is None:
-            continue
-        app_root, app_rel = split
-        app_roots.add(app_root)
-        if _is_owner(app_rel):
-            continue
-        hits = _module_hits(ast.parse(path.read_text(encoding="utf-8")))
-        if app_rel in LEGACY_CALLERS:
-            scanned.add(app_rel)
-            if not hits:
-                violations.append(_stale(app_rel, "no longer runs or writes the comms thread"))
+        app_rel = _app_relative(path)
+        if app_rel is None or _is_owner(app_rel):
             continue
         violations.extend(
-            Violation(
-                path=path,
-                line=line,
-                detail=detail,
-                fix=_FIX,
-            )
-            for line, detail in hits
+            Violation(path=path, line=line, detail=detail, fix=_FIX)
+            for line, detail in _module_hits(ast.parse(path.read_text(encoding="utf-8")))
         )
-    for entry in sorted(LEGACY_CALLERS - scanned):
-        if app_roots and not any((root / entry).is_file() for root in app_roots):
-            violations.append(_stale(entry, "names a file that no longer exists"))
     return violations

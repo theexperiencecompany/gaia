@@ -41,9 +41,7 @@ from app.constants.cache import (
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
 from app.constants.log_tags import LogTag
-from app.constants.streaming import WS_EVENT_EXECUTOR_STREAM_STARTED, DetachedStreamKind
 from app.core.stream_manager import StreamManager
-from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import (
     CONFIGURABLE_OWNED_KEYS,
@@ -403,60 +401,16 @@ async def open_detached_stream(
     *,
     conversation_id: str,
     user_id: str,
-    task_id: str | None,
-    bot_message_id: str | None,
-    kind: DetachedStreamKind,
 ) -> StreamSession:
-    """Mint a stream a detached run owns and announce it with executor.stream_started.
-
-    The one way a run with no comms turn reaches the client: a session collects its
-    frames for persistence, and the client folds the stream into bot_message_id's
-    message when given, else into a placeholder keyed by task_id.
-    """
+    """Mint a stream a detached run owns: a session collects its frames for its WorkFinished."""
     # Equivalent under mutation: session.kind is only read as `is RunKind.LIVE` (hil/bridge).
     session = create_session(stream_id, RunKind.QUEUED)  # pragma: no mutate
-    await announce_detached_stream(
-        stream_id,
-        conversation_id=conversation_id,
-        user_id=user_id,
-        task_id=task_id,
-        bot_message_id=bot_message_id,
-        kind=kind,
-    )
-    return session
-
-
-async def announce_detached_stream(
-    stream_id: str,
-    *,
-    conversation_id: str,
-    user_id: str,
-    task_id: str | None,
-    bot_message_id: str | None,
-    kind: DetachedStreamKind,
-) -> None:
-    """Make a stream resumable in its conversation and tell the user's clients it started.
-
-    For a run whose session its caller already registered (a tracked todo's run);
-    open_detached_stream is this plus the session.
-    """
     await StreamManager.start_stream(
         stream_id=stream_id,
         conversation_id=conversation_id,
         user_id=user_id,
     )
-    if user_id:
-        await websocket_manager.broadcast_to_user(
-            user_id,
-            {
-                "type": WS_EVENT_EXECUTOR_STREAM_STARTED,
-                "stream_id": stream_id,
-                "conversation_id": conversation_id,
-                "task_id": task_id,
-                "bot_message_id": bot_message_id,
-                "kind": kind.value,
-            },
-        )
+    return session
 
 
 async def close_detached_stream(stream_id: str, *, cancelled: bool) -> None:
@@ -516,12 +470,6 @@ async def prepare_run_from_item(
         queued_stream_id,
         conversation_id=conversation_id,
         user_id=user_id,
-        task_id=task_id,
-        # A HIL resume continues the ORIGINAL turn's message: the client folds
-        # this stream into it instead of opening a second placeholder (which
-        # would render its own tool accordion).
-        bot_message_id=queued_bot_message_id,
-        kind=DetachedStreamKind.EXECUTOR,
     )
     session.executor_spawned = True
 

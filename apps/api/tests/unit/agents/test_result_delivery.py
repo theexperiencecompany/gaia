@@ -13,14 +13,7 @@ from uuid import UUID
 from fastapi import HTTPException
 import pytest
 
-from app.agents.core.background.result_delivery import (
-    deliver_message_to_conversation,
-    deliver_result,
-)
-from app.agents.core.background.session import ExecutorRun, RunKind
-from app.agents.core.outcome_review import OutcomeReview
-from app.agents.prompts.comms_prompts import outcome_delivery_note
-from app.constants.agents import OutcomeState
+from app.agents.core.background.result_delivery import deliver_message_to_conversation
 from app.models.chat_models import ConversationSource, ToolDataEntry
 from app.models.conversation_log_models import Notice
 from app.models.conversation_models import UpdateMessagesResponse
@@ -330,47 +323,3 @@ async def test_an_empty_card_feed_delivers_text_only() -> None:
 
 
 USER = AuthenticatedUser(user_id="507f1f77bcf86cd799439011")
-
-
-class TestCommsNarratesARunsResultUnderItsOutcomeNote:
-    async def _narrated_input(self, review: OutcomeReview | None) -> str:
-        run = ExecutorRun(
-            stream_id="stream-1",
-            conversation_id="conv-1",
-            user=USER,
-            kind=RunKind.QUEUED,
-            task_id="task-1",
-            user_message_id=None,
-        )
-        convo_repo = MagicMock(get_source=AsyncMock(return_value=ConversationSource.WEB))
-        with (
-            patch(
-                f"{MODULE}.narrate_executor_result", new_callable=AsyncMock, return_value="ok"
-            ) as narrate,
-            patch(f"{MODULE}.generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
-            patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq),
-            patch(f"{MODULE}.conversation_repository", convo_repo),
-            patch(f"{MODULE}.websocket_manager", MagicMock(broadcast_to_user=AsyncMock())),
-        ):
-            if review is None:
-                await deliver_result(run, "raw", "final", tool_data=None)
-            else:
-                await deliver_result(run, "raw", "final", tool_data=None, review=review)
-        return str(narrate.await_args.args[0])
-
-    async def test_a_result_with_no_outcome_note_is_narrated_as_it_came(self) -> None:
-        assert await self._narrated_input(None) == "raw"
-
-    async def test_the_outcome_note_follows_the_result(self) -> None:
-        problem = "done was declared but no work call succeeded"
-
-        narrated = await self._narrated_input(OutcomeReview(OutcomeState.DONE, problem))
-
-        assert narrated == f"raw{outcome_delivery_note(OutcomeState.DONE, problem)}"
-        assert narrated != "raw"
-
-    async def test_a_verified_outcome_is_narrated_under_its_own_reply_shape(self) -> None:
-        narrated = await self._narrated_input(OutcomeReview(OutcomeState.ASK, None))
-
-        assert narrated == f"raw{outcome_delivery_note(OutcomeState.ASK, None)}"
-        assert narrated != "raw"

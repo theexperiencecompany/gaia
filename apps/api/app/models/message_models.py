@@ -70,52 +70,6 @@ class ReplyToMessageData(BaseModel):
     role: Literal["user", "assistant"]
 
 
-class MessageRequestWithHistory(BaseModel):
-    """Chat-stream request carrying the full message history and attachments."""
-
-    message: str = Field(max_length=MAX_MESSAGE_LENGTH)
-    conversation_id: SafePathId | None = None
-    messages: list[MessageDict]
-    fileIds: list[str] | None = []
-    fileData: list[FileData] | None = []
-
-    @property
-    def uploaded_file_ids(self) -> list[str]:
-        """Every file id this turn references, from either client field."""
-        return list(
-            dict.fromkeys(
-                [
-                    *(self.fileIds or []),
-                    *((file.fileId for file in self.fileData) if self.fileData else []),
-                ]
-            )
-        )
-
-    # Identifier-shaped so chat:message_submitted can carry them; a bad one 422s before any work.
-    selectedTool: Identifier | None = None
-    toolCategory: Identifier | None = None
-    selectedWorkflow: SelectedWorkflowData | None = None
-    selectedCalendarEvent: SelectedCalendarEventData | None = None
-    replyToMessage: ReplyToMessageData | None = None
-    # Client-generated id for this SEND, stable across retries: doubles as the
-    # idempotency key (duplicate POST -> 409) and the USER MESSAGE ID itself, so
-    # the optimistic and persisted records share one key. Path-safe (pin route).
-    turn_id: SafePathId | None = None
-    is_onboarding_demo: bool = False
-    # The user resent an earlier message from its retry action; only the client knows it was one.
-    is_retry: bool = False
-    # DEV-ONLY (ENV=development): per-request model overrides from the chat-header
-    # selector. `use_default_models` keeps the plan-routed default; otherwise these
-    # ids (keys of DEV_MODEL_OPTIONS) pin the comms / executor models. Ignored in prod.
-    comms_model: str | None = None
-    executor_model: str | None = None
-    use_default_models: bool = True
-    # Platform-native id of the user's message (WhatsApp wamid, Telegram
-    # message_id, Discord id, Slack ts). Set only by bot turns for later native
-    # reactions; web and other clients leave it None.
-    platform_message_id: str | None = None
-
-
 class MessageRequest(BaseModel):
     """Minimal chat request with a single message."""
 

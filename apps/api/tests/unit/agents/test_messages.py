@@ -1,4 +1,4 @@
-"""Unit tests for app.agents.core.messages — construct_langchain_messages.
+"""Unit tests for app.agents.core.messages — comms_turn_messages.
 
 After the caching optimisation work, the message-construction contract is:
 
@@ -25,7 +25,6 @@ from app.agents.context.tiers import AgentTier
 from app.agents.core.messages import (
     MessageAttachments,
     MessageScope,
-    construct_langchain_messages,
 )
 from app.models.calendar_models import GoogleCalendarEventDateTime
 from app.models.message_models import (
@@ -36,6 +35,7 @@ from app.models.message_models import (
 )
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.models.workflow_models import WorkflowStep
+from tests._harness.context_chain import comms_turn_messages
 
 SYSTEM_MSG = SystemMessage(content="System prompt here")
 DYNAMIC_MSG = SystemMessage(
@@ -59,7 +59,7 @@ class _Returns(NamedTuple):
 
 
 def _patches(returns: _Returns = _Returns()) -> dict[str, Any]:
-    """Bundle context-manager patches for the helpers construct_langchain_messages calls."""
+    """Bundle context-manager patches for the helpers comms_turn_messages calls."""
     return {
         "create_system": patch(
             "app.agents.core.messages.create_system_message",
@@ -109,7 +109,7 @@ class TestConstructLangchainMessages:
         """The time HumanMessage is split off and appended last so minute ticks never shift the cacheable prefix."""
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="Hi there",
             )
 
@@ -132,7 +132,7 @@ class TestConstructLangchainMessages:
         )
         p = _patches(_Returns(memory_recall_msg=recall))
         with p["create_system"], p["build_dynamic"], p["format_files"]:
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="Hi there",
             )
 
@@ -147,7 +147,7 @@ class TestConstructLangchainMessages:
     async def test_create_system_receives_agent_type_and_source(self) -> None:
         p = _patches()
         with p["create_system"] as mock_sys, p["build_dynamic"], p["format_files"]:
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="Hello",
                 scope=MessageScope(agent_type="executor", source="web"),
             )
@@ -167,7 +167,7 @@ class TestConstructLangchainMessages:
             ),
         )
         with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="hi",
                 scope=MessageScope(
                     user_id="uid-1",
@@ -199,7 +199,7 @@ class TestConstructLangchainMessages:
             ),
         )
         with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="hi",
                 scope=MessageScope(
                     user_id="uid-1",
@@ -221,7 +221,7 @@ class TestConstructLangchainMessages:
     async def test_a_user_with_no_onboarding_answers_carries_none_not_a_crash(self) -> None:
         p = _patches()
         with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="hi",
                 scope=MessageScope(user_id="uid-1", user_dict=AuthenticatedUser(user_id="uid-1")),
             )
@@ -235,7 +235,7 @@ class TestConstructLangchainMessages:
     async def test_an_unauthenticated_turn_carries_no_user_fields(self) -> None:
         p = _patches()
         with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="hi",
                 scope=MessageScope(user_dict=None),
             )
@@ -250,7 +250,7 @@ class TestConstructLangchainMessages:
         """The per-channel static prompt is selected via the source kwarg on create_system_message."""
         p = _patches()
         with p["create_system"] as mock_sys, p["build_dynamic"], p["format_files"]:
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="hi",
                 scope=MessageScope(agent_type="comms", source="telegram"),
             )
@@ -277,7 +277,7 @@ class TestContentPriority:
             p["format_tool"],
             p["format_files"],
         ):
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="run it",
                 scope=MessageScope(user_id="uid"),
                 attachments=MessageAttachments(selected_workflow=workflow),
@@ -304,7 +304,7 @@ class TestContentPriority:
             p["format_tool"],
             p["format_files"],
         ):
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="what about this",
                 attachments=MessageAttachments(selected_calendar_event=cal_event),
             )
@@ -321,7 +321,7 @@ class TestContentPriority:
             p["format_tool"] as mock_tool,
             p["format_files"],
         ):
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="use this tool",
                 attachments=MessageAttachments(selected_tool="web_search"),
             )
@@ -338,7 +338,7 @@ class TestContentPriority:
             p["format_tool"] as mock_tool,
             p["format_files"],
         ):
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="search",
                 attachments=MessageAttachments(selected_tool="web_search", tool_category="search"),
             )
@@ -351,7 +351,7 @@ class TestContentPriority:
     async def test_user_content_fallback(self) -> None:
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="plain text",
             )
 
@@ -367,7 +367,7 @@ class TestUserContentExtraction:
         """Regression: the maintenance sweep sends its prompt with no history, and every run raised."""
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
-            result = await construct_langchain_messages(query="Is this tracked todo still alive?")
+            result = await comms_turn_messages(query="Is this tracked todo still alive?")
 
         assert result[2] == HumanMessage(content="Is this tracked todo still alive?")
 
@@ -376,14 +376,14 @@ class TestUserContentExtraction:
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
             with pytest.raises(ValueError, match="No human message"):
-                await construct_langchain_messages(query="")
+                await comms_turn_messages(query="")
 
     @pytest.mark.asyncio
     async def test_whitespace_only_content_raises(self) -> None:
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
             with pytest.raises(ValueError, match="No human message"):
-                await construct_langchain_messages(
+                await comms_turn_messages(
                     query="   ",
                 )
 
@@ -398,7 +398,7 @@ class TestUserContentExtraction:
             )
         )
         with p["create_system"], p["build_dynamic"], p["get_uploads"], p["format_files"]:
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="",
                 scope=MessageScope(user_id="uid-1"),
                 attachments=MessageAttachments(currently_uploaded_file_ids=["f1"]),
@@ -414,7 +414,7 @@ class TestUserContentExtraction:
         p = _patches()
         with p["create_system"], p["build_dynamic"]:
             with pytest.raises(ValueError, match="No human message"):
-                await construct_langchain_messages(
+                await comms_turn_messages(
                     query="",
                     attachments=MessageAttachments(currently_uploaded_file_ids=[]),
                 )
@@ -431,7 +431,7 @@ class TestReplyContext:
             p["format_reply"] as mock_reply,
             p["format_files"],
         ):
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="user content",
                 attachments=MessageAttachments(reply_to_message=reply),
             )
@@ -448,7 +448,7 @@ class TestReplyContext:
             p["format_reply"] as mock_reply,
             p["format_files"],
         ):
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="hello",
             )
 
@@ -473,7 +473,7 @@ class TestFileContext:
             p["get_uploads"],
             p["format_files"] as mock_files,
         ):
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="check this",
                 scope=MessageScope(user_id="uid-1"),
                 attachments=MessageAttachments(currently_uploaded_file_ids=["f1"]),
@@ -501,7 +501,7 @@ class TestFileContext:
             p["get_uploads"] as get_uploads,
             p["format_files"] as mock_files,
         ):
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="check these",
                 scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
                 attachments=MessageAttachments(currently_uploaded_file_ids=["f1", "f2"]),
@@ -520,7 +520,7 @@ class TestFileContext:
             p["build_dynamic"],
             p["format_files"] as mock_files,
         ):
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="hello",
                 attachments=MessageAttachments(currently_uploaded_file_ids=[]),
             )
@@ -536,7 +536,7 @@ class TestFileContext:
             p["build_dynamic"],
             p["format_files"],
         ):
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="hello",
                 attachments=MessageAttachments(currently_uploaded_file_ids=["f1"]),
             )
@@ -551,7 +551,7 @@ class TestFileContext:
             p["build_dynamic"],
             p["format_files"] as mock_files,
         ):
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="hello",
                 attachments=MessageAttachments(currently_uploaded_file_ids=None),
             )
@@ -576,7 +576,7 @@ class TestTriggerContext:
             p["format_workflow"] as mock_wf,
             p["format_files"],
         ):
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="run",
                 scope=MessageScope(user_id="uid"),
                 attachments=MessageAttachments(selected_workflow=workflow, trigger_context=trigger),
@@ -594,7 +594,7 @@ class TestTheCommsContextKnowsWhereTheTurnIs:
         onboarding = OnboardingSubdocument(completed=True, user_bio="Runs ops at a bakery.")
         p = _patches()
         with p["create_system"], p["build_dynamic"] as assemble, p["format_files"]:
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="hi",
                 scope=MessageScope(
                     user_id="uid-1",
@@ -614,7 +614,7 @@ class TestTheCommsContextKnowsWhereTheTurnIs:
             with pytest.raises(
                 ValueError, match=r"^No human message, selected tool or uploaded file$"
             ):
-                await construct_langchain_messages(
+                await comms_turn_messages(
                     query="",
                     scope=MessageScope(user_id="uid-1"),
                 )
@@ -634,7 +634,7 @@ class TestTheClockIsRenderedInTheUsersTimezone:
                 return_value=HumanMessage(content="now", additional_kwargs={"time_context": True}),
             ) as clock,
         ):
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="hi",
                 scope=MessageScope(
                     user_dict=AuthenticatedUser(user_id="", timezone="Asia/Kolkata")
@@ -651,7 +651,7 @@ class TestOpenuiVariantReachesTheModel:
     async def test_web_serves_the_openui_variant(self) -> None:
         p = _patches()
         with p["build_dynamic"], p["format_files"]:
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="hi",
                 scope=MessageScope(user_id="uid-1", source="web"),
             )
@@ -662,7 +662,7 @@ class TestOpenuiVariantReachesTheModel:
     async def test_text_channel_serves_the_platform_variant(self) -> None:
         p = _patches()
         with p["build_dynamic"], p["format_files"]:
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="hi",
                 scope=MessageScope(user_id="uid-1", source="whatsapp"),
             )

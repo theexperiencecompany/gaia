@@ -15,6 +15,7 @@ from app.constants.notifications import (
 )
 from app.db.redis import redis_cache
 from app.models.chat_models import ConversationSource, SourceCategory
+from app.models.conversation_log_models import UserMessage
 from app.models.presence_models import PresenceSnapshot
 
 
@@ -46,6 +47,13 @@ async def record_turn_presence(user_id: str, source: ConversationSource) -> Pres
         pipe.expire(key, PRESENCE_RETENTION_SECONDS)
         before, _, _ = await pipe.execute()
     return _parse(before, now)
+
+
+async def presence_before(user_id: str, said: UserMessage | None) -> PresenceSnapshot:
+    """Return where the user was before said, stamping its surface; a call or a turn no one typed stamps nothing."""
+    if said is None or said.voice or SourceCategory.from_source(said.surface) is SourceCategory.BG:
+        return await read_presence(user_id)
+    return await record_turn_presence(user_id, said.surface)
 
 
 async def read_presence(user_id: str) -> PresenceSnapshot:

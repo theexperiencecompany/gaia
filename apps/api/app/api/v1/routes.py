@@ -18,7 +18,6 @@ from app.api.v1.endpoints import (
     browser,
     browser_live_view,
     calendar,
-    chat,
     conversations,
     desktop,
     device,
@@ -69,7 +68,6 @@ from app.config.settings import settings
 router = APIRouter()
 
 router.include_router(voice.router, tags=["Voice"])
-router.include_router(chat.router, tags=["Chat"])
 router.include_router(browser.router)
 router.include_router(browser_live_view.router)
 router.include_router(desktop.router)

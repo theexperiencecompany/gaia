@@ -31,7 +31,7 @@ ONBOARDING_MARKER = "onboarding_context"
 #: stays in the CONVERSATION slot (inline, never pruned) but is not the user's words.
 PRESENCE_NOTE_MARKER = "presence_note"
 
-#: Stamped on the note that GAIA already reacted to the user's message; inline like the presence note.
+#: Written only by the retired instant-reaction note; replayed checkpoints still carry it, inline.
 REACTION_NOTE_MARKER = "reaction_note"
 
 #: Pre-split threads carried one combined dynamic message marked with both
@@ -39,8 +39,8 @@ REACTION_NOTE_MARKER = "reaction_note"
 #: it must keep resolving to the stable dynamic slot.
 LEGACY_DYNAMIC_MARKER = "memory_message"
 
-#: The background-executor result is identified by ``name`` rather than a marker:
-#: the comms narrator builds it with no graph-state context to stamp one.
+#: Written only by the retired comms narrator, identified by ``name`` rather than a
+#: marker; replayed checkpoints still carry it.
 BACKGROUND_EXECUTOR_NAME = "background_executor"
 
 #: ``additional_kwargs["lc_source"]`` LangChain stamps on the summary it writes.

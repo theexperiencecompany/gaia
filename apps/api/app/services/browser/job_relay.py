@@ -17,7 +17,6 @@ from app.agents.core.background.folded_stream import close_folded_stream
 from app.agents.core.background.redis_writer import publish_to_stream
 from app.constants.browser import BROWSER_JOB_STREAM_ID_PREFIX
 from app.constants.log_tags import LogTag
-from app.constants.streaming import DetachedStreamKind
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, read_job_events
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
@@ -68,9 +67,6 @@ async def relay_job_cards(request: BrowserJobRequest) -> None:
         stream_id,
         conversation_id=request.conversation_id,
         user_id=request.user_id,
-        task_id=request.job_id,
-        bot_message_id=request.message_id,
-        kind=DetachedStreamKind.SUBAGENT,
     )
     try:
         # Until the feed itself expires: past the latest the worker lets the job end.

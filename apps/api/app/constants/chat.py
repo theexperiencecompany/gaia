@@ -1,7 +1,6 @@
 """Chat constants."""
 
 from enum import Enum
-import re
 
 # Sized so small files (images, short PDFs) come through in full; only large
 # multi-page summaries truncate, with the full text in the `<file>.summary.md` sidecar.
@@ -122,44 +121,12 @@ CONVERSATION_ENTRIES_MIGRATION_SCRIPT = "app.scripts.migrate_conversation_entrie
 # ``"bot"``). Named so a stored-message query and the writers agree on the literal.
 USER_MESSAGE_TYPE = "user"
 
-# Shown when a turn dies and the provider exception carries no message of its
-# own. Names the exception type so a support report still identifies the failure.
-GENERIC_TURN_ERROR = "Something went wrong while generating this response ({error_type})."
-
 # Saved on a reply whose turn died (a crashed process) after the user saw it begin.
 TURN_INTERRUPTED = (
     "My reply was cut off before I could finish it. Anything I started for it may "
     "already be done, so check before asking again."
 )
 
-# Saved in place of a reply that could not be written. The work the turn did
-# (a reminder, a todo) stands, so the user must be told to look before re-asking.
-TURN_REPLY_NOT_SAVED = (
-    "I couldn't save my reply to this message. Anything I did for it may already "
-    "be done, so check before asking again."
-)
-
 # Shown when the model produced no text at all (reasoning-only output,
 # max_tokens exhausted mid-thought, a content filter) — a blank bubble reads as "it ignored me".
 EMPTY_RESPONSE_FALLBACK = "that didn't come through, say it again?"
-
-# A recursion-limit stop is an expected degradation, not an infrastructure
-# failure — never show the raw "Recursion limit of N reached..." internals.
-RECURSION_LIMIT_MESSAGE = (
-    "I hit my step limit on this one before finishing. "
-    "Ask me to continue and I'll pick up where I left off."
-)
-
-# Matches `./artifacts/x`, `/artifacts/x`, and plain `artifacts/x` at the start
-# of the string or right after whitespace/quote/paren. Anchoring there — rather
-# than "any non-word char" — keeps `myartifacts/` and `?file=artifacts/report.pdf` from being mangled.
-ARTIFACT_REF_RE = re.compile(
-    r"""(?P<lead>^|[\s'"`(])(?P<prefix>\.\/|\/)?artifacts\/(?P<path>[A-Za-z0-9._\-/]+)""",
-    re.VERBOSE,
-)
-
-# Matches a fully-qualified in-sandbox artifact path. Rewritten to the current
-# conversation's backend URL regardless of the `<id>` written, which also self-heals a mismatched session id.
-WORKSPACE_ARTIFACT_RE = re.compile(
-    r"/workspace/sessions/[A-Za-z0-9._-]+/artifacts/(?P<path>[A-Za-z0-9._\-/]+)"
-)

@@ -18,14 +18,16 @@ from typing import Any, TypedDict
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from langchain_core.callbacks import AsyncCallbackManagerForLLMRun
 from langchain_core.messages import (
     AIMessage,
+    AIMessageChunk,
     BaseMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
 )
-from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.tools import BaseTool
 from langgraph.store.memory import InMemoryStore
 from pydantic import PrivateAttr
@@ -537,3 +539,42 @@ async def run_graph(
     if isinstance(values, dict) and isinstance(values.get("todos"), list):
         run.todos = list(values["todos"])
     return run
+
+
+class StreamingScriptedModel(RecordingFakeModel):
+    """A scripted model that streams, because the real one does.
+
+    LangGraph's messages mode attaches a streaming callback, so a provider like
+    ChatOpenRouter emits AIMessageChunks even under ainvoke; RecordingFakeModel
+    implements only _agenerate, so without this override LangGraph falls back to
+    one whole AIMessage. That matters only in composition: _process_messages_payload
+    (the executor/subagent driver) accepts AIMessageChunk alone, so a non-streaming
+    double would collapse every answer to the no-answer notice instead of
+    the real text.
+    """
+
+    async def _astream(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: AsyncCallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[ChatGenerationChunk]:
+        # Through ``self._generate``, as RecordingFakeModel's async path does: one
+        # script position whichever path a tier takes, and a subclass's response
+        # override applies when streamed too.
+        message = self._generate(messages, stop=stop, **kwargs).generations[0].message
+        chunk = ChatGenerationChunk(
+            message=AIMessageChunk(
+                content=message.content,
+                tool_calls=getattr(message, "tool_calls", []),
+                id=message.id,
+            )
+        )
+        if run_manager is not None:
+            await run_manager.on_llm_new_token(chunk.text or "", chunk=chunk)
+        yield chunk
+
+
+def streaming_model(script: Sequence[Any]) -> StreamingScriptedModel:
+    return StreamingScriptedModel(responses=scripted_model(script).responses)

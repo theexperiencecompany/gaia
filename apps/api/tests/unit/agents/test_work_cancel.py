@@ -12,10 +12,7 @@ from app.agents.core.background.work_cancel import cancel_all_work, cancel_named
 from app.constants.agents import AgentTag
 from app.constants.browser import BrowserStopOutcome
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_BUSY_TTL
-from app.constants.log_tags import LogTag
-from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import stream_manager
-from app.core.websocket_manager import websocket_manager
 from app.models.work_cancel_models import WorkCancelled
 from app.services.browser import job_stop
 from app.services.browser.jobs import job_cancel_requested
@@ -55,17 +52,9 @@ def no_arq(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(job_stop, "_abort_if_started", AsyncMock(return_value=True))
 
 
-@pytest.fixture
-def broadcast(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-    mock = AsyncMock()
-    monkeypatch.setattr(websocket_manager, "broadcast_to_user", mock)
-    return mock
-
-
 async def test_one_stop_cancels_the_run_its_inbox_subagents_approvals_and_browser_job(
     fake_redis: fakeredis.aioredis.FakeRedis,
     pending_approvals: ApprovalSeams,
-    broadcast: AsyncMock,
 ) -> None:
     await seed_live_work(CONVERSATION)
 
@@ -85,13 +74,10 @@ async def test_one_stop_cancels_the_run_its_inbox_subagents_approvals_and_browse
     assert await job_cancel_requested(BROWSER_JOB)
     pending_approvals.barrier.assert_awaited_once_with(CONVERSATION, USER)
     pending_approvals.ledger.assert_awaited_once_with(CONVERSATION, USER)
-    broadcast.assert_awaited_once_with(
-        USER, {"type": WS_EVENT_EXECUTOR_CANCELLED, "conversation_id": CONVERSATION}
-    )
 
 
 async def test_the_next_run_is_told_the_work_was_stopped_and_what_to_do_instead(
-    no_approvals: ApprovalSeams, broadcast: AsyncMock
+    no_approvals: ApprovalSeams,
 ) -> None:
     await seed_live_work(CONVERSATION)
 
@@ -107,7 +93,7 @@ async def test_the_next_run_is_told_the_work_was_stopped_and_what_to_do_instead(
 
 
 async def test_approvals_close_even_when_no_run_holds_the_lock(
-    pending_approvals: ApprovalSeams, broadcast: AsyncMock
+    pending_approvals: ApprovalSeams,
 ) -> None:
     """A parked approval outlives the busy lock; left pending, Approve revives the stopped work."""
     work = await cancel_all_work(CONVERSATION, USER, None)
@@ -119,7 +105,6 @@ async def test_approvals_close_even_when_no_run_holds_the_lock(
 async def test_an_idle_conversation_returns_an_empty_summary_and_touches_nothing(
     fake_redis: fakeredis.aioredis.FakeRedis,
     no_approvals: ApprovalSeams,
-    broadcast: AsyncMock,
 ) -> None:
     work = await cancel_all_work(CONVERSATION, USER, None)
 
@@ -127,12 +112,9 @@ async def test_an_idle_conversation_returns_an_empty_summary_and_touches_nothing
     assert not work.stopped_anything
     assert await ExecutorInbox(CONVERSATION).read() == []
     assert await fake_redis.keys("*") == []
-    broadcast.assert_not_awaited()
 
 
-async def test_a_second_stop_finds_nothing_left(
-    no_approvals: ApprovalSeams, broadcast: AsyncMock
-) -> None:
+async def test_a_second_stop_finds_nothing_left(no_approvals: ApprovalSeams) -> None:
     await seed_live_work(CONVERSATION)
     await cancel_all_work(CONVERSATION, USER, None)
 
@@ -144,7 +126,7 @@ async def test_a_second_stop_finds_nothing_left(
 
 
 async def test_the_stopped_runs_progress_is_dropped(
-    fake_redis: fakeredis.aioredis.FakeRedis, no_approvals: ApprovalSeams, broadcast: AsyncMock
+    fake_redis: fakeredis.aioredis.FakeRedis, no_approvals: ApprovalSeams
 ) -> None:
     await seed_live_work(CONVERSATION)
     await fake_redis.set(progress_key(CONVERSATION, LOCK), "{}")
@@ -155,7 +137,7 @@ async def test_the_stopped_runs_progress_is_dropped(
 
 
 async def test_the_subagents_the_stopped_run_dispatched_are_counted_as_stopped(
-    fake_redis: fakeredis.aioredis.FakeRedis, no_approvals: ApprovalSeams, broadcast: AsyncMock
+    fake_redis: fakeredis.aioredis.FakeRedis, no_approvals: ApprovalSeams
 ) -> None:
     """Stopping the run cancels its subagents before the sweep, which must not then miss them."""
     await fake_redis.set(f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}", LOCK, ex=EXECUTOR_BUSY_TTL)
@@ -167,9 +149,7 @@ async def test_the_subagents_the_stopped_run_dispatched_are_counted_as_stopped(
     assert await stream_manager.is_cancelled(own)
 
 
-async def test_the_stop_is_recorded_on_the_wide_event(
-    no_approvals: ApprovalSeams, broadcast: AsyncMock
-) -> None:
+async def test_the_stop_is_recorded_on_the_wide_event(no_approvals: ApprovalSeams) -> None:
     await seed_live_work(CONVERSATION)
 
     async with captured_wide_event() as event:
@@ -185,25 +165,9 @@ async def test_the_stop_is_recorded_on_the_wide_event(
     }
 
 
-async def test_a_failed_broadcast_is_a_warning_and_the_stop_still_lands(
-    fake_redis: fakeredis.aioredis.FakeRedis, no_approvals: ApprovalSeams, broadcast: AsyncMock
-) -> None:
-    broadcast.side_effect = RuntimeError("rabbitmq unavailable")
-    await seed_live_work(CONVERSATION)
-
-    async with captured_wide_event() as event:
-        work = await cancel_all_work(CONVERSATION, USER, None)
-
-    assert work.executor_stopped
-    assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}") is None
-    (warning,) = event["warnings"]
-    assert warning["msg"] == f"{LogTag.TOOL} Failed to broadcast executor.cancelled"
-    assert (warning["error_type"], warning["error"]) == ("RuntimeError", "rabbitmq unavailable")
-
-
 class TestCancelNamedWork:
     async def test_naming_the_running_task_stops_it_closes_its_approvals_and_passes_the_redirect(
-        self, pending_approvals: ApprovalSeams, broadcast: AsyncMock
+        self, pending_approvals: ApprovalSeams
     ) -> None:
         await seed_live_work(CONVERSATION)
 
@@ -224,12 +188,9 @@ class TestCancelNamedWork:
             AgentTag.USER_INTERJECTION,
             "do gmail instead",
         )
-        broadcast.assert_awaited_once_with(
-            USER, {"type": WS_EVENT_EXECUTOR_CANCELLED, "conversation_id": CONVERSATION}
-        )
 
     async def test_naming_only_queued_work_spares_the_run_and_its_approvals(
-        self, pending_approvals: ApprovalSeams, broadcast: AsyncMock
+        self, pending_approvals: ApprovalSeams
     ) -> None:
         await seed_live_work(CONVERSATION)
 

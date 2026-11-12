@@ -38,7 +38,6 @@ from app.override.langgraph_bigtool.utils import (
     State,
     pop_injected_messages,
 )
-from app.utils.agent_utils import strip_internal_agent_tags
 from tests.helpers import captured_wide_event
 
 CONVERSATION = "conv-1"
@@ -333,14 +332,6 @@ class TestFraming:
         entry = InboxEntry(id="t1", text="stopped", tag=AgentTag.EXECUTOR_INTERRUPTED)
 
         assert "<executor_interrupted>" in as_interjection(entry).content
-
-    def test_the_framing_never_reaches_the_user(self) -> None:
-        content = as_interjection(InboxEntry(id="t1", text="also check spam")).content
-
-        assert isinstance(content, str)
-        stripped = strip_internal_agent_tags(content)
-        assert "also check spam" in stripped
-        assert "user_interjection" not in stripped
 
 
 class TestDrainHook:
