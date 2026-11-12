@@ -28,7 +28,7 @@ export default function WorkflowStep({
   const dotSize = isLarge ? "h-8 w-8" : "h-7 w-7";
   const dotTextSize = isLarge ? "text-sm" : "text-xs";
   const chipTextSize = isLarge ? "text-sm" : "text-xs";
-  const chipPadding = isLarge ? "py-5!" : "py-4!";
+  const chipHeight = isLarge ? "h-10" : "h-8";
   const iconSize = isLarge ? 22 : 17;
   const titleTextSize = isLarge ? "text-base" : "text-sm";
   const descriptionTextSize = isLarge ? "text-sm" : "text-xs";
@@ -55,7 +55,7 @@ export default function WorkflowStep({
             variant="soft"
             title={categoryLabel}
             aria-label={categoryLabel}
-            className={`${chipPadding} pl-2 space-x-1 truncate ${chipTextSize}`}
+            className={`${chipHeight} rounded-xl pr-1 pl-2 space-x-1 truncate ${chipTextSize}`}
           >
             <div className="min-w-fit">
               {getToolCategoryIcon(

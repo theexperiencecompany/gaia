@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Dropdown, Header, Tooltip } from "@heroui/react";
+import { Button, Dropdown, Header, Separator, Tooltip } from "@heroui/react";
 import {
   ArrowUpRight01Icon,
   RedoIcon,
@@ -80,7 +80,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
               <Button
                 isIconOnly
                 size="sm"
-                variant="tertiary"
+                variant="ghost"
                 onPress={onRefresh}
                 isDisabled={isFetching}
                 className="min-w-0 text-zinc-400 transition-colors duration-200 hover:bg-zinc-800"
@@ -121,13 +121,11 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                         textValue={action.label}
                         onAction={action.onPress}
                       >
-                        <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-2">
-                            {action.icon ?? (
-                              <ZapIcon className="size-4 text-default-500" />
-                            )}
-                            {action.label}
-                          </div>
+                        {action.icon ?? (
+                          <ZapIcon className="size-4 text-default-500" />
+                        )}
+                        <div className="flex flex-col">
+                          <span>{action.label}</span>
                           <span className="whitespace-normal text-xs text-zinc-500">
                             {action.description}
                           </span>
@@ -141,6 +139,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                     <Dropdown.Item id="__empty__">{"" as string}</Dropdown.Item>
                   </Dropdown.Section>
                 )}
+                {hasActions && path ? <Separator /> : null}
                 {path ? (
                   <Dropdown.Section id="navigation">
                     <Header className="px-2 py-1 text-xs text-zinc-500">
@@ -151,11 +150,9 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                       href={path}
                       textValue="View All"
                     >
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-2">
-                          <SquareArrowUpRight02Icon className="size-4 text-primary" />
-                          View All
-                        </div>
+                      <SquareArrowUpRight02Icon className="size-4 text-primary" />
+                      <div className="flex flex-col">
+                        <span>View All</span>
                         <span className="whitespace-normal text-xs text-zinc-500">
                           {`Open full ${title.toLowerCase()} page`}
                         </span>
