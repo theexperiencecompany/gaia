@@ -513,13 +513,16 @@ class VoiceContext(TypedDict, total=False):
     """Voice-agent (LiveKit) session/turn operation context."""
 
     operation: (
-        str  # "session_start"|"turn"|"drain"|"credentials"|"tts"|"stt"|"tool_call"|"session_end"
+        str  # "session_start"|"turn"|"follow"|"barge_in"|"credentials"|"tts"|"stt"|"session_end"
     )
     room: str
     participant: str
     model: str
     provider: str
     turn_index: int
+    # A barge-in: the reply the user spoke over, and the characters of it they heard.
+    reply_id: str
+    heard_through: int
     # Session-end aggregate. The LiveKit session lifecycle callbacks fire after
     # the entrypoint's setup event has emitted, so the worker accumulates them
     # and reports the whole session once from its shutdown callback (see

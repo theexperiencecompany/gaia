@@ -455,41 +455,55 @@ def test_a_registry_whose_wiring_moved_raises_instead_of_finding_nothing(tmp_pat
         collect_worker_registry(worker)
 
     agent = _write(tmp_path, "voice/agent.py", "def entrypoint(ctx):\n    return None\n")
-    llm = _write(
-        tmp_path, "voice/llm.py", "class VoiceLLM(LLM):\n    def chat(self):\n        ...\n"
+    turns = _write(
+        tmp_path,
+        "voice/conversation.py",
+        "class VoiceTurnAgent(Agent):\n    async def on_user_turn_completed(self):\n        ...\n",
     )
     with pytest.raises(ValueError, match="registry moved"):
-        collect_voice_registry(agent, llm)
+        collect_voice_registry(agent, turns)
 
     factory = _write(tmp_path, "core/app_factory.py", "app = FastAPI()\n")
     with pytest.raises(ValueError, match="app factory moved"):
         collect_router_mounts(factory, tmp_path / "apps/api")
 
 
-def test_the_voice_turn_entry_is_the_stream_livekit_drives(tmp_path: Path) -> None:
+def test_the_voice_turn_entry_is_the_agents_user_turn_hook(tmp_path: Path) -> None:
     agent = _write(
         tmp_path,
         "voice/agent.py",
         "def entrypoint(ctx):\n    return None\n"
         "cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))\n",
     )
-    llm = _write(
+    turns = _write(
         tmp_path,
-        "voice/llm.py",
-        "class VoiceLLM(LLM):\n"
-        "    def chat(self, *, chat_ctx):\n"
-        "        return VoiceStream(self, Turn(chat_ctx))\n"
-        "class VoiceStream(LLMStream):\n"
-        "    async def _run(self):\n"
+        "voice/conversation.py",
+        "class VoiceConversation:\n"
+        "    async def send_turn(self, text):\n"
         "        ...\n"
-        "class Turn:\n"
-        "    async def chunks(self):\n"
+        "class VoiceTurnAgent(Agent):\n"
+        "    async def on_user_turn_completed(self, turn_ctx, new_message):\n"
         "        ...\n",
     )
 
-    registry = collect_voice_registry(agent, llm)
+    registry = collect_voice_registry(agent, turns)
 
-    assert registry[llm.resolve().as_posix()] == frozenset({"VoiceStream._run"})
+    assert registry[turns.resolve().as_posix()] == frozenset(
+        {"VoiceTurnAgent.on_user_turn_completed"}
+    )
+
+
+def test_a_turn_module_without_the_hook_raises_instead_of_finding_nothing(
+    tmp_path: Path,
+) -> None:
+    agent = _write(
+        tmp_path,
+        "voice/agent.py",
+        "cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))\n",
+    )
+    turns = _write(tmp_path, "voice/conversation.py", "class VoiceTurnAgent(Agent):\n    ...\n")
+    with pytest.raises(ValueError, match="turn hook moved"):
+        collect_voice_registry(agent, turns)
 
 
 def test_a_map_with_no_entry_points_scores_zero_not_100(tmp_path: Path) -> None:

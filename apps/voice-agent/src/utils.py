@@ -4,8 +4,6 @@ import json
 import time
 from typing import NamedTuple
 
-from livekit.agents.llm import ChatContext
-
 from shared.py.analytics import UserId
 from shared.py.wide_events import log
 from src.constants import (
@@ -81,45 +79,6 @@ def extract_meta_data(md: str | None) -> ParticipantMeta:
         return ParticipantMeta()
 
 
-def _extract_text_from_content(content: list) -> str:
-    """Extract plain text from a LiveKit ChatContext content list."""
-    parts = []
-    for c in content:
-        if hasattr(c, "model_dump"):
-            d = c.model_dump()
-            if isinstance(d, dict):
-                parts.append(d.get("text", ""))
-        else:
-            parts.append(str(c))
-    return " ".join(p for p in parts if p)
-
-
-def extract_latest_user_text(chat_ctx: ChatContext) -> str:
-    """Best-effort extraction of the latest user text string from ChatContext."""
-    for item in reversed(chat_ctx.items):
-        role = getattr(item, "role", item.__class__.__name__.lower())
-        if role == "user":
-            content = getattr(item, "content", [getattr(item, "output", "")])
-            out = _extract_text_from_content(content)
-            if out:
-                return out
-    return ""
-
-
-def build_messages_from_ctx(chat_ctx: ChatContext) -> list[dict[str, str]]:
-    """Build a [{role, content}] list from LiveKit's ChatContext for backend API."""
-    messages = []
-    for item in chat_ctx.items:
-        role = getattr(item, "role", item.__class__.__name__.lower())
-        if role not in ("user", "assistant"):
-            continue
-        content = getattr(item, "content", [getattr(item, "output", "")])
-        text = _extract_text_from_content(content)
-        if text:
-            messages.append({"role": role, "content": text})
-    return messages
-
-
 def user_id_from_room(room_name: str) -> UserId:
     """Recover the user from a voice room name; ValueError for a room /token did not mint.
 
@@ -143,8 +102,6 @@ __all__ = [
     "has_open_openui_fence_at_tail",
     "extract_meta_data",
     "ParticipantMeta",
-    "extract_latest_user_text",
-    "build_messages_from_ctx",
     "ms_since",
     "user_id_from_room",
 ]

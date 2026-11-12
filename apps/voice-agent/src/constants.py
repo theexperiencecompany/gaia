@@ -12,51 +12,23 @@ class LogTag:
 
     Mirrors app.constants.log_tags.LogTag in the API: prefix every
     log.info / log.warning / log.error / log.debug message so a
-    single token filters the area's logs (grep '\\[VOICE-LLM\\]' /
+    single token filters the area's logs (grep '\\[VOICE\\]' /
     |= "[VOICE-AGENT]"). Structured context still goes in log.set fields.
     """
 
     VOICE: Final[str] = "[VOICE]"  # config, utils, general worker
-    LLM: Final[str] = "[VOICE-LLM]"  # llm.py — backend SSE streaming + TTS chunking
     AGENT: Final[str] = "[VOICE-AGENT]"  # agent.py — session/turn lifecycle
 
 
 SSE_DATA_PREFIX = "data:"
-DONE_SENTINEL = "[DONE]"
-# Backend LoggingMiddleware echoes its wide event's trace id on every response
-# (apps/api/app/api/v1/middleware/logging.py); adopting it onto the voice
-# turn's wide event correlates the two sides of a turn in Loki.
-TRACE_ID_HEADER = "x-trace-id"
+# The frontend's data-channel topics: display events, and the session's conversation id and title.
 FRONTEND_STREAM_TOPIC = "backend-stream-event"
+CONVERSATION_ID_TOPIC = "conversation-id"
+CONVERSATION_DESCRIPTION_TOPIC = "conversation-description"
 RESPONSE_KEY = "response"
 MAIN_RESPONSE_COMPLETE_KEY = "main_response_complete"
-# Backend sends this (voice-mode streams only) carrying a delegated executor's
-# narrated answer for the agent to SPEAK. The frontend never renders its text
-# (the same answer arrives via its WebSocket push), but the event IS forwarded
-# as a boundary marker: the bot bubble renders the comms agent's speech from the
-# TTS-aligned transcript, which can't tell comms speech from the executor's —
-# only the agent knows the boundary, and this frame is it. After it, the
-# frontend stops folding transcript into the live bubble.
-# Must match VOICE_TTS_KEY in apps/api/app/agents/core/background/executor_runner.py.
-VOICE_TTS_KEY = "voice_tts"
-# Saved bot-message id carried on the voice_tts frame. We forward the answer as a
-# display frame keyed by it so the bubble renders off the data channel and the
-# backend's WebSocket push (same id) reconciles in place instead of duplicating.
-MESSAGE_ID_KEY = "message_id"
-
-# Plumbing event keys that must never reach TTS.
-# Any backend SSE event carrying one of these keys is forwarded to the frontend
-# but never appended to the TTS text buffer.
-PLUMBING_EVENT_KEYS = frozenset(
-    {
-        "tool_data",
-        "tool_output",
-        "follow_up_actions",
-        MAIN_RESPONSE_COMPLETE_KEY,
-        "conversation_id",
-        "conversation_description",
-    }
-)
+# The events stream dropped (a deploy, a network blip): wait this long before following again.
+FOLLOW_RECONNECT_DELAY_S = 1.0
 
 SENTENCE_ENDINGS = (".", "!", "?")
 
@@ -83,12 +55,6 @@ PROMETHEUS_MULTIPROC_DIR = "/tmp/voice-agent-prometheus"  # nosec B108  # NOSONA
 # when it predicts the user will continue.
 MIN_ENDPOINTING_DELAY_S = 0.8
 
-# aiohttp sock_read timeout (s) for the backend chat-stream request. MUST exceed
-# the backend's VOICE_EXECUTOR_RESULT_TIMEOUT_S (90s): on a delegated turn the
-# backend parks the SSE stream with no bytes on the wire while it waits for the
-# executor, so a shorter read timeout would abort the turn and lose the spoken
-# answer before it is sent.
-BACKEND_REQUEST_TIMEOUT_S = 120.0
 
 # Single \s before the attribute tail (not \s+): [^>] also matches whitespace,
 # and the overlap between the two quantifiers is what makes backtracking blow up.
@@ -119,13 +85,12 @@ VOICE_SYSTEM_PROMPT = (
 __all__ = [
     "LogTag",
     "SSE_DATA_PREFIX",
-    "DONE_SENTINEL",
-    "TRACE_ID_HEADER",
     "FRONTEND_STREAM_TOPIC",
     "RESPONSE_KEY",
     "MAIN_RESPONSE_COMPLETE_KEY",
-    "VOICE_TTS_KEY",
-    "PLUMBING_EVENT_KEYS",
+    "CONVERSATION_ID_TOPIC",
+    "CONVERSATION_DESCRIPTION_TOPIC",
+    "FOLLOW_RECONNECT_DELAY_S",
     "SENTENCE_ENDINGS",
     "TTS_MIN_SENTENCE_CHARS",
     "TTS_HARD_FLUSH_CHARS",
@@ -135,7 +100,6 @@ __all__ = [
     "PROMETHEUS_METRICS_PORT",
     "PROMETHEUS_MULTIPROC_DIR",
     "MIN_ENDPOINTING_DELAY_S",
-    "BACKEND_REQUEST_TIMEOUT_S",
     "TAG_RE",
     "SENTINEL_RE",
     "MARKDOWN_RE",
