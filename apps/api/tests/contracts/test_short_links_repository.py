@@ -17,6 +17,7 @@ import pytest
 from app.db.mongodb.indexes import create_short_link_indexes
 from app.db.repositories.short_links import LIVE_TARGET_UNIQUE_INDEX, ShortLinksRepository
 from app.models.short_link_models import (
+    LinkAccess,
     LinkSnapshot,
     RenderMode,
     RevokeReason,
@@ -242,6 +243,40 @@ class TestShortLinksRevoke:
         assert await repo.revoke("owner", created.slug, RevokeReason.OWNER) is None
         found = await repo.get_by_slug(created.slug)
         assert found is not None and found.revoked_reason is RevokeReason.ROTATED
+
+
+class TestShortLinksUpdateLive:
+    async def test_the_owner_changes_a_live_link(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="owner"))
+
+        updated = await repo.update_live(
+            "owner", created.slug, ShortLinkUpdate(access=LinkAccess.PUBLIC)
+        )
+
+        assert updated is not None and updated.access is LinkAccess.PUBLIC
+        found = await repo.get_by_slug(created.slug)
+        assert found is not None and found.access is LinkAccess.PUBLIC
+
+    async def test_another_users_link_is_left_alone(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="owner"))
+
+        assert (
+            await repo.update_live("attacker", created.slug, ShortLinkUpdate(suspended=True))
+            is None
+        )
+        found = await repo.get_by_slug(created.slug)
+        assert found is not None and found.suspended is False
+
+    async def test_a_revoked_link_keeps_its_record(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="owner"))
+        await repo.revoke("owner", created.slug, RevokeReason.ROTATED)
+
+        assert (
+            await repo.update_live("owner", created.slug, ShortLinkUpdate(access=LinkAccess.PUBLIC))
+            is None
+        )
+        found = await repo.get_by_slug(created.slug)
+        assert found is not None and found.access is LinkAccess.UNLISTED
 
 
 class TestShortLinksSnapshots:
