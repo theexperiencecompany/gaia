@@ -318,6 +318,14 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         pro=RateLimitConfig(day=30, month=900),  # +50% (20→30, 600→900)
         info=FeatureInfo(title="Flowchart Creation", description="Create flowcharts and diagrams"),
     ),
+    "artifact_creation": TieredRateLimits(
+        free=RateLimitConfig(day=1, month=3),
+        pro=RateLimitConfig(day=30, month=900),
+        info=FeatureInfo(
+            title="Artifact Creation",
+            description="Create reports, dashboards, plans and other artifacts",
+        ),
+    ),
     # BROWSER AUTOMATION (Heaviest: a real browser + vision model per task)
     "browser_task": TieredRateLimits(
         free=RateLimitConfig(day=2, month=10),

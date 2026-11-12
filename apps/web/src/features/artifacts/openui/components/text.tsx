@@ -1,7 +1,12 @@
 import { Card, CardBody } from "@heroui/card";
 import { Link } from "@heroui/link";
-import { defineComponent } from "@openuidev/react-lang";
+import {
+  type ComponentRenderProps,
+  defineComponent,
+} from "@openuidev/react-lang";
+import { useContext } from "react";
 import type { z } from "zod";
+import { type ArtifactDensity, ArtifactDensityContext } from "../density";
 import { GroundedText } from "../GroundedText";
 import {
   artifactSchema,
@@ -32,17 +37,41 @@ const TONE_TEXT: Record<z.infer<typeof calloutTone>, string> = {
   risk: "text-danger",
 };
 
-export const artifactDef = defineComponent({
-  name: "Artifact",
-  description: describeArtifactComponent("Artifact"),
-  props: artifactSchema,
-  component: ({ props, renderNode }) => (
-    <article className="mx-auto w-full max-w-5xl overflow-x-clip px-5 pt-12 pb-10">
-      <header className="mb-12">
-        <h1 className="m-0 font-serif text-[clamp(1.875rem,1.45rem+1.75vw,2.75rem)] leading-tight font-bold tracking-tight text-foreground">
+const ROOT_CLASSES: Record<
+  ArtifactDensity,
+  { article: string; header: string; title: string; subtitle: string }
+> = {
+  page: {
+    article: "px-5 pt-12 pb-10",
+    header: "mb-12",
+    title: "text-[clamp(1.875rem,1.45rem+1.75vw,2.75rem)]",
+    subtitle: "mt-4 text-xl",
+  },
+  card: {
+    article: "p-5",
+    header: "mb-6",
+    title: "text-2xl",
+    subtitle: "mt-2 text-base",
+  },
+};
+
+function ArtifactRoot({
+  props,
+  renderNode,
+}: ComponentRenderProps<z.infer<typeof artifactSchema>>) {
+  const density = useContext(ArtifactDensityContext);
+  const classes = ROOT_CLASSES[density];
+  return (
+    <article
+      className={`mx-auto w-full max-w-5xl overflow-x-clip ${classes.article}`}
+    >
+      <header className={classes.header}>
+        <h1
+          className={`m-0 font-serif leading-tight font-bold tracking-tight text-foreground ${classes.title}`}
+        >
           <GroundedText text={props.title} />
         </h1>
-        <p className="mt-4 text-xl leading-relaxed text-default-600">
+        <p className={`leading-relaxed text-default-600 ${classes.subtitle}`}>
           <GroundedText text={props.subtitle} />
         </p>
         {props.details?.length ? (
@@ -56,11 +85,20 @@ export const artifactDef = defineComponent({
         ) : null}
       </header>
       <div className="flex flex-col gap-6">{renderNode(props.children)}</div>
-      <footer className="mt-16 pt-5 text-sm text-default-500">
-        Prepared by GAIA
-      </footer>
+      {density === "page" ? (
+        <footer className="mt-16 pt-5 text-sm text-default-500">
+          Prepared by GAIA
+        </footer>
+      ) : null}
     </article>
-  ),
+  );
+}
+
+export const artifactDef = defineComponent({
+  name: "Artifact",
+  description: describeArtifactComponent("Artifact"),
+  props: artifactSchema,
+  component: ArtifactRoot,
 });
 
 export const sectionDef = defineComponent({

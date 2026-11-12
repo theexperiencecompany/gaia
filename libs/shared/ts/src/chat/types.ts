@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import type { ToolDataEntry, WorkflowDelivery } from "../api/generated";
+import type { ArtifactCardData } from "./openuiArtifacts";
 
 export type {
   RecurrenceData,
@@ -804,6 +805,7 @@ export type ToolName =
   | "mcp_app"
   | "rate_limit_data"
   | "artifact_data"
+  | "artifact_done"
   | "memory_data"
   | "todo_progress"
   | "chart_data";
@@ -842,6 +844,7 @@ export interface ToolDataMap {
   mcp_app: MCPAppData;
   rate_limit_data: RateLimitData;
   artifact_data: ArtifactData[];
+  artifact_done: ArtifactCardData;
   memory_data: SharedMemoryData;
   todo_progress: TodoProgressData;
   chart_data: GenericToolData[];
@@ -880,6 +883,7 @@ export function isKnownTool(name: string): name is ToolName {
     "mcp_app",
     "rate_limit_data",
     "artifact_data",
+    "artifact_done",
     "memory_data",
     "todo_progress",
     "chart_data",

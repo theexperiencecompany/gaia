@@ -98,6 +98,13 @@ MODEL_PRICING: dict[str, ModelPricing] = {
         output_cost_per_1k=0.0012,
         cached_input_cost_per_1k=0.00002,
     ),
+    # ARTIFACT_MODEL_NAME, create_artifact's lane direct on OpenAI, at the rate OpenRouter
+    # lists for openai/gpt-6-luna (2026-11-03), which passes OpenAI's price through.
+    "gpt-6-luna": ModelPricing(
+        input_cost_per_1k=0.0001,
+        output_cost_per_1k=0.0005,
+        cached_input_cost_per_1k=0.00001,
+    ),
     # LOCAL DEV TESTING ONLY (DEV_LLM_MODEL=gpt-4.1-mini over the OpenAI custom
     # lane) - do not ship. OpenAI list price: $0.40/$1.60 per 1M in/out, $0.10 cached.
     "gpt-4.1-mini": ModelPricing(

@@ -26,6 +26,12 @@ export {
 export type { ToolFixture } from "./fixtures";
 export { getFixture, TOOL_FIXTURES } from "./fixtures";
 export type {
+  ArtifactCardData,
+  ArtifactCardStatus,
+  ArtifactDeltaFrame,
+} from "./openuiArtifacts";
+export { ARTIFACT_CARD_TOOL_NAME } from "./openuiArtifacts";
+export type {
   ChatStreamEvent,
   StreamToolDataEntry,
   StreamToolOutput,

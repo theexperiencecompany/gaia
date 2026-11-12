@@ -1,6 +1,7 @@
 import Image from "next/image";
+import FileViewerPanel from "@/features/chat/components/artifacts/FileViewerPanel";
 import { FileCard } from "@/features/chat/components/files/FileCard";
-import { useFilePreview } from "@/features/chat/hooks/useFilePreview";
+import { useSidebarPreview } from "@/features/chat/hooks/useSidebarPreview";
 import { isPrivateBlobUrl } from "@/lib/privateBlob";
 import type { AttachedFileData } from "@/types/shared/fileTypes";
 
@@ -10,12 +11,14 @@ interface ChatBubbleFilePreviewProps {
 
 function AttachmentCard({ file }: { file: AttachedFileData }) {
   const contentType = file.type ?? "";
-  const preview = useFilePreview({
-    source: { kind: "url", url: file.url },
-    filename: file.filename,
-    contentType,
-    sizeBytes: file.size,
-  });
+  const preview = useSidebarPreview(
+    <FileViewerPanel
+      source={{ kind: "url", url: file.url }}
+      filename={file.filename}
+      contentType={contentType}
+      sizeBytes={file.size}
+    />,
+  );
 
   return (
     <>

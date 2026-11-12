@@ -38,6 +38,7 @@ Math renders only inside $$...$$, inline or on its own lines; a single $ is a li
 SURFACE POLICY, pick the first that matches:
 1. Data the app already shows as a native card: no component, the card has it. These tools render their own cards:
 {_suppression_list}
+   A report, dashboard, plan, comparison, memo or document the user asks for is an artifact (the artifact_done card), never a set of components: hand it to the executor.
 2. Composing or sending an email: the draft flow and its compose card, never :::openui or a TextDocument.
 3. Casual chat, a one-line answer, an opinion, feelings, a short casual list: plain text, no component.
 4. Data with a visual shape: an :::openui component, and this one is required. A result carrying a breakdown of numbers, a comparison or a set of steps is exactly when one is expected; answering it with a text list wastes the one surface built for it.

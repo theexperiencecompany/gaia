@@ -8,6 +8,7 @@ import { createParser } from "@openuidev/react-lang";
 import type { z } from "zod";
 import {
   buildIndex,
+  extractProgram,
   type GroundingIndex,
   type GroundNode,
   resolveText,
@@ -20,6 +21,8 @@ import { ARTIFACT_ROOT } from "./specs";
 
 export interface ValidationResult {
   ok: boolean;
+  /** The program extracted from the reply: from the first root statement, statements only. */
+  program: string;
   problems: string[];
   /** Each statement's `text` prop with its slots filled, for logs and tests. */
   resolved: Record<string, string>;
@@ -30,7 +33,6 @@ export interface ValidationResult {
 
 const MAX_ISSUES_PER_ELEMENT = 3;
 const ROOT_LINE = /^root\s*=/gm;
-const STATEMENT_LINE = /^[A-Za-z_$][\w$]*\s*=/;
 
 const parser = createParser(artifactSpecLibrary.toJSONSchema(), ARTIFACT_ROOT);
 const schemas: Record<string, z.ZodType> = Object.fromEntries(
@@ -157,18 +159,15 @@ function messageOf(error: unknown): string {
   return JSON.stringify(error);
 }
 
+/** Extract the program from a model reply and run every check on it. */
 export function validateArtifact(
-  program: string,
+  reply: string,
   brief: string,
 ): ValidationResult {
+  const program = extractProgram(reply);
   const result = parser.parse(program);
   const nodes = elements(result.root);
   const roots = (program.match(ROOT_LINE) ?? []).length;
-  const stray = program
-    .split("\n")
-    .filter(
-      (line) => line.trim() && !STATEMENT_LINE.test(line) && !/^\s/.test(line),
-    ).length;
   const grounding = groundingProblems(result.root, brief);
   const problems = [
     ...namingProblems(nodes),
@@ -176,9 +175,6 @@ export function validateArtifact(
     ...propProblems(nodes),
     ...(roots > 1
       ? [`the program is written ${roots} times; write it once`]
-      : []),
-    ...(stray
-      ? [`${stray} lines are not statements; output only openui-lang`]
       : []),
     ...result.meta.errors.map(messageOf),
     ...result.meta.unresolved.map(
@@ -188,6 +184,7 @@ export function validateArtifact(
   ];
   return {
     ok: problems.length === 0,
+    program,
     problems,
     resolved: grounding.resolved,
     statements: result.meta.statementCount,

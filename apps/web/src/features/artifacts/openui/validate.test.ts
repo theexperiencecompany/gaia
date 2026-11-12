@@ -63,16 +63,16 @@ describe("validateArtifact", () => {
     ]);
   });
 
-  it("rejects a program written twice and lines that are not statements", () => {
+  it("validates the program inside a reply and rejects one written twice", () => {
     const result = validateArtifact(
-      'root = Artifact("a", "b", [], [])\nHere it is again:\nroot = Artifact("a", "b", [], [])',
+      'Here it is:\nroot = Artifact("a", "b", [], [])\nAnd again:\nroot = Artifact("a", "b", [], [])',
       "",
     );
-    expect(result.problems).toEqual(
-      expect.arrayContaining([
-        "the program is written 2 times; write it once",
-        "1 lines are not statements; output only openui-lang",
-      ]),
+    expect(result.program).toBe(
+      'root = Artifact("a", "b", [], [])\nroot = Artifact("a", "b", [], [])',
+    );
+    expect(result.problems).toContain(
+      "the program is written 2 times; write it once",
     );
   });
 

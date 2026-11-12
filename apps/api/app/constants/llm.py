@@ -354,6 +354,10 @@ COMMS_MODEL_NAME = "gpt-5.6-luna"
 # Chat completions reject function tools with any other effort, and comms always binds tools.
 COMMS_REASONING_EFFORT = "none"
 OPENAI_MAX_OUTPUT_TOKENS = 16_000
+# create_artifact's own lane, direct to OpenAI: no reasoning keeps the first component on
+# screen in about 2.6 s (prototype bench, .agents/plans/artifacts-openui.md).
+ARTIFACT_MODEL_NAME: Final = "gpt-6-luna"
+ARTIFACT_REASONING_EFFORT: Final = "none"
 # OpenAI rejects a longer prompt_cache_key with a 400 (string_above_max_length).
 OPENAI_PROMPT_CACHE_KEY_MAX_CHARS = 64
 

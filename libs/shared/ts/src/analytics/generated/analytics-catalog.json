@@ -758,6 +758,192 @@
       }
     },
     {
+      "event": "artifact:created",
+      "class": "ArtifactCreated",
+      "owner": "server",
+      "domain": "artifact",
+      "description": "An artifact passed validation and was stored.",
+      "previous_names": [],
+      "budget_per_user_day": 100,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "An artifact passed validation and was stored.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "dashboard",
+              "report",
+              "plan",
+              "comparison",
+              "memo",
+              "document"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "components": {
+            "title": "Components",
+            "type": "integer"
+          },
+          "repairs": {
+            "title": "Repairs",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "first_component_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Component Ms"
+          },
+          "total_ms": {
+            "title": "Total Ms",
+            "type": "number"
+          },
+          "model": {
+            "const": "gpt-6-luna",
+            "title": "Model",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "components",
+          "repairs",
+          "output_tokens",
+          "first_component_ms",
+          "total_ms",
+          "model"
+        ],
+        "title": "ArtifactCreated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "artifact:failed",
+      "class": "ArtifactFailed",
+      "owner": "server",
+      "domain": "artifact",
+      "description": "create_artifact gave up: a second validation failure, a refusal or a timeout.",
+      "previous_names": [],
+      "budget_per_user_day": 100,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "create_artifact gave up: a second validation failure, a refusal or a timeout.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "dashboard",
+              "report",
+              "plan",
+              "comparison",
+              "memo",
+              "document"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "enum": ["validation", "refused", "timeout"],
+            "title": "Reason",
+            "type": "string"
+          },
+          "problem_count": {
+            "title": "Problem Count",
+            "type": "integer"
+          }
+        },
+        "required": ["kind", "reason", "problem_count"],
+        "title": "ArtifactFailed",
+        "type": "object"
+      }
+    },
+    {
+      "event": "artifact:opened",
+      "class": "ArtifactOpened",
+      "owner": "server",
+      "domain": "artifact",
+      "description": "An artifact was opened in the in-app viewer or through its heygaia.link.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "An artifact was opened in the in-app viewer or through its heygaia.link.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "dashboard",
+              "report",
+              "plan",
+              "comparison",
+              "memo",
+              "document"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "via": {
+            "enum": ["chat", "link"],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": ["kind", "via"],
+        "title": "ArtifactOpened",
+        "type": "object"
+      }
+    },
+    {
+      "event": "artifact:pdf_exported",
+      "class": "ArtifactPdfExported",
+      "owner": "server",
+      "domain": "artifact",
+      "description": "An artifact was served as a PDF.",
+      "previous_names": [],
+      "budget_per_user_day": 200,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "An artifact was served as a PDF.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "dashboard",
+              "report",
+              "plan",
+              "comparison",
+              "memo",
+              "document"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          }
+        },
+        "required": ["kind", "pages"],
+        "title": "ArtifactPdfExported",
+        "type": "object"
+      }
+    },
+    {
       "event": "blog:article_viewed",
       "class": "BlogArticleViewed",
       "owner": "web",

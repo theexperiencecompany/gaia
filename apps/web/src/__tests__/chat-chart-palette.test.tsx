@@ -7,8 +7,8 @@ import { genericLibrary } from "@/config/openui/genericLibrary";
 import { CHART_PALETTE, gaiaOpenUITheme } from "@/config/openui/theme";
 
 /**
- * Regression: genui-lib's charts read a theme context bundled inside genui-lib, so the
- * app's ThemeProvider never reached them and every chat chart drew react-ui's light palette.
+ * Regression: genui-lib's charts read a theme context bundled inside genui-lib, and react-ui's
+ * theme has no chart palette keys, so every chat chart drew react-ui's light palette.
  */
 
 // jsdom has no canvas; the charts measure tick labels with one.

@@ -122,6 +122,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Artifact
+         * @description One of the user's artifacts, program included.
+         */
+        get: operations["artifacts_get_artifact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -6257,6 +6277,13 @@ export interface components {
             /** Size Bytes */
             size_bytes: number;
         };
+        /**
+         * ArtifactKind
+         * @description What the artifact is; each kind has its own generated prompt
+         *     (apps/api/app/agents/prompts/artifacts/<kind>.txt, from the web library's kinds.ts).
+         * @enum {string}
+         */
+        ArtifactKind: "dashboard" | "report" | "plan" | "comparison" | "memo" | "document";
         /**
          * ArtifactRegistryEntry
          * @description One element of ``ConversationDocument.artifacts``.
@@ -12564,6 +12591,28 @@ export interface components {
             user_id: string;
         };
         /**
+         * OpenUIArtifactResponse
+         * @description An artifact as its owner's viewer loads it.
+         */
+        OpenUIArtifactResponse: {
+            /** Conversation Id */
+            conversation_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            kind: components["schemas"]["ArtifactKind"];
+            /** Program */
+            program: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+        };
+        /**
          * PaginatedNotificationsResponse
          * @description Response model for paginated notifications
          */
@@ -17474,6 +17523,7 @@ export type ApprovalDecisionRequest = components['schemas']['ApprovalDecisionReq
 export type ApprovalDecisionResponse = components['schemas']['ApprovalDecisionResponse'];
 export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest'];
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
+export type ArtifactKind = components['schemas']['ArtifactKind'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];
 export type AsanaTaskTriggerConfig = components['schemas']['AsanaTaskTriggerConfig'];
 export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUserResponse'];
@@ -17824,6 +17874,7 @@ export type OnboardingResponse = components['schemas']['OnboardingResponse'];
 export type OnboardingStatusResponse = components['schemas']['OnboardingStatusResponse'];
 export type OnboardingStep = components['schemas']['OnboardingStep'];
 export type OnboardingUser = components['schemas']['OnboardingUser'];
+export type OpenUIArtifactResponse = components['schemas']['OpenUIArtifactResponse'];
 export type PaginatedNotificationsResponse = components['schemas']['PaginatedNotificationsResponse'];
 export type PaginationMeta = components['schemas']['PaginationMeta'];
 export type PaymentVerificationResponse = components['schemas']['PaymentVerificationResponse'];
@@ -18415,6 +18466,58 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HILPreferencesResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    artifacts_get_artifact: {
+        parameters: {
+            query?: {
+                /** @description True when the viewer opens it */
+                opened?: boolean;
+            };
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenUIArtifactResponse"];
                 };
             };
             /** @description Unprocessable Entity */

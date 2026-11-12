@@ -9,8 +9,9 @@ import { Download01Icon, MoreHorizontalIcon } from "@icons";
 import type React from "react";
 import { useCallback, useMemo } from "react";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
+import FileViewerPanel from "@/features/chat/components/artifacts/FileViewerPanel";
 import { FileCard } from "@/features/chat/components/files/FileCard";
-import { useFilePreview } from "@/features/chat/hooks/useFilePreview";
+import { useSidebarPreview } from "@/features/chat/hooks/useSidebarPreview";
 import { getExtension } from "@/features/chat/utils/fileExtension";
 import { shareLinkMenuItems } from "@/features/short-links/components/shareLinkMenuItems";
 import { useShareLink } from "@/features/short-links/hooks/useShareLink";
@@ -75,17 +76,19 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
   const conversationId = artifact.session_id;
   const filename = basename(artifact.path);
   const contentType = resolveContentType(artifact, filename);
-  const preview = useFilePreview({
-    source: {
-      kind: "artifact",
-      conversationId,
-      path: artifact.path,
-      inlineBody: artifact.body,
-    },
-    filename,
-    contentType,
-    sizeBytes: artifact.size_bytes,
-  });
+  const preview = useSidebarPreview(
+    <FileViewerPanel
+      source={{
+        kind: "artifact",
+        conversationId,
+        path: artifact.path,
+        inlineBody: artifact.body,
+      }}
+      filename={filename}
+      contentType={contentType}
+      sizeBytes={artifact.size_bytes}
+    />,
+  );
 
   const handleDownload = useCallback(() => {
     const link = document.createElement("a");

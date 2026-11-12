@@ -5,6 +5,7 @@ import { createTheme, ThemeProvider } from "@openuidev/react-ui/ThemeProvider";
 import { useCallback, useState } from "react";
 import { OpenUIErrorBoundary } from "@/config/openui/OpenUIErrorBoundary";
 import "@/config/openui/openui.css";
+import { type ArtifactDensity, ArtifactDensityContext } from "./density";
 import { GroundingContext } from "./GroundedText";
 import { buildIndex, type GroundingIndex } from "./grounding";
 import { artifactLibrary } from "./library";
@@ -16,6 +17,7 @@ interface ArtifactRendererProps {
   isStreaming?: boolean;
   /** "light" renders a paper copy (print and PDF) inside the dark app. */
   appearance?: ArtifactAppearance;
+  density?: ArtifactDensity;
 }
 
 const lightTheme = createTheme({});
@@ -25,6 +27,7 @@ export function ArtifactRenderer({
   program,
   isStreaming = false,
   appearance = "dark",
+  density = "page",
 }: ArtifactRendererProps) {
   const [index, setIndex] = useState<GroundingIndex>(new Map());
   const onParseResult = useCallback((result: ParseResult | null) => {
@@ -38,13 +41,15 @@ export function ArtifactRenderer({
   const tree = (
     <OpenUIErrorBoundary code={program}>
       <GroundingContext.Provider value={index}>
-        <Renderer
-          response={program}
-          library={artifactLibrary}
-          isStreaming={isStreaming}
-          onParseResult={onParseResult}
-          onError={onError}
-        />
+        <ArtifactDensityContext.Provider value={density}>
+          <Renderer
+            response={program}
+            library={artifactLibrary}
+            isStreaming={isStreaming}
+            onParseResult={onParseResult}
+            onError={onError}
+          />
+        </ArtifactDensityContext.Provider>
       </GroundingContext.Provider>
     </OpenUIErrorBoundary>
   );

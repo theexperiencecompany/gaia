@@ -488,6 +488,19 @@
         "title": "ArtifactInfo",
         "type": "object"
       },
+      "ArtifactKind": {
+        "description": "What the artifact is; each kind has its own generated prompt\n(apps/api/app/agents/prompts/artifacts/<kind>.txt, from the web library's kinds.ts).",
+        "enum": [
+          "dashboard",
+          "report",
+          "plan",
+          "comparison",
+          "memo",
+          "document"
+        ],
+        "title": "ArtifactKind",
+        "type": "string"
+      },
       "ArtifactRegistryEntry": {
         "description": "One element of ``ConversationDocument.artifacts``.\n\n``app.services.chat.artifacts_registry`` owns every write of this shape; the\nconversation document stores it and mirrors it verbatim to the client.\n``mtime`` is a Unix timestamp, matching what every publisher in\n:mod:`app.services.artifact_events` stamps. ``body`` is present only for\nsmall textual artifacts inlined at write time.",
         "properties": {
@@ -14292,6 +14305,57 @@
         "title": "OnboardingUser",
         "type": "object"
       },
+      "OpenUIArtifactResponse": {
+        "description": "An artifact as its owner's viewer loads it.",
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ArtifactKind"
+          },
+          "program": {
+            "title": "Program",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "program",
+          "version",
+          "conversation_id",
+          "created_at"
+        ],
+        "title": "OpenUIArtifactResponse",
+        "type": "object"
+      },
       "PaginatedNotificationsResponse": {
         "description": "Response model for paginated notifications",
         "properties": {
@@ -24551,6 +24615,81 @@
         "summary": "Post Approval Decision",
         "tags": [
           "Approvals"
+        ]
+      }
+    },
+    "/api/v1/artifacts/{artifact_id}": {
+      "get": {
+        "description": "One of the user's artifacts, program included.",
+        "operationId": "artifacts_get_artifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "True when the viewer opens it",
+            "in": "query",
+            "name": "opened",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "True when the viewer opens it",
+              "title": "Opened",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenUIArtifactResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Artifact",
+        "tags": [
+          "Artifacts"
         ]
       }
     },

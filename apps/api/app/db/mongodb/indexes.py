@@ -16,6 +16,7 @@ from app.constants.payments import CLAIMED_STATUS
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.local_credentials import local_credentials_repository
+from app.db.repositories.openui_artifacts import ARTIFACT_USER_CREATED_INDEX
 from app.db.repositories.short_links import (
     LIVE_TARGET_UNIQUE_INDEX,
     SLUG_UNIQUE_INDEX,
@@ -127,6 +128,7 @@ async def create_all_indexes() -> None:
             create_bot_session_indexes(),
             create_e2b_sandbox_indexes(),
             create_short_link_indexes(),
+            create_openui_artifact_indexes(),
             create_hil_approvals_indexes(),
             create_approval_ledger_indexes(),
             create_pending_platform_registration_indexes(),
@@ -174,6 +176,7 @@ async def create_all_indexes() -> None:
             "bot_sessions",
             "e2b_sandboxes",
             "short_links",
+            "artifacts",
             "hil_approvals",
             "approval_ledger",
             "pending_platform_registrations",
@@ -1634,6 +1637,21 @@ async def create_e2b_sandbox_indexes() -> None:
             f"{LogTag.MONGO} Error creating e2b sandbox indexes",
             error=str(e),
             error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_openui_artifact_indexes() -> None:
+    """Create the artifacts index serving an owner's newest-first reads."""
+    try:
+        await get_async_collection("artifacts").create_index(
+            [("user_id", 1), ("created_at", -1)], name=ARTIFACT_USER_CREATED_INDEX
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating artifact indexes",
+            error_type=type(e).__name__,
+            error=str(e),
         )
         raise
 
