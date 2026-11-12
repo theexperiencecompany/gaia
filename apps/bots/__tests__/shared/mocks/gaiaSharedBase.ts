@@ -22,6 +22,7 @@ import {
   type AnalyticsId,
   platformIdentity,
 } from "../../../../../libs/shared/ts/src/analytics";
+import { PerUserInboundQueue } from "../../../../../libs/shared/ts/src/bots/adapter/inbound-queue";
 import {
   consumeInboundLinkCode,
   redeemLinkCode,
@@ -213,6 +214,8 @@ export function makeGaiaSharedMock(
     MEDIA_READ_TIMEOUT_MS: 30_000,
     // The real outcome set, so an adapter's reaction result is production's value.
     REACTION_OUTCOME,
+    // The real queue: message order, and what may skip it, is the adapter's behaviour.
+    PerUserInboundQueue,
     unsupportedMediaMessage: vi.fn(
       (kind: string) => `I can't process ${kind} yet.`,
     ),

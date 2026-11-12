@@ -176,7 +176,7 @@ type PrivateAdapter = {
     space: FakeSpace,
     text: string,
   ) => Promise<void>;
-  messageQueues: Map<string, Promise<void>>;
+  inbound: { settled: () => Promise<void> };
   deliverOutbound: (destinationId: string, text: string) => Promise<void>;
   sendOutboundFile: (
     destinationId: string,
@@ -207,7 +207,7 @@ function makeAdapter(): { adapter: ImessageAdapter; priv: PrivateAdapter } {
 }
 
 async function drainQueues(priv: PrivateAdapter): Promise<void> {
-  await Promise.all([...priv.messageQueues.values()]);
+  await priv.inbound.settled();
   await new Promise((resolve) => setImmediate(resolve));
 }
 
@@ -911,5 +911,48 @@ describe("live turn reaction", () => {
 
     expect(await onReaction("👍")).toBe("no_target");
     expect(reaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("inbound order", () => {
+  /** Feeds text messages from one sender; handling the first one stays running until release(). */
+  async function deliver(texts: string[]) {
+    const { priv } = makeAdapter();
+    const space = makeSpace();
+    let release = (): void => undefined;
+    const firstHeld = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const handled: string[] = [];
+    priv.handleIncomingMessage = vi.fn(
+      async (_handle: string, _space: FakeSpace, text: string) => {
+        handled.push(text);
+        if (text === texts[0]) await firstHeld;
+      },
+    );
+    for (const text of texts) {
+      priv.handleInboundMessage(
+        space,
+        makeMessage({ content: { type: "text", text } }),
+      );
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+    return { handled, release };
+  }
+
+  it("handles a /stop behind a held message at once", async () => {
+    const { handled, release } = await deliver(["do the work", "/stop"]);
+
+    expect(handled).toContain("/stop");
+    release();
+  });
+
+  it("keeps a normal message behind the held one", async () => {
+    const { handled, release } = await deliver(["do the work", "and then"]);
+    expect(handled).toEqual(["do the work"]);
+
+    release();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(handled).toEqual(["do the work", "and then"]);
   });
 });

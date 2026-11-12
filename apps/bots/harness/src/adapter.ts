@@ -24,6 +24,7 @@ import {
   extractSubcommandArgs,
   handleStreamingChat,
   type OutboundFile,
+  PerUserInboundQueue,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -68,8 +69,8 @@ export class HarnessAdapter extends BaseBotAdapter {
   private readonly transcript: TranscriptRecorder;
   private readonly adapterLogger: BotLogger;
   private nextMessageId = 1;
-  /** Settles when every message accepted so far has been handled; see `serializesInbound`. */
-  private inboundTail: Promise<void> = Promise.resolve();
+  /** The real adapters' per-user queue, used when the emulated platform has one; see `serializesInbound`. */
+  private readonly inbound = new PerUserInboundQueue();
 
   protected override readonly consumesOutbound: boolean;
 
@@ -184,7 +185,8 @@ export class HarnessAdapter extends BaseBotAdapter {
   /**
    * Injects one inbound message as `userId`, recorded the moment it arrives. On
    * a platform whose adapter handles messages one at a time it is handled only
-   * after the messages before it, as the real adapter does; elsewhere at once.
+   * after the messages before it (a /stop at once), as the real adapter does;
+   * elsewhere at once.
    */
   simulateMessage(
     userId: string,
@@ -205,11 +207,7 @@ export class HarnessAdapter extends BaseBotAdapter {
     if (!this.emulation.serializesInbound) {
       return handle();
     }
-    const handled = this.inboundTail.then(handle);
-    // The next message waits for this one to finish, failed or not, as the real
-    // adapters' queues do; the failure itself still reaches this message's caller.
-    this.inboundTail = handled.catch(() => undefined);
-    return handled;
+    return this.inbound.enqueue(userId, text, handle);
   }
 
   /**

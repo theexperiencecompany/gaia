@@ -43,10 +43,9 @@ export interface PlatformEmulation {
   supportsEdit: boolean;
   /**
    * Whether the adapter handles a user's next message only after the previous
-   * one's handler finished. Telegram: grammY's built-in polling awaits each
-   * update in turn (`bot.js` handleUpdates). WhatsApp and iMessage: a per-user
-   * promise queue in the adapter (`messageQueues`). Discord and Slack run every
-   * event handler as it arrives.
+   * one's handler finished: Telegram, WhatsApp and iMessage, through the shared
+   * `PerUserInboundQueue` (which runs /stop at once). Discord and Slack run
+   * every event handler as it arrives.
    */
   serializesInbound: boolean;
 }
