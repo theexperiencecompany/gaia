@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Link } from "@heroui/link";
 import { Download01Icon } from "@icons";
 import { LazyArtifactRenderer } from "@/features/artifacts/LazyArtifactRenderer";
-import { shortLinkPdfDownloadUrl } from "@/features/short-links/api/shortLinksApi";
+import { shortLinkPdfDownloadUrl } from "@/features/short-links/api/linkViewerApi";
 import type { PublicOpenUIArtifact } from "@/types/features/shortLinkTypes";
 
 /** Download the shared artifact as a PDF; sits in the page header. */

@@ -1,16 +1,14 @@
-// heygaia.link public views, generated from the API's `PublicShortLinkView`
-// discriminated union (apps/api/app/models/short_link_models.py).
-
-import type {
-  PublicBriefing,
-  PublicOpenUIArtifact,
-  PublicSessionArtifact,
-  PublicTodoDeliverable,
-  PublicWorkflowRun,
-} from "@shared/api/generated";
+// heygaia.link types, generated from apps/api/app/models/short_link_models.py.
 
 export type {
+  ContentTokenResponse,
+  ErrorEnvelope,
   LinkAccess,
+  LinkContent,
+  LinkDenial,
+  LinkDenialEnvelope,
+  LinkEnvelope,
+  LinkPreviewMeta,
   LinkSettings,
   LinkSettingsUpdate,
   PublicBriefing,
@@ -18,13 +16,7 @@ export type {
   PublicSessionArtifact,
   PublicTodoDeliverable,
   PublicWorkflowRun,
+  ReportReason,
   ShortLinkResponse,
   ShortLinkTargetType,
 } from "@shared/api/generated";
-
-export type PublicShortLinkView =
-  | PublicTodoDeliverable
-  | PublicBriefing
-  | PublicSessionArtifact
-  | PublicWorkflowRun
-  | PublicOpenUIArtifact;
