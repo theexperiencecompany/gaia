@@ -2,20 +2,18 @@ import { buttonVariants as heroButtonVariants } from "@heroui/react";
 import { tv, type VariantProps } from "tailwind-variants";
 
 import { SHAPE_CLASSES } from "./shape";
+import { TEXT_TONE_CLASSES, type TextTone } from "./tone";
 
-/**
- * Text tone for a quiet (ghost, tertiary) button: v2's light buttons in the
- * zinc greys and v2's primary light button (accent). Each brightens on hover.
- */
+/** The text tones (tone.ts) on a quiet ghost or tertiary button, each brightening on hover. */
 export const BUTTON_TONE_CLASSES = {
-  default: "",
-  dim: "text-zinc-300 hover:text-foreground",
-  muted: "text-zinc-400 hover:text-zinc-300",
-  faint: "text-zinc-500 hover:text-zinc-200",
-  accent: "text-accent",
-} as const;
+  default: TEXT_TONE_CLASSES.default,
+  dim: `${TEXT_TONE_CLASSES.dim} hover:text-foreground`,
+  muted: `${TEXT_TONE_CLASSES.muted} hover:text-zinc-300`,
+  faint: `${TEXT_TONE_CLASSES.faint} hover:text-zinc-200`,
+  accent: TEXT_TONE_CLASSES.accent,
+} as const satisfies Record<TextTone, string>;
 
-export type ButtonTone = keyof typeof BUTTON_TONE_CLASSES;
+export type ButtonTone = TextTone;
 
 /** Shape and tone, the two GAIA dimensions layered on any HeroUI button variant. */
 export const buttonOverlayVariants = tv({
