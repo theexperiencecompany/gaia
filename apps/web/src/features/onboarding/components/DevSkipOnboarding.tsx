@@ -48,9 +48,9 @@ export function DevSkipOnboarding() {
   return (
     <div className="fixed bottom-4 left-4 z-50">
       <GaiaButton
+        variant="warning-soft"
         shape="pill"
         size="sm"
-        variant="secondary"
         isPending={loading}
         onPress={skip}
       >

@@ -1,0 +1,39 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+
+import { fieldVariants } from "@/components/shared/fieldVariants";
+
+const BASE_CSS = readFileSync(
+  path.resolve(__dirname, "../app/styles/base.css"),
+  "utf8",
+);
+const VISIBLE_LABEL_GATE = ".gaia-field-inside:has(> .label:not(.sr-only))";
+
+/** Every selector in base.css that styles the inside-label layout. */
+function insideLabelSelectors(css: string): string[] {
+  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  return [...withoutComments.matchAll(/([^{}]+)\{/g)]
+    .flatMap(([, selectorList]) => selectorList.split(","))
+    .map((selector) => selector.trim())
+    .filter((selector) => /\.gaia-field-inside\b/.test(selector));
+}
+
+// v2's useLabelPlacement fell back to an outside (40px) field when no label
+// rendered; an aria-label or sr-only label must keep the plain field.
+describe("inside-label fields", () => {
+  it("lay out inside only when a visible Label renders", () => {
+    const selectors = insideLabelSelectors(BASE_CSS);
+    expect(selectors.length).toBeGreaterThan(0);
+    expect(
+      selectors.filter((selector) => !selector.startsWith(VISIBLE_LABEL_GATE)),
+    ).toEqual([]);
+  });
+
+  it("is opted into through fieldVariants alone", () => {
+    expect(fieldVariants({ labelPlacement: "inside" })).toBe(
+      "gaia-field-inside",
+    );
+    expect(fieldVariants()).toBeFalsy();
+  });
+});

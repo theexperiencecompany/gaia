@@ -4,7 +4,9 @@
    The react-ui styles load with the OpenUI library: config/openui/openui.css. */
 @layer theme, base, openui, components, gaia, utilities;
 @import "tailwindcss" source(none);
-@import "@heroui/styles/themes/default" layer(theme);
+/* static: the area sheets only @reference this theme, so base.css must emit every
+   token their component CSS reads (--ease-smooth, --color-field, --radius-xl...). */
+@import "@heroui/styles/themes/default" layer(theme) theme(static);
 @import "@heroui/styles/base" layer(base);
 @import "./theme.css";
 @import "@heroui/styles/utilities";
@@ -168,18 +170,6 @@
   }
   to {
     height: 0;
-  }
-}
-
-@keyframes shiny-text {
-  0%,
-  90%,
-  100% {
-    background-position: calc(-100% - var(--shiny-width)) 0;
-  }
-  30%,
-  60% {
-    background-position: calc(100% + var(--shiny-width)) 0;
   }
 }
 
@@ -1280,6 +1270,8 @@
   --danger-soft: color-mix(in oklab, var(--danger) 20%, transparent);
   --danger-soft-foreground: var(--danger);
   --danger-soft-hover: color-mix(in oklab, var(--danger) 30%, transparent);
+  /* HeroUI 3.2.7's field sheets read this for an invalid field; its theme never defines it */
+  --color-field-border-invalid: var(--danger);
 }
 
 :root,
@@ -1339,6 +1331,14 @@ html {
   --gaia-modal-3xl: 48rem;
   --gaia-modal-4xl: 56rem;
   --gaia-modal-5xl: 64rem;
+  --gaia-modal-padding-x: 1.5rem;
+  --gaia-modal-header-padding-y: 1rem;
+  --gaia-modal-body-padding-y: 0.5rem;
+  --gaia-modal-body-gap: 0.75rem;
+  --gaia-modal-footer-padding-y: 1rem;
+  --gaia-input-sm-height: 2rem;
+  --gaia-input-sm-padding-x: 0.5rem;
+  --gaia-input-sm-font-size: 0.875rem;
   --gaia-switch-track-off: #3f3f46;
   --gaia-switch-padding: 0.25rem;
   --gaia-switch-sm-width: 2.5rem;
@@ -1421,6 +1421,24 @@ html {
     margin-inline-end: var(--gaia-checkbox-gap);
   }
 
+  /* inputVariants({ size: "sm" }): v2's small field, 32px with an 8px inset. */
+  .gaia-input-sm .input,
+  .gaia-input-sm .input-group,
+  .gaia-input-sm .search-field__group,
+  .input.gaia-input-sm {
+    min-height: var(--gaia-input-sm-height);
+    height: var(--gaia-input-sm-height);
+    font-size: var(--gaia-input-sm-font-size);
+    border-radius: var(--gaia-radius-sm);
+  }
+  .gaia-input-sm .input,
+  .input.gaia-input-sm,
+  .gaia-input-sm .input-group__input,
+  .gaia-input-sm .search-field__input {
+    padding-block: 0;
+    padding-inline: var(--gaia-input-sm-padding-x);
+  }
+
   /* Field placeholders: v2's zinc-500 at normal weight, in light and dark. */
   .input::placeholder,
   .textarea::placeholder,
@@ -1429,12 +1447,29 @@ html {
     font-weight: 400;
   }
 
+  /* ComboBoxInput (components/shared/ComboBoxInput.tsx): start/end content sits
+     in ComboBox's own input row, outside any InputGroup context. */
+  .combo-box__input-group > [data-slot="input-group-prefix"],
+  .combo-box__input-group > [data-slot="input-group-suffix"] {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    color: var(--field-placeholder);
+  }
+  .combo-box__input-group > [data-slot="input-group-prefix"] {
+    padding-inline-start: 0.75rem;
+  }
+  .combo-box__input-group > [data-slot="input-group-prefix"] + .input {
+    padding-inline-start: 0.5rem;
+  }
+
   /* labelPlacement="inside" (components/shared/fieldVariants.ts): v2's default
-     field, the label small at the top-left inside a 56px field, the value below. */
-  .gaia-field-inside {
+     field, the label small at the top-left inside a 56px field, the value below.
+     Only when a visible Label renders: v2 fell back to outside (40px) without one. */
+  .gaia-field-inside:has(> .label:not(.sr-only)) {
     position: relative;
   }
-  .gaia-field-inside > .label {
+  .gaia-field-inside:has(> .label:not(.sr-only)) > .label {
     position: absolute;
     z-index: 1;
     top: var(--gaia-field-inside-label-top);
@@ -1444,17 +1479,17 @@ html {
     color: var(--gaia-field-label-inside-color);
     pointer-events: none;
   }
-  .gaia-field-inside .input,
-  .gaia-field-inside .input-group,
-  .gaia-field-inside .select__trigger,
-  .gaia-field-inside .combo-box__input-group {
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .select__trigger,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .combo-box__input-group {
     min-height: var(--gaia-field-inside-height);
   }
-  .gaia-field-inside .input,
-  .gaia-field-inside .input-group__input,
-  .gaia-field-inside .textarea,
-  .gaia-field-inside .select__trigger,
-  .gaia-field-inside .combo-box__input-group .input {
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group__input,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .textarea,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .select__trigger,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .combo-box__input-group .input {
     padding-top: var(--gaia-field-inside-padding-top);
     padding-bottom: var(--gaia-field-inside-padding-bottom);
     padding-inline: var(--gaia-field-inside-padding-x);
@@ -1587,6 +1622,32 @@ html {
   .slider.gaia-slider-sm .slider__thumb::after {
     width: var(--gaia-slider-sm-thumb-inner);
     height: var(--gaia-slider-sm-thumb-inner);
+  }
+
+  /* Modal: v2's section rhythm. The dialog has no padding of its own; the
+     header, body and footer carry it, and the body is a column of 12px gaps in
+     the dialog's own text colour (v3 mutes and shrinks it). */
+  .modal__dialog {
+    padding: 0;
+  }
+  .modal__header {
+    padding: var(--gaia-modal-header-padding-y) var(--gaia-modal-padding-x);
+  }
+  .modal__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gaia-modal-body-gap);
+    margin: 0;
+    padding: var(--gaia-modal-body-padding-y) var(--gaia-modal-padding-x);
+    color: inherit;
+    font-size: inherit;
+    line-height: inherit;
+  }
+  .modal__header + .modal__body {
+    margin-top: 0;
+  }
+  .modal__footer {
+    padding: var(--gaia-modal-footer-padding-y) var(--gaia-modal-padding-x);
   }
 
   /* shape="pill" (components/shared/shape.ts): v2's radius="full", one class for

@@ -8,6 +8,7 @@
 
 import { Input, ListBox, Select } from "@heroui/react";
 import { useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { fieldVariants } from "@/components/shared/fieldVariants";
 import { TriggerTagInput } from "./TriggerTagInput";
 import type { TriggerSelectToggleProps } from "./types";
@@ -55,7 +56,7 @@ export function TriggerSelectToggle({
             placeholder={searchConfig.placeholder || "Type to search..."}
             value={searchConfig.searchValue}
             onChange={(e) => searchConfig.onSearchChange(e.target.value)}
-            className="w-full"
+            className={inputVariants({ size: "sm", className: "w-full" })}
           />
         )}
         <Select

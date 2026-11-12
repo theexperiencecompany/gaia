@@ -3,6 +3,7 @@
 import { Description, InputGroup, Label, TextField } from "@heroui/react";
 import { ViewIcon, ViewOffSlashIcon } from "@icons";
 import { useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 
 interface SecretInputProps {
@@ -50,7 +51,7 @@ export function SecretInput({
 
   return (
     <TextField
-      className={className}
+      className={inputVariants({ size: "sm", className: className })}
       value={value}
       onChange={onValueChange}
       isDisabled={isDisabled}

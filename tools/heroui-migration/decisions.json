@@ -95,7 +95,10 @@
       "colorVariant": {
         "default|solid": "default-solid (GaiaButton)",
         "default|flat": "default-soft (GaiaButton)",
-        "primary|flat": "accent-soft (GaiaButton)"
+        "primary|flat": "accent-soft (GaiaButton)",
+        "success|flat": "success-soft (GaiaButton)",
+        "warning|flat": "warning-soft (GaiaButton)",
+        "danger|flat": "danger-soft (HeroUI)"
       }
     },
     "chip": {

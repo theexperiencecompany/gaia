@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  Avatar,
-  ComboBox,
-  Input,
-  ListBox,
-  SearchField,
-  Select,
-} from "@heroui/react";
+import { Avatar, ComboBox, ListBox, SearchField, Select } from "@heroui/react";
 import {
   FemaleSymbolIcon,
   Globe02Icon,
@@ -15,7 +8,7 @@ import {
   Search01Icon,
 } from "@icons";
 import { useMemo } from "react";
-
+import { ComboBoxInput } from "@/components/shared/ComboBoxInput";
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
 import {
   ALL_FILTER,
@@ -74,6 +67,23 @@ export function VoiceFilters({
   const genderLabel =
     genderFilter === ALL_FILTER ? "All genders" : genderFilter;
 
+  const selectedCountryCode =
+    countryFilter === ALL_FILTER
+      ? undefined
+      : countryOptions.find((c) => c.accent === countryFilter)?.countryCode;
+  const countryStartContent =
+    countryFilter === ALL_FILTER ? null : selectedCountryCode ? (
+      <Avatar className="h-4 w-4 shrink-0">
+        <Avatar.Image
+          src={flagUrl(selectedCountryCode)}
+          alt={`${countryFilter} flag`}
+        />
+        <Avatar.Fallback />
+      </Avatar>
+    ) : (
+      <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
+    );
+
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
       <SearchField
@@ -125,10 +135,11 @@ export function VoiceFilters({
         }
         className="sm:max-w-44"
       >
-        <ComboBox.InputGroup>
-          <Input placeholder="Country" />
-          <ComboBox.Trigger />
-        </ComboBox.InputGroup>
+        <ComboBoxInput
+          placeholder="Country"
+          startContent={countryStartContent}
+          isClearable
+        />
         <ComboBox.Popover>
           <ListBox aria-label="Countries">
             <ListBox.Item id={ALL_FILTER} textValue="All countries">

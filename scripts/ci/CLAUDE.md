@@ -21,7 +21,7 @@ lane without grepping the workflow first.
 | What this PR changed | `changes.sh` | `base`, `base-rev`, `files`, `py-source`, `affected` |
 | The self-host stack an end-to-end lane boots and drives | `selfhost.sh` | `prepare`, `stub`, `up`, `mongo`, `logs` |
 | Standing dependency + pin gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `model-pin`, `alert-rule-tools`, `evlog` |
-| Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `cli-config-schema`, `deploy-templates`, `doc-comments` |
+| Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `heroui-style-overrides`, `cli-config-schema`, `deploy-templates`, `doc-comments` |
 | The PostHog project against the event catalog | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert` |
 | Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `check`, `sarif`, `post-statuses`, `reuse-plan` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `cli-release-images`, `pin-selfhost-release`, `cli-beta-release`, `selfhost-bots-arm64`, `selfhost-bots-manifest`, `connect-cross-check`, `connect-binaries`, `selfhost-bundle`, `disable-cf-builds` |
@@ -67,7 +67,7 @@ observability scanner behind `checks.mjs evlog-map-bots`),
 `api-contract.mjs` (the twin/boundary detector behind `checks.mjs
 api-schema-types` and `api-client-imports` — pure functions over a file's
 source text plus openapi.json, with the file list, baselines and reporting
-left in checks.mjs), `doc-comments.mjs` (the JSDoc/line-comment content gate
+left in checks.mjs), `heroui-styling.mjs` (the className/style override detector behind `checks.mjs heroui-style-overrides`), `doc-comments.mjs` (the JSDoc/line-comment content gate
 behind `checks.mjs doc-comments`), `generated-artifacts.mjs` (the
 regenerate-and-diff gates behind `checks.mjs api-schema`, `analytics-catalog`,
 `cli-config-schema` and `deploy-templates`), `deploy_templates.py` (the Coolify and

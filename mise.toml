@@ -285,6 +285,30 @@ else
 fi
 """
 
+[tasks."web:visual:review"]
+description = "Whole-app before/after visual review: seed one local API, production-build and screenshot every app route and UI state at <base> and at [head] (default HEAD), then write review.html with each diff. Run it before merging a UI-heavy change. Wraps the review harness in tools/heroui-migration/review/ (run.sh before/after over stack.sh); refs must exist in GIT_SOURCE (default: this checkout)"
+usage = '''
+arg "<base>" help="The ref to capture as the before side (e.g. origin/master)"
+arg "[head]" default="HEAD" help="The ref to capture as the after side"
+'''
+run = '''
+set -eu
+harness=tools/heroui-migration/review
+for entry in run.sh stack.sh; do
+  if [ ! -f "$harness/$entry" ]; then
+    echo "web:visual:review: $harness/$entry is missing on this branch." >&2
+    echo "The review harness lives on heroui/review-harness until it merges:" >&2
+    echo "  git fetch origin heroui/review-harness && git merge origin/heroui/review-harness" >&2
+    exit 1
+  fi
+done
+export GIT_SOURCE="${GIT_SOURCE:-$PWD}"
+base=$(git -C "$GIT_SOURCE" rev-parse --verify "${usage_base}^{commit}")
+head=$(git -C "$GIT_SOURCE" rev-parse --verify "${usage_head}^{commit}")
+bash "$harness/run.sh" before "$base"
+bash "$harness/run.sh" after "$head"
+'''
+
 [tasks."e2e:web"]
 description = "Run web Playwright e2e against a running dev stack. Start `mise dev --sim` (or `mise dev --agent` for a real LLM) in another terminal first — both boot with the dev auth bypass on. Set E2E_SIM=1 to include the scripted-chat spec. Honors WEB_PORT/API_PORT from .env.worktree."
 run = "pnpm nx run web:e2e"

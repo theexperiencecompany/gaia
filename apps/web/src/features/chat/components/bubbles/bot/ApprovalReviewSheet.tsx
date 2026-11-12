@@ -11,6 +11,7 @@ import type {
 import { formatApprovalAge } from "@shared/chat";
 import { flattenArgsPreview } from "@shared/utils";
 import { useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useMarkApprovalDecided } from "@/features/chat/hooks/useMarkApprovalDecided";
 import {
@@ -253,7 +254,10 @@ export default function ApprovalReviewSheet({
                             </Button>
                             {picked === "deny" && (
                               <Input
-                                className="flex-1"
+                                className={inputVariants({
+                                  size: "sm",
+                                  className: "flex-1",
+                                })}
                                 variant="secondary"
                                 placeholder="Why? (optional)"
                                 value={

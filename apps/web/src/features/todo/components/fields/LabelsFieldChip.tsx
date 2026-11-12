@@ -3,7 +3,7 @@
 import { Button, Input } from "@heroui/react";
 import { Cancel01Icon, PlusSignIcon, Tag01Icon } from "@icons";
 import { useState } from "react";
-
+import { inputVariants } from "@/components/shared/controlVariants";
 import BaseFieldChip from "./BaseFieldChip";
 import FieldChipOption from "./FieldChipOption";
 
@@ -66,7 +66,11 @@ export default function LabelsFieldChip({
                       }
                     }}
                     aria-label="Add new label"
-                    className="border-0 bg-zinc-800 text-sm text-zinc-200 placeholder:text-zinc-500 hover:bg-zinc-700 focus:bg-zinc-700"
+                    className={inputVariants({
+                      size: "sm",
+                      className:
+                        "border-0 bg-zinc-800 text-sm text-zinc-200 placeholder:text-zinc-500 hover:bg-zinc-700 focus:bg-zinc-700",
+                    })}
                   />
                 </div>
                 <Button
