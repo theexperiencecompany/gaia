@@ -326,3 +326,9 @@ class TestFindByEmailIgnoringCase:
         assert collection.find.call_args.args[0] == {
             "email": {"$regex": r"^erase\.me\+1@example\.com$", "$options": "i"}
         }
+
+
+def test_a_user_id_was_minted_at_the_time_its_object_id_carries() -> None:
+    assert UserRepository().id_created_at("507f1f77bcf86cd799439011") == datetime(
+        2012, 10, 17, 21, 13, 27, tzinfo=UTC
+    )

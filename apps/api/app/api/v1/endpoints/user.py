@@ -1,6 +1,5 @@
 from datetime import UTC, datetime
 
-from bson import ObjectId
 from fastapi import (
     APIRouter,
     Depends,
@@ -258,7 +257,7 @@ async def get_public_holo_card(card_id: str) -> PublicHoloCardResponse:
     try:
         log.set(operation="get_public_holo_card", card_id=card_id)
 
-        if not ObjectId.is_valid(card_id):
+        if not user_repository.is_valid_id(card_id):
             raise HTTPException(status_code=400, detail="Invalid card ID")
 
         user_doc = await user_repository.get(card_id)
