@@ -54,6 +54,9 @@ BUILD_ID = re.compile(r"/_next/static/(?!chunks/|media/|css/)[^/\s\"]+/")
 BUILD_PATH = re.compile(r"/_next/")
 # React's useId values move whenever the component tree above them does.
 REACT_ID = re.compile(r"react-aria-[\w-]+")
+# A timing is a moment, not a page: two live crawls an hour apart flagged 1,008 and
+# 1,336 pages slow, so it counts only through the Performance score.
+TIMED_RULES = frozenset({"perf/ttfb"})
 # Rules that judge a page against the rest of the crawl (its inbound links, its schema
 # next to its peers'): on the PR gate's 126 pages they flagged 69 pages the every-page
 # crawl of the same build does not, so only a full crawl judges them.
@@ -202,9 +205,9 @@ def _items(raw: str | None) -> list[Item]:
 
 
 def _observe(
-    row: tuple[str, str, str, str | None, str | None], site: str, crawled: frozenset[str]
+    row: tuple[str, str, str, str, str | None, str | None], site: str, crawled: frozenset[str]
 ) -> Iterable[Observed]:
-    page_url, rule, check, raw_items, raw_pages = row
+    page_url, rule, check, message, raw_items, raw_pages = row
     name, items = f"{rule}/{check}", _items(raw_items)
     if page_url:
         page = _path(page_url, site)
@@ -213,7 +216,7 @@ def _observe(
             where = SITE_WIDE if BUILD_PATH.search(named) else page
             yield Observed(Finding(where, name, named), item)
         if not items:
-            yield Observed(Finding(page, name), Item())
+            yield Observed(Finding(page, name), Item(label=message))
         return
     for item in items:
         if item["id"] in crawled:
@@ -223,7 +226,9 @@ def _observe(
     listed = json.loads(raw_pages) if raw_pages else []
     if not items:
         for url in listed or [""]:
-            yield Observed(Finding(_path(url, site) if url else SITE_WIDE, name), Item())
+            yield Observed(
+                Finding(_path(url, site) if url else SITE_WIDE, name), Item(label=message)
+            )
 
 
 def project_db(home: Path) -> Path:
@@ -244,13 +249,14 @@ def read_crawl(db: Path, site: str) -> Crawl:
             u for (u,) in con.execute("SELECT url FROM pages WHERE crawl_id = ?", crawls)
         )
         rows = con.execute(
-            "SELECT page_url, rule_id, check_name, items, pages FROM rule_results"
+            "SELECT page_url, rule_id, check_name, message, items, pages FROM rule_results"
             " WHERE crawl_id = ? AND status IN (?, ?)",
             (*crawls, *FINDING_STATUSES),
         ).fetchall()
     paths = frozenset(_path(u, site) for u in crawled)
     seen = (o for row in rows for o in _observe(row, site, crawled))
-    return Crawl(paths, frozenset(o.finding for o in seen if not _ignored(o, paths)))
+    kept = (o.finding for o in seen if o.finding.rule not in TIMED_RULES and not _ignored(o, paths))
+    return Crawl(paths, frozenset(kept))
 
 
 class _Category(TypedDict):

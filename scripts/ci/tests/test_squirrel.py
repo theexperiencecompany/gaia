@@ -20,11 +20,12 @@ CREATE TABLE crawls (id TEXT PRIMARY KEY);
 CREATE TABLE pages (crawl_id TEXT NOT NULL, url TEXT NOT NULL);
 CREATE TABLE rule_results (
   crawl_id TEXT NOT NULL, page_url TEXT NOT NULL, rule_id TEXT NOT NULL,
-  check_name TEXT NOT NULL, status TEXT NOT NULL, items TEXT, pages TEXT
+  check_name TEXT NOT NULL, status TEXT NOT NULL, message TEXT NOT NULL DEFAULT '',
+  items TEXT, pages TEXT
 );
 """
 
-Row = tuple[str, str, str, str, list[dict[str, str]] | None]
+Row = tuple[str, str, str, str, str, list[dict[str, str]] | None]
 
 
 def _row(
@@ -33,8 +34,9 @@ def _row(
     check: str,
     items: list[dict[str, str]] | None = None,
     status: str = "warn",
+    message: str = "",
 ) -> Row:
-    return (SITE + path if path else "", rule, check, status, items)
+    return (SITE + path if path else "", rule, check, status, message, items)
 
 
 def _crawl(tmp_path: Path, pages: list[str], rows: list[Row], scores: dict[str, int]) -> Path:
@@ -47,10 +49,10 @@ def _crawl(tmp_path: Path, pages: list[str], rows: list[Row], scores: dict[str, 
     con.execute("INSERT INTO crawls VALUES ('c1')")
     con.executemany("INSERT INTO pages VALUES ('c1', ?)", [(SITE + p,) for p in pages])
     con.executemany(
-        "INSERT INTO rule_results VALUES ('c1', ?, ?, ?, ?, ?, NULL)",
+        "INSERT INTO rule_results VALUES ('c1', ?, ?, ?, ?, ?, ?, NULL)",
         [
-            (url, rule, check, status, json.dumps(items) if items else None)
-            for url, rule, check, status, items in rows
+            (url, rule, check, status, message, json.dumps(items) if items else None)
+            for url, rule, check, status, message, items in rows
         ],
     )
     con.commit()
@@ -261,7 +263,7 @@ def test_drop_refuses_a_fix_the_baseline_does_not_list(tmp_path: Path) -> None:
         _row("/ja/compare/asana", "content/word-count", "word-count"),
         _row("/ja/compare/asana", "core/meta-title", "meta-title"),
         _row("/ko/compare/asana", "core/meta-description", "meta-description"),
-        _row("/learn/cron-job", "content/unrendered-markup", "unrendered-markup", [{"id": f"{SITE}/learn/cron-job", "label": "4 unrendered markup occurrence(s) in visible text (markdown-emphasis): example (*/15 in the minute field means every 15 minutes). Common examples: 0 2 *"}]),
+        _row("/learn/cron-job", "content/unrendered-markup", "unrendered-markup", message="4 unrendered markup occurrence(s) in visible text (markdown-emphasis): example (*/15 in the minute field means every 15 minutes). Common examples: 0 2 *"),
         _row("/ko/compare/asana", "content/keyword-stuffing", "keyword-stuffing", [{"id": "asana"}]),
         _row("/a", "content/placeholder-text", "placeholder-content", [{"id": "unrendered-template", "snippet": "[[wiki links]]"}]),
         _row("/a", "content/word-count", "word-count"),
@@ -290,7 +292,7 @@ def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -
         _row("/de/compare/asana", "content/word-count", "word-count"),
         _row("/de/compare/asana", "core/meta-title", "meta-title"),
         _row("/ja/compare/asana", "core/canonical", "canonical"),
-        _row("/b", "content/unrendered-markup", "unrendered-markup", [{"id": f"{SITE}/b", "label": "2 unrendered markup occurrence(s) in visible text (markdown-emphasis): example *bold* text"}]),
+        _row("/b", "content/unrendered-markup", "unrendered-markup", message="2 unrendered markup occurrence(s) in visible text (markdown-emphasis): example *bold* text"),
         _row("/b", "content/placeholder-text", "placeholder-content", [{"id": "unrendered-template", "snippet": "[['L-12345',85,'Hot']]"}]),
         _row("/b", "content/word-count", "word-count"),
     ],
@@ -405,3 +407,15 @@ def test_a_sample_does_not_judge_a_rule_that_needs_the_whole_site(tmp_path: Path
     _ratchet(tmp_path, rows, baseline, "--sample", "--update")
     assert _lines(tmp_path) == ["/b\tlinks/orphan-pages/orphan-pages"]
     assert _ratchet(tmp_path, rows, baseline).returncode == 1
+
+
+def test_a_slow_response_counts_only_through_the_score(tmp_path: Path) -> None:
+    rows = [_row("/a", "perf/ttfb", "ttfb")]
+    assert (
+        _ratchet(tmp_path, rows, "score:Performance=70\n", scores={"Performance": 70}).returncode
+        == 0
+    )
+    assert (
+        _ratchet(tmp_path, rows, "score:Performance=70\n", scores={"Performance": 69}).returncode
+        == 1
+    )
