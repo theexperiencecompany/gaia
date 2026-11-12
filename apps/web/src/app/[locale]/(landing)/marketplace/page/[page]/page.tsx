@@ -42,6 +42,11 @@ function pageDescription(page: number, total: number): string {
   return `Page ${page} of ${total} of the GAIA integration directory: every AI integration and MCP server you can connect, from Gmail and Slack to Notion and GitHub.`;
 }
 
+/** No build-time paths: the page reads the API, so each path renders on its first request into the ISR cache. */
+export function generateStaticParams() {
+  return [];
+}
+
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {

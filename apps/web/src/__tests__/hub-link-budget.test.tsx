@@ -70,6 +70,12 @@ vi.mock(
   }),
 );
 
+/** The hub renders outside a Next request, where connection() would throw; the request it waits for has already arrived. */
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  connection: async (): Promise<void> => undefined,
+}));
+
 /** The filterable grid reads useSearchParams, so the prerendered HTML holds its Suspense fallback: nothing. */
 vi.mock("@/app/[locale]/(landing)/marketplace/client", () => ({
   IntegrationsPageClient: () => null,
@@ -98,7 +104,7 @@ interface Hub {
   readonly children?: () => Promise<string[]>;
   /** How many distinct group pages must link each child. */
   readonly minGroupLinks?: number;
-  /** The group pages' params, for a group route that reads the API and so has no build-time params. */
+  /** The group pages' params, for a group route that reads the API and so prerenders no paths. */
   readonly groupParams?: () => Params[];
 }
 

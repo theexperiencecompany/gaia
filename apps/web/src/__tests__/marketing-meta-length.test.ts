@@ -31,7 +31,7 @@ const FAMILIES = [
 const OVERLAY_DIR: Partial<Record<(typeof FAMILIES)[number], string>> = {
   combos: "integrations",
 };
-/** Routes that read the API, so they have no build-time params, but whose pages are a repo family's slugs. */
+/** Routes that read the API, so they prerender no paths, but whose pages are a repo family's slugs. */
 const FAMILY_ROUTES: Record<
   string,
   { readonly family: (typeof FAMILIES)[number]; readonly param: string }
@@ -151,14 +151,15 @@ interface RenderedPage {
   readonly ogUrl: string | undefined;
 }
 
-/** The params a route renders: its build-time params, else its family's slugs, else the route alone. */
+/** The params a route renders: its family's slugs, else its build-time params, else the route alone. */
 async function paramSetsOf(route: string, page: PageModule): Promise<Params[]> {
-  if (page.generateStaticParams) return page.generateStaticParams();
   const familyRoute = FAMILY_ROUTES[route];
-  if (!familyRoute) return [{}];
-  return readJson<string[]>(
-    path.join(DATA_DIR, familyRoute.family, "_slugs.json"),
-  ).map((slug) => ({ [familyRoute.param]: slug }));
+  if (familyRoute) {
+    return readJson<string[]>(
+      path.join(DATA_DIR, familyRoute.family, "_slugs.json"),
+    ).map((slug) => ({ [familyRoute.param]: slug }));
+  }
+  return (await page.generateStaticParams?.()) ?? [{}];
 }
 
 /** Every indexable page's metadata as generateMetadata renders it, in every locale. */

@@ -26,6 +26,11 @@ interface PageProps {
 
 export const revalidate = 3600; // Revalidate every hour
 
+/** No build-time paths: the page reads the API, so each path renders on its first request into the ISR cache. */
+export function generateStaticParams() {
+  return [];
+}
+
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {

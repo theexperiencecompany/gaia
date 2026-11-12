@@ -37,6 +37,11 @@ interface Props {
   readonly params: Promise<{ readonly slug: string }>;
 }
 
+/** No build-time paths: the page reads the API, so each path renders on its first request into the ISR cache. */
+export function generateStaticParams() {
+  return [];
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const integration = await getPublicIntegration(slug);

@@ -20,7 +20,7 @@ export async function serverFetch(
 ): Promise<Response> {
   if (process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD) {
     throw new Error(
-      `${request.method} ${request.url} ran during the build. A page that reads the API renders at request time: give it no build-time params, or call connection() before the read.`,
+      `${request.method} ${request.url} ran during the build. A page that reads the API renders at request time: return [] from its generateStaticParams, or call connection() before the read.`,
     );
   }
   return fetch(request.clone(), {
