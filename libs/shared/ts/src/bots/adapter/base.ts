@@ -96,6 +96,7 @@ import {
   reactionDeliveredProperties,
 } from "../utils/reaction-outcome";
 import { wideLog, withWideEvent } from "../utils/wide-events";
+import { ArrivalOrder } from "./arrival-order";
 import { BotServer } from "./base-server";
 
 /** An outbound artifact, fetched and within the platform's cap, ready to upload. */
@@ -168,8 +169,12 @@ export abstract class BaseBotAdapter {
 
   private _botServer: BotServer | null = null;
   private _outboundConsumer: OutboundConsumer | null = null;
-  /** One follower per conversation a message was posted into, created at boot. */
-  private followers!: ConversationFollowers;
+  /**
+   * Orders each sender's posts by arrival: adapters whose platform can deliver one
+   * user's messages concurrently run each inbound message through arrivals.run.
+   */
+  protected readonly arrivals = new ArrivalOrder();
+  private _followers: ConversationFollowers | null = null;
 
   /**
    * Shared HTTP server for this bot process, available during all lifecycle methods. Created in
@@ -219,11 +224,6 @@ export abstract class BaseBotAdapter {
           this.platform,
         );
         this.analytics = new Analytics(this.config.posthogProjectToken);
-        this.followers = new ConversationFollowers(
-          (ctx, conversationId, after, signal) =>
-            this.gaia.conversationEvents(ctx, conversationId, after, signal),
-          STREAMING_DEFAULTS[this.platform],
-        );
 
         for (const cmd of commands) {
           this.commands.set(cmd.name, cmd);
@@ -285,7 +285,7 @@ export abstract class BaseBotAdapter {
           await this._outboundConsumer.stop();
           this._outboundConsumer = null;
         }
-        await this.followers.stopAll();
+        await this._followers?.stopAll();
         await this.stop();
         if (this._botServer) {
           await this._botServer.stop();
@@ -541,6 +541,8 @@ export abstract class BaseBotAdapter {
     args: Record<string, string | number | boolean | undefined> = {},
     rawText?: string,
   ): Promise<void> {
+    // A command posts nothing, so the sender's next message need not wait for it.
+    this.arrivals.release();
     const distinctId = await this.resolveDistinctId(target.userId);
     const userHash = hashLogIdentifier(target.userId);
     const channelHash = hashLogIdentifier(target.channelId);
@@ -728,6 +730,7 @@ export abstract class BaseBotAdapter {
         has_files: Boolean(request.fileIds?.length || request.fileData?.length),
       },
       async () => {
+        const startMs = Date.now();
         const analytics = await this.analyticsFor(request.platformUserId);
         analytics.client.capture(analytics.distinctId, "bot:message_received", {
           interaction_type: "chat",
@@ -735,7 +738,9 @@ export abstract class BaseBotAdapter {
         });
         let accepted: Awaited<ReturnType<GaiaClient["postMessage"]>>;
         try {
-          accepted = await this.gaia.postMessage(request);
+          accepted = await this.arrivals.post(() =>
+            this.gaia.postMessage(request),
+          );
         } catch (error) {
           const reason = recordBotFailure("chat_post_refused", error, {
             context: "chat:post",
@@ -749,7 +754,7 @@ export abstract class BaseBotAdapter {
           );
           analytics.client.capture(analytics.distinctId, "bot:error", {
             context: "chat:post",
-            duration_ms: 0,
+            duration_ms: Date.now() - startMs,
           });
           return;
         }
@@ -768,6 +773,16 @@ export abstract class BaseBotAdapter {
         );
       },
     );
+  }
+
+  /** One follower per conversation a message was posted into, reading its events through gaia. */
+  private get followers(): ConversationFollowers {
+    this._followers ??= new ConversationFollowers(
+      (ctx, conversationId, after, signal) =>
+        this.gaia.conversationEvents(ctx, conversationId, after, signal),
+      STREAMING_DEFAULTS[this.platform],
+    );
+    return this._followers;
   }
 
   /** Settles once every conversation followed so far is idle with its replies shown. */

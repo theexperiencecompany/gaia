@@ -174,8 +174,8 @@ export class HarnessAdapter extends BaseBotAdapter {
 
   /**
    * Injects one inbound message as `userId`, recorded the moment it arrives, and
-   * resolves once it is handled: a chat message is posted and followed in the
-   * background, as every real adapter does. {@link conversationsIdle} waits for
+   * resolves once it is handled: a chat message is posted, in arrival order,
+   * and followed in the background, as every real adapter does. {@link conversationsIdle} waits for
    * the replies.
    */
   simulateMessage(
@@ -192,7 +192,9 @@ export class HarnessAdapter extends BaseBotAdapter {
       messageId,
       text,
     });
-    return this.handleInbound(userId, channelId, messageId, text, options);
+    return this.arrivals.run(userId, () =>
+      this.handleInbound(userId, channelId, messageId, text, options),
+    );
   }
 
   /**

@@ -226,37 +226,45 @@ export class ImessageAdapter extends BaseBotAdapter {
 
     if (content.type === "text" || content.type === "markdown") {
       const text = content.type === "text" ? content.text : content.markdown;
-      void this.handleIncomingMessage(handle, space, text, message.id).catch(
-        (err) =>
+      void this.arrivals
+        .run(handle, () =>
+          this.handleIncomingMessage(handle, space, text, message.id),
+        )
+        .catch((err) =>
           this.adapterLogger.error("incoming_message_processing_failed", {
             user_hash: handleHash,
             message_id: message.id,
             ...sanitizeErrorForLog(err),
           }),
-      );
+        );
       return;
     }
 
     if (content.type === "attachment" || content.type === "voice") {
-      void this.handleMediaMessage(handle, space, [content]).catch((err) =>
-        this.adapterLogger.error("media_message_processing_failed", {
-          user_hash: handleHash,
-          message_id: message.id,
-          ...sanitizeErrorForLog(err),
-        }),
-      );
+      void this.arrivals
+        .run(handle, () => this.handleMediaMessage(handle, space, [content]))
+        .catch((err) =>
+          this.adapterLogger.error("media_message_processing_failed", {
+            user_hash: handleHash,
+            message_id: message.id,
+            ...sanitizeErrorForLog(err),
+          }),
+        );
       return;
     }
 
     if (content.type === "group") {
-      void this.handleMultiPartMessage(handle, space, content.items).catch(
-        (err) =>
+      void this.arrivals
+        .run(handle, () =>
+          this.handleMultiPartMessage(handle, space, content.items),
+        )
+        .catch((err) =>
           this.adapterLogger.error("multipart_message_processing_failed", {
             user_hash: handleHash,
             message_id: message.id,
             ...sanitizeErrorForLog(err),
           }),
-      );
+        );
       return;
     }
 

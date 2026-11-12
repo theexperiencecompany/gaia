@@ -52,8 +52,8 @@ export interface ScenarioTurn {
   send?: string;
   /**
    * Messages that arrive at the given gaps without waiting for each other's
-   * replies; the turn ends once every one has been handled. The emulated
-   * platform decides whether they are handled one at a time.
+   * replies; each is posted at once, and the turn ends once the conversation
+   * is idle with every reply shown.
    */
   burst?: BurstMessage[];
   /** Optional channel/conversation id (defaults to the user's platform id). */
@@ -61,8 +61,8 @@ export interface ScenarioTurn {
   /** Assertions on the transcript this turn generated. */
   expect?: ScenarioAssertion[];
   /**
-   * Milliseconds to keep the outbound consumer alive after the reply stream
-   * closes, so this turn's proactive deliveries land in ITS events. Overrides
+   * Milliseconds to keep the outbound consumer alive after the conversation
+   * goes idle, so this turn's proactive deliveries land in ITS events. Overrides
    * the scenario-level {@link Scenario.settleMs}. See that field for why.
    */
   settleMs?: number;
@@ -78,10 +78,11 @@ export interface Scenario {
   /** Ordered conversation turns. */
   turns: ScenarioTurn[];
   /**
-   * Default settle window for every turn, in milliseconds (0 = don't wait). A
-   * handoff reply closes its SSE stream on the preamble while the real answer
-   * publishes to the outbound queue seconds later; without settling, the answer
-   * lands in a later `gaia-sim` boot's unrelated transcript instead of this one.
+   * Default settle window for every turn, in milliseconds (0 = don't wait).
+   * Replies and work results arrive on the conversation's events stream and are
+   * waited for already; settling keeps the outbound consumer alive for what still
+   * comes through the queue (workflow and todo deliveries, approval prompts),
+   * which would otherwise land in a later `gaia-sim` boot's transcript.
    */
   settleMs?: number;
 }

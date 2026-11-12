@@ -180,11 +180,13 @@ export class DiscordAdapter extends BaseBotAdapter {
       const isDM = !message.guild;
       if (!isDM && !message.mentions.has(this.client.user)) return;
 
-      if (isDM) {
-        await this.handleDMMessage(message);
-      } else {
-        await this.handleMentionMessage(message, this.client.user.id);
-      }
+      const botId = this.client.user.id;
+      // discord.js runs handlers concurrently: a user's posts still go in arrival order.
+      await this.arrivals.run(message.author.id, () =>
+        isDM
+          ? this.handleDMMessage(message)
+          : this.handleMentionMessage(message, botId),
+      );
     });
   }
 

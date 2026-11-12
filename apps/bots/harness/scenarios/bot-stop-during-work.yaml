@@ -3,9 +3,8 @@
 # so its result is never delivered, and the next message continues the same
 # conversation instead of starting a fresh one the way /new does.
 #
-# Fails on Telegram and WhatsApp today: they take one message at a time and the
-# work message's turn stays open until the executor finishes, so /stop is only
-# handled after the work it was sent to stop. Passes with `emulate: slack`.
+# Every bot posts a message and returns at once, so /stop is handled the moment
+# it arrives on every platform, Telegram included.
 #
 #   mise dev --sim
 #   nx run bot-harness:sim -- run apps/bots/harness/scenarios/bot-stop-during-work.yaml

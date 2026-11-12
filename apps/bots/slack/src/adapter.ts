@@ -147,7 +147,7 @@ export class SlackAdapter extends BaseBotAdapter {
    *
    * Each command's handler:
    * 1. Calls `ack()` immediately (Slack's 3-second requirement)
-   * 2. Special-cases `/gaia` to use streaming via `handleStreamingChat`
+   * 2. Special-cases `/gaia` to post and follow the conversation
    * 3. All others create a {@link RichMessageTarget} and dispatch to the unified command
    */
   protected async registerCommands(commands: BotCommand[]): Promise<void> {
@@ -387,14 +387,12 @@ export class SlackAdapter extends BaseBotAdapter {
   }
 
   // ---------------------------------------------------------------------------
-  // Gaia streaming
+  // Gaia chat
   // ---------------------------------------------------------------------------
 
   /**
-   * Registers the `/gaia` slash command with Slack-specific streaming.
-   *
-   * Posts a public "Thinking..." message and updates it in place as
-   * the streamed response arrives.
+   * Registers the `/gaia` slash command: the message is posted and its reply
+   * follows in the channel.
    */
   private registerGaiaCommand(): void {
     this.app.command("/gaia", async ({ command, ack, client }) => {
@@ -435,17 +433,20 @@ export class SlackAdapter extends BaseBotAdapter {
     isDm: boolean,
     inboundTs?: string,
   ): Promise<void> {
-    await this.postAndFollow(
-      {
-        message,
-        platform: "slack",
-        platformUserId: userId,
-        channelId,
-        isDm,
-        platformMessageId: inboundTs,
-      },
-      this.conversationSurface(channelId),
-      (authUrl) => this.sendAuthLink(client, channelId, userId, authUrl),
+    // Bolt runs handlers concurrently: a user's posts still go in arrival order.
+    await this.arrivals.run(userId, () =>
+      this.postAndFollow(
+        {
+          message,
+          platform: "slack",
+          platformUserId: userId,
+          channelId,
+          isDm,
+          platformMessageId: inboundTs,
+        },
+        this.conversationSurface(channelId),
+        (authUrl) => this.sendAuthLink(client, channelId, userId, authUrl),
+      ),
     );
   }
 

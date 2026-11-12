@@ -22,6 +22,11 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  entryFrame,
+  stateFrame,
+  stopRequested,
+} from "../../../../libs/shared/ts/src/conversation/testing";
 
 vi.mock("@kapso/whatsapp-cloud-api", async (importOriginal) => ({
   // The real field builders: the fields string sent to Kapso is part of the contract.
@@ -65,7 +70,8 @@ function sign(body: string): string {
 interface Harnessed {
   app: Hono;
   gaia: {
-    chatStream: ReturnType<typeof vi.fn>;
+    postMessage: ReturnType<typeof vi.fn>;
+    conversationEvents: ReturnType<typeof vi.fn>;
     checkAuthStatus: ReturnType<typeof vi.fn>;
     createLinkToken: ReturnType<typeof vi.fn>;
     reportDeliveryFailure: ReturnType<typeof vi.fn>;
@@ -85,16 +91,17 @@ interface Harnessed {
 async function buildHarness(): Promise<Harnessed> {
   const adapter = new WhatsAppAdapter();
   const gaia = {
-    chatStream: vi.fn(
-      async (
-        _req: unknown,
-        _onChunk: unknown,
-        onDone: (full: string, conv: string) => Promise<void>,
-      ) => {
-        await onDone("ok", "conv-1");
-        return "conv-1";
-      },
-    ),
+    postMessage: vi.fn(async () => ({
+      conversation_id: "conv-1",
+      message_id: "m1",
+      seq: 1,
+      session_token: "session",
+    })),
+    // The conversation is already idle with the message answered, so the follow ends at once.
+    conversationEvents: vi.fn(async function* () {
+      yield { stream_id: null, frame: entryFrame(1, stopRequested("s1")) };
+      yield { stream_id: null, frame: stateFrame(1, "idle") };
+    }),
     // Authenticated → the welcome path is skipped and the user is cached.
     checkAuthStatus: vi.fn(async () => ({
       authenticated: true,
@@ -166,9 +173,9 @@ describe("WhatsApp webhook replay (real Hono webhook, in-process)", () => {
     const res = await post(h.app, body, { "x-webhook-signature": sign(body) });
 
     expect(res.status).toBe(200);
-    await vi.waitFor(() => expect(h.gaia.chatStream).toHaveBeenCalled());
+    await vi.waitFor(() => expect(h.gaia.postMessage).toHaveBeenCalled());
 
-    const request = h.gaia.chatStream.mock.calls[0][0] as {
+    const request = h.gaia.postMessage.mock.calls[0][0] as {
       message: string;
       platform: string;
       platformUserId: string;
@@ -187,7 +194,7 @@ describe("WhatsApp webhook replay (real Hono webhook, in-process)", () => {
 
     expect(res.status).toBe(401);
     await new Promise((r) => setTimeout(r, 20));
-    expect(h.gaia.chatStream).not.toHaveBeenCalled();
+    expect(h.gaia.postMessage).not.toHaveBeenCalled();
   });
 
   it("dispatches every event in a batched delivery", async () => {
@@ -215,7 +222,7 @@ describe("WhatsApp webhook replay (real Hono webhook, in-process)", () => {
     });
 
     expect(res.status).toBe(200);
-    await vi.waitFor(() => expect(h.gaia.chatStream).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(h.gaia.postMessage).toHaveBeenCalledTimes(2));
   });
 
   it("routes an image message through the shared media pipeline", async () => {
@@ -295,7 +302,7 @@ describe("WhatsApp webhook replay (real Hono webhook, in-process)", () => {
         occurred_at: expect.any(String),
       }),
     );
-    expect(h.gaia.chatStream).not.toHaveBeenCalled();
+    expect(h.gaia.postMessage).not.toHaveBeenCalled();
   });
 
   it("still reports a failed delivery when the Kapso lookup fails, without the code", async () => {

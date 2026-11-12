@@ -414,16 +414,18 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     });
     const msgId = event.message.id;
 
-    // The webhook returns 200 at once; a chat message is posted and followed, so
-    // nothing the user sends next waits on this one.
+    // The webhook returns 200 at once. A user's messages are posted in the order
+    // they arrived, and none waits for another's reply.
     if (text) {
-      void this.handleIncomingMessage(waId, text, msgId).catch((err) =>
-        this.adapterLogger.error("incoming_message_processing_failed", {
-          user_hash: waIdHash,
-          message_id: msgId,
-          ...sanitizeErrorForLog(err),
-        }),
-      );
+      void this.arrivals
+        .run(waId, () => this.handleIncomingMessage(waId, text, msgId))
+        .catch((err) =>
+          this.adapterLogger.error("incoming_message_processing_failed", {
+            user_hash: waIdHash,
+            message_id: msgId,
+            ...sanitizeErrorForLog(err),
+          }),
+        );
       return;
     }
     if (event.message.type === "text") return;
@@ -446,14 +448,16 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       return;
     }
 
-    void this.handleMediaMessage(waId, media, msgId).catch((err) =>
-      this.adapterLogger.error("media_message_processing_failed", {
-        user_hash: waIdHash,
-        message_id: msgId,
-        media_kind: media.kind,
-        ...sanitizeErrorForLog(err),
-      }),
-    );
+    void this.arrivals
+      .run(waId, () => this.handleMediaMessage(waId, media, msgId))
+      .catch((err) =>
+        this.adapterLogger.error("media_message_processing_failed", {
+          user_hash: waIdHash,
+          message_id: msgId,
+          media_kind: media.kind,
+          ...sanitizeErrorForLog(err),
+        }),
+      );
   }
 
   /**

@@ -1,8 +1,9 @@
 /**
- * The state machine that turns one streamed bot turn into platform messages.
+ * The state machine that turns one bot reply into platform messages.
  *
- * Pure: each stream event in, the next state and the ordered sends, edits,
- * deletes and pauses out. streaming.ts runs the operations against the adapter.
+ * Pure: each event in, the next state and the ordered sends, edits, deletes and
+ * pauses out. The conversation follower's ReplyDelivery runs the operations
+ * against the platform.
  *
  * Live platforms (Telegram, Slack) show each bubble as its own message from its
  * first word: the preview only ever holds the bubble being written, a break
@@ -27,8 +28,8 @@ import type {
 } from "./bubble-delivery.types";
 import { chunkResponse, PLATFORM_LIMITS, splitOverflow } from "./text";
 
-/** The adapter's own "Thinking..." message, there before the turn starts. */
-export const PLACEHOLDER_SLOT: MessageSlot = 0;
+/** The reply's first message: not on screen yet, so its first text opens it. */
+const FIRST_SLOT: MessageSlot = 0;
 
 /**
  * Past this share of the platform limit a live preview holds still, so that when
@@ -45,10 +46,8 @@ export function initialDeliveryState(): DeliveryState {
     pending: "",
     sealedBubbles: 0,
     carry: FRESH_CARRY,
-    reusable: { slot: PLACEHOLDER_SLOT, retracted: false },
-    nextSlot: PLACEHOLDER_SLOT + 1,
-    pinned: null,
-    spoke: false,
+    reusable: { slot: FIRST_SLOT },
+    nextSlot: FIRST_SLOT + 1,
   };
 }
 
@@ -68,8 +67,6 @@ function toDraft(state: DeliveryState): Draft {
     carry: state.carry,
     reusable: state.reusable,
     nextSlot: state.nextSlot,
-    pinned: state.pinned,
-    spoke: state.spoke,
     earlier: state.phase === "idle" ? [] : [...state.earlier],
     live: state.phase === "streaming" ? state.live : null,
     ops: [],
@@ -84,8 +81,6 @@ function fromDraft(draft: Draft): DeliveryState {
     carry: draft.carry,
     reusable: draft.reusable,
     nextSlot: draft.nextSlot,
-    pinned: draft.pinned,
-    spoke: draft.spoke,
   };
   if (draft.live) {
     return {
@@ -107,7 +102,6 @@ function openMessage(
   newBubble: boolean,
 ): MessageSlot {
   if (newBubble && draft.bubbleSent) draft.ops.push({ kind: "pause" });
-  draft.spoke = true;
   if (draft.reusable) {
     const { slot } = draft.reusable;
     draft.reusable = null;
@@ -237,20 +231,10 @@ function retractMessage(draft: Draft): void {
   const shown = [...draft.earlier, ...(draft.live ? [draft.live.slot] : [])];
   const [first, ...rest] = shown;
   if (first !== undefined) {
-    const belowPinned = draft.pinned !== null && first < draft.pinned;
-    for (const slot of belowPinned ? shown : rest) {
-      draft.ops.push({ kind: "delete", slot });
-    }
-    if (!belowPinned) draft.reusable = { slot: first, retracted: true };
+    for (const slot of rest) draft.ops.push({ kind: "delete", slot });
+    draft.reusable = { slot: first };
   }
   closeMessage(draft);
-}
-
-/** Finalizes what is written of the open bubble, so a message sent now lands below it. */
-function freezeOpenBubble(draft: Draft, config: DeliveryConfig): void {
-  const { open } = splitStreamingBubbles(draft.pending);
-  sealBubble(draft, untaken(draft, open), config);
-  draft.carry = { carried: "", from: open.length };
 }
 
 /** Applies one stream event: the next state, and the platform operations to run, in order. */
@@ -271,10 +255,6 @@ export function stepDelivery(
     case "boundary":
       if (event.discarded) retractMessage(draft);
       else keepMessage(draft, config);
-      break;
-    case "outOfBand":
-      if (config.live) freezeOpenBubble(draft, config);
-      draft.pinned = openMessage(draft, event.text, true);
       break;
     case "end":
       keepMessage(draft, config);

@@ -8,12 +8,9 @@
  */
 import type { Readable } from "node:stream";
 import type { AxiosInstance } from "axios";
-import type { z } from "zod";
-import type { ConversationEventSchema } from "../../conversation/frames";
 import { parseConversationEvent } from "../../conversation/frames";
+import type { ConversationStreamEvent } from "../../conversation/types";
 import { wideLog } from "../utils/wide-events";
-
-export type ConversationEvent = z.infer<typeof ConversationEventSchema>;
 
 /** The server sends a keepalive every 15 s; three missed means the connection is dead. */
 export const EVENTS_INACTIVITY_MS = 45_000;
@@ -39,7 +36,7 @@ export async function* readConversationEvents(
   conversationId: string,
   after: string,
   signal: AbortSignal,
-): AsyncGenerator<ConversationEvent> {
+): AsyncGenerator<ConversationStreamEvent> {
   const response = await client.get(
     `/api/v1/conversations/${encodeURIComponent(conversationId)}/events`,
     {

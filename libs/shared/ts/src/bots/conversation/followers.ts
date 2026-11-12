@@ -8,7 +8,7 @@
  * that refuses the stream (4xx) ends the follow; anything else is retried.
  */
 
-import type { ConversationEvent } from "../api/conversation-events";
+import type { ConversationStreamEvent } from "../../conversation/types";
 import type { BotUserContext } from "../types";
 import { recordBotFailure } from "../utils/failure-reasons";
 import { getHttpStatus, sanitizeErrorForLog } from "../utils/logger";
@@ -23,7 +23,7 @@ export type ConversationEventSource = (
   conversationId: string,
   after: string,
   signal: AbortSignal,
-) => AsyncIterable<ConversationEvent>;
+) => AsyncIterable<ConversationStreamEvent>;
 
 /** Reconnect backoff: doubles from the base, capped. */
 const RECONNECT_BASE_MS = 500;

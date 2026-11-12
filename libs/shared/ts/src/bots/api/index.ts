@@ -4,6 +4,7 @@ import type {
   ConversationStopResponse,
   DeliveryFailureReport,
 } from "../../api/generated";
+import type { ConversationStreamEvent } from "../../conversation/types";
 import type {
   AuthStatus,
   BotConversation,
@@ -24,10 +25,7 @@ import type {
 import { getErrorReason, getHttpStatus } from "../utils/logger";
 import { isOwnApiUrl } from "../utils/own-api";
 import { wideLog } from "../utils/wide-events";
-import {
-  type ConversationEvent,
-  readConversationEvents,
-} from "./conversation-events";
+import { readConversationEvents } from "./conversation-events";
 import {
   downloadApiBinaryRequest,
   downloadArtifactRequest,
@@ -228,7 +226,7 @@ export class GaiaClient {
     conversationId: string,
     after: string,
     signal: AbortSignal,
-  ): AsyncGenerator<ConversationEvent> {
+  ): AsyncGenerator<ConversationStreamEvent> {
     return readConversationEvents(
       this.client,
       this.userHeaders(ctx),

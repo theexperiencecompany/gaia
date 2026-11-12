@@ -23,7 +23,6 @@ const TICK: DeliveryEvent = { kind: "tick" };
 const KEPT: DeliveryEvent = { kind: "boundary", discarded: false };
 const DISCARDED: DeliveryEvent = { kind: "boundary", discarded: true };
 const END: DeliveryEvent = { kind: "end" };
-const oob = (t: string): DeliveryEvent => ({ kind: "outOfBand", text: t });
 
 const edit = (slot: number, t: string): DeliveryOp => ({
   kind: "edit",
@@ -161,29 +160,6 @@ const CASES: Case[] = [
     live: [],
     rest: [],
   },
-  {
-    name: "an approval prompt lands below what was said, and the reply below it",
-    events: [
-      text("Let me"),
-      TICK,
-      oob("Approve?"),
-      text(" check"),
-      TICK,
-      DISCARDED,
-      text("Done."),
-      TICK,
-      KEPT,
-    ],
-    live: [
-      edit(0, "Let me"),
-      send(1, "Approve?"),
-      send(2, "check"),
-      del(0),
-      del(2),
-      send(3, "Done."),
-    ],
-    rest: [edit(0, "Approve?"), send(1, "Done.")],
-  },
 ];
 
 describe("stepDelivery", () => {
@@ -197,20 +173,6 @@ describe("stepDelivery", () => {
       expect(run("whatsapp", false, events).ops).toEqual(rest);
     },
   );
-
-  it("leaves an untouched placeholder for the adapter to clear when nothing was said", () => {
-    const { state } = run("telegram", true, [
-      text(`Sure.${BREAK}`),
-      TICK,
-      DISCARDED,
-      END,
-    ]);
-    expect(state.spoke).toBe(true);
-    expect(run("telegram", true, [END]).state.reusable).toEqual({
-      slot: 0,
-      retracted: false,
-    });
-  });
 });
 
 /** Replays the ops into the messages they leave, failing on any shown text taken back. */

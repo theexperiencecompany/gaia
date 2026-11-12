@@ -1,0 +1,362 @@
+/**
+ * The conversation follower: frames from a conversation's events stream in,
+ * platform calls out, for each platform family (editing: Telegram and Slack
+ * stream into edited messages; non-editing: WhatsApp, iMessage and Discord send
+ * each reply once it is final).
+ *
+ * Everything runs for real (the shared reducer, the delivery state machine, the
+ * follower registry); only the platform is a recorder and the events stream a
+ * scripted source.
+ */
+import {
+  type ConversationEventSource,
+  ConversationFollower,
+  ConversationFollowers,
+  type ConversationSurface,
+  REACTION_OUTCOME,
+  type StreamingOptions,
+} from "@gaia/shared/bots";
+import { describe, expect, it } from "vitest";
+import {
+  entryFrame,
+  entryUpdatedFrame,
+  liveTask,
+  replyDelta,
+  reply as replyEntry,
+  replySettled,
+  stateFrame,
+  stopRequested,
+  userMessage,
+  workFinished,
+  workStarted,
+} from "../../../../../libs/shared/ts/src/conversation/testing";
+import type {
+  ConversationFrame,
+  Reaction,
+} from "../../../../../libs/shared/ts/src/conversation/types";
+
+/** One platform call the follower made. */
+type Call =
+  | { op: "send"; id: string; text: string; replyTo: string | null }
+  | { op: "edit"; id: string; text: string }
+  | { op: "delete"; id: string }
+  | { op: "react"; target: string; emoji: string; replaces: string | null }
+  | { op: "typing"; state: "start" | "stop" };
+
+/** A platform that records every call, editable and deletable like Telegram. */
+function recorder(): { surface: ConversationSurface; calls: Call[] } {
+  const calls: Call[] = [];
+  let next = 1;
+  const surface: ConversationSurface = {
+    send: async (text, replyTo) => {
+      const id = `m${next++}`;
+      calls.push({ op: "send", id, text, replyTo });
+      return {
+        edit: async (updated) => {
+          calls.push({ op: "edit", id, text: updated });
+        },
+        delete: async () => {
+          calls.push({ op: "delete", id });
+        },
+      };
+    },
+    react: async (target, emoji, replaces) => {
+      calls.push({ op: "react", target, emoji, replaces });
+      return REACTION_OUTCOME.ATTACHED;
+    },
+    startTyping: () => {
+      calls.push({ op: "typing", state: "start" });
+      return () => calls.push({ op: "typing", state: "stop" });
+    },
+  };
+  return { surface, calls };
+}
+
+// A zero edit interval previews every chunk at once, so a run is deterministic.
+const EDITING: StreamingOptions = {
+  editIntervalMs: 0,
+  streaming: true,
+  platform: "telegram",
+};
+const NON_EDITING: StreamingOptions = {
+  editIntervalMs: 0,
+  streaming: false,
+  platform: "whatsapp",
+};
+
+/** A user's platform message as the log holds it. */
+const inbound = (
+  id: string,
+  platformId: string,
+  reaction: Reaction | null = null,
+  revision = 0,
+) => ({
+  ...userMessage(id, `text of ${id}`, reaction, revision),
+  surface: "telegram" as const,
+  platform_message_id: platformId,
+});
+
+const sent = (calls: Call[]) =>
+  calls.flatMap((call) =>
+    call.op === "send" ? [{ text: call.text, replyTo: call.replyTo }] : [],
+  );
+
+/** What is on screen at the end: each message's last text, deleted ones gone. */
+function screen(calls: Call[]): string[] {
+  const shown = new Map<string, string>();
+  for (const call of calls) {
+    if (call.op === "send" || call.op === "edit") shown.set(call.id, call.text);
+    if (call.op === "delete") shown.delete(call.id);
+  }
+  return [...shown.values()];
+}
+
+async function feed(
+  follower: ConversationFollower,
+  frames: ConversationFrame[],
+): Promise<void> {
+  for (const frame of frames) await follower.apply(frame);
+}
+
+/** A whole reply: its entry opened, its text streamed, its fill and its settle. */
+function answer(
+  seq: number,
+  replyId: string,
+  text: string,
+  answers: string[],
+  through: number,
+  quote: string | null = null,
+): ConversationFrame[] {
+  const attempt = `a-${replyId}`;
+  return [
+    entryFrame(seq, replyEntry(replyId, attempt)),
+    replyDelta(attempt, replyId, 0, text.slice(0, 4)),
+    replyDelta(attempt, replyId, 1, text.slice(4)),
+    entryUpdatedFrame(seq, replyEntry(replyId, attempt, text, 1)),
+    entryFrame(seq + 1, replySettled(replyId, answers, through, quote)),
+  ];
+}
+
+describe.each([
+  ["editing", EDITING],
+  ["non-editing", NON_EDITING],
+])("the follower on a %s platform", (_family, options) => {
+  it("answers a burst of three messages with one reply and holds none of them", async () => {
+    const { surface, calls } = recorder();
+    const opened: string[] = [];
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const source: ConversationEventSource = async function* (_ctx, _id, after) {
+      opened.push(after);
+      await held;
+      const frames = [
+        entryFrame(1, inbound("u1", "11")),
+        entryFrame(2, inbound("u2", "12")),
+        entryFrame(3, inbound("u3", "13")),
+        stateFrame(3, "thinking"),
+        ...answer(4, "r1", "All three, done.", ["u1", "u2", "u3"], 3),
+        stateFrame(5, "idle"),
+      ];
+      for (const frame of frames) yield { stream_id: null, frame };
+    };
+    const followers = new ConversationFollowers(source, options);
+    const ctx = { platform: options.platform, platformUserId: "7" };
+
+    // Each post returns at once; the three join one follow.
+    followers.follow(ctx, "c1", 1, surface);
+    followers.follow(ctx, "c1", 2, surface);
+    followers.follow(ctx, "c1", 3, surface);
+    release();
+    await followers.idle();
+
+    expect(opened).toEqual(["0"]);
+    expect(screen(calls)).toEqual(["All three, done."]);
+    expect(sent(calls)).toHaveLength(1);
+  });
+
+  it("answers a message sent during work while the work keeps running", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(0, options, surface);
+    follower.expect(1);
+    await feed(follower, [
+      entryFrame(1, inbound("u1", "11")),
+      ...answer(2, "r1", "On it now.", ["u1"], 1),
+      entryFrame(4, workStarted("t1", 1)),
+      stateFrame(4, "working", [liveTask("t1")]),
+    ]);
+    follower.expect(5);
+    await feed(follower, [
+      entryFrame(5, inbound("u2", "12")),
+      stateFrame(5, "thinking", [liveTask("t1")]),
+      ...answer(6, "r2", "It is Tuesday.", ["u2"], 5),
+      stateFrame(7, "working", [liveTask("t1")]),
+    ]);
+
+    expect(screen(calls)).toEqual(["On it now.", "It is Tuesday."]);
+    // The work is still running, so the follow stays to deliver its result.
+    expect(follower.finished).toBe(false);
+  });
+
+  it("puts the reaction on the user's message before the reply, and replaces it later", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(0, options, surface);
+    follower.expect(1);
+    await feed(follower, [
+      entryFrame(1, inbound("u1", "11")),
+      entryUpdatedFrame(1, inbound("u1", "11", { emoji: "👍", by: "jev" }, 1)),
+      ...answer(2, "r1", "Booked it.", ["u1"], 1),
+      entryUpdatedFrame(
+        1,
+        inbound("u1", "11", { emoji: "🎉", by: "chat_model" }, 2),
+      ),
+      // A replay of the older revision changes nothing.
+      entryUpdatedFrame(1, inbound("u1", "11", { emoji: "👍", by: "jev" }, 1)),
+    ]);
+
+    const reactions = calls.filter((call) => call.op === "react");
+    expect(reactions).toEqual([
+      { op: "react", target: "11", emoji: "👍", replaces: null },
+      { op: "react", target: "11", emoji: "🎉", replaces: "👍" },
+    ]);
+    const firstReaction = calls.findIndex((call) => call.op === "react");
+    const firstSend = calls.findIndex((call) => call.op === "send");
+    expect(firstReaction).toBeLessThan(firstSend);
+  });
+
+  it("stops typing and sends nothing more when stopped mid-work", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(0, options, surface);
+    follower.expect(1);
+    await feed(follower, [
+      entryFrame(1, inbound("u1", "11")),
+      stateFrame(1, "thinking"),
+      ...answer(2, "r1", "Working on it.", ["u1"], 1),
+      entryFrame(4, workStarted("t1", 1)),
+      stateFrame(4, "working", [liveTask("t1")]),
+      entryFrame(5, stopRequested("s1", 4)),
+      entryFrame(6, workFinished("t1", "cancelled")),
+      stateFrame(6, "idle"),
+    ]);
+
+    expect(screen(calls)).toEqual(["Working on it."]);
+    expect(calls.filter((call) => call.op === "typing")).toEqual([
+      { op: "typing", state: "start" },
+      { op: "typing", state: "stop" },
+    ]);
+    expect(follower.finished).toBe(true);
+  });
+
+  it("resumes after a dropped connection without sending anything twice", async () => {
+    const { surface, calls } = recorder();
+    const cursors: string[] = [];
+    const first = [
+      entryFrame(1, inbound("u1", "11")),
+      stateFrame(1, "thinking"),
+      ...answer(2, "r1", "First answer.", ["u1"], 1),
+    ];
+    const source: ConversationEventSource = async function* (_ctx, _id, after) {
+      cursors.push(after);
+      if (cursors.length === 1) {
+        for (const [index, frame] of first.entries()) {
+          yield { stream_id: `1-${index}`, frame };
+        }
+        throw new Error("socket hang up");
+      }
+      // The server resumes after the cursor; a replayed frame must render nothing.
+      for (const frame of first.slice(-4)) yield { stream_id: "1-9", frame };
+      yield { stream_id: "2-0", frame: stateFrame(4, "idle") };
+    };
+    const followers = new ConversationFollowers(source, options);
+    followers.follow(
+      { platform: options.platform, platformUserId: "7" },
+      "c1",
+      1,
+      surface,
+    );
+    await followers.idle();
+
+    expect(cursors).toEqual(["0", `1-${first.length - 1}`]);
+    expect(sent(calls)).toHaveLength(1);
+    expect(screen(calls)).toEqual(["First answer."]);
+  });
+});
+
+describe("a late result's native quote", () => {
+  const lateResult = (streamed: boolean): ConversationFrame[] => {
+    const text = "Your flight is booked.";
+    return [
+      entryFrame(1, inbound("u1", "11")),
+      ...answer(2, "r1", "On it.", ["u1"], 1),
+      entryFrame(4, workStarted("t1", 1)),
+      entryFrame(5, inbound("u2", "12")),
+      ...answer(6, "r2", "Sure, noted.", ["u2"], 5),
+      entryFrame(8, workFinished("t1")),
+      entryFrame(9, replyEntry("t1", "a-t1")),
+      ...(streamed ? [replyDelta("a-t1", "t1", 0, text)] : []),
+      entryUpdatedFrame(9, replyEntry("t1", "a-t1", text, 1)),
+      entryFrame(10, replySettled("t1", ["u1"], 8, "u1")),
+      stateFrame(10, "idle"),
+    ];
+  };
+
+  it("answers the original request natively on a platform that sends replies once final", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(0, NON_EDITING, surface);
+    follower.expect(1);
+    follower.expect(5);
+    await feed(follower, lateResult(true));
+
+    expect(sent(calls)).toEqual([
+      { text: "On it.", replyTo: null },
+      { text: "Sure, noted.", replyTo: null },
+      { text: "Your flight is booked.", replyTo: "11" },
+    ]);
+    expect(follower.finished).toBe(true);
+  });
+
+  it("answers it natively on an editing platform when the result arrives whole", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(0, EDITING, surface);
+    follower.expect(1);
+    follower.expect(5);
+    await feed(follower, lateResult(false));
+
+    expect(sent(calls).at(-1)).toEqual({
+      text: "Your flight is booked.",
+      replyTo: "11",
+    });
+    expect(follower.summary.quotesMissed).toBe(0);
+  });
+
+  it("cannot quote retroactively once an editing platform streamed the result", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(0, EDITING, surface);
+    follower.expect(1);
+    follower.expect(5);
+    await feed(follower, lateResult(true));
+
+    expect(screen(calls).at(-1)).toBe("Your flight is booked.");
+    expect(sent(calls).at(-1)?.replyTo).toBeNull();
+    expect(follower.summary.quotesMissed).toBe(1);
+  });
+});
+
+describe("history the follow started after", () => {
+  it("renders nothing for a reply settled before the posted message", async () => {
+    const { surface, calls } = recorder();
+    // The stream also replays frames from before the floor (seq 3 here).
+    const follower = new ConversationFollower(3, EDITING, surface);
+    follower.expect(4);
+    await feed(follower, [
+      ...answer(2, "old", "An old answer.", ["u0"], 1),
+      entryFrame(4, inbound("u1", "11")),
+      ...answer(5, "r1", "A new answer.", ["u1"], 4),
+      stateFrame(6, "idle"),
+    ]);
+
+    expect(screen(calls)).toEqual(["A new answer."]);
+    expect(follower.finished).toBe(true);
+  });
+});

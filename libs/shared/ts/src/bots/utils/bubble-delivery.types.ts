@@ -14,7 +14,6 @@ export type DeliveryEvent =
   | { kind: "text"; chunk: string }
   | { kind: "tick" }
   | { kind: "boundary"; discarded: boolean }
-  | { kind: "outOfBand"; text: string }
   | { kind: "end" };
 
 export interface DeliveryConfig {
@@ -24,10 +23,9 @@ export interface DeliveryConfig {
   render: (text: string) => string;
 }
 
-/** A message whose text the next output may overwrite: the placeholder, or retracted text. */
+/** A message whose text the next output may overwrite: the unopened first one, or retracted text. */
 export interface Reusable {
   slot: MessageSlot;
-  retracted: boolean;
 }
 
 /** The bubble being written, as `carried + open.slice(from)`: earlier messages took the rest. */
@@ -44,10 +42,6 @@ export interface TurnFields {
   carry: Carry;
   reusable: Reusable | null;
   nextSlot: MessageSlot;
-  /** The latest out-of-band message: a reply never lands above it by reusing an older one. */
-  pinned: MessageSlot | null;
-  /** The user has been shown something of the reply. */
-  spoke: boolean;
 }
 
 /** The in-flight message's bubbles on screen: `earlier` are final, `live` is still growing. */

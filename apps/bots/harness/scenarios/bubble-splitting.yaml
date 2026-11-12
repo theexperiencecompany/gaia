@@ -28,17 +28,11 @@ turns:
   - send: '[[pace:60]] [[narrate:Sure thing, give me a moment.<NEW_MESSAGE_BREAK>Let me look into your calendar for that one.]] [[tool:create_todo {"title": "bubble-r5"}]] [[say:All set, I added it to your todo list for today.]]'
     expect:
       - bubbles: ["All set, I added it to your todo list for today."]
-  # R10: a background result of three bubbles, delivered after the turn. The stub's
-  # front door says the same text in the turn, so it is there twice: streamed, then
-  # through the outbound consumer, split the same way both times.
+  # R10: a reply of three bubbles after a slow tool. It arrives once, through the
+  # conversation's events stream, split the same way on every platform.
   - send: '[[tool:create_todo {"title": "bubble-r10"}]] [[wait:3000]] [[say:First result bubble, the todo was created as you asked.<NEW_MESSAGE_BREAK>Second result bubble, it is due today at five in the evening.<NEW_MESSAGE_BREAK>Third result bubble, tell me if you want a reminder too.]]'
     expect:
-      - eventTypes: [outbound-delivery]
-      - bubbles: ["First result bubble", "Second result bubble", "Third result bubble"]
       - delivered:
-          - "First result bubble"
-          - "Second result bubble"
-          - "Third result bubble"
           - "First result bubble"
           - "Second result bubble"
           - "Third result bubble"
