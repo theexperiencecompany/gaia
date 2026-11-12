@@ -106,6 +106,7 @@
 .t-broadsheet .key .ht { background-image: radial-gradient(circle, var(--ink) 30%, transparent 32%); background-size: 3.5px 3.5px; }
 .t-broadsheet .key .ln { display: inline-block; width: 16px; border-top: 2px solid var(--ink); margin-right: 6px; }
 .t-broadsheet .key .ln.dash { border-top: 1.5px dashed var(--ink); }
+.t-broadsheet .key .ln.dot { border-top: 1.5px dotted var(--ink); }
 .t-broadsheet .src { font-size: 14px; color: var(--soft); text-align: right; margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--hair); }
 .t-broadsheet .pull { margin: 0 12px; padding: 18px 0 0; font-family: var(--display); font-style: italic; font-variant-ligatures: common-ligatures no-discretionary-ligatures no-historical-ligatures; font-size: 22px; line-height: 1.25; text-align: center; text-wrap: balance; }
 .t-broadsheet .pull cite { display: flex; justify-content: center; align-items: center; gap: 6px; font-size: 14px; font-style: italic; color: var(--soft); margin-top: 10px; }
@@ -143,7 +144,7 @@
       const key = (c) => {
         if (c.series.length < 2) return "";
         const sw = c.chart === "line"
-          ? (k) => `<i class="ln${k ? " dash" : ""}"></i>`
+          ? (k) => `<i class="ln${B.lineKeyClass(k, 2)}"></i>`
           : (k) => (k === 1 ? `<i class="sw ht"></i>` : `<i class="sw" style="background:var(--${k ? "soft" : "ink"})"></i>`);
         return B.legend(c, sw).map((x) => `<span>${x}</span>`).join("");
       };

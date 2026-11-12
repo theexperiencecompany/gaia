@@ -98,6 +98,26 @@ EXPLORER.blocks = (() => {
     return out;
   }
 
+  // A series past the family's own line styles repeats them dotted, so no two lines look alike.
+  const REPEAT_DASH = "1.5 3.5";
+  const lineStyle = (lines, k) => (k < lines.length ? lines[k] : { ...lines[k % lines.length], dash: REPEAT_DASH });
+  /* The legend swatch classes for series k, the same cycle lineStyle draws: "dash" for the second
+     base style, "dot" for a repeat. A family styles .ln, .ln.dash and .ln.dot. */
+  const lineKeyClass = (k, baseCount) => `${k % baseCount ? " dash" : ""}${k >= baseCount ? " dot" : ""}`;
+
+  // Ticks across [min(lo, 0), max(hi, 0)], so a series that dips below zero keeps its zero line.
+  function niceTicksBetween(lo, hi) {
+    const low = Math.min(lo, 0);
+    const high = Math.max(hi, 0);
+    if (low === 0) return niceTicks(high);
+    const raw = (high - low) / 4;
+    const mag = 10 ** Math.floor(Math.log10(raw));
+    const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((t) => t >= raw);
+    const out = [];
+    for (let t = Math.floor(low / step) * step; t < high + step; t += step) out.push(+t.toFixed(6));
+    return out;
+  }
+
   const totals = (chart) => chart.x.map((_, i) => chart.series.reduce((a, s) => a + s.values[i], 0));
 
   /* Vertical bars, one per x, its series stacked bottom-up (a plain bar is one series). Each bar
@@ -106,26 +126,40 @@ EXPLORER.blocks = (() => {
   function bars(chart, st) {
     const n = chart.x.length;
     const sums = totals(chart);
-    const max = Math.max(...sums, 1e-9);
+    const above = chart.x.map((_, i) => chart.series.reduce((a, s) => a + Math.max(s.values[i], 0), 0));
+    const below = chart.x.map((_, i) => chart.series.reduce((a, s) => a + Math.max(-s.values[i], 0), 0));
+    const maxUp = Math.max(...above, 0);
+    const maxDown = Math.max(...below, 0);
+    const span = Math.max(maxUp + maxDown, 1e-9);
     const top = Math.ceil(st.size * 1.5);
     const bottom = Math.ceil(st.size * 1.7);
     const plotH = st.h - top - bottom;
+    const zero = top + (maxUp / span) * plotH;
     const slot = st.w / n;
     const bw = slot * (1 - (st.gapRatio ?? 0.38));
     let out = "";
     chart.x.forEach((lab, i) => {
       const x = i * slot + (slot - bw) / 2;
-      let y = top + plotH;
+      let rise = zero;
+      let fall = zero;
       chart.series.forEach((s, k) => {
-        const h = (s.values[i] / max) * plotH;
-        out += rect(x, y - h, bw, h, st.fills[k % st.fills.length]);
-        y -= h;
+        const v = s.values[i];
+        const h = (Math.abs(v) / span) * plotH;
+        const fill = st.fills[k % st.fills.length];
+        if (v >= 0) {
+          out += rect(x, rise - h, bw, h, fill);
+          rise -= h;
+        } else {
+          out += rect(x, fall, bw, h, fill);
+          fall += h;
+        }
       });
-      out += txt(x + bw / 2, y - st.size * 0.45, fmt(sums[i]), { ...st, fill: st.ink, weight: st.valueWeight || st.weight });
+      const labelY = sums[i] >= 0 ? rise - st.size * 0.45 : fall + st.size * 1.2;
+      out += txt(x + bw / 2, labelY, fmt(sums[i]), { ...st, fill: st.ink, weight: st.valueWeight || st.weight });
       const label = st.labels === "initial" ? lab.slice(0, 1) : lab;
       out += txt(x + bw / 2, top + plotH + st.size * 1.35, up(st, label), { ...st, fill: st.soft });
     });
-    if (st.baseline !== false) out += rect(0, top + plotH, st.w, st.ruleW || 1, st.rule);
+    if (st.baseline !== false) out += rect(0, zero, st.w, st.ruleW || 1, st.rule);
     return svg(st.w, st.h, out, "xb-bars");
   }
 
@@ -135,7 +169,7 @@ EXPLORER.blocks = (() => {
   function line(chart, st) {
     const n = chart.x.length;
     const all = chart.series.flatMap((s) => s.values);
-    const ticks = niceTicks(Math.max(...all));
+    const ticks = niceTicksBetween(Math.min(...all), Math.max(...all));
     const lo = ticks[0];
     const hi = ticks[ticks.length - 1];
     const gutter = st.gutter ?? Math.ceil(st.size * 1.9);
@@ -149,11 +183,11 @@ EXPLORER.blocks = (() => {
     let out = "";
     for (const tk of ticks) {
       const y = Y(tk);
-      out += rect(gutter, y, pw, st.ruleW || 1, tk === lo ? st.base || st.rule : st.rule);
+      out += rect(gutter, y, pw, st.ruleW || 1, tk === 0 || tk === lo ? st.base || st.rule : st.rule);
       out += txt(gutter - st.size * 0.5, y + st.size * 0.35, fmt(tk), { ...st, fill: st.soft }, "end");
     }
     chart.series.forEach((s, k) => {
-      const ln = st.lines[k % st.lines.length];
+      const ln = lineStyle(st.lines, k);
       const d = s.values.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(2)} ${Y(v).toFixed(2)}`).join(" ");
       const dash = ln.dash ? ` stroke-dasharray="${ln.dash}"` : "";
       out += `<path d="${d}" fill="none" stroke="${ln.color}" stroke-width="${ln.width || 2}" stroke-linejoin="round" stroke-linecap="round"${dash}/>`;
@@ -227,5 +261,5 @@ EXPLORER.blocks = (() => {
   /* The facts line under a chart's title: its range and unit, as "Mon 3 – Sun 9 Nov · tasks". */
   const facts = (chart, sep = " · ") => [chart.range, chart.unit].filter(Boolean).join(sep);
 
-  return { esc, fmt, appList, snap, logo, item, items, events, section, lead, list, more, detail, layout, plot, bars, line, spark, cells, legend, facts, svg, txt, rect, niceTicks, totals };
+  return { esc, fmt, appList, snap, logo, item, items, events, section, lead, list, more, detail, layout, plot, bars, line, spark, cells, legend, facts, svg, txt, rect, niceTicks, niceTicksBetween, lineStyle, lineKeyClass, totals };
 })();

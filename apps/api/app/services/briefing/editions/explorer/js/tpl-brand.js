@@ -67,6 +67,7 @@
 .t-band .key i { display: inline-block; width: 10px; height: 10px; margin-right: 7px; vertical-align: 0; }
 .t-band .key i.ln { width: 16px; height: 0; border-top: 2.5px solid var(--acc); vertical-align: 3px; }
 .t-band .key i.ln.dash { border-top: 2px dashed #f2f2f4; }
+.t-band .key i.ln.dot { border-top: 2px dotted #f2f2f4; }
 .t-band .plot { margin-top: 16px; }
 .t-band .say { margin-top: 14px; font-size: 17px; line-height: 1.45; color: #d6d7dc; }
 .t-band .q { font-size: 19px; line-height: 1.42; letter-spacing: -.005em; color: #f2f2f4; text-wrap: pretty; }
@@ -101,7 +102,7 @@
       };
       const key = (c) => {
         if (c.series.length < 2) return "";
-        const sw = c.chart === "line" ? (k) => `<i class="ln${k ? " dash" : ""}"></i>` : (k) => `<i style="background:${fills(c)[k]}"></i>`;
+        const sw = c.chart === "line" ? (k) => `<i class="ln${B.lineKeyClass(k, 2)}"></i>` : (k) => `<i style="background:${fills(c)[k]}"></i>`;
         return `<p class="key">${B.legend(c, sw).map((x) => `<span>${x}</span>`).join("")}</p>`;
       };
       const R = {
@@ -182,6 +183,7 @@ ${grain("bd-g", 0.9)}
 .t-playfair .sub span i { display: inline-block; width: 10px; height: 10px; margin-right: 7px; }
 .t-playfair .sub span i.ln { width: 16px; height: 0; border-top: 2px solid var(--gilt); vertical-align: 3px; }
 .t-playfair .sub span i.ln.dash { border-top: 1.5px dashed var(--ink); }
+.t-playfair .sub span i.ln.dot { border-top: 1.5px dotted var(--ink); }
 .t-playfair .plot { margin-top: 14px; }
 .t-playfair .plot.cells { margin-top: 18px; }
 .t-playfair .say { margin-top: 12px; font-style: italic; color: var(--ink); text-wrap: pretty; }
@@ -218,7 +220,7 @@ ${grain("bd-g", 0.9)}
       };
       const key = (c) => {
         if (c.series.length < 2) return "";
-        const sw = c.chart === "line" ? (k) => `<i class="ln${k ? " dash" : ""}"></i>` : (k) => `<i style="background:${fills(c)[k]}"></i>`;
+        const sw = c.chart === "line" ? (k) => `<i class="ln${B.lineKeyClass(k, 2)}"></i>` : (k) => `<i style="background:${fills(c)[k]}"></i>`;
         return B.legend(c, sw).map((x) => `<span>${x}</span>`).join("");
       };
       const R = {

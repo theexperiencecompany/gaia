@@ -18,6 +18,7 @@ from app.constants.briefing import (
     MAX_BAR_CATEGORIES,
     MAX_BRIEF_CHARTS,
     MAX_BRIEF_ITEMS,
+    MAX_LINE_SERIES,
     MIN_TREND_POINTS,
     BriefOutcome,
 )
@@ -113,9 +114,19 @@ def _trend_misfit(chart: ChartKind, series: list[DataSeries]) -> str | None:
         return f"a {chart} needs a time series of at least {MIN_TREND_POINTS} days"
     if chart is ChartKind.SPARK and len(series) > 1:
         return "a spark draws one series"
-    return (
-        None if _shared_x(series) else "a line over several series needs them to share their days"
-    )
+    if len(series) > MAX_LINE_SERIES:
+        return f"a line draws at most {MAX_LINE_SERIES} series"
+    if not _shared_x(series):
+        return "a line over several series needs them to share their days"
+    return _single_unit_misfit("a line draws one unit", series)
+
+
+def _single_unit_misfit(subject: str, series: list[DataSeries]) -> str | None:
+    """Name the units a chart would put on one scale; None when they are one."""
+    units = {s.unit for s in series}
+    if len(units) == 1:
+        return None
+    return f"{subject}, not {', '.join(sorted(unit or 'no unit' for unit in units))}"
 
 
 def _bar_misfit(chart: ChartKind, series: list[DataSeries]) -> str | None:
@@ -127,9 +138,7 @@ def _bar_misfit(chart: ChartKind, series: list[DataSeries]) -> str | None:
         return None if len(series) == 1 else "a bar draws one series; stack several"
     if len(series) < 2 or not _shared_x(series):
         return "a stacked_bar needs two or more series sharing their days or categories"
-    units = {s.unit for s in series}
-    named = ", ".join(sorted(unit or "no unit" for unit in units))
-    return None if len(units) == 1 else f"a stacked_bar stacks one unit, not {named}"
+    return _single_unit_misfit("a stacked_bar stacks one unit", series)
 
 
 _CHART_MISFITS: dict[ChartKind, Callable[[ChartKind, list[DataSeries]], str | None]] = {

@@ -62,6 +62,7 @@
 .t-swiss .key i { display: inline-block; width: 16px; height: 16px; margin-right: 8px; vertical-align: -2px; }
 .t-swiss .key i.ln { height: 0; border-top: 3px solid var(--acc); vertical-align: 4px; }
 .t-swiss .key i.ln.dash { border-top: 2px dashed var(--ink); }
+.t-swiss .key i.ln.dot { border-top: 2px dotted var(--ink); }
 .t-swiss .say { margin-top: 12px; font-weight: 700; line-height: 1.35; text-wrap: pretty; }
 .t-swiss .cap { display: block; margin-top: 6px; font-size: 15px; font-weight: 700; color: var(--soft); }
 .t-swiss .q { margin-top: 16px; font-size: 20px; line-height: 1.32; letter-spacing: -.01em; text-wrap: pretty; }
@@ -97,7 +98,7 @@
       };
       const key = (c) => {
         if (c.series.length < 2) return "";
-        const sw = c.chart === "line" ? (k) => `<i class="ln${k ? " dash" : ""}"></i>` : (k) => `<i style="background:${fills(c)[k]}"></i>`;
+        const sw = c.chart === "line" ? (k) => `<i class="ln${B.lineKeyClass(k, 2)}"></i>` : (k) => `<i style="background:${fills(c)[k]}"></i>`;
         return `<p class="key">${B.legend(c, sw).map((x) => `<span>${x}</span>`).join("")}</p>`;
       };
       const R = {

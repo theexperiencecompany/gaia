@@ -97,6 +97,8 @@ BRIEF_NOTE_MAX_CHARS: Final[int] = 240
 BRIEF_OFFER_MAX_CHARS: Final[int] = 90
 # A line or spark chart reads a trend only over at least this many days; a bar reads at most this many bars.
 MIN_TREND_POINTS: Final[int] = 5
+#: Lines one chart may draw: every family's two line styles, then the same two dotted.
+MAX_LINE_SERIES: Final[int] = 4
 MAX_BAR_CATEGORIES: Final[int] = 12
 #: The days a series covers: the week ending today.
 SERIES_WINDOW_DAYS: Final[int] = 7

@@ -229,6 +229,20 @@ class TestChartsFitTheirSeries:
             f"block 1 (chart): a {chart} needs a time series of at least {MIN_TREND_POINTS} days"
         ]
 
+    def test_a_line_draws_no_more_series_than_the_editions_can_tell_apart(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("app.services.briefing.composition.checks.MAX_LINE_SERIES", 1)
+
+        assert _problems(_chart("meetings", "emails")) == [
+            "block 1 (chart): a line draws at most 1 series"
+        ]
+
+    def test_a_line_over_series_of_different_units_is_refused_by_name(self) -> None:
+        assert _problems(_chart("meetings", "emails")) == [
+            "block 1 (chart): a line draws one unit, not emails, hours"
+        ]
+
     def test_a_line_over_series_on_different_days_is_refused(self) -> None:
         assert _problems(_chart("meetings", "late_start")) == [
             "block 1 (chart): a line over several series needs them to share their days"

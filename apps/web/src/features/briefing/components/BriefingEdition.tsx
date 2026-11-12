@@ -13,6 +13,8 @@ import type { z } from "zod";
 import type { briefingSchema } from "@/config/openui/promptSpecs";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 
+import { EDITION_ROWS_SHOWN } from "../constants";
+
 /** The brief's fields this view reads: the stored payload and the OpenUI component share them. */
 export type BriefingEditionPayload = z.infer<typeof briefingSchema> & {
   calendar?: BriefingEvent[];
@@ -72,6 +74,21 @@ function undrawnLines(payload: BriefingEditionPayload): string[] {
   return (payload.undrawn ?? [])
     .map(undrawnLine)
     .filter((line): line is string => line !== null);
+}
+
+/** What the full page lists for a brief that has an edition: every item the image left out. */
+function leftOutItems(payload: BriefingEditionPayload): EditionItem[] {
+  const drawnOverflow = (payload.blocks ?? []).flatMap((block) =>
+    block.kind === "items"
+      ? (payload.sections[block.section]?.items ?? []).slice(EDITION_ROWS_SHOWN)
+      : [],
+  );
+  const undrawnSections = (payload.undrawn ?? []).flatMap((block) =>
+    block.kind === "lead" || block.kind === "items"
+      ? (payload.sections[block.section]?.items ?? [])
+      : [],
+  );
+  return [...undrawnSections, ...drawnOverflow];
 }
 
 function ItemRow({ text, href }: { text: string; href: string | null }) {
@@ -233,6 +250,8 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
   if (!imageUrl) return <BriefingText payload={payload} />;
   const uncomposed = payload.uncomposed ?? [];
   const undrawn = undrawnLines(payload);
+  const leftOut = leftOutItems(payload);
+  const hiddenEvents = (payload.calendar ?? []).slice(EDITION_ROWS_SHOWN);
   return (
     <div className="w-full space-y-8">
       <Image
@@ -245,11 +264,27 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
         // px-4 gutter, so the paper gets the screen's width instead of losing 32px.
         className="-mx-4 h-auto w-[calc(100%+2rem)] max-w-none sm:mx-auto sm:w-full sm:max-w-[572px]"
       />
-      {undrawn.length > 0 && (
+      {(undrawn.length > 0 ||
+        leftOut.length > 0 ||
+        hiddenEvents.length > 0) && (
         <BelowEdition id="brief-more-from-gaia" title="More from GAIA">
           {undrawn.map((line) => (
             <li key={line} className="py-3 text-sm text-zinc-300">
               {line}
+            </li>
+          ))}
+          {hiddenEvents.map((event) => (
+            <li
+              key={`${event.start ?? "all-day"}-${event.title}`}
+              className="py-3 text-sm text-zinc-300"
+            >
+              {event.start ? `${clockTime(event.start)} ` : ""}
+              {event.title}
+            </li>
+          ))}
+          {leftOut.map((item) => (
+            <li key={item.todo_id ?? item.text} className="py-3">
+              <ItemRow text={item.text} href={itemHref(item)} />
             </li>
           ))}
         </BelowEdition>
