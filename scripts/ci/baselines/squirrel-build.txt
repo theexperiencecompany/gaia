@@ -3469,15 +3469,11 @@ score:URL Structure=93
 /marketplace/google-classroom-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
 /marketplace/google-scholar-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI
 /marketplace/googlecalendar	content/keyword-stuffing/keyword-stuffing	calendar
-/marketplace/googlecalendar	content/placeholder-contact/placeholder-contact	email
 /marketplace/googledocs	content/keyword-stuffing/keyword-stuffing	document
-/marketplace/googledocs	content/placeholder-contact/placeholder-contact	email
 /marketplace/googledrive	content/keyword-stuffing/keyword-stuffing	file
 /marketplace/googledrive	perf/dom-size/dom-max-children
 /marketplace/googlemeet	content/keyword-stuffing/keyword-stuffing	conference
 /marketplace/googlesheets	content/keyword-stuffing/keyword-stuffing	spreadsheet
-/marketplace/googlesheets	content/placeholder-contact/placeholder-contact	phone
-/marketplace/googlesheets	content/placeholder-text/placeholder-content	unrendered-template
 /marketplace/googletasks	content/keyword-stuffing/keyword-stuffing	list
 /marketplace/googletasks	content/keyword-stuffing/keyword-stuffing	task
 /marketplace/googletasks	content/keyword-stuffing/keyword-stuffing	tasks
@@ -3493,7 +3489,6 @@ score:URL Structure=93
 /marketplace/manufact-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	server
 /marketplace/manufact-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
 /marketplace/microsoft-teams	content/keyword-stuffing/keyword-stuffing	teams
-/marketplace/microsoft-teams	content/placeholder-contact/placeholder-contact	email
 /marketplace/neon-database-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
 /marketplace/open-web-search-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	search
 /marketplace/open-web-search-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
@@ -3501,7 +3496,6 @@ score:URL Structure=93
 /marketplace/outlook	content/keyword-stuffing/keyword-stuffing	folder
 /marketplace/outlook	content/keyword-stuffing/keyword-stuffing	use
 /marketplace/outlook	content/keyword-stuffing/keyword-stuffing	user
-/marketplace/outlook	content/placeholder-contact/placeholder-contact	email
 /marketplace/outlook	perf/dom-size/dom-max-children
 /marketplace/outlook	perf/dom-size/dom-total-nodes
 /marketplace/page/2	content/word-count/word-count
@@ -3527,12 +3521,8 @@ score:URL Structure=93
 /marketplace/prisma-mcp-developer	content/keyword-stuffing/keyword-stuffing	postgres
 /marketplace/prisma-mcp-developer	content/keyword-stuffing/keyword-stuffing	prisma
 /marketplace/prisma-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
-/marketplace/pumpgtm-mcp-other	content/placeholder-text/placeholder-content	unrendered-template
 /marketplace/pumpgtm-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
 /marketplace/render-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
-/marketplace/resend-mcp-communication	content/placeholder-contact/placeholder-contact	email
-/marketplace/resend-mcp-communication	content/placeholder-text/placeholder-content	js-artifact
-/marketplace/resend-mcp-communication	content/placeholder-text/placeholder-content	unrendered-template
 /marketplace/resend-mcp-communication	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
 /marketplace/resend-mcp-communication	perf/dom-size/dom-max-children
 /marketplace/scrapegraph-ai-mcp-ai-ml	images/offscreen-lazy/offscreen-images-not-lazy	71xjMW8R_mMbIymmucrB2-ZgJY6zxBL76MNK-v8y_3A
@@ -3557,7 +3547,6 @@ score:URL Structure=93
 /marketplace/youtube-mcp-analytics	images/offscreen-lazy/offscreen-images-not-lazy	71xjMW8R_mMbIymmucrB2-ZgJY6zxBL76MNK-v8y_3A
 /marketplace/zoho-mail-mcp-communication	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
 /marketplace/zoom	content/keyword-stuffing/keyword-stuffing	meeting
-/marketplace/zoom	content/placeholder-contact/placeholder-contact	address
 /marketplace?search=Discord	content/word-count/word-count
 /marketplace?search=Figma	content/word-count/word-count
 /marketplace?search=Loom	content/word-count/word-count
