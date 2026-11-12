@@ -272,9 +272,9 @@ CARD = {"tool_name": "calendar_events", "data": {"events": []}}
 THUMBS_UP = MessageReaction(emoji="\U0001f44d", by=ReactionBy.CHAT_MODEL)
 
 
-def _ack(n: int, target: str, **fields: object) -> dict[str, object]:
+def _ack(n: int, target: str, response: str = "\U0001f44d", **fields: object) -> dict[str, object]:
     return _message(
-        n, "bot", response="\U0001f44d", kind="emoji_ack", reacts_to_message_id=target, **fields
+        n, "bot", response=response, kind="emoji_ack", reacts_to_message_id=target, **fields
     )
 
 
@@ -330,13 +330,41 @@ async def test_an_ack_whose_message_is_gone_is_kept_as_a_plain_text_message(
     assert (await migration.verify(ref)).ok
 
 
+async def test_a_blank_ack_reacts_with_nothing_and_is_kept_as_a_plain_message(
+    migration: ConversationEntriesMigration, raw_collection: Any
+) -> None:
+    ref = await _legacy(raw_collection, [_message(1), _ack(2, "m1", response=" ")])
+
+    await migration.migrate(ref, apply=True)
+
+    assert await _read_ids(ref) == ["m1", "m2"]
+    target = await _stored(ref, "m1")
+    assert target is not None and target.reaction is None
+
+
+async def test_the_script_counts_every_ack_it_folds(
+    raw_collection: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    for _ in range(2):
+        await _legacy(raw_collection, [_message(1), _ack(2, "m1")])
+
+    code, lines = await _cli(capsys, "--apply")
+
+    assert code == 0
+    assert lines[-1] == ("Summary: 2 copied; 4 entries; 2 emoji_ack messages folded into reactions")
+
+
 async def test_folding_is_a_dry_run_unless_applied_and_a_rerun_changes_nothing(
     migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
 ) -> None:
     ref = await _legacy(raw_collection, [_message(1), _ack(2, "m1")])
 
     dry = await migration.migrate(ref, apply=False)
-    assert dry.folded == 1
+    assert (dry.conversation_id, dry.action, dry.folded) == (
+        ref.conversation_id,
+        MigrationAction.COPIED,
+        1,
+    )
     assert await entries_collection.count_documents({"conversation_id": ref.conversation_id}) == 0
 
     await migration.migrate(ref, apply=True)

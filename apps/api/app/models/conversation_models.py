@@ -261,7 +261,7 @@ class RetiredAckFields(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     kind: str | None = None
-    response: str | None = None
+    response: str = ""
     reacts_to_message_id: str | None = None
     tool_data: list[object] | None = None
 

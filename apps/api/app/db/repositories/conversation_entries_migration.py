@@ -222,8 +222,10 @@ class ConversationEntriesMigration(ConversationRepository):
         return outcome
 
     async def fold_reaction_acks(self, ref: HeadRef, *, apply: bool) -> int:
-        """Fold each stored emoji_ack message into its target's reaction; return how many there were."""
-        await self.flush_outbox(ref.conversation_id, user_id=ref.user_id)
+        """Fold each stored emoji_ack message into its target's reaction; return how many there were.
+
+        Acks are only ever copied from the embedded array, never appended, so none waits in the outbox.
+        """
         acks = [entry for entry in await self._stored(ref) if _is_ack(entry)]
         if apply:
             for ack in acks:
@@ -232,7 +234,7 @@ class ConversationEntriesMigration(ConversationRepository):
 
     async def _fold_ack(self, ref: HeadRef, ack: StoredEntry) -> None:
         fields = RetiredAckFields.model_validate(ack.message_fields())
-        emoji = (fields.response or "").strip()
+        emoji = fields.response.strip()
         at_seq = {**_of(ref), "seq": ack.seq}
         entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
         with store_errors("fold reactions"):  # pragma: no mutate — error label only
@@ -241,7 +243,7 @@ class ConversationEntriesMigration(ConversationRepository):
                 reaction = MessageReaction(emoji=emoji, by=ReactionBy.CHAT_MODEL)
                 target = await entries.update_one(
                     {**_of(ref), "id": fields.reacts_to_message_id, "type": USER_MESSAGE_TYPE},
-                    {"$set": {"reaction": reaction.model_dump(mode="json")}},
+                    {"$set": {"reaction": reaction.model_dump()}},
                 )
                 reacted = target.matched_count > 0
             if not reacted:
