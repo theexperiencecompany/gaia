@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import JsonValue, TypeAdapter, ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.middleware.auth import get_current_user as get_request_user
@@ -16,7 +16,6 @@ from app.constants.auth import AUDIT_ACTOR_BOT_API
 from app.constants.bot import BotRequestFailure
 from app.constants.cache import BOT_UPGRADE_LINK_PREFIX, BOT_UPGRADE_LINK_TTL
 from app.constants.error_codes import BOT_ACCOUNT_NOT_LINKED, BOT_API_KEY_INVALID
-from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.constants.platform_links import Platform
 from app.core.stream_manager import stream_manager, with_heartbeat
@@ -54,7 +53,6 @@ from app.services.audio_transcription_service import (
     validate_audio_payload,
 )
 from app.services.bot.stream_frames import (
-    approval_frame,
     comment_keepalive_frame,
     done_frame,
     emoji_ack_frame,
@@ -347,20 +345,6 @@ async def _bot_rate_limit_notice(
     return notice
 
 
-def _bot_approval_payload(chunk: BotWebStreamPayload) -> dict[str, JsonValue] | None:
-    """Extract a HIL approval_request card as a bot approval payload.
-
-    Bots drop ``tool_data``, but the approval prompt MUST reach the user — a bot
-    has no buttons, so the user answers yes/no in chat and the conversational
-    resolver relays it. The bot client renders this as an out-of-band message.
-    Returns the approval data, or ``None`` if ``chunk`` isn't such a card.
-    """
-    tool_card = _bot_tool_card(chunk, APPROVAL_REQUEST_TOOL_NAME)
-    if tool_card is None:
-        return None
-    return tool_card.data if isinstance(tool_card.data, dict) else None
-
-
 def _bot_stream_control_frame(
     chunk: str, conversation_id: str
 ) -> tuple[str | None, BotWebStreamPayload | None, bool]:
@@ -385,13 +369,18 @@ def _bot_stream_control_frame(
         return done_frame(conversation_id), None, True
 
     try:
-        return None, BotWebStreamPayload.model_validate(json.loads(raw)), False
+        payload = BotWebStreamPayload.model_validate(json.loads(raw))
     except (json.JSONDecodeError, ValidationError) as exc:
         log.warning(
             f"{LogTag.API} Bot stream: dropped a malformed SSE chunk",
             error_type=type(exc).__name__,
         )
         return None, None, False
+    # The reply is done; a background executor's result reaches the bot through
+    # the outbound queue, so the bot's turn ends here instead of at [DONE].
+    if payload.reply_complete:
+        return done_frame(conversation_id), None, True
+    return None, payload, False
 
 
 # ``get_user_integration_records`` returns dumped documents; the settings route
@@ -425,26 +414,12 @@ async def _bot_stream_payload_frame(
     if data.keepalive:
         # Forward keepalives so bot clients reset inactivity timers.
         return keepalive_frame(), False
-    if (card := await _bot_card_frame(data, upgrade_url)) is not None:
-        return card, False
-    return _bot_message_frame(data)
-
-
-async def _bot_card_frame(
-    data: BotWebStreamPayload, upgrade_url: Callable[[], Awaitable[str]]
-) -> str | None:
-    """Translate a payload into an out-of-band card frame, or None when it carries no card.
-
-    Runs before _bot_message_frame, which drops the web-only fields both read.
-    """
     # Rate-limit cards go out as a notice, not {"text"}: text is tied to the
     # in-flight message and would vanish with it if that message is discarded.
+    # Read before _bot_message_frame, which drops the web-only tool_data it carries.
     if (rate_limit_notice := await _bot_rate_limit_notice(data, upgrade_url)) is not None:
-        return notice_frame(rate_limit_notice)
-    # HIL approvals render as their own prompt, so they must survive that drop.
-    if (approval_payload := _bot_approval_payload(data)) is not None:
-        return approval_frame(approval_payload)
-    return None
+        return notice_frame(rate_limit_notice), False
+    return _bot_message_frame(data)
 
 
 def _bot_message_frame(data: BotWebStreamPayload) -> tuple[str | None, bool]:

@@ -1,11 +1,12 @@
 """Notify a user's clients that an approval is waiting.
 
-Two independent best-effort channels — a failure here must never propagate into
-the gate (the SSE card is the primary surface; these only wake a client that
-isn't actively watching the stream):
+Independent best-effort channels — a failure here must never propagate into
+the gate:
 
-- in-app WebSocket broadcast (open web/mobile clients);
-- Expo push (backgrounded mobile app), with interactive approve/deny actions.
+- in-app WebSocket broadcast (open web/mobile clients, which render the SSE card);
+- Expo push (backgrounded mobile app), with interactive approve/deny actions;
+- the bot platform a bot conversation lives on, as its yes/no prompt. A bot's
+  turn ends with its reply, so the card's stream is not where a bot user sees it.
 """
 
 import asyncio
@@ -13,9 +14,12 @@ from typing import Any
 
 import httpx
 
+from app.constants.hil import HIL_APPROVAL_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
+from app.db.repositories.conversations import conversation_repository
 from app.services.device_token_service import get_device_token_service
+from app.services.platform_message_service import deliver_message_to_platform, is_bot_platform
 from shared.py.wide_events import log
 
 _EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
@@ -34,7 +38,54 @@ async def notify_approval_pending(
     await asyncio.gather(
         _broadcast_in_app(user_id, conversation_id, approval_id, summary),
         _push_to_devices(user_id, conversation_id, approval_id, summary),
+        _prompt_on_bot_platform(user_id, conversation_id, approval_id, summary),
     )
+
+
+def bot_approval_prompt(summary: str) -> str:
+    """Return the yes/no question a bot user answers in chat; a bot has no approve/deny buttons."""
+    return (
+        f"**Approval needed:** {summary}\n"
+        "Reply **yes** to approve or **no** to decline. "
+        f"This expires in {_format_expiry(HIL_APPROVAL_TIMEOUT_SECONDS)}."
+    )
+
+
+def _format_expiry(seconds: float) -> str:
+    """Say the approval window in hours once it passes an hour; "360 minutes" is unreadable."""
+    minutes = max(1, round(seconds / 60))
+    if minutes < 60:
+        return "1 minute" if minutes == 1 else f"{minutes} minutes"
+    hours = round(minutes / 60)
+    return "1 hour" if hours == 1 else f"{hours} hours"
+
+
+async def _prompt_on_bot_platform(
+    user_id: str, conversation_id: str, approval_id: str, summary: str
+) -> None:
+    """Ask a bot conversation's user through the platform's outbound queue; no-op off bots."""
+    try:
+        source = await conversation_repository.get_source(conversation_id, user_id=user_id)
+        if not is_bot_platform(source):
+            return
+        delivered = await deliver_message_to_platform(
+            source, user_id, bot_approval_prompt(summary), conversation_id=conversation_id
+        )
+        if not delivered:
+            log.warning(
+                f"{LogTag.HIL} HIL notify: bot approval prompt not delivered",
+                platform=str(source),
+                approval_id=approval_id,
+                conversation_id=conversation_id,
+            )
+    except Exception as e:
+        log.warning(
+            f"{LogTag.HIL} HIL notify: bot approval prompt failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
 
 
 async def _broadcast_in_app(

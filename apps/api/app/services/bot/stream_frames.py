@@ -51,11 +51,6 @@ def notice_frame(notice_text: str) -> str:
     return sse_frame({"notice": {"text": notice_text}})
 
 
-def approval_frame(approval_payload: Mapping[str, object]) -> str:
-    """Return a HIL approval card, rendered by the bot client as an out-of-band prompt."""
-    return sse_frame({"approval": approval_payload})
-
-
 def message_boundary_frame(boundary: object) -> str:
     """Signal that an assistant message ended — the client closes (or retracts) its bubble."""
     return sse_frame({"message_boundary": boundary})

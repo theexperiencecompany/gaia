@@ -1,6 +1,6 @@
 """Unit tests for hil/notify (approval-pending wake channels).
 
-Both channels are best-effort by contract: a failure inside any channel must
+Every channel is best-effort by contract: a failure inside any channel must
 never propagate into the HIL gate. Expo pushes batch at 100 and deactivate
 tokens Expo reports as DeviceNotRegistered.
 """
@@ -10,9 +10,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.chat_models import ConversationSource
 from app.services.hil.notify import (
     _dead_tokens_from_receipts,
     _send_expo_push,
+    bot_approval_prompt,
     notify_approval_pending,
 )
 
@@ -32,9 +34,18 @@ def mock_channels():
     with (
         patch(f"{_MOD}.websocket_manager") as m_ws,
         patch(f"{_MOD}.get_device_token_service", return_value=device_service) as m_dts,
+        patch(
+            f"{_MOD}.conversation_repository.get_source",
+            new=AsyncMock(return_value=ConversationSource.WEB),
+        ) as m_source,
+        patch(
+            f"{_MOD}.deliver_message_to_platform", new=AsyncMock(return_value=True)
+        ) as m_platform,
     ):
         m_ws.broadcast_to_user = AsyncMock()
-        yield SimpleNamespace(ws=m_ws, dts=m_dts, device=device_service)
+        yield SimpleNamespace(
+            ws=m_ws, dts=m_dts, device=device_service, source=m_source, platform=m_platform
+        )
 
 
 @pytest.fixture
@@ -67,6 +78,48 @@ class TestNotifyApprovalPending:
             },
         )
         mock_expo.post.assert_awaited_once()
+
+
+class TestPromptOnBotPlatform:
+    """A bot turn ends with its reply, so a bot user learns of an approval only through this channel."""
+
+    @pytest.mark.parametrize("source", [ConversationSource.TELEGRAM, ConversationSource.WHATSAPP])
+    async def test_a_bot_conversation_gets_the_prompt_once_on_its_platform(
+        self, mock_channels, mock_expo, source
+    ):
+        mock_channels.source.return_value = source
+
+        await notify_approval_pending(USER_ID, CONVERSATION_ID, APPROVAL_ID, SUMMARY)
+
+        mock_channels.source.assert_awaited_once_with(CONVERSATION_ID, user_id=USER_ID)
+        mock_channels.platform.assert_awaited_once_with(
+            source, USER_ID, bot_approval_prompt(SUMMARY), conversation_id=CONVERSATION_ID
+        )
+
+    @pytest.mark.parametrize("source", [ConversationSource.WEB, None])
+    async def test_a_web_conversation_gets_no_platform_message(
+        self, mock_channels, mock_expo, source
+    ):
+        mock_channels.source.return_value = source
+
+        await notify_approval_pending(USER_ID, CONVERSATION_ID, APPROVAL_ID, SUMMARY)
+
+        mock_channels.platform.assert_not_awaited()
+
+    async def test_a_platform_failure_never_reaches_the_gate(self, mock_channels, mock_expo):
+        mock_channels.source.return_value = ConversationSource.TELEGRAM
+        mock_channels.platform.side_effect = RuntimeError("queue down")
+
+        await notify_approval_pending(USER_ID, CONVERSATION_ID, APPROVAL_ID, SUMMARY)
+
+        mock_channels.ws.broadcast_to_user.assert_awaited_once()
+
+    def test_the_prompt_asks_for_yes_or_no_and_says_when_it_expires(self):
+        prompt = bot_approval_prompt(SUMMARY)
+
+        assert prompt.startswith(f"**Approval needed:** {SUMMARY}\n")
+        assert "Reply **yes** to approve or **no** to decline." in prompt
+        assert prompt.endswith("This expires in 6 hours.")
 
 
 class TestBroadcastInApp:
