@@ -23,9 +23,9 @@ import pytest
 from app.constants.hil import HIL_STATUS_KWARG
 from app.models.hil_models import HILApprovalStatus
 from app.services.hil.approvals_store import approval_id_for
-from app.services.hil.bridge import GatedApproval, build_summary
+from app.services.hil.bridge import build_summary
 from app.services.hil.intent import IntentDecision
-from app.services.hil.utils import GatedCall, approval_window_label
+from app.services.hil.utils import GatedApproval, GatedCall, approval_window_label
 
 from .conftest import (
     CONVERSATION_ID,

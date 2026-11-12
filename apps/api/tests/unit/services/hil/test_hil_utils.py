@@ -33,6 +33,7 @@ from app.services.hil.approvals_store import (
     upsert_pending_approval,
 )
 from app.services.hil.utils import (
+    GatedApproval,
     GatedCall,
     PriorCall,
     args_preview,
@@ -184,6 +185,17 @@ def written_record(repository: AsyncMock) -> HILApprovalRecord:
     return cast(HILApprovalRecord, repository.create_if_absent.await_args.args[0])
 
 
+PENDING_EMAIL = GatedApproval(
+    approval_id="a1",
+    stream_id="stream-1",
+    user_id="u1",
+    conversation_id="conv-1",
+    tool_call=GatedCall(name="send_email", id="call-1", args={"to": "bob@example.com"}),
+    summary="Send email — to: bob@example.com",
+    integration_name="Gmail",
+)
+
+
 class TestTheAutoApprovalReceipt:
     """auto mode ALREADY RAN the action without asking, so its record is born decided.
 
@@ -198,15 +210,7 @@ class TestTheAutoApprovalReceipt:
         repository = AsyncMock()
         with patch(f"{STORE}.hil_approval_repository", repository):
             await record_auto_approval(
-                approval_id="a1",
-                user_id="u1",
-                conversation_id="conv-1",
-                stream_id="stream-1",
-                tool_name="send_email",
-                tool_call_id="call-1",
-                args={"to": "bob@example.com"},
-                summary="Send email — to: bob@example.com",
-                integration_name="Gmail",
+                PENDING_EMAIL,
                 reason="you said send the deck to bob",
             )
 
@@ -226,15 +230,7 @@ class TestThePendingApprovalRecord:
         repository = AsyncMock()
         with patch(f"{STORE}.hil_approval_repository", repository):
             await upsert_pending_approval(
-                approval_id="a1",
-                user_id="u1",
-                conversation_id="conv-1",
-                stream_id="stream-1",
-                tool_name="send_email",
-                tool_call_id="call-1",
-                args={"to": "bob@example.com"},
-                summary="Send email — to: bob@example.com",
-                integration_name="Gmail",
+                PENDING_EMAIL,
             )
 
         record = written_record(repository)
@@ -257,15 +253,7 @@ class TestThePendingApprovalRecord:
         repository = AsyncMock()
         with patch(f"{STORE}.hil_approval_repository", repository):
             await upsert_pending_approval(
-                approval_id="a1",
-                user_id="u1",
-                conversation_id="conv-1",
-                stream_id="stream-1",
-                tool_name="send_email",
-                tool_call_id="call-1",
-                args={"to": "bob@example.com"},
-                summary="Send email — to: bob@example.com",
-                integration_name="Gmail",
+                PENDING_EMAIL,
                 subagent_thread_id="thread-sub-1",
                 subagent_resume=recipe,
             )

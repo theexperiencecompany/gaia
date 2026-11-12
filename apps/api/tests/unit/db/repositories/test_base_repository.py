@@ -16,7 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pydantic import BaseModel
 import pytest
 
-from app.db.repositories.base import MongoDocument, _BaseRepository
+from app.db.repositories.base import _BaseRepository
+from app.models.document_models import MongoDocument
 from app.utils.errors import RepositoryMisconfiguredError
 
 
@@ -42,7 +43,7 @@ def _concrete(**overrides: Any) -> type[_BaseRepository]:
         "uses_object_id": False,
     }
     classvars.update(overrides)
-    return type("ThingRepository", (_BaseRepository,), classvars)  # type: ignore[return-value]  # test builds an untyped dynamic subclass
+    return type("ThingRepository", (_BaseRepository,), classvars)
 
 
 def test_a_complete_concrete_repository_is_accepted() -> None:

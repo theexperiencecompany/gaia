@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.core.stream_manager import stream_manager
 from app.models.hil_models import LedgerState
 
 from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_request
@@ -98,8 +99,8 @@ class TestLedgerPublishHold:
         teardown_session(stream_id)
 
     async def test_live_run_holds_sse_and_notify_but_records_session(self) -> None:
-        from app.services.hil.bridge import GatedApproval, publish_ledger_request
-        from app.services.hil.utils import GatedCall
+        from app.services.hil.bridge import publish_ledger_request
+        from app.services.hil.utils import GatedApproval, GatedCall
 
         stream_id = "stream-hold-test"
         self._session(stream_id)
@@ -135,8 +136,8 @@ class TestLedgerPublishHold:
 
     async def test_live_run_without_session_publishes_immediately(self) -> None:
         """No session means no drain will ever persist the frame — holding would hide the card until a drain that never comes."""
-        from app.services.hil.bridge import GatedApproval, publish_ledger_request
-        from app.services.hil.utils import GatedCall
+        from app.services.hil.bridge import publish_ledger_request
+        from app.services.hil.utils import GatedApproval, GatedCall
 
         with (
             patch(
@@ -162,8 +163,8 @@ class TestLedgerPublishHold:
     async def test_queued_session_publishes_immediately(self) -> None:
         """Detached queued runs have a session but no watcher — holding would park the card on an unwatched stream."""
         from app.agents.core.background.session import RunKind, create_session
-        from app.services.hil.bridge import GatedApproval, publish_ledger_request
-        from app.services.hil.utils import GatedCall
+        from app.services.hil.bridge import publish_ledger_request
+        from app.services.hil.utils import GatedApproval, GatedCall
 
         stream_id = "stream-queued-test"
         create_session(stream_id, RunKind.QUEUED)
@@ -192,8 +193,8 @@ class TestLedgerPublishHold:
             self._teardown(stream_id)
 
     async def test_background_run_publishes_immediately(self) -> None:
-        from app.services.hil.bridge import GatedApproval, publish_ledger_request
-        from app.services.hil.utils import GatedCall
+        from app.services.hil.bridge import publish_ledger_request
+        from app.services.hil.utils import GatedApproval, GatedCall
 
         stream_id = "stream-bg-test"
         self._session(stream_id)
@@ -225,8 +226,8 @@ class TestLedgerPublishHold:
     async def test_revoke_drops_held_frame_instead_of_tombstoning(self) -> None:
         """A revoke before the run ends removes the unshown frame: the drain persists nothing and the user never knows the card existed."""
         from app.services.hil import ledger_decide
-        from app.services.hil.bridge import GatedApproval, publish_ledger_request
-        from app.services.hil.utils import GatedCall
+        from app.services.hil.bridge import publish_ledger_request
+        from app.services.hil.utils import GatedApproval, GatedCall
 
         stream_id = "stream-drop-test"
         self._session(stream_id)
@@ -303,7 +304,7 @@ class TestFlushHeldCards:
         try:
             with (
                 patch.object(bridge, "approval_ledger_repository") as repo,
-                patch.object(bridge.stream_manager, "publish_chunk", new=AsyncMock()) as chunk,
+                patch.object(stream_manager, "publish_chunk", new=AsyncMock()) as chunk,
                 patch.object(bridge, "_schedule_pending_notification") as notify,
             ):
                 repo.get_by_approval_id = AsyncMock(return_value=row)
@@ -324,7 +325,7 @@ class TestFlushHeldCards:
         try:
             with (
                 patch.object(bridge, "approval_ledger_repository") as repo,
-                patch.object(bridge.stream_manager, "publish_chunk", new=AsyncMock()) as chunk,
+                patch.object(stream_manager, "publish_chunk", new=AsyncMock()) as chunk,
                 patch.object(bridge, "_schedule_pending_notification") as notify,
             ):
                 repo.get_by_approval_id = AsyncMock(return_value=row)

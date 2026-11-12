@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 
 
 class SupportRequestType(str, Enum):

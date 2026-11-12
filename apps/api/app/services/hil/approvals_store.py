@@ -14,11 +14,12 @@ creates a second record nor resets a decided one.
 from datetime import UTC, datetime, timedelta
 from uuid import NAMESPACE_URL, uuid5
 
-from app.agents.core.background.executor_queue import ExecutorRunItem
 from app.constants.hil import HIL_APPROVAL_TIMEOUT_SECONDS, HIL_UNRESUMED_SWEEP_STATUSES
 from app.db.repositories.hil import hil_approval_repository
 from app.models.agent_config import SubagentResumeItem
+from app.models.agent_models import ExecutorRunItem
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus, HILApprovalUpdate
+from app.services.hil.utils import GatedApproval
 
 
 def approval_id_for(conversation_id: str, tool_call_id: str) -> str:
@@ -33,16 +34,8 @@ def approval_id_for(conversation_id: str, tool_call_id: str) -> str:
 
 
 async def upsert_pending_approval(
+    approval: GatedApproval,
     *,
-    approval_id: str,
-    user_id: str,
-    conversation_id: str,
-    stream_id: str,
-    tool_name: str,
-    tool_call_id: str,
-    args: dict[str, object],
-    summary: str,
-    integration_name: str | None,
     subagent_thread_id: str | None = None,
     subagent_resume: SubagentResumeItem | None = None,
 ) -> bool:
@@ -54,15 +47,15 @@ async def upsert_pending_approval(
     """
     now = datetime.now(UTC)
     record = HILApprovalRecord(
-        approval_id=approval_id,
-        user_id=user_id,
-        conversation_id=conversation_id,
-        stream_id=stream_id,
-        tool_name=tool_name,
-        tool_call_id=tool_call_id,
-        args=args,
-        summary=summary,
-        integration_name=integration_name,
+        approval_id=approval.approval_id,
+        user_id=approval.user_id,
+        conversation_id=approval.conversation_id,
+        stream_id=approval.stream_id,
+        tool_name=approval.tool_call.name,
+        tool_call_id=approval.tool_call.id,
+        args=approval.tool_call.args,
+        summary=approval.summary,
+        integration_name=approval.integration_name,
         created_at=now,
         expires_at=now + timedelta(seconds=HIL_APPROVAL_TIMEOUT_SECONDS),
         subagent_thread_id=subagent_thread_id,
@@ -71,19 +64,7 @@ async def upsert_pending_approval(
     return await hil_approval_repository.create_if_absent(record)
 
 
-async def record_auto_approval(
-    *,
-    approval_id: str,
-    user_id: str,
-    conversation_id: str,
-    stream_id: str,
-    tool_name: str,
-    tool_call_id: str,
-    args: dict[str, object],
-    summary: str,
-    integration_name: str | None,
-    reason: str,
-) -> None:
+async def record_auto_approval(approval: GatedApproval, *, reason: str) -> None:
     """Log an action auto mode ran without asking — the receipt behind its card.
 
     Written already-decided (never pending), so it is a record, not a request: no
@@ -92,15 +73,15 @@ async def record_auto_approval(
     """
     now = datetime.now(UTC)
     record = HILApprovalRecord(
-        approval_id=approval_id,
-        user_id=user_id,
-        conversation_id=conversation_id,
-        stream_id=stream_id,
-        tool_name=tool_name,
-        tool_call_id=tool_call_id,
-        args=args,
-        summary=summary,
-        integration_name=integration_name,
+        approval_id=approval.approval_id,
+        user_id=approval.user_id,
+        conversation_id=approval.conversation_id,
+        stream_id=approval.stream_id,
+        tool_name=approval.tool_call.name,
+        tool_call_id=approval.tool_call.id,
+        args=approval.tool_call.args,
+        summary=approval.summary,
+        integration_name=approval.integration_name,
         status=HILApprovalStatus.AUTO_APPROVED,
         auto_reason=reason,
         decided_at=now,

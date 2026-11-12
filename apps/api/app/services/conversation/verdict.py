@@ -5,33 +5,21 @@ from datetime import datetime
 
 from app.constants.conversation import RESTART_WINDOW
 from app.models.conversation_log_models import (
-    BargeIn,
     Batch,
     CommitReason,
-    Entry,
     MergeGroup,
     PreemptHint,
     StepClaim,
-    UserMessage,
     Verdict,
     VisibleEntry,
     WakingEntry,
-    WorkFinished,
     WorkflowFired,
-    WorkOutcome,
 )
 
 
 def merge_group(entry: WakingEntry) -> MergeGroup:
     """Return the group whose inputs may merge into one attempt with entry."""
     return MergeGroup.BACKGROUND if isinstance(entry, WorkflowFired) else MergeGroup.INTERACTIVE
-
-
-def needs_reply(entry: Entry) -> bool:
-    """Return whether entry wakes a step that owes it a reply."""
-    if isinstance(entry, WorkFinished):
-        return entry.outcome is not WorkOutcome.CANCELLED
-    return isinstance(entry, UserMessage | BargeIn | WorkflowFired)
 
 
 def verdict(
@@ -57,12 +45,14 @@ def verdict(
 def quote_target(
     answers: Sequence[str], reply_seq: int, visible: Sequence[VisibleEntry]
 ) -> str | None:
-    """Return the newest answered user message's id when an unanswered visible entry sits between it and the reply."""
+    """Return the newest answered user message's id when an unanswered entry sits between it and the reply; visible is in seq order."""
     answered = set(answers)
     earlier = [item for item in visible if item.seq < reply_seq]
-    asked = [item for item in earlier if item.is_user_message and item.id in answered]
+    asked = [
+        index for index, item in enumerate(earlier) if item.is_user_message and item.id in answered
+    ]
     if not asked:
         return None
-    newest = max(asked, key=lambda item: item.seq)
-    interrupted = any(item.id not in answered for item in earlier if item.seq > newest.seq)
-    return newest.id if interrupted else None
+    newest = asked[-1]
+    interrupted = any(item.id not in answered for item in earlier[newest + 1 :])
+    return earlier[newest].id if interrupted else None
