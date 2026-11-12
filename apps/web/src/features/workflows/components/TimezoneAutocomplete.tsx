@@ -1,8 +1,8 @@
 "use client";
 
-import { ComboBox, Input, ListBox } from "@heroui/react";
+import { ComboBox, ListBox } from "@heroui/react";
 import { useEffect, useMemo, useState } from "react";
-
+import { ComboBoxInput } from "@/components/shared/ComboBoxInput";
 import { timezoneSearchText } from "@/utils/timezoneUtils";
 
 interface TimezoneOption {
@@ -39,6 +39,7 @@ export function TimezoneAutocomplete({
   className,
 }: Readonly<TimezoneAutocompleteProps>) {
   const selected = options.find((tz) => tz.value === timezone);
+  const selectedOffset = selected?.offset;
   const selectedCity = selected ? describeZone(selected.value).city : "";
 
   const [inputValue, setInputValue] = useState(selectedCity);
@@ -70,10 +71,15 @@ export function TimezoneAutocomplete({
         if (key) onChange(String(key));
       }}
     >
-      <ComboBox.InputGroup>
-        <Input />
-        <ComboBox.Trigger />
-      </ComboBox.InputGroup>
+      <ComboBoxInput
+        endContent={
+          selectedOffset ? (
+            <span className="shrink-0 text-xs text-zinc-500">
+              {selectedOffset}
+            </span>
+          ) : null
+        }
+      />
       <ComboBox.Popover className="min-w-fit">
         <ListBox>
           {(tz: TimezoneOption) => {
