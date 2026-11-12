@@ -196,17 +196,14 @@ export default async function IntegrationPage({ params }: Props) {
   const [native, community, relatedWorkflows, automateCombos, alternative] =
     await Promise.all([
       getNativeIntegrations(),
-      getAllCommunityIntegrations(),
+      // Natives come first in the directory, so a native page needs no community data.
+      integration.source === "platform" ? [] : getAllCommunityIntegrations(),
       getIntegrationWorkflows(integration.integrationId, 4),
       getAutomateCombos(slug),
       getTranslatedAlternative(slug),
     ]);
-  // A native page relates only to natives.
-  const related = relatedIntegrations(
-    integration,
-    native,
-    integration.source === "platform" ? [] : community,
-  );
+  // A native page relates only to natives (community is empty for it).
+  const related = relatedIntegrations(integration, native, community);
   const directoryHref = marketplaceDirectoryHref(
     marketplaceDirectoryPages(native, community),
     integration.slug,

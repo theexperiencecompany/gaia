@@ -4,11 +4,11 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { LinkCard } from "@/components/seo/LinkCard";
 import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
 import { RelatedAutomationsGrid } from "@/components/seo/RelatedAutomationsGrid";
 import { RelatedComparisonsGrid } from "@/components/seo/RelatedComparisonsGrid";
-import { SiteLink } from "@/components/seo/SiteLink";
 import { getTranslatedGlossaryTerm } from "@/features/glossary/data/getTranslatedGlossary";
 import {
   glossaryCategoryGroups,
@@ -202,18 +202,13 @@ export default async function GlossaryTermPage({ params }: PageProps) {
             </h2>
             <div className="grid gap-4 sm:grid-cols-2">
               {relatedTerms.map((related) => (
-                <SiteLink
+                <LinkCard
                   key={related.slug}
                   href={`/learn/${related.slug}`}
-                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-                >
-                  <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                    {related.term}
-                  </h3>
-                  <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
-                    {related.definition}
-                  </p>
-                </SiteLink>
+                  title={related.term}
+                  description={related.definition}
+                  clamp
+                />
               ))}
             </div>
           </section>
@@ -249,39 +244,22 @@ export default async function GlossaryTermPage({ params }: PageProps) {
             {t("common.explore_more")}
           </h2>
           <div className="grid gap-4 sm:grid-cols-3">
-            <SiteLink
+            <LinkCard
               href={hubHref}
-              className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-            >
-              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                {t("glossary.hub_title")}
-              </h3>
-              <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
-                {t("glossary.hub_subtitle")}
-              </p>
-            </SiteLink>
-            <SiteLink
+              title={t("glossary.hub_title")}
+              description={t("glossary.hub_subtitle")}
+              clamp
+            />
+            <LinkCard
               href="/compare"
-              className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-            >
-              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                {t("glossary.compare_alternatives")}
-              </h3>
-              <p className="text-sm leading-relaxed text-zinc-400">
-                {t("glossary.compare_alternatives_desc")}
-              </p>
-            </SiteLink>
-            <SiteLink
+              title={t("glossary.compare_alternatives")}
+              description={t("glossary.compare_alternatives_desc")}
+            />
+            <LinkCard
               href="/for"
-              className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-            >
-              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                {t("glossary.gaia_for_role")}
-              </h3>
-              <p className="text-sm leading-relaxed text-zinc-400">
-                {t("glossary.gaia_for_role_desc")}
-              </p>
-            </SiteLink>
+              title={t("glossary.gaia_for_role")}
+              description={t("glossary.gaia_for_role_desc")}
+            />
           </div>
         </section>
       </article>

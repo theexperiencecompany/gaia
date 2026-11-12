@@ -1,4 +1,5 @@
 import type { getTranslations } from "next-intl/server";
+import { LinkCard } from "@/components/seo/LinkCard";
 import { SiteLink } from "@/components/seo/SiteLink";
 import {
   type ComparisonCategoryGroup,
@@ -114,39 +115,22 @@ export function CompareExploreMore({
         {t("common.explore_more")}
       </h2>
       <div className="grid gap-4 sm:grid-cols-3">
-        <SiteLink
+        <LinkCard
           href={hubHref}
-          className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-        >
-          <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-            {t("comparisons.hub_title")}
-          </h3>
-          <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
-            {t("comparisons.hub_subtitle")}
-          </p>
-        </SiteLink>
-        <SiteLink
+          title={t("comparisons.hub_title")}
+          description={t("comparisons.hub_subtitle")}
+          clamp
+        />
+        <LinkCard
           href="/learn"
-          className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-        >
-          <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-            {t("comparisons.ai_glossary")}
-          </h3>
-          <p className="text-sm leading-relaxed text-zinc-400">
-            {t("comparisons.ai_glossary_desc", { name })}
-          </p>
-        </SiteLink>
-        <SiteLink
+          title={t("comparisons.ai_glossary")}
+          description={t("comparisons.ai_glossary_desc", { name })}
+        />
+        <LinkCard
           href="/for"
-          className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-        >
-          <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-            {t("comparisons.gaia_for_role")}
-          </h3>
-          <p className="text-sm leading-relaxed text-zinc-400">
-            {t("comparisons.gaia_for_role_desc")}
-          </p>
-        </SiteLink>
+          title={t("comparisons.gaia_for_role")}
+          description={t("comparisons.gaia_for_role_desc")}
+        />
       </div>
     </section>
   );
