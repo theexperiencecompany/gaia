@@ -589,7 +589,8 @@ jobs:
 
   # ── repo-policy: the checks that hold for the whole tree, not one language ─
   # The secret scan runs on every change (a key can land in a README), so the
-  # job always starts; it needs a checkout and python3, nothing installed.
+  # job always starts; it needs a checkout, node for bot-handles and uv for
+  # tool-pins, which parses the prek configs as YAML.
   repo-policy:
     name: repo-policy
     needs: [select-runner, detect]
@@ -618,6 +619,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/task-files
+      - uses: ./.github/actions/setup-uv
       - uses: ./.github/actions/setup-node-pnpm
 
       # Every check detect picked for this job, through nx (tools/ci/project.json and

@@ -22,10 +22,13 @@ def bypass_app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     return create_app()
 
 
-def _excludes(entry: str, path: str) -> bool:
-    return WorkOSAuthMiddleware(
-        app=MagicMock(), workos_client=MagicMock(), exclude_paths=[entry]
-    )._is_excluded(path)
+def _matcher(entry: str) -> WorkOSAuthMiddleware:
+    """Build a middleware excluding only entry; workos mode appends no exclusions of its own."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(settings, "AUTH_MODE", "workos")
+        return WorkOSAuthMiddleware(
+            app=MagicMock(), workos_client=MagicMock(), exclude_paths=[entry]
+        )
 
 
 @pytest.mark.regression
@@ -33,4 +36,4 @@ def test_every_auth_exclusion_matches_a_mounted_route(bypass_app: FastAPI) -> No
     mounted = [ctx.path for ctx in iter_route_contexts(bypass_app.routes) if ctx.path]
     exclusions = WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock()).exclude_paths
 
-    assert [e for e in exclusions if not any(_excludes(e, path) for path in mounted)] == []
+    assert [e for e in exclusions if not any(map(_matcher(e)._is_excluded, mounted))] == []

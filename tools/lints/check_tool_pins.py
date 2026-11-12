@@ -39,6 +39,7 @@ import sys
 import tomllib
 
 from _common import Violation, report_rule
+import yaml
 
 RULE = "tool-pins"
 WHY = (
@@ -767,32 +768,38 @@ HOOK_CONFIGS = tuple(
         check=True,
     ).stdout.split()
 )
-_REPO_LINE = re.compile(r"^\s*-\s+repo:\s*(\S+)")
-_ENTRY_LINE = re.compile(r"^\s*entry:\s*(.*)$")
-_FOLDED = {">", ">-", "|", "|-"}
+
+
+def _local_hook_entries(config: Path) -> list[tuple[int, str]]:
+    """Return (line, decoded entry) for every hook under a `repo: local` in a prek config."""
+    root = yaml.compose(config.read_text(encoding="utf-8"), Loader=yaml.SafeLoader)
+    out = []
+    for repo in _mapping(root)["repos"].value:
+        fields = _mapping(repo)
+        if fields["repo"].value != "local":
+            continue
+        for hook in fields["hooks"].value:
+            entry = _mapping(hook).get("entry")
+            if isinstance(entry, yaml.ScalarNode):
+                out.append((entry.start_mark.line + 1, entry.value))
+    return out
+
+
+def _mapping(node: yaml.Node) -> dict[str, yaml.Node]:
+    return {key.value: value for key, value in node.value}
 
 
 def _hook_toolchain_violations() -> list[Violation]:
     """Flag a local hook whose command is found on the caller's PATH instead of through mise."""
     out = []
     for config in HOOK_CONFIGS:
-        local = False
-        lines = config.read_text(encoding="utf-8").splitlines()
-        for n, line in enumerate(lines, 1):
-            if repo := _REPO_LINE.match(line):
-                local = repo.group(1) == "local"
-            entry = _ENTRY_LINE.match(line)
-            if not (local and entry):
-                continue
-            command = entry.group(1).strip()
-            if command in _FOLDED:
-                command = next(rest.strip() for rest in lines[n:] if rest.strip())
-            program = command.split()[0]
+        for line, entry in _local_hook_entries(config):
+            program = entry.split()[0]
             if program != "mise" and "/" not in program:
                 out.append(
                     Violation(
                         path=config,
-                        line=n,
+                        line=line,
                         detail=f"runs `{program}` from the committing shell's PATH, "
                         "which may hold another uv or node than mise.toml pins",
                         fix="start the entry with `mise exec -- `",

@@ -331,18 +331,19 @@ def superseded_runs(runs: list[tuple[int, int]]) -> set[int]:
 def live_checks(raw: list[dict], workflow_runs: list[dict]) -> list[Check]:
     """Normalise the head's checks from each workflow's newest run.
 
-    A newest run with no job listed reports as itself: pending before its first
-    job, and its own conclusion when it ended with none (a startup_failure).
+    A newest run also reports as itself while it is live, since a job waiting on
+    needs (the gate) has no check yet, and when it ended with no job listed (a
+    startup_failure), as its own conclusion.
     """
     superseded = superseded_runs([(run["id"], run["workflow_id"]) for run in workflow_runs])
     kept = [row for row in raw if run_id_of(row.get("html_url")) not in superseded]
     listed = {run_id_of(row.get("html_url")) for row in kept}
-    unlisted = [
+    as_itself = [
         {**run, "app": {"slug": "github-actions"}}
         for run in workflow_runs
-        if run["id"] not in superseded | listed
+        if run["id"] not in superseded and (run["status"] != "completed" or run["id"] not in listed)
     ]
-    return normalize(kept + unlisted)
+    return normalize(kept + as_itself)
 
 
 def status_checks(statuses: list[dict]) -> list[dict]:

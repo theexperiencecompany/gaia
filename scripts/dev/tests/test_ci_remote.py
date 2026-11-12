@@ -1421,17 +1421,27 @@ def test_only_the_newest_upload_of_a_shard_name_is_read(
 class SequencedGh(FakeGh):
     """Serves the next check set on each check-runs poll, repeating the last one."""
 
-    def __init__(self, polls: list[list[dict[str, Any]]], **kwargs: Any) -> None:
+    def __init__(
+        self,
+        polls: list[list[dict[str, Any]]],
+        run_polls: list[list[dict[str, Any]]] | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(checks=polls[0], **kwargs)
         self.polls = polls
+        # The head's Actions runs as each poll sees them, in step with polls.
+        self.run_polls = run_polls or [[]]
         self.check_polls = 0
 
     def text(
         self, args: list[str], timeout_s: int, stdin_text: str | None = None
     ) -> tuple[int, str, str]:
-        if "/check-runs" in (args[1] if len(args) > 1 else ""):
+        endpoint = args[1] if len(args) > 1 else ""
+        if "/check-runs" in endpoint:
             self.checks = self.polls[min(self.check_polls, len(self.polls) - 1)]
             self.check_polls += 1
+        if "/actions/runs?" in endpoint:
+            self.workflow_runs = self.run_polls[min(self.check_polls, len(self.run_polls)) - 1]
         return super().text(args, timeout_s, stdin_text)
 
 
@@ -1519,14 +1529,18 @@ def test_a_superseded_runs_failed_gate_does_not_stop_the_watch(
     wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Regression: a stacked push started two CI runs on one head, and the cancelled one's gate read as red."""
+    cancelled = ci_run(98, "completed", "cancelled")
     fake = SequencedGh(
         [
             [SUPERSEDED_GATE, job_in(PENDING_CHECK, 99)],
             [SUPERSEDED_GATE, job_in(PASSED_CHECK, 99)],
         ],
+        run_polls=[
+            [cancelled, ci_run(99, "in_progress")],
+            [cancelled, ci_run(99, "completed", "success")],
+        ],
         job_log="",
     )
-    fake.workflow_runs = [ci_run(98, "completed", "cancelled"), ci_run(99, "in_progress")]
     wire(fake)
 
     assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
@@ -1538,14 +1552,35 @@ def test_the_newest_run_with_no_job_listed_yet_is_pending(
     wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     title = job_in(dict(PASSED_CHECK, name="Validate PR Title"), 97)
+    cancelled = ci_run(98, "completed", "cancelled")
     fake = SequencedGh(
-        [[SUPERSEDED_GATE, title], [SUPERSEDED_GATE, title, job_in(PASSED_CHECK, 99)]]
+        [[SUPERSEDED_GATE, title], [SUPERSEDED_GATE, title, job_in(PASSED_CHECK, 99)]],
+        run_polls=[
+            [cancelled, ci_run(99, "queued")],
+            [cancelled, ci_run(99, "completed", "success")],
+        ],
     )
-    fake.workflow_runs = [ci_run(98, "completed", "cancelled"), ci_run(99, "queued")]
     wire(fake)
 
     assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
     assert fake.check_polls == 2, "settled green before the live run listed a job"
+
+
+def test_a_live_run_with_one_job_passed_is_still_pending(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A job waiting on needs (the gate) has no check yet, so a live run's one passed job is not green."""
+    gate = dict(
+        PASSED_CHECK, name="quality-gate", html_url="https://github.com/o/r/actions/runs/99/job/101"
+    )
+    fake = SequencedGh(
+        [[job_in(PASSED_CHECK, 99)], [job_in(PASSED_CHECK, 99), gate]],
+        run_polls=[[ci_run(99, "in_progress")], [ci_run(99, "completed", "success")]],
+    )
+    wire(fake)
+
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
+    assert fake.check_polls == 2, "settled green while the run was still in progress"
 
 
 def test_a_newest_run_that_never_started_a_job_still_reports_its_failure(
