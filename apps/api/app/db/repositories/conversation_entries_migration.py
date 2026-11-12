@@ -269,15 +269,13 @@ class ConversationEntriesMigration(ConversationRepository):
             )
         return [StoredEntry.model_validate(row) for row in rows]
 
-    def _entry(
-        self, ref: HeadRef, element: LegacyMessage, entry_id: str, seq: int
-    ) -> dict[str, object]:
+    def _entry(self, ref: HeadRef, element: LegacyMessage, entry_id: str) -> dict[str, object]:
+        """Return the element as its entry stores it, minus the seq its caller assigns."""
         stored = element.stored()
         payload = {k: v for k, v in stored.items() if k != "message_id"}
         return {
             **payload,
             **_of(ref),
-            "seq": seq,
             "id": entry_id,
             "at": entry_at(element.date),
             MIGRATION_HASH_FIELD: element_hash(stored),
@@ -290,7 +288,7 @@ class ConversationEntriesMigration(ConversationRepository):
         died before marking: they are replaced, never merged.
         """
         entries = [
-            self._entry(ref, element, entry_id, seq)
+            {**self._entry(ref, element, entry_id), "seq": seq}
             for seq, (entry_id, element) in enumerate(pairs, 1)
         ]
         with store_errors("migration copy"):  # pragma: no mutate — error label only
@@ -340,12 +338,12 @@ class ConversationEntriesMigration(ConversationRepository):
             for entry_id, element in changed:
                 seq = by_id[entry_id].seq
                 await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).replace_one(
-                    {**_of(ref), "seq": seq}, self._entry(ref, element, entry_id, seq)
+                    {**_of(ref), "seq": seq}, {**self._entry(ref, element, entry_id), "seq": seq}
                 )
         if fresh:
             log_head = head.log_head or 0
             seqs = {i: log_head + n for n, (i, _) in enumerate(fresh, 1)}
-            appended = [(i, self._entry(ref, e, i, seqs[i])) for i, e in fresh]
+            appended = [(i, self._entry(ref, e, i)) for i, e in fresh]
             if not await self._commit(ref.conversation_id, ref.user_id, log_head, appended, seqs):
                 return MigrationOutcome(ref.conversation_id, MigrationAction.RACED)
             await self.flush_outbox(ref.conversation_id, user_id=ref.user_id)

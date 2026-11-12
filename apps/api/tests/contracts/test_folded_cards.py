@@ -221,6 +221,35 @@ async def test_cards_never_wait_on_another_users_conversation(
     assert error["msg"].endswith("found no conversation to fold into; not saved")
 
 
+async def test_cards_wait_on_their_own_users_conversation_at_any_log_head(
+    raw_collection: Any,
+) -> None:
+    shared = f"c-{uuid.uuid4().hex}"
+    first, second = (
+        ConversationDocument.model_validate(
+            {
+                "user_id": f"u-{uuid.uuid4().hex}",
+                "conversation_id": shared,
+                "createdAt": datetime.now(UTC).isoformat(),
+            }
+        )
+        for _ in range(2)
+    )
+    await ConversationRepository().create(first)
+    await ConversationRepository().create(second)
+
+    for message_id in ("m1", "m2"):
+        assert await conversation_repository.park_folded_cards(
+            shared, user_id=second.user_id, message_id=message_id, entries=[CARD]
+        )
+        await _append(second, _bot(message_id))
+
+    assert await _tool_data(second, "m1") == [CARD]
+    assert await _tool_data(second, "m2") == [CARD]
+    untouched = await raw_collection.find_one({"user_id": first.user_id})
+    assert untouched is not None and FOLDED_CARDS_FIELD not in untouched
+
+
 async def test_cards_added_to_a_day_old_wait_keep_its_age(
     conversation: ConversationDocument, raw_collection: Any
 ) -> None:
