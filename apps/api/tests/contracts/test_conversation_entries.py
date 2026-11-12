@@ -204,6 +204,30 @@ async def test_an_update_to_an_entry_still_in_the_outbox_is_applied(
     assert not await repo.set_message_response(cid, user_id=uid, message_id="nope", response="x")
 
 
+async def test_settling_an_approval_reaches_every_message_holding_it_flushed_or_not(
+    repo: ConversationRepository, conversation: ConversationDocument, held: _HeldFlushes
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    frame = {"tool_name": "approval_request", "data": {"approval_id": "a1", "status": "pending"}}
+
+    def card(message_id: str) -> MessageModel:
+        return MessageModel(type="bot", response="", message_id=message_id, tool_data=[frame])
+
+    await repo.append(cid, user_id=uid, entries=[card("flushed")])
+    await held.run_all()
+    await repo.append(cid, user_id=uid, entries=[card("pending")])
+    held.drop_all()
+
+    assert await repo.set_message_approval_status(
+        cid, user_id=uid, approval_id="a1", status="approved"
+    )
+
+    for message_id in ("flushed", "pending"):
+        saved = await repo.get_message(cid, message_id, user_id=uid)
+        assert saved is not None and saved.tool_data is not None
+        assert [entry["data"]["status"] for entry in saved.tool_data] == ["approved"], message_id
+
+
 async def test_a_read_between_insert_and_unset_sees_the_entry_once(
     repo: ConversationRepository,
     conversation: ConversationDocument,

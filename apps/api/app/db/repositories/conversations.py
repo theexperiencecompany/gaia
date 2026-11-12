@@ -17,17 +17,17 @@ import asyncio
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 import random
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorCollection
-from pymongo.errors import BulkWriteError, DuplicateKeyError
+from pymongo.errors import DuplicateKeyError
 
 from app.constants.chat import (
     CONVERSATION_APPEND_JITTER_SECONDS,
     CONVERSATION_APPEND_MAX_ATTEMPTS,
     CONVERSATION_ENTRIES_COLLECTION,
     FOLDED_CARDS_FIELD,
+    FOLDED_CARDS_KEEP_SECONDS,
     SUBAGENT_GROUP_TOOL_NAME,
     USER_MESSAGE_TYPE,
 )
@@ -42,15 +42,15 @@ from app.db.repositories.conversation_entries import (
     UNMIGRATED_HEADS,
     EntryWindow,
     Head,
-    absorbing,
+    StoredRow,
+    at_its_seq,
     at_log_head,
-    entry_from_raw,
     head_fields,
     head_from_raw,
-    parked,
-    still_waiting,
+    is_same_entry,
     store_errors,
     stored_message,
+    stored_row,
     unmigrated,
 )
 from app.models.artifact_models import ArtifactRegistryEntry
@@ -83,7 +83,6 @@ from app.utils.errors import (
 )
 from shared.py.wide_events import spawn_logged_task
 
-_DUPLICATE_KEY = 11000
 _JITTER = random.SystemRandom()
 _BOT_SOURCE_VALUES: list[str] = [s.value for s in BOT_CONVERSATION_SOURCES]
 _SUMMARY_PROJECTION: dict[str, object] = {
@@ -355,7 +354,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             )
             if not unset.matched_count:
                 # The conversation was deleted while this flush ran: take back what it inserted.
-                await self._entries().delete_many(
+                await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(
                     {
                         "user_id": user_id,
                         "conversation_id": conversation_id,
@@ -401,7 +400,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             with store_errors("park folded cards"):
                 matched = await self._apply_pipeline_update_unfetched(
                     {"conversation_id": conversation_id, **at_log_head(head.log_head)},
-                    [{"$set": {FOLDED_CARDS_FIELD: parked(message_id, entries)}}],
+                    [{"$set": {FOLDED_CARDS_FIELD: _parked(message_id, entries)}}],
                     # The waiting room is write-side only: no cached read shows it.
                     scope=None,
                     extra_filter={"user_id": user_id},
@@ -834,9 +833,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     def _to_model(self, raw: Mapping[str, object]) -> ConversationDocument:
         return super()._to_model(head_fields(raw))
 
-    def _entries(self) -> AsyncIOMotorCollection[dict[str, Any]]:
-        return self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
-
     def _spawn_flush(self, conversation_id: str, user_id: str) -> None:
         spawn_logged_task(
             "conversation_flush",
@@ -885,7 +881,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             },
             {
                 "$lookup": {
-                    "from": self._entries().name,
+                    "from": self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).name,
                     "pipeline": [
                         {
                             "$match": {
@@ -914,7 +910,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     ) -> bool:
         """Allocate seqs: the one conditional head write, absorbing each entry's folded cards with it."""
         committed = {
-            str(seqs[entry_id]): absorbing(
+            str(seqs[entry_id]): _absorbing(
                 entry_id,
                 {
                     **data,
@@ -936,7 +932,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                                 "$mergeObjects": [{"$ifNull": [f"${OUTBOX_FIELD}", {}]}, committed]
                             },
                             "updatedAt": "$$NOW",
-                            FOLDED_CARDS_FIELD: still_waiting(list(seqs)),
+                            FOLDED_CARDS_FIELD: _still_waiting(list(seqs)),
                         }
                     }
                 ],
@@ -946,22 +942,18 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             )
         return matched > 0
 
-    async def _insert_entries(self, entries: list[dict[str, object]]) -> None:
-        """Insert entries, treating one already at its seq as flushed; a second seq for one id is a bug."""
-        try:
-            await self._entries().insert_many(entries, ordered=False)
-        except BulkWriteError as exc:
-            conflicts = [
-                error
-                for error in exc.details.get("writeErrors", [])
-                if error.get("code") != _DUPLICATE_KEY or "seq" not in error.get("keyPattern", {})
-            ]
-            if conflicts:
-                raise ConversationStoreError(
-                    message="an outbox entry conflicts with a stored entry",
-                    why=str(conflicts[0].get("errmsg")),
-                    meta={"conflicts": len(conflicts)},
-                ) from exc
+    async def _insert_entries(self, entries: Sequence[Mapping[str, object]]) -> None:
+        """Insert each outbox entry; one already stored at its seq was flushed before, any other conflict is a bug."""
+        collection = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
+        for entry in entries:
+            try:
+                await collection.insert_one(dict(entry))
+            except DuplicateKeyError as exc:
+                if not is_same_entry(await collection.find_one(at_its_seq(entry)), entry):
+                    raise ConversationStoreError(
+                        message="an outbox entry conflicts with a stored entry",
+                        why=str(exc),
+                    ) from exc
 
     async def _read_entries(
         self, conversation_id: str, *, user_id: str, window: EntryWindow | None = None
@@ -990,7 +982,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             for head in heads
         ]
         cursor = (
-            self._entries()
+            self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
             .find({"$or": clauses})
             .sort([("seq", -1 if window.newest_first or window.limit else 1)])
         )
@@ -998,16 +990,15 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             cursor = cursor.limit(window.limit)
         with store_errors("entry read"):
             rows = await cursor.to_list(length=None)
-        stored: dict[tuple[str, str], dict[int, Mapping[str, object]]] = {}
-        for row in rows:
-            key = (str(row["user_id"]), str(row["conversation_id"]))
-            stored.setdefault(key, {})[int(row["seq"])] = row
+        stored: dict[tuple[str, str], dict[int, ConversationEntry]] = {}
+        for row in map(stored_row, rows):
+            stored.setdefault((row.user_id, row.conversation_id), {})[row.entry.seq] = row.entry
         result: list[tuple[Head, list[ConversationEntry]]] = []
         for head in heads:
             union = dict(stored.get((head.user_id, head.conversation_id), {}))
-            for seq, entry in head.outbox.items():
-                if window.admits(seq, str(entry["id"]), head.log_head):
-                    union.setdefault(seq, entry)
+            for entry in head.pending():
+                if window.admits(entry, head.log_head):
+                    union.setdefault(entry.seq, entry)
             result.append((head, window.take(union)))
         return result
 
@@ -1052,18 +1043,18 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 else []
             )
             cursor = (
-                self._entries()
+                self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
                 .find({"user_id": user_id, **match, "conversation_id": {"$nin": skipped}})
                 .sort([("at", 1), ("seq", 1)])
             )
             if limit:
                 cursor = cursor.limit(limit)
             rows = await cursor.to_list(length=None)
-        found: dict[tuple[str, int], Mapping[str, object]] = {}
-        for row in [*pending, *rows]:
-            found.setdefault((str(row["conversation_id"]), int(row["seq"])), row)
-        ordered = sorted(found.values(), key=lambda row: (row["at"], row["seq"]))
-        hits = [(str(row["conversation_id"]), entry_from_raw(row)) for row in ordered]
+        found: dict[tuple[str, int], StoredRow] = {}
+        for row in map(stored_row, [*pending, *rows]):
+            found.setdefault((row.conversation_id, row.entry.seq), row)
+        ordered = sorted(found.values(), key=lambda row: (row.at, row.entry.seq))
+        hits = [(row.conversation_id, row.entry) for row in ordered]
         return hits[:limit] if limit else hits
 
     async def _update_entry(
@@ -1078,17 +1069,21 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     ) -> bool:
         """Update one stored entry (every matching one with every_match); an entry still in the outbox is flushed first.
 
-        Never writes inside the outbox: a miss flushes it and retries once.
+        Never writes inside the outbox: a miss flushes it and retries once, and an
+        every_match update flushes first, since a hit in the collection says nothing
+        of a match still in the outbox.
         """
         query = {"user_id": user_id, "conversation_id": conversation_id, **match}
         filters = [dict(f) for f in array_filters] if array_filters is not None else None
-        entries = self._entries()
+        entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
+        if every_match:
+            await self.flush_outbox(conversation_id, user_id=user_id)
+            with store_errors("entry update"):
+                result = await entries.update_many(query, dict(update), array_filters=filters)
+            return result.matched_count > 0
         for attempt in range(2):
             with store_errors("entry update"):
-                if every_match:
-                    result = await entries.update_many(query, dict(update), array_filters=filters)
-                else:
-                    result = await entries.update_one(query, dict(update), array_filters=filters)
+                result = await entries.update_one(query, dict(update), array_filters=filters)
             if result.matched_count:
                 return True
             if attempt == 0:
@@ -1103,7 +1098,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             return []
         await self._delete_many(query, scope=user_id)
         with store_errors("entry delete"):
-            await self._entries().delete_many({"user_id": user_id, "conversation_id": {"$in": ids}})
+            await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(
+                {"user_id": user_id, "conversation_id": {"$in": ids}}
+            )
         return ids
 
     def _with_messages(
@@ -1167,3 +1164,95 @@ def _todo_binding(todo_id: str) -> dict[str, object]:
 
 def _todo_chats(user_id: str, todo_ids: Sequence[str]) -> dict[str, object]:
     return {"user_id": user_id, "todo_id": {"$in": list(todo_ids), "$type": "string"}}
+
+
+def _waiting_for(message_id: str) -> dict[str, object]:
+    """Read the waiting-room entry for message_id, taking the id as a literal, never a path."""
+    return {
+        "$getField": {
+            "field": {"$literal": message_id},
+            "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
+        }
+    }
+
+
+def _absorbing(message_id: str, message: Mapping[str, object]) -> dict[str, object]:
+    """Build the entry as committed: stamped at commit time, the cards waiting for its id after its own tool_data.
+
+    The entry itself is a $literal, so text that starts with "$" is never read as a path.
+    """
+    waiting = {"$getField": {"field": "cards", "input": _waiting_for(message_id)}}
+    tool_data = {
+        "$concatArrays": [{"$ifNull": ["$$message.tool_data", []]}, {"$ifNull": [waiting, []]}]
+    }
+    return {
+        "$let": {
+            "vars": {"message": {"$literal": dict(message)}},
+            "in": {
+                "$mergeObjects": [
+                    "$$message",
+                    {
+                        "at": "$$NOW",
+                        "tool_data": {"$cond": [{"$eq": [tool_data, []]}, "$$REMOVE", tool_data]},
+                    },
+                ]
+            },
+        }
+    }
+
+
+def _still_waiting(saved_ids: list[str]) -> dict[str, object]:
+    """Keep the waiting room minus the cards these messages absorbed and any a day stale."""
+    kept = {
+        "$arrayToObject": {
+            "$filter": {
+                "input": {"$objectToArray": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]}},
+                "as": "waiting",
+                "cond": {
+                    "$and": [
+                        {"$not": [{"$in": ["$$waiting.k", {"$literal": saved_ids}]}]},
+                        {
+                            "$gt": [
+                                "$$waiting.v.since",
+                                {
+                                    "$dateSubtract": {
+                                        "startDate": "$$NOW",
+                                        "unit": "second",
+                                        "amount": FOLDED_CARDS_KEEP_SECONDS,
+                                    }
+                                },
+                            ]
+                        },
+                    ]
+                },
+            }
+        }
+    }
+    return {
+        "$let": {
+            "vars": {"kept": kept},
+            "in": {"$cond": [{"$eq": ["$$kept", {}]}, "$$REMOVE", "$$kept"]},
+        }
+    }
+
+
+def _parked(message_id: str, cards: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    """Return the waiting room with these cards added under message_id, keeping when it first waited."""
+    waiting = _waiting_for(message_id)
+    return {
+        "$setField": {
+            "field": {"$literal": message_id},
+            "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
+            "value": {
+                "since": {
+                    "$ifNull": [{"$getField": {"field": "since", "input": waiting}}, "$$NOW"]
+                },
+                "cards": {
+                    "$concatArrays": [
+                        {"$ifNull": [{"$getField": {"field": "cards", "input": waiting}}, []]},
+                        {"$literal": [dict(card) for card in cards]},
+                    ]
+                },
+            },
+        }
+    }

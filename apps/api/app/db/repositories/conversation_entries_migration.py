@@ -18,6 +18,7 @@ import json
 
 from bson import ObjectId
 
+from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.db.repositories.conversation_entries import (
     EMBEDDED_LAST_ID,
     LOG_HEAD_FIELD,
@@ -233,7 +234,7 @@ class ConversationEntriesMigration(ConversationRepository):
                 {"_id": ObjectId(ref.head_id)},
                 {"$set": {"messages": messages}, "$unset": _UNSET_LOG},
             )
-            await self._entries().delete_many(_of(ref))
+            await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(_of(ref))
         return len(messages)
 
     async def _scan(
@@ -256,7 +257,12 @@ class ConversationEntriesMigration(ConversationRepository):
 
     async def _stored(self, ref: HeadRef) -> list[dict[str, object]]:
         with store_errors("migration read"):  # pragma: no mutate — error label only
-            rows = await self._entries().find(_of(ref)).sort(_BY_SEQ).to_list(None)
+            rows = (
+                await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
+                .find(_of(ref))
+                .sort(_BY_SEQ)
+                .to_list(None)
+            )
         return [dict(row) for row in rows]
 
     def _entry(
@@ -285,8 +291,8 @@ class ConversationEntriesMigration(ConversationRepository):
             for seq, (entry_id, element) in enumerate(zip(ids, elements, strict=True), 1)
         ]
         with store_errors("migration copy"):  # pragma: no mutate — error label only
-            await self._entries().delete_many(_of(ref))
-            await self._entries().insert_many(entries)
+            await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(_of(ref))
+            await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).insert_many(entries)
             result = await self._raw_collection().update_one(
                 {
                     "_id": ObjectId(ref.head_id),
@@ -332,7 +338,7 @@ class ConversationEntriesMigration(ConversationRepository):
         with store_errors("migration merge"):  # pragma: no mutate — error label only
             for entry_id, element in changed:
                 seq = int(str(by_id[entry_id]["seq"]))
-                await self._entries().replace_one(
+                await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).replace_one(
                     {**_of(ref), "seq": seq}, self._entry(ref, element, entry_id, seq)
                 )
         log_head = int(str(head[LOG_HEAD_FIELD]))
