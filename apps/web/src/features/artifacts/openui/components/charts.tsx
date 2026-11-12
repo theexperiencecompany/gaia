@@ -227,7 +227,7 @@ function HeatmapView(props: z.infer<typeof heatmapSchema>) {
   const hi = Math.max(...props.values.flat()) || 1;
   return (
     <Figure title={props.title} subtitle={props.subtitle}>
-      <div className="max-w-full overflow-x-auto">
+      <div className="max-w-full overflow-x-auto print:overflow-visible">
         <table className="border-separate border-spacing-0.5 text-xs tabular-nums">
           <thead>
             <tr>

@@ -115,4 +115,5 @@ export const STATEMENT_NAMES: Record<string, string> = {
   Sources: "sources",
   PieChart: "pie",
   CodeBlock: "code",
+  HtmlArtifact: "html",
 };

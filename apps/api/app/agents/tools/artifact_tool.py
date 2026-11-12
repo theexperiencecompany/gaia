@@ -17,8 +17,10 @@ from app.constants.openui_artifacts import (
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_models import current_stream_writer, get_session_id, get_user_id
 from app.models.openui_artifact_models import ArtifactKind, ArtifactStatus
+from app.models.short_link_models import ShortLinkTargetType
 from app.services.openui_artifacts.create import ArtifactCreationError, create_openui_artifact
 from app.services.openui_artifacts.generate import ArtifactRequest
+from app.services.short_link_service import optional_short_link
 from app.templates.docstrings.artifact_tool_docs import CREATE_ARTIFACT
 
 
@@ -58,12 +60,19 @@ async def create_artifact(
     kind: Annotated[ArtifactKind, "What the artifact is"],
     title: Annotated[str, "The artifact's title"],
     brief: Annotated[str, "Every fact the artifact needs, verbatim, and its one-line message"],
+    interactive: Annotated[
+        bool, "True only when the user asked for inputs to play with: a calculator, a simulator"
+    ] = False,
 ) -> str:
     writer = current_stream_writer()
     stream_id = uuid.uuid4().hex
     batcher = _DeltaBatcher(writer, stream_id, kind, title)
     request = ArtifactRequest(
-        kind=kind, brief=brief, user_id=get_user_id(config), conversation_id=get_session_id(config)
+        kind=kind,
+        brief=brief,
+        user_id=get_user_id(config),
+        conversation_id=get_session_id(config),
+        interactive=interactive,
     )
     card = {"stream_id": stream_id, "kind": kind.value, "title": title}
     try:
@@ -74,6 +83,9 @@ async def create_artifact(
         problems = "".join(f"\n- {p}" for p in exc.problems[:10])
         return f"The {kind.value} could not be made ({exc.reason.value}).{problems}"
     batcher.flush()
+    short_url = await optional_short_link(
+        request.user_id, ShortLinkTargetType.OPENUI_ARTIFACT, artifact.id
+    )
     writer(
         {
             ARTIFACT_DONE_EVENT: {
@@ -83,7 +95,8 @@ async def create_artifact(
             }
         }
     )
+    link = f" Public link: {short_url}." if short_url else ""
     return (
         f'Created the {kind.value} "{title}". The user sees it as a card in chat and can '
-        "open it there; do not repeat its contents in your reply."
+        f"open it there; do not repeat its contents in your reply.{link}"
     )

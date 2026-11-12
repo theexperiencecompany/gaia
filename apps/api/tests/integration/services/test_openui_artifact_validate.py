@@ -43,6 +43,7 @@ async def test_grounded_program_validates_and_fills_its_slots() -> None:
             'Callout("warn", "Biggest loss", "{funnel1.maxDrop} people left at {funnel1.maxDropStage}.")'
         ),
         SOURCE,
+        interactive=False,
     )
 
     assert result.ok
@@ -53,7 +54,9 @@ async def test_grounded_program_validates_and_fills_its_slots() -> None:
 
 async def test_typed_figure_missing_from_the_brief_is_a_problem() -> None:
     result = await validate_program(
-        _program('Callout("warn", "Biggest loss", "142 people did not see the paywall.")'), SOURCE
+        _program('Callout("warn", "Biggest loss", "142 people did not see the paywall.")'),
+        SOURCE,
+        interactive=False,
     )
 
     assert not result.ok
@@ -66,7 +69,9 @@ async def test_typed_figure_missing_from_the_brief_is_a_problem() -> None:
 @pytest.mark.parametrize("doc", ["launch", "report"])
 async def test_first_attempts_report_the_prototype_problems(doc: str) -> None:
     result = await validate_program(
-        (FIXTURES / f"first-{doc}.oui").read_text(), (FIXTURES / f"brief-{doc}.txt").read_text()
+        (FIXTURES / f"first-{doc}.oui").read_text(),
+        (FIXTURES / f"brief-{doc}.txt").read_text(),
+        interactive=False,
     )
 
     assert result.problems == json.loads((FIXTURES / f"first-{doc}.problems.json").read_text())
@@ -78,4 +83,4 @@ async def test_missing_bundle_fails_loud(monkeypatch: pytest.MonkeyPatch, tmp_pa
     )
 
     with pytest.raises(ArtifactValidatorError):
-        await validate_program('root = Artifact("a", "b", [], [])', "")
+        await validate_program('root = Artifact("a", "b", [], [])', "", interactive=False)

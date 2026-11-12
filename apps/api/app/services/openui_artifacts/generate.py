@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import time
 
-from openai import AsyncOpenAI, BadRequestError
+from openai import APIError, AsyncOpenAI
 from openai.types.responses import (
     ResponseCompletedEvent,
     ResponseRefusalDeltaEvent,
@@ -67,6 +67,8 @@ class ArtifactRequest:
     brief: str
     user_id: str
     conversation_id: str | None
+    #: The request asks for inputs to interact with, which allows HtmlArtifact.
+    interactive: bool = False
 
 
 DeltaSink = Callable[[str], Awaitable[None]]
@@ -121,7 +123,8 @@ def _meter(request: ArtifactRequest, usage: ResponseUsage | None, duration_ms: f
     )
 
 
-def _refused(exc: BadRequestError) -> bool:
+def _refused(exc: APIError) -> bool:
+    """Tell a flagged prompt apart, rejected up front (400) or mid-stream (an error event)."""
     return exc.code == _REFUSED_PROMPT_CODE
 
 
@@ -158,7 +161,7 @@ async def generate_reply(
                 raise ArtifactRefusedError(message="the artifact model refused the request")
             elif isinstance(event, ResponseCompletedEvent):
                 usage = event.response.usage
-    except BadRequestError as exc:
+    except APIError as exc:
         if _refused(exc):
             raise ArtifactRefusedError(message="the provider refused the artifact request") from exc
         raise

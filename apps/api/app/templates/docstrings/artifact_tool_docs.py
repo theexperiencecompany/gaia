@@ -16,8 +16,13 @@ Gather the facts first (tools, memory, the conversation), then call it once with
 - title: the artifact's title, in the user's words where they gave one.
 - brief: every fact the artifact needs, verbatim from tool results and memory: numbers,
   series, names, dates, quotes and source URLs, plus the one-line message it should land.
-  The artifact can only state numbers that appear in the brief, so include complete data
-  series rather than summaries of them.
+  Pass the numbers as the sources state them and never add ones you worked out (totals,
+  differences, shares, averages): the artifact computes those from the data itself, and
+  it can only state numbers the brief contains. Include complete data series rather than
+  summaries of them.
+
+- interactive: true only when the user asked for something to play with (a calculator,
+  a mortgage or pricing simulator, a small tool); use kind document for those.
 
 The result says whether the artifact was made and gives its link; hand the link to the
 user. On failure it says why; do not retry with the same brief.

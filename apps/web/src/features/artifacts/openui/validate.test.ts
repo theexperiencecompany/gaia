@@ -85,4 +85,53 @@ describe("validateArtifact", () => {
       '"para1" is referenced but never defined',
     );
   });
+
+  describe("HtmlArtifact", () => {
+    const CALCULATOR =
+      '<form class="calculator" data-calc><div class="calc-grid"><div class="calc-inputs"><label class="calc-in"><span>Price</span><input type="number" name="price" value="465000" step="5000"></label><label class="calc-in"><span>Rate</span><input type="number" name="rate" value="3.4"></label></div><div class="calc-outputs"><div class="calc-out primary"><span>Interest</span><output data-formula="round(price * rate / 100)" data-prefix="" data-suffix="" data-decimals="0"></output></div></div></div></form>';
+    const program = (html: string) =>
+      `root = Artifact("Mortgage", "Try your numbers", [], [html1])\nhtml1 = HtmlArtifact("Calculator", ${JSON.stringify(html)})`;
+
+    it("is allowed, with its input defaults ungrounded, when the request is interactive", () => {
+      const result = validateArtifact(program(CALCULATOR), "", {
+        interactive: true,
+      });
+      expect(result.problems).toEqual([]);
+    });
+
+    it("is rejected when the request asks for nothing to interact with", () => {
+      const result = validateArtifact(program(CALCULATOR), "");
+      expect(result.problems).toEqual([
+        "html1 = HtmlArtifact(...): the request asks for nothing to interact with; use the other components",
+      ]);
+    });
+
+    it.each([
+      ['<div><script>fetch("https://x.io")</script></div>', "<script>"],
+      ['<div style="color:red">x</div>', "style="],
+      ['<button onclick="go()">x</button>', "on* event attribute"],
+      ['<a href="https://evil.example">x</a>', "points at a URL"],
+      ['<img src="data:image/png;base64,AA">', "loads content"],
+    ])("rejects %s", (html, why) => {
+      const result = validateArtifact(program(html), "", { interactive: true });
+      expect(result.problems.some((p) => p.includes(why))).toBe(true);
+    });
+
+    it("rejects a formula that names no input or leaves the grammar", () => {
+      const bad = CALCULATOR.replace(
+        "round(price * rate / 100)",
+        "price * tax",
+      ).replace(
+        'data-decimals="0">',
+        'data-decimals="0"></output><output data-formula="alert(1);price">',
+      );
+      const result = validateArtifact(program(bad), "", { interactive: true });
+      expect(result.problems).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('names "tax", which is no input'),
+          expect.stringContaining("uses characters outside"),
+        ]),
+      );
+    });
+  });
 });

@@ -16225,6 +16225,47 @@
         "title": "PublicIntegrationDetailResponse",
         "type": "object"
       },
+      "PublicOpenUIArtifact": {
+        "additionalProperties": false,
+        "description": "An artifact create_artifact made: its program, which the page renders as data.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ArtifactKind"
+          },
+          "program": {
+            "title": "Program",
+            "type": "string"
+          },
+          "target_type": {
+            "const": "openui_artifact",
+            "title": "Target Type",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "target_type",
+          "kind",
+          "title",
+          "program",
+          "version",
+          "created_at"
+        ],
+        "title": "PublicOpenUIArtifact",
+        "type": "object"
+      },
       "PublicSessionArtifact": {
         "additionalProperties": false,
         "description": "A file GAIA produced in a session's sandbox. ``content`` is the text of a\ntext file; binary files carry ``None`` and render as a metadata card.",
@@ -18503,7 +18544,8 @@
           "todo_deliverable",
           "briefing",
           "session_artifact",
-          "workflow_run"
+          "workflow_run",
+          "openui_artifact"
         ],
         "title": "ShortLinkTargetType",
         "type": "string"
@@ -24688,6 +24730,65 @@
           }
         },
         "summary": "Get Artifact",
+        "tags": [
+          "Artifacts"
+        ]
+      }
+    },
+    "/api/v1/artifacts/{artifact_id}/pdf": {
+      "get": {
+        "description": "One of the user's artifacts as an A4 PDF.",
+        "operationId": "artifacts_get_artifact_pdf",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Artifact Pdf",
         "tags": [
           "Artifacts"
         ]
@@ -32084,6 +32185,18 @@
               "title": "Slug",
               "type": "string"
             }
+          },
+          {
+            "description": "The PDF export's read; not counted as an open",
+            "in": "query",
+            "name": "print",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "The PDF export's read; not counted as an open",
+              "title": "Print",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -32094,6 +32207,7 @@
                   "discriminator": {
                     "mapping": {
                       "briefing": "#/components/schemas/PublicBriefing",
+                      "openui_artifact": "#/components/schemas/PublicOpenUIArtifact",
                       "session_artifact": "#/components/schemas/PublicSessionArtifact",
                       "todo_deliverable": "#/components/schemas/PublicTodoDeliverable",
                       "workflow_run": "#/components/schemas/PublicWorkflowRun"
@@ -32112,6 +32226,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/PublicWorkflowRun"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PublicOpenUIArtifact"
                     }
                   ],
                   "title": "Response Short Links Resolve Short Link Route"
@@ -32228,6 +32345,75 @@
           }
         },
         "summary": "Get Short Link File Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/{slug}/pdf": {
+      "get": {
+        "description": "The artifact behind a slug as an A4 PDF. No auth, like the link itself.",
+        "operationId": "short_links_get_short_link_pdf_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {}
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Short link not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Short Link Pdf Route",
         "tags": [
           "Short Links"
         ]

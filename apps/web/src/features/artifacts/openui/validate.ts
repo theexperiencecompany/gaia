@@ -15,6 +15,7 @@ import {
   sourceNumbers,
   ungrounded,
 } from "./grounding";
+import { htmlProblems } from "./htmlRules";
 import { STATEMENT_NAMES } from "./kinds";
 import { artifactSpecLibrary } from "./specLibrary";
 import { ARTIFACT_ROOT } from "./specs";
@@ -32,6 +33,7 @@ export interface ValidationResult {
 }
 
 const MAX_ISSUES_PER_ELEMENT = 3;
+const HTML_ARTIFACT = "HtmlArtifact";
 const ROOT_LINE = /^root\s*=/gm;
 
 const parser = createParser(artifactSpecLibrary.toJSONSchema(), ARTIFACT_ROOT);
@@ -145,6 +147,8 @@ function groundingProblems(
   const problems: string[] = [];
   const resolved: Record<string, string> = {};
   for (const [id, node] of index) {
+    // an interactive tool's markup holds input defaults and steps, not claims
+    if (node.typeName === HTML_ARTIFACT) continue;
     const scope: GroundingScope = { id, index, source, problems, resolved };
     for (const [key, value] of Object.entries(node.props ?? {}))
       checkValue(scope, value, key);
@@ -159,10 +163,34 @@ function messageOf(error: unknown): string {
   return JSON.stringify(error);
 }
 
+function htmlArtifactProblems(
+  nodes: GroundNode[],
+  interactive: boolean,
+): string[] {
+  return nodes
+    .filter((node) => node.typeName === HTML_ARTIFACT)
+    .flatMap((node) => {
+      const label = `${node.statementId ?? HTML_ARTIFACT} = ${HTML_ARTIFACT}(...)`;
+      if (!interactive) {
+        return [
+          `${label}: the request asks for nothing to interact with; use the other components`,
+        ];
+      }
+      const html = typeof node.props?.html === "string" ? node.props.html : "";
+      return htmlProblems(html).map((problem) => `${label}: ${problem}`);
+    });
+}
+
+export interface ValidationOptions {
+  /** The request asks for inputs to interact with, so HtmlArtifact is allowed. */
+  interactive?: boolean;
+}
+
 /** Extract the program from a model reply and run every check on it. */
 export function validateArtifact(
   reply: string,
   brief: string,
+  { interactive = false }: ValidationOptions = {},
 ): ValidationResult {
   const program = extractProgram(reply);
   const result = parser.parse(program);
@@ -173,6 +201,7 @@ export function validateArtifact(
     ...namingProblems(nodes),
     ...grounding.problems,
     ...propProblems(nodes),
+    ...htmlArtifactProblems(nodes, interactive),
     ...(roots > 1
       ? [`the program is written ${roots} times; write it once`]
       : []),

@@ -23,6 +23,7 @@ from app.models.short_link_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import error_responses
+from app.services.openui_artifacts.export import pdf_download_headers, public_artifact_pdf
 from app.services.short_link_projections import project_target
 from app.services.short_link_service import (
     get_public_file,
@@ -93,12 +94,18 @@ async def get_share_state_route(
 
 
 @router.get("/{slug}", response_model=PublicShortLinkView)
-async def resolve_short_link_route(response: Response, slug: str) -> PublicShortLinkView:
+async def resolve_short_link_route(
+    response: Response,
+    slug: str,
+    print_copy: Annotated[
+        bool, Query(alias="print", description="The PDF export's read; not counted as an open")
+    ] = False,
+) -> PublicShortLinkView:
     """Resolve a capability slug to its target's public view. No auth."""
     log.set(short_link={"operation": "resolve", "slug_hash": hash_short_link_slug(slug)})
     response.headers["Cache-Control"] = _NO_STORE  # pragma: no mutate — case-insensitive name
     try:
-        view = await get_public_view(slug)
+        view = await get_public_view(slug, count_open=not print_copy)
     except JuiceFSUnavailable as e:
         raise HTTPException(status_code=503, detail=_STORAGE_OFFLINE) from e
     if view is None:
@@ -123,6 +130,22 @@ async def get_short_link_file_route(slug: str) -> FileResponse:
     if host_path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
     return sandboxed_file_response(host_path, cache_control=_NO_STORE)
+
+
+@router.get(
+    "/{slug}/pdf",
+    response_class=Response,
+    responses={200: {"content": {"application/pdf": {}}}, **error_responses({404: _NOT_FOUND})},
+)
+async def get_short_link_pdf_route(slug: str) -> Response:
+    """The artifact behind a slug as an A4 PDF. No auth, like the link itself."""
+    log.set(short_link={"operation": "pdf", "slug_hash": hash_short_link_slug(slug)})
+    exported = await public_artifact_pdf(slug)
+    if exported is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
+    artifact, pdf = exported
+    log.set(artifact={"kind": artifact.kind.value, "pdf_bytes": len(pdf)})
+    return Response(pdf, media_type="application/pdf", headers=pdf_download_headers(artifact))
 
 
 @router.post(SHORT_LINK_UNSHARE_PATH)

@@ -84,7 +84,7 @@ function DataTableView(props: z.infer<typeof dataTableSchema>) {
         sortDescriptor={sort}
         onSortChange={setSort}
         classNames={{
-          base: "max-w-full overflow-x-auto",
+          base: "max-w-full overflow-x-auto print:overflow-visible",
           table: "min-w-[36rem]",
           th: "first:sticky first:left-0 first:z-10",
           td: "first:sticky first:left-0 first:z-10 first:bg-background",

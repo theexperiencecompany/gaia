@@ -54,3 +54,8 @@ export async function stopSharingShortLink(
 export function shortLinkFileUrl(slug: string): string {
   return `${API_BASE}/l/${encodeURIComponent(slug)}/file`;
 }
+
+/** Browser URL of the PDF export of an artifact slug. */
+export function shortLinkPdfDownloadUrl(slug: string): string {
+  return `${API_BASE}/l/${encodeURIComponent(slug)}/pdf`;
+}

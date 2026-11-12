@@ -70,7 +70,7 @@ def _fail(
 async def _validated(request: ArtifactRequest, on_delta: DeltaSink) -> _Validated:
     """Write the program, then repair it once if validation finds problems."""
     first = await write_program(request, on_delta)
-    validation = await validate_program(first.text, request.brief)
+    validation = await validate_program(first.text, request.brief, interactive=request.interactive)
     output_tokens = first.output_tokens
     repairs = 0
     while not validation.ok and repairs < ARTIFACT_MAX_REPAIRS:
@@ -78,7 +78,9 @@ async def _validated(request: ArtifactRequest, on_delta: DeltaSink) -> _Validate
         log.set_ns("artifact", first_problems=validation.problems[:20])
         repaired = await repair_program(request, validation.program, validation.problems)
         output_tokens += repaired.output_tokens
-        validation = await validate_program(repaired.text, request.brief)
+        validation = await validate_program(
+            repaired.text, request.brief, interactive=request.interactive
+        )
     return _Validated(validation, repairs, output_tokens, first.first_component_ms)
 
 

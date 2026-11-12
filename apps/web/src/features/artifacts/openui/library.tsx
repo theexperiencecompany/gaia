@@ -12,6 +12,7 @@ import {
 } from "./components/charts";
 import { dataTableDef } from "./components/DataTable";
 import { kanbanDef, statsDef } from "./components/data";
+import { htmlArtifactDef } from "./components/HtmlArtifact";
 import {
   artifactDef,
   calloutDef,
@@ -52,6 +53,7 @@ export const artifactLibrary = createLibrary({
     kanbanDef,
     todoDef,
     sourcesDef,
+    htmlArtifactDef,
     pieChartDef(ARTIFACT_PALETTE),
     openuiLibrary.components.Slice,
     openuiLibrary.components.CodeBlock,

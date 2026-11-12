@@ -32,7 +32,7 @@ class ArtifactValidatorError(AppError):
     """The validator could not run: no node, no bundle, a crash or a malformed answer."""
 
 
-async def validate_program(reply: str, brief: str) -> ArtifactValidation:
+async def validate_program(reply: str, brief: str, *, interactive: bool) -> ArtifactValidation:
     """Extract the program from a model reply and run every check; problems are listed, not raised."""
     node = shutil.which("node")
     if node is None or not ARTIFACT_VALIDATOR_BUNDLE.exists():
@@ -48,7 +48,7 @@ async def validate_program(reply: str, brief: str) -> ArtifactValidation:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    request = json.dumps({"program": reply, "brief": brief}).encode()
+    request = json.dumps({"program": reply, "brief": brief, "interactive": interactive}).encode()
     try:
         stdout, stderr = await asyncio.wait_for(
             process.communicate(request), timeout=ARTIFACT_VALIDATOR_TIMEOUT_SECONDS

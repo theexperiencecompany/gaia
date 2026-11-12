@@ -26,3 +26,10 @@ ARTIFACT_REPAIR_INSTRUCTION = "Return only the corrected program, starting with 
 ARTIFACT_DELTA_EVENT = "artifact_delta"
 # The persisted chat card entry (a tool_fields key).
 ARTIFACT_DONE_EVENT = "artifact_done"
+
+# PDF export: the web page that prints an artifact, the marker it sets once rendered, and
+# how long a printed (artifact id, version) stays cached.
+ARTIFACT_PRINT_URL = "{frontend}/l/{slug}?print=1"
+ARTIFACT_READY_SELECTOR = "[data-artifact-ready]"
+ARTIFACT_PDF_CACHE_KEY = "artifact_pdf:{artifact_id}:{version}"
+ARTIFACT_PDF_CACHE_TTL_SECONDS = 7 * 24 * 3600

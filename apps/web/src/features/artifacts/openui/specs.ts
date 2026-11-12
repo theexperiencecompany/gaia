@@ -90,6 +90,11 @@ export const sourcesSchema = z.object({
   items: z.array(z.tuple([z.string(), z.string(), z.string().optional()])),
 });
 
+export const htmlArtifactSchema = z.object({
+  title: z.string(),
+  html: z.string(),
+});
+
 export type ArtifactCell = z.infer<typeof cell>;
 
 const CHART_NOTE =
@@ -200,6 +205,12 @@ export const ARTIFACT_COMPONENT_SPECS = [
     name: "Sources",
     description: "Numbered references: [title, publisher, url] triples.",
     props: sourcesSchema,
+  },
+  {
+    name: "HtmlArtifact",
+    description:
+      'An interactive tool in GAIA\'s artifact markup, only when the request asks for inputs to play with (a calculator, a simulator). html: no <script>, no <style>, no style=, no on* attributes, no links or URLs. A calculator is <form class="calculator" data-calc><div class="calc-grid"><div class="calc-inputs"><label class="calc-in"><span>Label</span><input type="number" name="price" value="465000"></label>...</div><div class="calc-outputs"><div class="calc-out primary"><span>Label</span><output data-formula="price * rate / 100" data-prefix="" data-suffix="" data-decimals="0"></output></div>...</div></div></form>. Formulas use input names, numbers, + - * / ** ( ) and min max round abs floor ceil pow sqrt.',
+    props: htmlArtifactSchema,
   },
 ] as const;
 

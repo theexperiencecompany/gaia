@@ -3,6 +3,7 @@
 
 import type {
   PublicBriefing,
+  PublicOpenUIArtifact,
   PublicSessionArtifact,
   PublicTodoDeliverable,
   PublicWorkflowRun,
@@ -10,6 +11,7 @@ import type {
 
 export type {
   PublicBriefing,
+  PublicOpenUIArtifact,
   PublicSessionArtifact,
   PublicTodoDeliverable,
   PublicWorkflowRun,
@@ -20,4 +22,5 @@ export type PublicShortLinkView =
   | PublicTodoDeliverable
   | PublicBriefing
   | PublicSessionArtifact
-  | PublicWorkflowRun;
+  | PublicWorkflowRun
+  | PublicOpenUIArtifact;

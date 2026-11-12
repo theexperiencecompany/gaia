@@ -6,8 +6,8 @@ import {
 } from "@openuidev/react-lang";
 import { useContext } from "react";
 import type { z } from "zod";
-import { type ArtifactDensity, ArtifactDensityContext } from "../density";
 import { GroundedText } from "../GroundedText";
+import { type ArtifactDensity, ArtifactDensityContext } from "../renderContext";
 import {
   artifactSchema,
   calloutSchema,

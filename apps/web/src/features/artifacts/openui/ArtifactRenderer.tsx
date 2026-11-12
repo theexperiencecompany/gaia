@@ -5,10 +5,14 @@ import { createTheme, ThemeProvider } from "@openuidev/react-ui/ThemeProvider";
 import { useCallback, useState } from "react";
 import { OpenUIErrorBoundary } from "@/config/openui/OpenUIErrorBoundary";
 import "@/config/openui/openui.css";
-import { type ArtifactDensity, ArtifactDensityContext } from "./density";
 import { GroundingContext } from "./GroundedText";
 import { buildIndex, type GroundingIndex } from "./grounding";
 import { artifactLibrary } from "./library";
+import {
+  ArtifactAppearanceContext,
+  type ArtifactDensity,
+  ArtifactDensityContext,
+} from "./renderContext";
 
 export type ArtifactAppearance = "dark" | "light";
 
@@ -30,28 +34,35 @@ export function ArtifactRenderer({
   density = "page",
 }: ArtifactRendererProps) {
   const [index, setIndex] = useState<GroundingIndex>(new Map());
+  const [parsed, setParsed] = useState(false);
   const onParseResult = useCallback((result: ParseResult | null) => {
     setIndex(buildIndex(result?.root));
+    setParsed(Boolean(result?.root) && !result?.meta.incomplete);
   }, []);
   const onError = useCallback((errors: unknown[]) => {
     if (errors.length)
       console.error("[ArtifactRenderer] validation errors:", errors);
   }, []);
 
+  // the PDF export waits for this marker before printing (app/services/render/pdf.py)
   const tree = (
-    <OpenUIErrorBoundary code={program}>
-      <GroundingContext.Provider value={index}>
-        <ArtifactDensityContext.Provider value={density}>
-          <Renderer
-            response={program}
-            library={artifactLibrary}
-            isStreaming={isStreaming}
-            onParseResult={onParseResult}
-            onError={onError}
-          />
-        </ArtifactDensityContext.Provider>
-      </GroundingContext.Provider>
-    </OpenUIErrorBoundary>
+    <div data-artifact-ready={parsed && !isStreaming ? "" : undefined}>
+      <OpenUIErrorBoundary code={program}>
+        <GroundingContext.Provider value={index}>
+          <ArtifactDensityContext.Provider value={density}>
+            <ArtifactAppearanceContext.Provider value={appearance}>
+              <Renderer
+                response={program}
+                library={artifactLibrary}
+                isStreaming={isStreaming}
+                onParseResult={onParseResult}
+                onError={onError}
+              />
+            </ArtifactAppearanceContext.Provider>
+          </ArtifactDensityContext.Provider>
+        </GroundingContext.Provider>
+      </OpenUIErrorBoundary>
+    </div>
   );
 
   if (appearance === "dark") return tree;

@@ -17,6 +17,7 @@ from pathlib import Path
 
 from app.agents.workspace.paths import is_inlineable_content_type
 from app.db.repositories.briefings import briefing_repository
+from app.db.repositories.openui_artifacts import openui_artifact_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
@@ -26,6 +27,7 @@ from app.models.short_link_models import (
     PublicBriefingItem,
     PublicBriefingPayload,
     PublicBriefingSection,
+    PublicOpenUIArtifact,
     PublicSessionArtifact,
     PublicShortLinkView,
     PublicTodoDeliverable,
@@ -169,6 +171,20 @@ async def _project_workflow_run(user_id: str, target_id: str) -> PublicWorkflowR
     )
 
 
+async def _project_openui_artifact(user_id: str, target_id: str) -> PublicOpenUIArtifact | None:
+    artifact = await openui_artifact_repository.get(target_id, user_id=user_id)
+    if artifact is None:
+        return None
+    return PublicOpenUIArtifact(
+        target_type=ShortLinkTargetType.OPENUI_ARTIFACT,
+        kind=artifact.kind,
+        title=artifact.title,
+        program=artifact.program,
+        version=artifact.version,
+        created_at=artifact.created_at,
+    )
+
+
 Projector = Callable[[str, str], Awaitable[PublicShortLinkView | None]]
 
 _PROJECTORS: dict[ShortLinkTargetType, Projector] = {
@@ -176,6 +192,7 @@ _PROJECTORS: dict[ShortLinkTargetType, Projector] = {
     ShortLinkTargetType.BRIEFING: _project_briefing,
     ShortLinkTargetType.SESSION_ARTIFACT: _project_session_artifact,
     ShortLinkTargetType.WORKFLOW_RUN: _project_workflow_run,
+    ShortLinkTargetType.OPENUI_ARTIFACT: _project_openui_artifact,
 }
 
 

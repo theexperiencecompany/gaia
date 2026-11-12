@@ -142,6 +142,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/artifacts/{artifact_id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Artifact Pdf
+         * @description One of the user's artifacts as an A4 PDF.
+         */
+        get: operations["artifacts_get_artifact_pdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -2198,6 +2218,26 @@ export interface paths {
          *     No auth; sandboxed exactly like the owner's own session-file route.
          */
         get: operations["short_links_get_short_link_file_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Short Link Pdf Route
+         * @description The artifact behind a slug as an A4 PDF. No auth, like the link itself.
+         */
+        get: operations["short_links_get_short_link_pdf_route"];
         put?: never;
         post?: never;
         delete?: never;
@@ -13530,6 +13570,29 @@ export interface components {
             tools?: components["schemas"]["IntegrationTool"][];
         };
         /**
+         * PublicOpenUIArtifact
+         * @description An artifact create_artifact made: its program, which the page renders as data.
+         */
+        PublicOpenUIArtifact: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            kind: components["schemas"]["ArtifactKind"];
+            /** Program */
+            program: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "openui_artifact";
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+        };
+        /**
          * PublicSessionArtifact
          * @description A file GAIA produced in a session's sandbox. ``content`` is the text of a
          *     text file; binary files carry ``None`` and render as a metadata card.
@@ -14652,7 +14715,7 @@ export interface components {
          * @description Every kind of artifact a heygaia.link can point at.
          * @enum {string}
          */
-        ShortLinkTargetType: "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run";
+        ShortLinkTargetType: "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
         /**
          * SignupRequest
          * @description Body of POST /api/v1/auth/signup; invite is the token from an invite link.
@@ -17921,6 +17984,7 @@ export type PublicBriefingPayload = components['schemas']['PublicBriefingPayload
 export type PublicBriefingSection = components['schemas']['PublicBriefingSection'];
 export type PublicHoloCardResponse = components['schemas']['PublicHoloCardResponse'];
 export type PublicIntegrationDetailResponse = components['schemas']['PublicIntegrationDetailResponse'];
+export type PublicOpenUIArtifact = components['schemas']['PublicOpenUIArtifact'];
 export type PublicSessionArtifact = components['schemas']['PublicSessionArtifact'];
 export type PublicSupportRequestCreate = components['schemas']['PublicSupportRequestCreate'];
 export type PublicTodoDeliverable = components['schemas']['PublicTodoDeliverable'];
@@ -18518,6 +18582,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OpenUIArtifactResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    artifacts_get_artifact_pdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": unknown;
                 };
             };
             /** @description Unprocessable Entity */
@@ -24025,7 +24138,10 @@ export interface operations {
     };
     short_links_resolve_short_link_route: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The PDF export's read; not counted as an open */
+                print?: boolean;
+            };
             header?: never;
             path: {
                 slug: string;
@@ -24058,7 +24174,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PublicTodoDeliverable"] | components["schemas"]["PublicBriefing"] | components["schemas"]["PublicSessionArtifact"] | components["schemas"]["PublicWorkflowRun"];
+                    "application/json": components["schemas"]["PublicTodoDeliverable"] | components["schemas"]["PublicBriefing"] | components["schemas"]["PublicSessionArtifact"] | components["schemas"]["PublicWorkflowRun"] | components["schemas"]["PublicOpenUIArtifact"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -24128,6 +24244,64 @@ export interface operations {
             };
             /** @description Workspace storage offline */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_get_short_link_pdf_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": unknown;
+                };
+            };
+            /** @description Short link not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

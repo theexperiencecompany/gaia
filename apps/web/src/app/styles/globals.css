@@ -1290,3 +1290,10 @@
   ) {
   -webkit-app-region: no-drag;
 }
+
+/* An artifact's paper copy (the PDF export) prints on white past its last block,
+   not on the app's dark body. */
+html:has([data-artifact-print]),
+html:has([data-artifact-print]) body {
+  background: #fff;
+}

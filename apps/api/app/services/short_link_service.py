@@ -26,11 +26,17 @@ from app.db.repositories.short_links import (
     SLUG_UNIQUE_INDEX,
     short_link_repository,
 )
-from app.models.short_link_models import PublicShortLinkView, ShortLink, ShortLinkTargetType
+from app.models.short_link_models import (
+    PublicOpenUIArtifact,
+    PublicShortLinkView,
+    ShortLink,
+    ShortLinkTargetType,
+)
 from app.services.analytics_service import capture
 from app.services.short_link_projections import project_target, session_artifact_file
 from app.utils.log_identifiers import hash_short_link_slug
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.artifacts import ArtifactOpened
 from shared.py.analytics.catalog.short_links import (
     ShortLinkCreated,
     ShortLinkOpened,
@@ -115,11 +121,18 @@ async def share_short_link(user_id: str, target_type: ShortLinkTargetType, targe
     )
 
 
+async def live_link_for_target(
+    user_id: str, target_type: ShortLinkTargetType, target_id: str
+) -> ShortLink | None:
+    """Return the owner's live link to a target, or None when it is not shared. Never mints."""
+    return await short_link_repository.get_live_for_target(user_id, target_type, target_id)
+
+
 async def live_share_url(
     user_id: str, target_type: ShortLinkTargetType, target_id: str
 ) -> str | None:
-    """Return the owner's live link to a target, or None when it is not shared. Never mints."""
-    live = await short_link_repository.get_live_for_target(user_id, target_type, target_id)
+    """Return the owner's live link URL to a target, or None when it is not shared. Never mints."""
+    live = await live_link_for_target(user_id, target_type, target_id)
     return _build_url(live.slug) if live else None
 
 
@@ -163,7 +176,7 @@ async def _resolve_live_link(slug: str) -> ShortLink | None:
     return link
 
 
-async def get_public_view(slug: str) -> PublicShortLinkView | None:
+async def get_public_view(slug: str, *, count_open: bool = True) -> PublicShortLinkView | None:
     """Return the public view behind a capability slug, or None.
 
     The target is read under the OWNER stored on the link doc, never a viewer,
@@ -174,9 +187,18 @@ async def get_public_view(slug: str) -> PublicShortLinkView | None:
     if link is None:
         return None
     view = await project_target(link.target_type, link.user_id, link.target_id)
-    if view is not None:
-        capture(UserId(link.user_id), ShortLinkOpened(target_type=link.target_type.value))
+    if view is None or not count_open:
+        return view
+    capture(UserId(link.user_id), ShortLinkOpened(target_type=link.target_type.value))
+    if isinstance(view, PublicOpenUIArtifact):
+        capture(UserId(link.user_id), ArtifactOpened(kind=view.kind.value, via="link"))
     return view
+
+
+async def live_link_for_slug(slug: str, target_type: ShortLinkTargetType) -> ShortLink | None:
+    """Return the live link behind slug when it points at target_type; None otherwise."""
+    link = await _resolve_live_link(slug)
+    return link if link is not None and link.target_type is target_type else None
 
 
 async def get_public_file(slug: str) -> Path | None:

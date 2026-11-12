@@ -53,6 +53,15 @@ function namingRule(components: readonly string[]): string {
 const FABRICATE_DATA_RULE =
   "- When asked about data, generate realistic/plausible data\n";
 
+const HTML_ARTIFACT_RULE =
+  "HtmlArtifact is only for a request that asks for inputs to play with (a calculator, a simulator, a small tool); everything else uses the other components. Its html is structure and classes only, and every result it shows is a data-formula over its inputs.";
+
+function kindRules(kind: ArtifactKind): string[] {
+  return KIND_COMPONENTS[kind].includes("HtmlArtifact")
+    ? [HTML_ARTIFACT_RULE]
+    : [];
+}
+
 function promptFor(kind: ArtifactKind): string {
   const keep = new Set([ARTIFACT_ROOT, ...KIND_COMPONENTS[kind]]);
   const spec = artifactSpecLibrary.toSpec();
@@ -63,7 +72,11 @@ function promptFor(kind: ArtifactKind): string {
     ),
     componentGroups: undefined,
     preamble: PREAMBLE,
-    additionalRules: [namingRule(KIND_COMPONENTS[kind]), ...GROUNDING_RULES],
+    additionalRules: [
+      namingRule(KIND_COMPONENTS[kind]),
+      ...GROUNDING_RULES,
+      ...kindRules(kind),
+    ],
   });
   if (!prompt.includes(FABRICATE_DATA_RULE)) {
     throw new Error(

@@ -6,6 +6,7 @@ import { Cancel01Icon } from "@icons";
 import { usePanelDrawsClose } from "@/components/layout/sidebar/RightSidebarSlot";
 import { useArtifact } from "@/features/artifacts/hooks/useArtifact";
 import { LazyArtifactRenderer } from "@/features/artifacts/LazyArtifactRenderer";
+import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
 import { useCloseRightSidebar } from "@/stores/layoutStore";
 
 interface ArtifactViewerProps {
@@ -23,6 +24,11 @@ export function ArtifactViewer({ artifactId, title }: ArtifactViewerProps) {
     <div className="flex h-full min-h-0 flex-col bg-zinc-900">
       <div className="flex min-h-12 shrink-0 items-center gap-2 bg-zinc-800 px-3">
         <p className="min-w-0 flex-1 truncate text-sm text-zinc-200">{title}</p>
+        <ShareLinkControls
+          iconOnly
+          targetType="openui_artifact"
+          targetId={artifactId}
+        />
         {drawsClose && (
           <Button
             isIconOnly

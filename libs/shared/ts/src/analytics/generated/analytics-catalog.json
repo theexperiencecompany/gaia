@@ -6684,7 +6684,8 @@
               "todo_deliverable",
               "briefing",
               "session_artifact",
-              "workflow_run"
+              "workflow_run",
+              "openui_artifact"
             ],
             "title": "Target Type",
             "type": "string"
@@ -6714,7 +6715,8 @@
               "todo_deliverable",
               "briefing",
               "session_artifact",
-              "workflow_run"
+              "workflow_run",
+              "openui_artifact"
             ],
             "title": "Target Type",
             "type": "string"

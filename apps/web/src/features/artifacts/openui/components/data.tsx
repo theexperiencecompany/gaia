@@ -57,7 +57,7 @@ export const kanbanDef = defineComponent({
   description: describeArtifactComponent("Kanban"),
   props: kanbanSchema,
   component: ({ props }) => (
-    <div className="grid auto-cols-[minmax(220px,1fr)] grid-flow-col gap-3 overflow-x-auto">
+    <div className="grid auto-cols-[minmax(220px,1fr)] grid-flow-col gap-3 overflow-x-auto print:overflow-visible">
       {props.columns.map(([title, cards]) => (
         <div
           key={title}
