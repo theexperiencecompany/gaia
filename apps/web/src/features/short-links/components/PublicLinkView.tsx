@@ -8,6 +8,7 @@ import type {
 import { LINK_VIEWS } from "../registry";
 import type { LinkViewOf } from "../types";
 import { ReportLinkButton } from "./ReportLinkButton";
+import { ShareLinkControls } from "./ShareLinkControls";
 
 function LinkPage<T extends ShortLinkTargetType>({
   slug,
@@ -15,12 +16,15 @@ function LinkPage<T extends ShortLinkTargetType>({
   view,
   content,
   downloadable,
+  ownerTargetId,
 }: {
   slug: string;
   targetType: T;
   view: LinkViewOf<T>;
   content: LinkContent | null;
   downloadable: boolean;
+  /** Set only when the viewer owns the link: the target its share settings act on. */
+  ownerTargetId: string | null;
 }) {
   const entry = LINK_VIEWS[targetType];
   const View = entry.component;
@@ -31,6 +35,12 @@ function LinkPage<T extends ShortLinkTargetType>({
       width={entry.width}
       actions={
         <>
+          {ownerTargetId && (
+            <ShareLinkControls
+              targetType={targetType}
+              targetId={ownerTargetId}
+            />
+          )}
           {Actions && <Actions slug={slug} />}
           {!entry.reportInView && reportAction}
         </>
@@ -62,6 +72,7 @@ export function PublicLinkView({
       view={envelope.view}
       content={envelope.content}
       downloadable={envelope.downloadable}
+      ownerTargetId={envelope.is_owner ? envelope.owner_target_id : null}
     />
   );
 }
