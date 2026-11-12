@@ -1,4 +1,8 @@
-import type { ToolDataEntry } from "../api/generated";
+import type {
+  MessageReaction,
+  ReactionBy,
+  ToolDataEntry,
+} from "../api/generated";
 import {
   DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
   type DesktopToolRequest,
@@ -88,7 +92,16 @@ export type ChatStreamEvent =
   // text the server never streams: the client shows a badge on the user's
   // message (`reactsToMessageId`), never a bubble of its own.
   | { type: "emoji_ack"; emoji: string; reactsToMessageId: string }
+  // GAIA reacted to a user message (instantly, or the chat model's pick, which
+  // replaces it). Not the turn's answer: the turn may still reply or keep working.
+  | { type: "reaction"; messageId: string; reaction: MessageReaction }
   | { type: "unknown"; payload: JsonObject };
+
+/** Every ReactionBy the server sends; the generated union is type-only. */
+const REACTION_BY: readonly ReactionBy[] = ["jev", "chat_model"];
+
+const isReactionBy = (value: unknown): value is ReactionBy =>
+  REACTION_BY.some((by) => by === value);
 
 const isObject = (value: unknown): value is JsonObject =>
   typeof value === "object" && value !== null;
@@ -154,6 +167,25 @@ const extractEmojiAck = (payload: JsonObject): ChatStreamEvent[] => {
       type: "emoji_ack",
       emoji: ack.emoji,
       reactsToMessageId: ack.reacts_to_message_id,
+    },
+  ];
+};
+
+const extractReaction = (payload: JsonObject): ChatStreamEvent[] => {
+  const reaction = payload.reaction;
+  if (
+    !isObject(reaction) ||
+    typeof reaction.message_id !== "string" ||
+    typeof reaction.emoji !== "string" ||
+    !isReactionBy(reaction.by)
+  ) {
+    return [];
+  }
+  return [
+    {
+      type: "reaction",
+      messageId: reaction.message_id,
+      reaction: { emoji: reaction.emoji, by: reaction.by },
     },
   ];
 };
@@ -445,6 +477,7 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
     ...extractError(payload),
     ...extractModelFallback(payload),
     ...extractEmojiAck(payload),
+    ...extractReaction(payload),
     ...extractResponse(payload),
     ...extractMessageBoundary(payload),
     ...extractFollowUpActions(payload),

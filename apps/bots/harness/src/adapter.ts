@@ -165,12 +165,15 @@ export class HarnessAdapter extends BaseBotAdapter {
     destinationId: string,
     platformMessageId: string,
     emoji: string,
+    _isChannel: boolean,
+    replaces: string | null,
   ): Promise<ReactionOutcome> {
     this.transcript.record({
       type: "reaction",
       destinationId,
       targetMessageId: platformMessageId,
       emoji,
+      replaces,
     });
     return Promise.resolve(REACTION_OUTCOME.ATTACHED);
   }
@@ -350,8 +353,14 @@ export class HarnessAdapter extends BaseBotAdapter {
       onGenericError,
       this.emulation.streaming,
       await this.analyticsFor(userId),
-      (emoji: string) =>
-        this.reactToMessage(channelId, inboundMessageId, emoji),
+      (emoji: string, replaces: string | null) =>
+        this.reactToMessage(
+          channelId,
+          inboundMessageId,
+          emoji,
+          false,
+          replaces,
+        ),
     );
 
     this.transcript.record({ type: "typing", state: "stop" });

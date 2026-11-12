@@ -5,6 +5,7 @@
 
 import {
   BaseBotAdapter,
+  type OutboundReaction,
   REACTION_OUTCOME,
   type ReactionOutcome,
 } from "@gaia/shared/bots";
@@ -55,6 +56,7 @@ class ReactingAdapter extends TestAdapter {
         messageId: string,
         emoji: string,
         isChannel: boolean,
+        replaces: string | null,
       ) => Promise<ReactionOutcome>
     >();
   constructor(outcome: ReactionOutcome) {
@@ -66,12 +68,22 @@ class ReactingAdapter extends TestAdapter {
     platformMessageId: string,
     emoji: string,
     isChannel: boolean,
+    replaces: string | null,
   ): Promise<ReactionOutcome> {
-    return this.react(destinationId, platformMessageId, emoji, isChannel);
+    return this.react(
+      destinationId,
+      platformMessageId,
+      emoji,
+      isChannel,
+      replaces,
+    );
   }
 }
 
-async function deliver(adapter: TestAdapter) {
+async function deliver(
+  adapter: TestAdapter,
+  reaction: OutboundReaction = REACTION,
+) {
   const capture = vi.fn();
   Object.assign(adapter, {
     gaia: { checkAuthStatus: vi.fn(async () => ({ authenticated: false })) },
@@ -81,21 +93,41 @@ async function deliver(adapter: TestAdapter) {
     adapter as unknown as {
       deliverOutboundReaction: (
         id: string,
-        reaction: typeof REACTION,
+        reaction: OutboundReaction,
         isChannel: boolean,
       ) => Promise<void>;
     }
-  ).deliverOutboundReaction("chat-1", REACTION, true);
+  ).deliverOutboundReaction("chat-1", reaction, true);
   return capture;
 }
 
 describe("BaseBotAdapter outbound reaction", () => {
+  it("hands the adapter the reaction it replaces", async () => {
+    const adapter = new ReactingAdapter(REACTION_OUTCOME.ATTACHED);
+
+    await deliver(adapter, { ...REACTION, replaces_emoji: "🔎" });
+
+    expect(adapter.react).toHaveBeenCalledWith(
+      "chat-1",
+      "msg-7",
+      "👍",
+      true,
+      "🔎",
+    );
+  });
+
   it("attaches natively and sends no text", async () => {
     const adapter = new ReactingAdapter(REACTION_OUTCOME.ATTACHED);
 
     const capture = await deliver(adapter);
 
-    expect(adapter.react).toHaveBeenCalledWith("chat-1", "msg-7", "👍", true);
+    expect(adapter.react).toHaveBeenCalledWith(
+      "chat-1",
+      "msg-7",
+      "👍",
+      true,
+      null,
+    );
     expect(adapter.sent).not.toHaveBeenCalled();
     expect(capture.mock.calls).toStrictEqual([
       [

@@ -463,6 +463,7 @@ export const applyStreamEvent = (
     case "parse_error":
     case "main_response_complete":
     case "emoji_ack":
+    case "reaction":
     case "progress":
     case "conversation_initialized":
     case "conversation_description":

@@ -334,6 +334,7 @@ export class SlackAdapter extends BaseBotAdapter {
     platformMessageId: string,
     emoji: string,
     isChannel: boolean,
+    replaces: string | null,
   ): Promise<ReactionOutcome> {
     // reactions.add takes a shortcode (sweat_smile), not the emoji. An emoji
     // with no known shortcode is refused here and the caller sends it as text.
@@ -345,6 +346,11 @@ export class SlackAdapter extends BaseBotAdapter {
     const channel = isChannel
       ? destinationId
       : await this.resolveDmChannel(destinationId);
+    // Slack reactions add up, so GAIA's earlier one comes off before the new one goes on.
+    const replacedName = replaces ? which(replaces) : undefined;
+    if (replacedName && replacedName !== name) {
+      await this.removeReaction(channel, platformMessageId, replacedName);
+    }
     try {
       await this.app.client.reactions.add({
         channel,
@@ -360,6 +366,24 @@ export class SlackAdapter extends BaseBotAdapter {
           : { error: String(err) }),
       });
       return REACTION_OUTCOME.ATTACH_FAILED;
+    }
+  }
+
+  /** Takes GAIA's reaction off a message; a failure leaves both showing, which the log records. */
+  private async removeReaction(
+    channel: string,
+    timestamp: string,
+    name: string,
+  ): Promise<void> {
+    try {
+      await this.app.client.reactions.remove({ channel, timestamp, name });
+    } catch (err) {
+      this.adapterLogger.warn("reaction_remove_failed", {
+        channel_hash: hashLogIdentifier(channel),
+        ...(err instanceof Error
+          ? { error_type: err.name, error: err.message }
+          : { error: String(err) }),
+      });
     }
   }
 
@@ -529,18 +553,10 @@ export class SlackAdapter extends BaseBotAdapter {
       },
       STREAMING_DEFAULTS.slack,
       await this.analyticsFor(userId),
-      async (emoji: string) => {
+      async (emoji: string, replaces: string | null) => {
         // A slash command has no inbound message to react to.
         if (!inboundTs) return REACTION_OUTCOME.NO_TARGET;
-        const outcome = await this.reactToMessage(
-          channelId,
-          inboundTs,
-          emoji,
-          true,
-        );
-        if (outcome !== REACTION_OUTCOME.ATTACHED) return outcome;
-        await removePlaceholder();
-        return outcome;
+        return this.reactToMessage(channelId, inboundTs, emoji, true, replaces);
       },
       removePlaceholder,
     );
