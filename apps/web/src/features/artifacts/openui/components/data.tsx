@@ -25,7 +25,11 @@ export const statsDef = defineComponent({
   description: describeArtifactComponent("Stats"),
   props: statsSchema,
   component: ({ props }) => (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+    // columns follow the card's width, not the window's: beside the open viewer a chat card is narrow
+    <div
+      data-slot="stats"
+      className="grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-3"
+    >
       {props.items.map(([label, value, note, trend, sentiment]) => (
         <Card
           key={`${label} ${value}`}
