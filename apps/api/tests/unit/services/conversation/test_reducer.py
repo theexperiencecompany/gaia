@@ -1,0 +1,530 @@
+"""reduce: one test per rule, accept and reject side, then whole-log scenarios."""
+
+import pytest
+
+from app.models.conversation_log_models import (
+    CancelWork,
+    CommsPhase,
+    ConversationDisplay,
+    ConversationState,
+    Entry,
+    KickStep,
+    LiveWork,
+    Preempt,
+    Rejected,
+    RejectReason,
+    ReplyOutcome,
+    StartAck,
+    StopBy,
+    Transition,
+    WorkOutcome,
+)
+from app.services.conversation.reducer import reduce, with_comms
+from tests.unit.services.conversation.log_helpers import (
+    answered,
+    asked,
+    barge,
+    decided,
+    finished,
+    fired,
+    fold,
+    logged,
+    notice,
+    opened,
+    started,
+    stop,
+    todo_woke,
+    user,
+)
+
+
+def _accept(state: ConversationState, seq: int, entry: Entry) -> Transition:
+    result = reduce(state, logged(seq, entry))
+    assert isinstance(result, Transition), result
+    return result
+
+
+def _reason(state: ConversationState, seq: int, entry: Entry) -> RejectReason:
+    result = reduce(state, logged(seq, entry))
+    assert isinstance(result, Rejected), result
+    return result.reason
+
+
+def _work(task_id: str, cause_through: int, *approvals: str) -> LiveWork:
+    return LiveWork(
+        task_id=task_id,
+        cause_through=cause_through,
+        answers=(),
+        pending_approvals=frozenset(approvals),
+    )
+
+
+# ---- ordering ----
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        user("m"),
+        stop("s"),
+        barge("b", "r1"),
+        fired("f"),
+        todo_woke("t"),
+        notice("n"),
+        decided("d", "ap"),
+        finished("w", "t9"),
+        opened("o"),
+        started("ws", "t1", 2),
+    ],
+)
+def test_every_accepted_entry_sets_head_to_its_seq(entry: Entry) -> None:
+    state, _ = fold([user("u1"), user("u2")])
+    assert _accept(state, 3, entry).state.head == 3
+
+
+@pytest.mark.parametrize("seq", [1, 2, 4, 9])
+def test_entry_whose_seq_is_not_head_plus_one_is_rejected_out_of_order(seq: int) -> None:
+    state, _ = fold([user("u1"), user("u2")])
+    assert _reason(state, seq, user("late")) is RejectReason.OUT_OF_ORDER
+
+
+# ---- UserMessage ----
+
+
+@pytest.mark.parametrize(
+    ("voice", "effects"),
+    [(False, (KickStep(), StartAck(message_id="m"))), (True, (KickStep(),))],
+)
+def test_user_message_wakes_and_acks_unless_voice(voice: bool, effects: tuple[object, ...]) -> None:
+    state, _ = fold([user("u1")])
+    result = _accept(state, 2, user("m", voice=voice))
+    assert result.state.unsettled_waking == (1, 2)
+    assert result.effects == effects
+
+
+# ---- StopRequested ----
+
+
+def test_stop_without_covers_through_covers_everything_before_it() -> None:
+    state, _ = fold([user("u1"), user("u2")])
+    result = _accept(state, 3, stop("s"))
+    assert result.state.stopped_through == 2
+    assert result.state.unsettled_waking == ()
+    assert result.effects == (Preempt(stop_through=2),)
+
+
+def test_stop_with_covers_through_drops_only_waking_at_or_before_it() -> None:
+    state, _ = fold([user("u1"), user("u2"), user("u3")])
+    result = _accept(state, 4, stop("s", covers_through=2))
+    assert result.state.stopped_through == 2
+    assert result.state.unsettled_waking == (3,)
+    assert result.effects == (Preempt(stop_through=2),)
+
+
+def test_stop_never_lowers_stopped_through() -> None:
+    state, _ = fold([user("u1"), user("u2"), stop("s1"), user("u4")])
+    result = _accept(state, 5, stop("s2", covers_through=1))
+    assert result.state.stopped_through == 2
+    assert result.state.unsettled_waking == (4,)
+    assert result.effects == (Preempt(stop_through=1),)
+
+
+def test_stop_cancels_exactly_the_work_caused_at_or_before_it() -> None:
+    state, _ = fold(
+        [
+            user("u1"),
+            started("w1", "t1", 1),
+            user("u3"),
+            started("w2", "t2", 3),
+            user("u5"),
+            started("w3", "t3", 5),
+        ]
+    )
+    result = _accept(state, 7, stop("s", covers_through=3))
+    assert [item.task_id for item in result.state.work] == ["t3"]
+    assert result.effects == (Preempt(stop_through=3), CancelWork(task_ids=("t1", "t2")))
+
+
+def test_stop_leaves_work_caused_after_it_untouched_and_emits_no_cancel() -> None:
+    state, _ = fold([user("u1"), user("u2"), started("w", "t1", 2)])
+    result = _accept(state, 4, stop("s", covers_through=1))
+    assert result.state.work == state.work
+    assert result.effects == (Preempt(stop_through=1),)
+
+
+@pytest.mark.parametrize("covers_through", [3, 4])
+def test_stop_covering_itself_or_later_is_rejected(covers_through: int) -> None:
+    state, _ = fold([user("u1"), user("u2")])
+    assert (
+        _reason(state, 3, stop("s", covers_through=covers_through))
+        is RejectReason.STOP_COVERS_FUTURE
+    )
+
+
+def test_stop_leaves_comms_for_the_reply_end_to_settle() -> None:
+    state, _ = fold([user("u1"), opened("o")])
+    assert _accept(state, 3, stop("s")).state.comms is CommsPhase.ANSWERING
+
+
+# ---- BargeIn, WorkflowFired, TodoWoke, Notice ----
+
+
+def test_barge_in_preempts_the_reply_wakes_and_kicks() -> None:
+    state, _ = fold([user("u1"), opened("o", reply_id="r1")])
+    result = _accept(state, 3, barge("b", "r1"))
+    assert result.state.unsettled_waking == (1, 3)
+    assert result.effects == (Preempt(barge_reply_id="r1"), KickStep())
+
+
+def test_workflow_fired_wakes_and_kicks_without_an_ack() -> None:
+    state, _ = fold([user("u1")])
+    result = _accept(state, 2, fired("f"))
+    assert result.state.unsettled_waking == (1, 2)
+    assert result.effects == (KickStep(),)
+
+
+@pytest.mark.parametrize("entry", [todo_woke("t"), notice("n")])
+def test_todo_woke_and_notice_move_only_the_head(entry: Entry) -> None:
+    state, _ = fold([user("u1"), started("w", "t1", 1)])
+    result = _accept(state, 3, entry)
+    assert result.state == state.model_copy(update={"head": 3})
+    assert result.effects == ()
+
+
+# ---- WorkStarted ----
+
+
+def test_work_started_appends_live_work_with_its_answers() -> None:
+    state, _ = fold([user("u1"), user("u2")])
+    entry = started("w", "t1", 2).model_copy(update={"answers": ("u1", "u2")})
+    result = _accept(state, 3, entry)
+    assert result.state.work == (
+        LiveWork(
+            task_id="t1", cause_through=2, answers=("u1", "u2"), pending_approvals=frozenset()
+        ),
+    )
+    assert result.effects == ()
+
+
+@pytest.mark.parametrize(("cause_through", "accepted"), [(1, False), (2, True)])
+def test_work_started_is_rejected_when_its_cause_was_stopped(
+    cause_through: int, accepted: bool
+) -> None:
+    state, _ = fold([user("u1"), stop("s"), user("u3")])
+    result = reduce(state, logged(4, started("w", "t1", cause_through)))
+    assert isinstance(result, Transition) is accepted
+    if not accepted:
+        assert result == Rejected(reason=RejectReason.CAUSE_STOPPED)
+
+
+def test_work_started_is_rejected_when_the_task_is_already_live() -> None:
+    state, _ = fold([user("u1"), started("w1", "t1", 1)])
+    assert _reason(state, 3, started("w2", "t1", 1)) is RejectReason.TASK_ALREADY_LIVE
+    assert isinstance(reduce(state, logged(3, started("w2", "t2", 1))), Transition)
+
+
+@pytest.mark.parametrize("cause_through", [3, 5])
+def test_work_started_whose_cause_is_not_before_it_is_rejected(cause_through: int) -> None:
+    state, _ = fold([user("u1"), user("u2")])
+    assert (
+        _reason(state, 3, started("w", "t1", cause_through)) is RejectReason.CAUSE_NOT_BEFORE_WORK
+    )
+
+
+# ---- ApprovalRequested / ApprovalDecided ----
+
+
+def test_approval_requested_adds_the_approval_to_its_task_only() -> None:
+    state, _ = fold([user("u1"), started("w1", "t1", 1), started("w2", "t2", 1)])
+    result = _accept(state, 4, asked("a", "t2", "ap1"))
+    assert result.state.work == (_work("t1", 1), _work("t2", 1, "ap1"))
+    assert result.effects == ()
+
+
+def test_approval_requested_for_a_task_not_live_is_rejected() -> None:
+    state, _ = fold([user("u1"), started("w1", "t1", 1)])
+    assert _reason(state, 3, asked("a", "t9", "ap1")) is RejectReason.TASK_NOT_LIVE
+
+
+def test_approval_decided_removes_the_approval_from_whichever_task_holds_it() -> None:
+    state, _ = fold(
+        [
+            user("u1"),
+            started("w1", "t1", 1),
+            started("w2", "t2", 1),
+            asked("a1", "t1", "ap1"),
+            asked("a2", "t2", "ap2"),
+            asked("a3", "t2", "ap3"),
+        ]
+    )
+    result = _accept(state, 7, decided("d", "ap2"))
+    assert result.state.work == (_work("t1", 1, "ap1"), _work("t2", 1, "ap3"))
+    assert result.effects == ()
+
+
+def test_approval_decided_with_no_holder_is_accepted_and_changes_nothing_else() -> None:
+    state, _ = fold([user("u1"), started("w1", "t1", 1), asked("a", "t1", "ap1"), stop("s")])
+    result = _accept(state, 5, decided("d", "ap1"))
+    assert result.state == state.model_copy(update={"head": 5})
+    assert result.effects == ()
+
+
+# ---- WorkFinished ----
+
+
+@pytest.mark.parametrize("outcome", [WorkOutcome.DONE, WorkOutcome.FAILED, WorkOutcome.LOST])
+def test_live_work_finishing_removes_it_and_wakes(outcome: WorkOutcome) -> None:
+    state, _ = fold(
+        [user("u1"), started("w1", "t1", 1), started("w2", "t2", 1), answered("r", ["u1"], 1)]
+    )
+    result = _accept(state, 5, finished("f", "t1", outcome))
+    assert [item.task_id for item in result.state.work] == ["t2"]
+    assert result.state.unsettled_waking == (5,)
+    assert result.effects == (KickStep(),)
+
+
+def test_live_work_finishing_cancelled_removes_it_without_waking() -> None:
+    state, _ = fold([user("u1"), started("w", "t1", 1), answered("r", ["u1"], 1)])
+    result = _accept(state, 4, finished("f", "t1", WorkOutcome.CANCELLED))
+    assert result.state.work == ()
+    assert result.state.unsettled_waking == ()
+    assert result.effects == ()
+
+
+@pytest.mark.parametrize("outcome", list(WorkOutcome))
+def test_work_finishing_after_it_was_stopped_neither_wakes_nor_kicks(outcome: WorkOutcome) -> None:
+    state, _ = fold([user("u1"), started("w", "t1", 1), stop("s")])
+    result = _accept(state, 4, finished("f", "t1", outcome))
+    assert result.state == state.model_copy(update={"head": 4})
+    assert result.effects == ()
+
+
+# ---- Reply ----
+
+
+def test_open_reply_sets_comms_answering_and_settles_nothing() -> None:
+    state, _ = fold([user("u1")])
+    result = _accept(state, 2, opened("o"))
+    assert result.state.comms is CommsPhase.ANSWERING
+    assert (result.state.settled_through, result.state.unsettled_waking) == (0, (1,))
+    assert result.effects == ()
+
+
+def test_finished_reply_sets_comms_idle_and_settles_through_its_newest_answer() -> None:
+    state, _ = fold([user("u1"), user("u2"), user("u3"), opened("o")])
+    result = _accept(state, 5, answered("r", ["u1", "u2"], 2))
+    assert result.state.comms is CommsPhase.IDLE
+    assert result.state.settled_through == 2
+    assert result.state.unsettled_waking == (3,)
+    assert result.effects == ()
+
+
+@pytest.mark.parametrize("outcome", list(ReplyOutcome))
+def test_every_reply_end_settles(outcome: ReplyOutcome) -> None:
+    state, _ = fold([user("u1")])
+    assert _accept(state, 2, answered("r", ["u1"], 1, outcome=outcome)).state.settled_through == 1
+
+
+def test_finished_reply_never_lowers_settled_through() -> None:
+    state, _ = fold([user("u1"), user("u2"), answered("r1", ["u2"], 2), user("u4")])
+    result = _accept(state, 5, answered("r2", ["u1"], 1))
+    assert result.state.settled_through == 2
+    assert result.state.unsettled_waking == (4,)
+
+
+@pytest.mark.parametrize("through", [2, 3])
+def test_reply_answering_itself_or_later_is_rejected(through: int) -> None:
+    state, _ = fold([user("u1")])
+    assert _reason(state, 2, answered("r", ["u1"], through)) is RejectReason.REPLY_ANSWERS_FUTURE
+
+
+# ---- comms phase owned by the step ----
+
+
+def test_with_comms_sets_only_the_phase() -> None:
+    state, _ = fold([user("u1")])
+    assert with_comms(state, CommsPhase.THINKING) == state.model_copy(
+        update={"comms": CommsPhase.THINKING}
+    )
+
+
+def test_reduce_keeps_the_thinking_phase_the_step_set_until_a_reply() -> None:
+    thinking = with_comms(fold([user("u1")])[0], CommsPhase.THINKING)
+    assert _accept(thinking, 2, user("u2")).state.comms is CommsPhase.THINKING
+    assert _accept(thinking, 2, opened("o")).state.comms is CommsPhase.ANSWERING
+
+
+# ---- whole-log scenarios ----
+
+
+def test_two_user_messages_then_one_reply_answering_both() -> None:
+    state, effects = fold([user("u1"), user("u2"), opened("o"), answered("r", ["u1", "u2"], 2)])
+    assert state == ConversationState(
+        head=4,
+        settled_through=2,
+        stopped_through=0,
+        unsettled_waking=(),
+        comms=CommsPhase.IDLE,
+        work=(),
+    )
+    assert effects == [KickStep(), StartAck(message_id="u1"), KickStep(), StartAck(message_id="u2")]
+
+
+def test_a_reply_to_the_first_message_then_a_second_reply() -> None:
+    first, _ = fold([user("u1"), user("u2"), answered("r1", ["u1"], 1, reply_id="r1")])
+    assert (first.settled_through, first.unsettled_waking) == (1, (2,))
+    state, _ = fold(
+        [
+            user("u1"),
+            user("u2"),
+            answered("r1", ["u1"], 1, reply_id="r1"),
+            answered("r2", ["u2"], 2, reply_id="r2"),
+        ]
+    )
+    assert (state.settled_through, state.unsettled_waking, state.comms) == (2, (), CommsPhase.IDLE)
+
+
+def test_side_question_is_answered_while_work_stays_live() -> None:
+    state, effects = fold(
+        [
+            user("u1"),
+            started("w", "t1", 1),
+            answered("r1", ["u1"], 1),
+            user("u4"),
+            answered("r2", ["u4"], 4),
+        ]
+    )
+    assert state.work == (_work("t1", 1),)
+    assert (state.settled_through, state.unsettled_waking) == (4, ())
+    assert state.display is ConversationDisplay.WORKING
+    assert effects == [KickStep(), StartAck(message_id="u1"), KickStep(), StartAck(message_id="u4")]
+
+
+def test_approval_requested_then_decided() -> None:
+    log: list[Entry] = [user("u1"), started("w", "t1", 1), asked("a", "t1", "ap1")]
+    waiting, _ = fold(log)
+    assert waiting.display is ConversationDisplay.AWAITING_APPROVAL
+    state, effects = fold([*log, decided("d", "ap1")])
+    assert state.work == (_work("t1", 1),)
+    assert state.display is ConversationDisplay.WORKING
+    assert effects == [KickStep(), StartAck(message_id="u1")]
+
+
+def test_approval_requested_then_stop_cancels_the_waiting_task() -> None:
+    state, effects = fold([user("u1"), started("w", "t1", 1), asked("a", "t1", "ap1"), stop("s")])
+    assert state == ConversationState(
+        head=4,
+        settled_through=0,
+        stopped_through=3,
+        unsettled_waking=(),
+        comms=CommsPhase.IDLE,
+        work=(),
+    )
+    assert effects[-2:] == [Preempt(stop_through=3), CancelWork(task_ids=("t1",))]
+
+
+def test_result_arriving_while_a_reply_is_open_stays_waking_past_that_reply() -> None:
+    log: list[Entry] = [
+        user("u1"),
+        started("w", "t1", 1),
+        answered("r1", ["u1"], 1),
+        user("u4"),
+        opened("o", reply_id="r2"),
+        finished("f", "t1"),
+    ]
+    during, effects = fold(log)
+    assert (during.comms, during.work, during.unsettled_waking) == (
+        CommsPhase.ANSWERING,
+        (),
+        (4, 6),
+    )
+    assert effects[-1] == KickStep()
+    state, _ = fold([*log, answered("r2", ["u4"], 4, reply_id="r2")])
+    assert (state.settled_through, state.unsettled_waking, state.comms) == (
+        4,
+        (6,),
+        CommsPhase.IDLE,
+    )
+
+
+def test_stop_while_a_reply_is_open() -> None:
+    state, effects = fold(
+        [user("u1"), opened("o"), stop("s"), answered("r", ["u1"], 1, outcome=ReplyOutcome.STOPPED)]
+    )
+    assert state == ConversationState(
+        head=4,
+        settled_through=1,
+        stopped_through=2,
+        unsettled_waking=(),
+        comms=CommsPhase.IDLE,
+        work=(),
+    )
+    assert effects == [KickStep(), StartAck(message_id="u1"), Preempt(stop_through=2)]
+
+
+def test_work_started_after_a_stop_survives_a_replay_of_that_stop() -> None:
+    the_stop = stop("s", covers_through=2)
+    log: list[Entry] = [
+        user("u1"),
+        started("w1", "t1", 1),
+        the_stop,
+        user("u4"),
+        started("w2", "t2", 4),
+    ]
+    before, _ = fold(log)
+    assert before.work == (_work("t2", 4),)
+    state, effects = fold([*log, the_stop])
+    assert state.work == (_work("t2", 4),)
+    assert state.unsettled_waking == (4,)
+    assert effects[-1] == Preempt(stop_through=2)
+    assert effects.count(CancelWork(task_ids=("t1",))) == 1
+    assert not any(isinstance(effect, CancelWork) and "t2" in effect.task_ids for effect in effects)
+
+
+def test_gaia_stop_covering_up_to_its_batch_leaves_the_batch_waking() -> None:
+    batch_start = 4
+    state, effects = fold(
+        [
+            user("u1"),
+            started("w", "t1", 1),
+            answered("r", ["u1"], 1),
+            user("stop that"),
+            stop("s", covers_through=batch_start - 1, by=StopBy.GAIA),
+        ]
+    )
+    assert state.unsettled_waking == (batch_start,)
+    assert (state.stopped_through, state.work) == (3, ())
+    assert effects[-2:] == [Preempt(stop_through=3), CancelWork(task_ids=("t1",))]
+
+
+def test_ten_user_messages_then_one_reply() -> None:
+    ids = [f"u{n}" for n in range(1, 11)]
+    state, effects = fold([*(user(entry_id) for entry_id in ids), answered("r", ids, 10)])
+    assert (state.head, state.settled_through, state.unsettled_waking) == (11, 10, ())
+    assert effects == [
+        effect for entry_id in ids for effect in (KickStep(), StartAck(message_id=entry_id))
+    ]
+
+
+def test_workflow_fire_between_two_user_messages_settles_in_order() -> None:
+    log: list[Entry] = [user("u1"), fired("f"), user("u3")]
+    state, effects = fold(log)
+    assert state.unsettled_waking == (1, 2, 3)
+    assert effects == [
+        KickStep(),
+        StartAck(message_id="u1"),
+        KickStep(),
+        KickStep(),
+        StartAck(message_id="u3"),
+    ]
+    after_first, _ = fold([*log, answered("r", ["u1"], 1)])
+    assert after_first.unsettled_waking == (2, 3)
+
+
+def test_wake_up_entry_in_the_middle_of_work_changes_nothing_until_the_work_finishes() -> None:
+    log: list[Entry] = [user("u1"), started("w", "t1", 1), answered("r", ["u1"], 1), todo_woke("t")]
+    during, effects = fold(log)
+    assert (during.work, during.unsettled_waking) == ((_work("t1", 1),), ())
+    assert len(effects) == 2
+    state, effects = fold([*log, finished("f", "t1")])
+    assert (state.work, state.unsettled_waking, effects[-1]) == ((), (5,), KickStep())
