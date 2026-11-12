@@ -109,7 +109,7 @@ class TestSubmitSupportRequest:
         self, client: AsyncClient
     ) -> None:
         result = SupportRequestSubmissionResponse(
-            success=True, message="Submitted", ticket_id="T-127"
+            success=True, message="Submitted", ticket_id="T-127", support_request=None
         )
         with (
             patch(
@@ -151,7 +151,7 @@ class TestSubmitSupportRequest:
     ) -> None:
         """The service receives the validated type plus the caller's identity."""
         result = SupportRequestSubmissionResponse(
-            success=True, message="Submitted", ticket_id="T-125"
+            success=True, message="Submitted", ticket_id="T-125", support_request=None
         )
         with (
             patch(
@@ -233,7 +233,7 @@ class TestSubmitSupportRequest:
 class TestSubmitSupportRequestLogPins:
     async def test_success_log_calls_are_exact(self, client: AsyncClient) -> None:
         result = SupportRequestSubmissionResponse(
-            success=True, message="Submitted", ticket_id="T-126"
+            success=True, message="Submitted", ticket_id="T-126", support_request=None
         )
         with (
             patch(
