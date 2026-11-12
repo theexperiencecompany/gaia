@@ -80,7 +80,7 @@ class ConversationLogRepository(ConversationRepository):
         if epoch is not None:
             expected[f"{RUNNER_FIELD}.epoch"] = epoch
         document = _document(head.conversation_id, head.user_id, logged)
-        with store_errors("log append"):
+        with store_errors("log append"):  # pragma: no mutate — error label
             result = await self._raw_collection().update_one(
                 expected,
                 {
@@ -121,7 +121,7 @@ class ConversationLogRepository(ConversationRepository):
 
         The one write of an amendment is this head update, so the epoch fence and the write are atomic.
         """
-        with store_errors("log amend"):
+        with store_errors("log amend"):  # pragma: no mutate — error label
             result = await self._raw_collection().update_one(
                 {
                     "conversation_id": conversation_id,
@@ -145,9 +145,9 @@ class ConversationLogRepository(ConversationRepository):
         self, conversation_id: str, *, user_id: str, runner_epoch: int, alive_key: str
     ) -> bool:
         """Hand the step to epoch runner_epoch + 1, only while runner_epoch is still the last one handed out."""
-        last = runner_epoch if runner_epoch else {"$in": [0, None]}
+        last = runner_epoch if runner_epoch else {"$exists": False}
         epoch = runner_epoch + 1
-        with store_errors("log claim"):
+        with store_errors("log claim"):  # pragma: no mutate — error label
             result = await self._raw_collection().update_one(
                 {"conversation_id": conversation_id, "user_id": user_id, RUNNER_EPOCH_FIELD: last},
                 {
@@ -161,7 +161,7 @@ class ConversationLogRepository(ConversationRepository):
 
     async def release_runner(self, conversation_id: str, *, user_id: str, epoch: int) -> bool:
         """Clear the step's holder, only while epoch holds it and nothing waking is unsettled."""
-        with store_errors("log release"):
+        with store_errors("log release"):  # pragma: no mutate — error label
             result = await self._raw_collection().update_one(
                 {
                     "conversation_id": conversation_id,
@@ -181,7 +181,7 @@ class ConversationLogRepository(ConversationRepository):
     ) -> ConversationState | None:
         """Write the comms phase while epoch holds the step, returning the state; None when it does not."""
         state = {"$mergeObjects": [{"$literal": _EMPTY_STATE}, f"${STATE_FIELD}", {"comms": phase}]}
-        with store_errors("log comms"):
+        with store_errors("log comms"):  # pragma: no mutate — error label
             raw = await self._raw_collection().find_one_and_update(
                 {
                     "conversation_id": conversation_id,
@@ -189,7 +189,6 @@ class ConversationLogRepository(ConversationRepository):
                     f"{RUNNER_FIELD}.epoch": epoch,
                 },
                 [{"$set": {STATE_FIELD: state}}],
-                projection={STATE_FIELD: 1, LOG_HEAD_FIELD: 1},
                 return_document=ReturnDocument.AFTER,
             )
         return None if raw is None else _state(raw)
@@ -251,7 +250,7 @@ class _StoredEntry(BaseModel):
 
 def _document(conversation_id: str, user_id: str, logged: LoggedEntry) -> dict[str, object]:
     return {
-        **logged.entry.model_dump(mode="json"),
+        **logged.entry.model_dump(),
         "conversation_id": conversation_id,
         "user_id": user_id,
         "seq": logged.seq,

@@ -142,6 +142,17 @@ async def test_a_wake_appended_after_the_step_read_nothing_keeps_it_from_releasi
     assert (await log.state(conversation, UID)).unsettled_waking == (1,)
 
 
+async def test_a_conversation_with_no_log_yet_is_claimed_and_released(
+    log: MongoConversationLog, conversation: str, redis: Redis
+) -> None:
+    claim = await log.claim(conversation, UID)
+    assert claim is not None
+    assert await redis.ttl(f"conv:alive:{UID}:{conversation}:{claim.epoch}") > 0
+    assert await log.release_if_caught_up(claim)
+    again = await log.claim(conversation, UID)
+    assert again is not None and again.epoch == claim.epoch + 1
+
+
 async def test_of_many_concurrent_claimers_exactly_one_wins(
     log: MongoConversationLog, conversation: str
 ) -> None:
@@ -258,6 +269,7 @@ async def test_amend_updates_the_one_entry_whether_or_not_it_was_flushed(
     amended = await log.amend(claim, reply.model_copy(update={"text": "hello"}))
     await log.amend(claim, reply.model_copy(update={"text": "hello again"}))
     await held.run_all()
+    assert not (await raw_collection.find_one({"conversation_id": conversation})).get("outbox")
     [stored] = await log.read_after(conversation, UID, 1)
     assert isinstance(amended.entry, Reply)
     assert (amended.seq, amended.entry.revision) == (2, 1)
