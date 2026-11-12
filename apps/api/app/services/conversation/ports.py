@@ -62,11 +62,13 @@ class ConversationLog(Protocol):
         """Replace the stored entry with entry's id in place with the next revision, fenced; never a state change."""
         ...
 
-    async def read_after(self, conversation_id: str, seq: int) -> Sequence[LoggedEntry]:
+    async def read_after(
+        self, conversation_id: str, user_id: str, seq: int
+    ) -> Sequence[LoggedEntry]:
         """Return the entries after seq in order, with their current content."""
         ...
 
-    async def state(self, conversation_id: str) -> ConversationState:
+    async def state(self, conversation_id: str, user_id: str) -> ConversationState:
         """Return the conversation's current state."""
         ...
 
@@ -82,7 +84,7 @@ class ConversationLog(Protocol):
         """Write the comms phase, fenced, and return the new state."""
         ...
 
-    async def hint(self, conversation_id: str) -> PreemptHint:
+    async def hint(self, conversation_id: str, user_id: str) -> PreemptHint:
         """Return the cheap preempt view; barge_reply_id is set only while that reply is open."""
         ...
 

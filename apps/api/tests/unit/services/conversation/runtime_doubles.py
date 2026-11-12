@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
+from typing import Protocol
 
 from app.constants.hil import ApprovalDecision
 from app.models.conversation_frame_models import OutputFrame
@@ -24,6 +25,7 @@ from app.services.conversation.ports import (
     Appended,
     CancelReason,
     ClaimLost,
+    ConversationLog,
     EntryRejected,
     Finished,
     RunEvent,
@@ -73,9 +75,6 @@ class InMemoryConversationLog:
         self._conversations: dict[str, _Conversation] = {}
         self.pause = pause
 
-    def entries(self, conversation_id: str) -> list[LoggedEntry]:
-        return list(self._conv(conversation_id).entries)
-
     async def append(self, conversation_id: str, user_id: str, entry: Entry) -> Appended:
         await self.pause("append")
         conversation = self._conversations.setdefault(conversation_id, _Conversation(user_id))
@@ -103,11 +102,13 @@ class InMemoryConversationLog:
         await self.pause("amend:done")
         return amended
 
-    async def read_after(self, conversation_id: str, seq: int) -> Sequence[LoggedEntry]:
+    async def read_after(
+        self, conversation_id: str, user_id: str, seq: int
+    ) -> Sequence[LoggedEntry]:
         await self.pause("read_after")
         return [item for item in self._conv(conversation_id).entries if item.seq > seq]
 
-    async def state(self, conversation_id: str) -> ConversationState:
+    async def state(self, conversation_id: str, user_id: str) -> ConversationState:
         await self.pause("state")
         return self._conv(conversation_id).state
 
@@ -138,7 +139,7 @@ class InMemoryConversationLog:
         await self.pause("set_comms:done")
         return conversation.state
 
-    async def hint(self, conversation_id: str) -> PreemptHint:
+    async def hint(self, conversation_id: str, user_id: str) -> PreemptHint:
         await self.pause("hint")
         conversation = self._conv(conversation_id)
         state = conversation.state
@@ -192,6 +193,56 @@ class InMemoryConversationLog:
         if isinstance(entry, BargeIn):
             conversation.barged_reply = entry.reply_id
         return appended
+
+
+class PausingLog:
+    """Any ConversationLog with pause(point) awaited before each call, at the points the in-memory log pauses."""
+
+    def __init__(self, inner: ConversationLog) -> None:
+        self._inner = inner
+        self.pause: Callable[[str], Awaitable[None]] = _no_pause
+
+    async def append(self, conversation_id: str, user_id: str, entry: Entry) -> Appended:
+        await self.pause("append")
+        return await self._inner.append(conversation_id, user_id, entry)
+
+    async def append_fenced(self, claim: StepClaim, entry: Entry) -> Appended:
+        await self.pause("append_fenced")
+        return await self._inner.append_fenced(claim, entry)
+
+    async def amend(self, claim: StepClaim, entry: Reply | UserMessage) -> LoggedEntry:
+        await self.pause("amend")
+        return await self._inner.amend(claim, entry)
+
+    async def read_after(
+        self, conversation_id: str, user_id: str, seq: int
+    ) -> Sequence[LoggedEntry]:
+        await self.pause("read_after")
+        return await self._inner.read_after(conversation_id, user_id, seq)
+
+    async def state(self, conversation_id: str, user_id: str) -> ConversationState:
+        await self.pause("state")
+        return await self._inner.state(conversation_id, user_id)
+
+    async def claim(self, conversation_id: str, user_id: str) -> StepClaim | None:
+        await self.pause("claim")
+        return await self._inner.claim(conversation_id, user_id)
+
+    async def release_if_caught_up(self, claim: StepClaim) -> bool:
+        await self.pause("release")
+        return await self._inner.release_if_caught_up(claim)
+
+    async def set_comms(self, claim: StepClaim, phase: CommsPhase) -> ConversationState:
+        await self.pause("set_comms")
+        return await self._inner.set_comms(claim, phase)
+
+    async def hint(self, conversation_id: str, user_id: str) -> PreemptHint:
+        await self.pause("hint")
+        return await self._inner.hint(conversation_id, user_id)
+
+    async def beat(self, claim: StepClaim) -> bool:
+        await self.pause("beat")
+        return await self._inner.beat(claim)
 
 
 class TickGate:
@@ -444,21 +495,49 @@ CONVERSATION = "c1"
 USER = "user_1"
 
 
+class ScenarioLog(ConversationLog, Protocol):
+    """A ConversationLog a test can pause at each call: pause(point) runs before the call."""
+
+    pause: Callable[[str], Awaitable[None]]
+
+
+@dataclass(frozen=True)
+class LogUnderTest:
+    log: ScenarioLog
+    # Makes the current holder's liveness run out, as when its process dies.
+    lapse: Callable[[], Awaitable[None]]
+
+
+def in_memory_log(clock: FakeClock, conversation_id: str = CONVERSATION) -> LogUnderTest:
+    log = InMemoryConversationLog(clock)
+
+    async def lapse() -> None:
+        log.lapse(conversation_id)
+
+    return LogUnderTest(log=log, lapse=lapse)
+
+
 @dataclass
 class Runtime:
-    """One conversation's ports wired to the doubles."""
+    """One conversation's ports wired to the doubles, over the in-memory log unless make_log says otherwise."""
 
     clock: FakeClock = field(default_factory=FakeClock)
     ticks: TickGate = field(default_factory=TickGate)
     frames: RecordingFrames = field(default_factory=RecordingFrames)
     effects: RecordingEffects = field(default_factory=RecordingEffects)
     approvals: ScriptedApprovals = field(default_factory=ScriptedApprovals)
-    log: InMemoryConversationLog = field(init=False)
+    make_log: Callable[[FakeClock], LogUnderTest] = in_memory_log
+    log: ScenarioLog = field(init=False)
     runner: ScriptedRunner = field(init=False)
+    _lapse: Callable[[], Awaitable[None]] = field(init=False)
 
     def __post_init__(self) -> None:
-        self.log = InMemoryConversationLog(self.clock)
+        under_test = self.make_log(self.clock)
+        self.log, self._lapse = under_test.log, under_test.lapse
         self.runner = ScriptedRunner(self.ticks)
+
+    async def lapse(self) -> None:
+        await self._lapse()
 
     @property
     def ports(self) -> RuntimePorts:
@@ -472,5 +551,5 @@ class Runtime:
             tick=self.ticks.tick,
         )
 
-    def entries(self) -> list[LoggedEntry]:
-        return self.log.entries(CONVERSATION)
+    async def entries(self) -> list[LoggedEntry]:
+        return list(await self.log.read_after(CONVERSATION, USER, 0))

@@ -161,8 +161,8 @@ async def advance(ports: RuntimePorts, conversation_id: str, user_id: str) -> No
 async def _recover(ports: RuntimePorts, claim: StepClaim) -> None:
     """Republish what a dead holder may not have, then close the attempt it left open."""
     conversation_id = claim.conversation_id
-    state = await ports.log.state(conversation_id)
-    for logged in await ports.log.read_after(conversation_id, state.settled_through):
+    state = await ports.log.state(conversation_id, claim.user_id)
+    for logged in await ports.log.read_after(conversation_id, claim.user_id, state.settled_through):
         await ports.frames.publish(
             conversation_id, EntryFrame(seq=logged.seq, at=logged.at, entry=logged.entry)
         )
@@ -184,8 +184,8 @@ async def _recover(ports: RuntimePorts, claim: StepClaim) -> None:
 async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool:
     """Answer the oldest waking batch; return True once released with nothing left."""
     conversation_id = claim.conversation_id
-    state = await ports.log.state(conversation_id)
-    entries = await ports.log.read_after(conversation_id, state.settled_through)
+    state = await ports.log.state(conversation_id, claim.user_id)
+    entries = await ports.log.read_after(conversation_id, claim.user_id, state.settled_through)
     pending = [logged for logged in entries if logged.seq in state.unsettled_waking]
     if not pending:
         return await ports.log.release_if_caught_up(claim)
@@ -271,7 +271,7 @@ async def _answered_as_approval(
         outcome=ReplyOutcome.ANSWERED,
         answers=answers,
         through=first.seq,
-        quote_target=await _quote(ports, claim.conversation_id, answers, first.seq - 1, shown.seq),
+        quote_target=await _quote(ports, claim, answers, first.seq - 1, shown.seq),
     )
     await _append(ports, claim, settled)
     return True
@@ -364,7 +364,7 @@ async def _close(pump: _Pump) -> None:
 
 async def _decide(ports: RuntimePorts, attempt: _Attempt) -> Verdict:
     """Read the hint and decide, counting only newer inputs that would join this attempt."""
-    hint = await ports.log.hint(attempt.claim.conversation_id)
+    hint = await ports.log.hint(attempt.claim.conversation_id, attempt.claim.user_id)
     if hint.head > attempt.seen and not attempt.closed:
         await _look_for_joiners(ports, attempt)
     joinable_head = attempt.joiners[-1].seq if attempt.joiners else attempt.batch.end
@@ -380,8 +380,8 @@ async def _decide(ports: RuntimePorts, attempt: _Attempt) -> Verdict:
 async def _look_for_joiners(ports: RuntimePorts, attempt: _Attempt) -> None:
     conversation_id = attempt.claim.conversation_id
     # Entries before state: everything read is already folded into the state read after it.
-    entries = await ports.log.read_after(conversation_id, attempt.seen)
-    state = await ports.log.state(conversation_id)
+    entries = await ports.log.read_after(conversation_id, attempt.claim.user_id, attempt.seen)
+    state = await ports.log.state(conversation_id, attempt.claim.user_id)
     for logged in entries:
         attempt.seen = logged.seq
         if isinstance(logged.entry, StopRequested):
@@ -462,7 +462,7 @@ async def _stop(ports: RuntimePorts, attempt: _Attempt) -> None:
         await _set_comms(ports, attempt.claim, CommsPhase.IDLE)
         return
     await _amend(ports, attempt.claim, progress.reply.model_copy(update={"text": progress.text}))
-    state = await ports.log.state(attempt.claim.conversation_id)
+    state = await ports.log.state(attempt.claim.conversation_id, attempt.claim.user_id)
     await _append(
         ports,
         attempt.claim,
@@ -476,7 +476,9 @@ async def _truncate(ports: RuntimePorts, attempt: _Attempt) -> None:
     if not isinstance(progress, _Showing):
         await _retract(ports, attempt)
         return
-    after = await ports.log.read_after(attempt.claim.conversation_id, progress.seq)
+    after = await ports.log.read_after(
+        attempt.claim.conversation_id, attempt.claim.user_id, progress.seq
+    )
     barges = [
         logged.entry
         for logged in after
@@ -590,20 +592,20 @@ async def _answers_and_quote(
     ports: RuntimePorts, attempt: _Attempt, reply_seq: int
 ) -> tuple[tuple[str, ...], str | None]:
     """Answer every covered input, plus the user messages that caused covered finished work."""
-    conversation_id = attempt.claim.conversation_id
-    state = await ports.log.state(conversation_id)
+    state = await ports.log.state(attempt.claim.conversation_id, attempt.claim.user_id)
     covered = {logged.seq for logged in attempt.covers}
     work = [item for item in state.finished_work if item.seq in covered]
     ids = [logged.entry.id for logged in attempt.covers]
     answers = tuple(dict.fromkeys([*ids, *(cause for item in work for cause in item.answers)]))
     since = min([attempt.covers[0].seq, *(item.cause_through for item in work)]) - 1
-    return answers, await _quote(ports, conversation_id, answers, since, reply_seq)
+    return answers, await _quote(ports, attempt.claim, answers, since, reply_seq)
 
 
 async def _quote(
-    ports: RuntimePorts, conversation_id: str, answers: tuple[str, ...], since: int, reply_seq: int
+    ports: RuntimePorts, claim: StepClaim, answers: tuple[str, ...], since: int, reply_seq: int
 ) -> str | None:
-    visible = [_visible(logged) for logged in await ports.log.read_after(conversation_id, since)]
+    entries = await ports.log.read_after(claim.conversation_id, claim.user_id, since)
+    visible = [_visible(logged) for logged in entries]
     return quote_target(answers, reply_seq, [item for item in visible if item is not None])
 
 

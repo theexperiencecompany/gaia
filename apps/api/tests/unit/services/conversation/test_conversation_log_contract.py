@@ -1,8 +1,6 @@
 """The ConversationLog contract: a second implementation subclasses ConversationLogContract and provides log_under_test."""
 
 import asyncio
-from collections.abc import Callable
-from dataclasses import dataclass
 
 import pytest
 
@@ -12,19 +10,12 @@ from app.models.conversation_log_models import (
     RejectReason,
     StepClaim,
 )
-from app.services.conversation.ports import ClaimLost, ConversationLog, EntryRejected
+from app.services.conversation.ports import ClaimLost, EntryRejected
 from tests.unit.services.conversation.log_helpers import barge, opened, settled, stop, user
-from tests.unit.services.conversation.runtime_doubles import FakeClock, InMemoryConversationLog
+from tests.unit.services.conversation.runtime_doubles import FakeClock, LogUnderTest, in_memory_log
 
 CID = "c1"
 UID = "user_1"
-
-
-@dataclass(frozen=True)
-class LogUnderTest:
-    log: ConversationLog
-    # Makes the current holder's liveness run out, as when its process dies.
-    lapse: Callable[[], None]
 
 
 class ConversationLogContract:
@@ -44,9 +35,9 @@ class ConversationLogContract:
     ) -> None:
         for entry_id in ("u1", "u2", "u3"):
             await subject.log.append(CID, UID, user(entry_id))
-        after = await subject.log.read_after(CID, 1)
+        after = await subject.log.read_after(CID, UID, 1)
         assert [(item.seq, item.entry.id) for item in after] == [(2, "u2"), (3, "u3")]
-        assert (await subject.log.state(CID)).unsettled_waking == (1, 2, 3)
+        assert (await subject.log.state(CID, UID)).unsettled_waking == (1, 2, 3)
 
     async def test_a_second_append_of_one_id_returns_the_first_result_and_stores_nothing(
         self, subject: LogUnderTest
@@ -59,15 +50,15 @@ class ConversationLogContract:
             first.state,
             first.effects,
         )
-        assert len(await subject.log.read_after(CID, 0)) == 1
+        assert len(await subject.log.read_after(CID, UID, 0)) == 1
 
     async def test_a_rejected_entry_raises_and_stores_nothing(self, subject: LogUnderTest) -> None:
         await subject.log.append(CID, UID, user("u1"))
         with pytest.raises(EntryRejected) as rejected:
             await subject.log.append(CID, UID, settled("s", ["u1"], 1, reply_id="nope"))
         assert rejected.value.reason is RejectReason.REPLY_NOT_OPEN
-        assert (await subject.log.state(CID)).head == 1
-        assert len(await subject.log.read_after(CID, 0)) == 1
+        assert (await subject.log.state(CID, UID)).head == 1
+        assert len(await subject.log.read_after(CID, UID, 0)) == 1
 
     async def test_the_append_reports_the_state_before_and_after_and_its_effects(
         self, subject: LogUnderTest
@@ -86,18 +77,18 @@ class ConversationLogContract:
         self, subject: LogUnderTest
     ) -> None:
         old = await self._claim(subject)
-        subject.lapse()
+        await subject.lapse()
         new = await self._claim(subject)
         assert new.epoch > old.epoch
         assert not await subject.log.beat(old)
-        assert (await subject.log.hint(CID)).epoch == new.epoch
+        assert (await subject.log.hint(CID, UID)).epoch == new.epoch
         with pytest.raises(ClaimLost):
             await subject.log.append_fenced(old, opened("o"))
         with pytest.raises(ClaimLost):
             await subject.log.set_comms(old, CommsPhase.THINKING)
         with pytest.raises(ClaimLost):
             await subject.log.release_if_caught_up(old)
-        assert await subject.log.read_after(CID, 0) == []
+        assert await subject.log.read_after(CID, UID, 0) == []
 
     async def test_a_fenced_append_and_the_comms_phase_land_for_the_holder(
         self, subject: LogUnderTest
@@ -117,10 +108,10 @@ class ConversationLogContract:
         reply = opened("o", "r1")
         await subject.log.append_fenced(claim, reply)
         amended = await subject.log.amend(claim, reply.model_copy(update={"text": "hello"}))
-        stored = await subject.log.read_after(CID, 1)
+        stored = await subject.log.read_after(CID, UID, 1)
         filled = reply.model_copy(update={"text": "hello", "revision": 1})
         assert (amended.seq, amended.entry, stored[0].entry) == (2, filled, filled)
-        assert (await subject.log.state(CID)).head == 2
+        assert (await subject.log.state(CID, UID)).head == 2
 
     async def test_the_hint_names_a_barged_reply_only_while_it_is_open(
         self, subject: LogUnderTest
@@ -129,14 +120,14 @@ class ConversationLogContract:
         claim = await self._claim(subject)
         await subject.log.append_fenced(claim, opened("o", "r1"))
         await subject.log.append(CID, UID, barge("b", "r1"))
-        assert (await subject.log.hint(CID)).barge_reply_id == "r1"
+        assert (await subject.log.hint(CID, UID)).barge_reply_id == "r1"
         await subject.log.append_fenced(claim, settled("s", ["u1"], 1))
-        assert (await subject.log.hint(CID)).barge_reply_id is None
+        assert (await subject.log.hint(CID, UID)).barge_reply_id is None
 
     async def test_the_hint_carries_the_stop_and_the_head(self, subject: LogUnderTest) -> None:
         await subject.log.append(CID, UID, user("u1"))
         await subject.log.append(CID, UID, stop("s"))
-        hint = await subject.log.hint(CID)
+        hint = await subject.log.hint(CID, UID)
         assert (hint.head, hint.stop_through) == (2, 1)
 
     async def test_release_succeeds_only_when_nothing_waking_is_unsettled(
@@ -167,13 +158,11 @@ class ConversationLogContract:
             assert await subject.log.claim(CID, UID) is not None
         else:
             # The holder stays, and it still sees the input unsettled.
-            assert (await subject.log.state(CID)).unsettled_waking == (1,)
+            assert (await subject.log.state(CID, UID)).unsettled_waking == (1,)
             assert await subject.log.claim(CID, UID) is None
 
 
 class TestInMemoryConversationLog(ConversationLogContract):
     @pytest.fixture
     def subject(self) -> LogUnderTest:
-        clock = FakeClock()
-        log = InMemoryConversationLog(clock)
-        return LogUnderTest(log=log, lapse=lambda: log.lapse(CID))
+        return in_memory_log(FakeClock(), CID)

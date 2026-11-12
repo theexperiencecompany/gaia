@@ -116,7 +116,7 @@ class World:
     async def append(self, kind: str) -> None:
         if kind == "lapse":
             # The holder's process stalls past its liveness, so its claim can be taken over.
-            self.rt.log.lapse(CONVERSATION)
+            await self.rt.lapse()
             self.lapsed = True
             return
         entry = await self._entry(kind, next(self.ids))
@@ -137,7 +137,7 @@ class World:
     async def _entry(self, kind: str, number: int) -> Entry | None:
         if kind in _STATELESS:
             return _STATELESS[kind](number)
-        state = await self.rt.log.state(CONVERSATION)
+        state = await self.rt.log.state(CONVERSATION, USER)
         entry: Entry | None
         match kind:
             case "gaia_stop":
@@ -148,17 +148,17 @@ class World:
                 live = state.work[0].task_id if state.work else None
                 entry = asked(f"a{number}", live, f"ap{number}") if live else None
             case "work_start":
-                entry = self._work_start(state, number)
+                entry = await self._work_start(state, number)
             case _:
                 entry = self._work_end(state, number, kind)
         return entry
 
-    def _work_start(self, state: ConversationState, number: int) -> WorkStarted | None:
+    async def _work_start(self, state: ConversationState, number: int) -> WorkStarted | None:
         if state.head <= state.stopped_through:
             return None
         causes = [
             item.entry.id
-            for item in self.rt.entries()
+            for item in await self.rt.entries()
             if isinstance(item.entry, UserMessage) and item.seq > state.stopped_through
         ]
         return WorkStarted(
@@ -177,7 +177,7 @@ class World:
         )
 
     async def advance(self, op: AdvanceOp) -> None:
-        self.rt.log.lapse(CONVERSATION)
+        await self.rt.lapse()
         self.calls, self.kill_at, self.lapsed = 0, op.kill_at, False
         tasks = [asyncio.create_task(advance(self.rt.ports, CONVERSATION, USER))]
         if op.concurrent:
@@ -190,7 +190,7 @@ class World:
                 assert task.exception() is None, repr(task.exception())
         if not self.lapsed and not any(task.cancelled() for task in tasks):
             # A step that was neither killed nor lost its claim leaves nothing to repair.
-            state = await self.rt.log.state(CONVERSATION)
+            state = await self.rt.log.state(CONVERSATION, USER)
             assert (state.comms, state.unsettled_waking) == (CommsPhase.IDLE, ())
 
 
@@ -268,7 +268,7 @@ async def _play(
             await world.advance(op)
     for _ in range(QUIET_ROUNDS):
         await world.advance(AdvanceOp(kill_at=None, concurrent=False))
-        state = await rt.log.state(CONVERSATION)
+        state = await rt.log.state(CONVERSATION, USER)
         if not state.unsettled_waking and state.comms is CommsPhase.IDLE:
             break
     return world
@@ -369,8 +369,8 @@ def test_any_interleaving_answers_every_input_once_with_one_run_at_a_time(
     op_list: list[Op], plans: list[list[tuple[str, str]]], approves: bool
 ) -> None:
     world = asyncio.run(_play(op_list, plans, approves))
-    entries = world.rt.entries()
-    state = asyncio.run(world.rt.log.state(CONVERSATION))
+    entries = asyncio.run(world.rt.entries())
+    state = asyncio.run(world.rt.log.state(CONVERSATION, USER))
     assert (state.comms, state.unsettled_waking, state.open_reply) == (CommsPhase.IDLE, (), None)
     assert world.rt.runner.overlaps == 0
     assert all(a.seq < b.seq for a, b in pairwise(entries))

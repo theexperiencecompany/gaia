@@ -52,12 +52,12 @@ async def test_a_failing_effect_keeps_the_entry_and_the_rest_still_run() -> None
     rt.effects.calls.clear()
     rt.effects.failing = frozenset({"cancel_work"})
     accepted = await accept(rt.ports, CONVERSATION, USER, stop("s"))
-    assert rt.entries()[-1].entry == stop("s")
+    assert (await rt.entries())[-1].entry == stop("s")
     assert accepted.failed_effects == (CancelWork(task_ids=("t1",)),)
     assert not accepted.kick_failed
     rt.effects.failing = frozenset({"kick"})
     accepted = await accept(rt.ports, CONVERSATION, USER, user("u4"))
-    assert rt.entries()[-1].entry == user("u4")
+    assert (await rt.entries())[-1].entry == user("u4")
     assert rt.effects.calls[-2:] == [EffectCall("kick"), EffectCall("start_ack", "u4")]
     assert (accepted.failed_effects, accepted.kick_failed) == ((KickStep(),), True)
     assert StartAck(message_id="u4") in accepted.appended.effects
