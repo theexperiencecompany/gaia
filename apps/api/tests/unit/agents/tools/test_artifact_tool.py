@@ -1,8 +1,11 @@
 """create_artifact: the real tool streams batched deltas, then one done frame, and reports in prose."""
 
+from collections.abc import Iterator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import StructuredTool
 import pytest
 
 from app.agents.tools import artifact_tool
@@ -22,7 +25,9 @@ _TOOL = "app.agents.tools.artifact_tool"
 CONFIG = RunnableConfig(
     metadata={"user_id": "user-1"}, configurable={"user_id": "user-1", "vfs_session_id": "conv-1"}
 )
-ARGS = {"kind": "report", "title": "Q3 plan", "brief": "revenue is up 12%"}
+ARGS: dict[str, Any] = {"kind": "report", "title": "Q3 plan", "brief": "revenue is up 12%"}
+
+INTERACTIVE_ARGS: dict[str, Any] = {**ARGS, "interactive": True}
 
 
 class TestDeltaBatcher:
@@ -122,7 +127,7 @@ class TestDeltaBatcher:
 
 
 @pytest.fixture
-def writer() -> MagicMock:
+def writer() -> Iterator[MagicMock]:
     stream = MagicMock()
     with patch(f"{_TOOL}.current_stream_writer", return_value=stream):
         yield stream
@@ -171,9 +176,7 @@ class TestCreateArtifact:
             patch(f"{_TOOL}.create_openui_artifact", AsyncMock(return_value=MagicMock(id="a1"))),
             patch(f"{_TOOL}.optional_short_link", AsyncMock(return_value=None)),
         ):
-            result = await artifact_tool.create_artifact.ainvoke(
-                {**ARGS, "interactive": True}, config=CONFIG
-            )
+            result = await artifact_tool.create_artifact.ainvoke(INTERACTIVE_ARGS, config=CONFIG)
 
         assert result == (
             'Created the report "Q3 plan". The user sees it as a card in chat and can open it '
@@ -187,9 +190,7 @@ class TestCreateArtifact:
             ) as create,
             patch(f"{_TOOL}.optional_short_link", AsyncMock(return_value=None)),
         ):
-            await artifact_tool.create_artifact.ainvoke(
-                {**ARGS, "interactive": True}, config=CONFIG
-            )
+            await artifact_tool.create_artifact.ainvoke(INTERACTIVE_ARGS, config=CONFIG)
 
         assert create.await_args.args[0].interactive is True
 
@@ -200,7 +201,9 @@ class TestCreateArtifact:
             ) as create,
             patch(f"{_TOOL}.optional_short_link", AsyncMock(return_value=None)),
         ):
-            await artifact_tool.create_artifact.coroutine(
+            tool = artifact_tool.create_artifact
+            assert isinstance(tool, StructuredTool) and tool.coroutine is not None
+            await tool.coroutine(
                 config=CONFIG, kind=ArtifactKind.REPORT, title="Q3 plan", brief="revenue is up 12%"
             )
 
