@@ -109,6 +109,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const hasAfter = !!DATA.after;
 
 function severity(r) {
+  if (r.removed) return { cls: "pend", label: "removed", rank: 0 };
   if (r.beforeIssue || (hasAfter && r.afterIssue)) return { cls: "err", label: "issue", rank: 4 };
   if (!hasAfter || r.changedPct == null) return { cls: "pend", label: "v3 pending", rank: 0 };
   if (r.changedPct === 0) return { cls: "none", label: "same", rank: 1 };
@@ -169,6 +170,7 @@ function renderStage(list) {
   $("#sub").innerHTML = esc(r.area) + " · " + esc(r.vp) + " · " + esc(r.kind) + " · <code>" + esc(r.file) + "</code>";
   const s = severity(r);
   const notes = [];
+  if (r.removed) notes.push("<b>Removed on purpose:</b> " + esc(r.removed));
   if (r.beforeIssue) notes.push("<b>v2:</b> " + esc(r.beforeIssue));
   if (hasAfter && r.afterIssue) notes.push("<b>v3:</b> " + esc(r.afterIssue));
   if (s.rank >= 2) notes.push("<b>" + esc(r.changedPct.toFixed(3)) + "%</b> of pixels changed in " + r.regions.length + " region" + (r.regions.length === 1 ? "" : "s") + " (noise masked: v2 " + (r.beforeNoisePct ?? 0).toFixed(3) + "%, v3 " + (r.afterNoisePct ?? 0).toFixed(3) + "%)");

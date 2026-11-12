@@ -50,6 +50,8 @@ if (!runs.before[0]) throw new Error("no before run1 manifest: capture.mjs --lab
 const idx = { before: runs.before.map(index), after: runs.after.map(index) };
 const inventory = JSON.parse(readFileSync(join(OUT, "inventory.json"), "utf8"));
 const targetByKey = new Map(inventory.targets.map((t) => [t.key, t]));
+/** Routes the v3 PR deletes on purpose, with who approved it (review/approved-removals.json). */
+const APPROVED_REMOVALS = JSON.parse(readFileSync(join(HERE, "approved-removals.json"), "utf8"));
 
 const read = (label, run, rel) => PNG.sync.read(readFileSync(join(shotsDir(label, run), rel)));
 
@@ -192,6 +194,12 @@ for (const key of keys) {
     beforeIssue: b?.error ?? (b?.missing ? "trigger not found" : b?.hidden ? "trigger hidden at this viewport" : null),
     afterIssue: a ? (a.error ?? (a.missing ? "trigger not found" : a.hidden ? "trigger hidden at this viewport" : null)) : runs.after[0] ? "not captured" : null,
   };
+  const removal = APPROVED_REMOVALS[row.key];
+  if (removal) {
+    // An approved removal is not a diff: record why, and do not compare.
+    rows.push({ ...row, removed: removal, afterIssue: null });
+    continue;
+  }
   const noise = {};
   for (const label of ["before", "after"]) {
     const nz = runs[label][1] ? noiseOf(label, key) : null;
