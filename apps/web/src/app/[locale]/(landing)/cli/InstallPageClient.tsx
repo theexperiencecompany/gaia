@@ -1,16 +1,13 @@
 "use client";
 
-import { Button, Table, Tabs, Tooltip } from "@heroui/react";
-import {
-  CLI_COMMAND_DESCRIPTIONS,
-  CLI_INSTALL_COMMANDS,
-} from "@shared/cli/command-manifest";
+import { Button, Tabs, Tooltip } from "@heroui/react";
+import { CLI_INSTALL_COMMANDS } from "@shared/cli/command-manifest";
+import Image from "next/image";
 import Link from "next/link";
 import { type ComponentProps, type ReactNode, useState } from "react";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import CopyButton from "@/components/ui/CopyButton";
 import InlineCode from "@/components/ui/InlineCode";
-import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import SectionHeader from "@/features/landing/components/demo/founders-demo/SectionHeader";
 import NumberedSteps from "@/features/landing/components/shared/NumberedSteps";
 import { copyText } from "@/lib/clipboard";
@@ -106,22 +103,6 @@ const installMethods = [
   },
 ];
 
-const cliCommands = [
-  { command: "gaia up", description: CLI_COMMAND_DESCRIPTIONS.up },
-  { command: "gaia status", description: CLI_COMMAND_DESCRIPTIONS.status },
-  { command: "gaia logs", description: CLI_COMMAND_DESCRIPTIONS.logs },
-  { command: "gaia stop", description: CLI_COMMAND_DESCRIPTIONS.stop },
-  { command: "gaia start", description: CLI_COMMAND_DESCRIPTIONS.start },
-  { command: "gaia update", description: CLI_COMMAND_DESCRIPTIONS.update },
-  { command: "gaia doctor", description: CLI_COMMAND_DESCRIPTIONS.doctor },
-  { command: "gaia backup", description: CLI_COMMAND_DESCRIPTIONS.backup },
-  { command: "gaia restore", description: CLI_COMMAND_DESCRIPTIONS.restore },
-  {
-    command: "gaia uninstall",
-    description: CLI_COMMAND_DESCRIPTIONS.uninstall,
-  },
-];
-
 function InstallMethodTabs() {
   return (
     <Tabs variant="secondary" className="mb-0 pb-0">
@@ -200,12 +181,12 @@ export function InstallPageClient() {
     <div className="relative flex min-h-screen w-full flex-col items-center">
       <div className="mx-auto mt-24 w-full max-w-4xl px-4 sm:mt-32 sm:px-6">
         <div className="relative aspect-video w-full overflow-hidden rounded-4xl bg-zinc-900">
-          <ProgressiveImage
-            webpSrc="/images/screenshots/cli.webp"
-            pngSrc="/images/screenshots/cli.png"
-            alt="GAIA CLI"
-            width={1920}
-            height={1080}
+          <Image
+            src="/images/readme/self-host-installer.webp"
+            alt="The GAIA installer: Node.js, the GAIA CLI and Docker installed, then GAIA downloading with a progress bar and a row per service"
+            width={2400}
+            height={1350}
+            priority
             sizes="(min-width: 896px) 896px, 100vw"
             className="h-full w-full rounded-4xl object-cover"
           />
@@ -233,30 +214,6 @@ export function InstallPageClient() {
 
       <section className="relative z-10 w-full max-w-3xl px-6 pt-20">
         <h2 className="mb-8 text-center font-serif text-4xl font-normal text-white sm:text-5xl">
-          Available commands
-        </h2>
-        <Table>
-          <Table.Content aria-label="Available GAIA CLI commands">
-            <Table.Header>
-              <Table.Column isRowHeader>Command</Table.Column>
-              <Table.Column>Description</Table.Column>
-            </Table.Header>
-            <Table.Body>
-              {cliCommands.map((item) => (
-                <Table.Row key={item.command} id={item.command}>
-                  <Table.Cell>
-                    <InlineCode>{item.command}</InlineCode>
-                  </Table.Cell>
-                  <Table.Cell>{item.description}</Table.Cell>
-                </Table.Row>
-              ))}
-            </Table.Body>
-          </Table.Content>
-        </Table>
-      </section>
-
-      <section className="relative z-10 w-full max-w-3xl px-6 pt-20">
-        <h2 className="mb-8 text-center font-serif text-4xl font-normal text-white sm:text-5xl">
           Questions, answered
         </h2>
         <FAQAccordion faqs={CLI_FAQS} />
@@ -274,7 +231,7 @@ export function InstallPageClient() {
           )}
           variant="primary"
         >
-          Read Full Documentation
+          Read the self-hosting guide
         </Button>
         <Button
           render={(props) => (

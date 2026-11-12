@@ -419,10 +419,10 @@ export const footerSections: LinkSection[] = [
     title: "Product",
     links: [
       { label: "Features", href: "/features" },
-      { label: "Download GAIA", href: "/download" },
+      { label: "Download", href: "/download" },
+      { label: "Self-Host CLI", href: "/cli" },
       { label: "Use Cases", href: "/use-cases" },
       { label: "Marketplace", href: "/marketplace" },
-      { label: "CLI", href: "/cli" },
       { label: "Bots", href: "/bots" },
       { label: "Pricing", href: "/pricing" },
       { label: "Roadmap", href: vanityTarget("/roadmap"), external: true },

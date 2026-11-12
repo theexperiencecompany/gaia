@@ -6,6 +6,7 @@ import createNextIntlPlugin from "next-intl/plugin";
 import path from "path";
 import { fileURLToPath } from "url";
 import { expandCanonicalRedirects } from "./canonical-redirects.mjs";
+import { IMAGE_QUALITIES } from "./image-qualities.mjs";
 import { NEXT_SECURITY_HEADER_RULES } from "./security-headers.mjs";
 import { POSTHOG_HOST } from "./third-party-origins.mjs";
 import { vanityRedirects } from "./vanity-redirects.mjs";
@@ -175,6 +176,7 @@ const nextConfig = {
     // 1920 CSS px; asking Cloudflare for 3840 upscaled files (500KB+) with no
     // visible gain on any viewport.
     deviceSizes: [640, 750, 828, 1080, 1200, 1920],
+    qualities: IMAGE_QUALITIES,
     // Offload optimization to Cloudflare Image Resizing (/cdn-cgi/image/) via a
     // custom loader — edge-cached, off the worker. Requires Transformations enabled
     // on the zone; gated on the Cloudflare build (see image-loader.ts), else falls through to Next's built-in optimizer.
@@ -219,7 +221,7 @@ const nextConfig = {
     // ISR hub pages send s-maxage only; browsers need max-age and a validator.
     // Scope it to those routes: static pages already pass, app routes need
     // their private/no-store headers.
-    const marketingHubs = ["alternative-to", "automate", "compare", "learn", "for", "blog", "use-cases"];
+    const marketingHubs = ["alternative-to", "automate", "compare", "learn", "for", "blog", "use-cases", "marketplace", "features"];
     const buildLastModified = new Date().toUTCString();
     return [
       ...NEXT_SECURITY_HEADER_RULES,

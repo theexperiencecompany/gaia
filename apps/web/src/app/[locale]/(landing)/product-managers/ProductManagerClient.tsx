@@ -39,7 +39,6 @@ export default function ProductManagerClient() {
         <div className="absolute inset-0 -z-10">
           <ProgressiveImage
             webpSrc="/images/wallpapers/bands_gradient_1.webp"
-            pngSrc="/images/wallpapers/bands_gradient_1.webp"
             alt="Gradient background"
             className="object-cover"
             shouldHaveInitialFade

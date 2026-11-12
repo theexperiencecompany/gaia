@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect } from "react";
 import type { Article, BreadcrumbList, WithContext } from "schema-dts";
 
@@ -105,7 +106,15 @@ export default function BlogPostClient({
         {/* Suggested Posts Section */}
         {suggestedPosts.length > 0 && (
           <div className="mx-auto max-w-5xl px-5 my-16">
-            <h2 className="mb-8 text-2xl font-medium">Suggested Posts</h2>
+            <div className="mb-8 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+              <h2 className="text-2xl font-medium">Suggested Posts</h2>
+              <Link
+                href="/blog"
+                className="text-sm text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
+              >
+                All posts
+              </Link>
+            </div>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
               {suggestedPosts.map((post) => (
                 <BlogCard

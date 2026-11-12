@@ -18,11 +18,16 @@ const CANONICAL_REDIRECT_PAIRS = [
   // /automate reverse-order combos
   ["/automate/teams-slack", "/automate/slack-teams"],
   ["/automate/trello-notion", "/automate/notion-trello"],
+  // An app with one combo has no app page (comboAppGroups): its old page goes to that combo
+  ["/automate/with/google-docs", "/automate/google-docs-slack"],
   // /compare vs /alternative-to same-tool pairs
   ["/alternative-to/superhuman", "/compare/superhuman"],
   ["/compare/limitless-ai", "/alternative-to/limitless-ai"],
   ["/compare/sunsama", "/alternative-to/sunsama"],
   ["/alternative-to/shortwave", "/compare/shortwave"],
+  // Native marketplace integrations whose ids use underscores: the URL slug is hyphenated (marketplaceSlug)
+  ["/marketplace/google_maps", "/marketplace/google-maps"],
+  ["/marketplace/microsoft_teams", "/marketplace/microsoft-teams"],
   // /learn glossary wiring (canonicalSlug existed in data, unwired until now)
   ["/learn/mcp-model-context-protocol", "/learn/model-context-protocol"],
   // Pre-existing canonicalSlug markers (already canonical-tagged their

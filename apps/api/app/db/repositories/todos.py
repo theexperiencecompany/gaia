@@ -873,6 +873,14 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         )
         return unblocked or resumed
 
+    async def update_if_completed(
+        self, todo_id: str, user_id: str, *, update: TodoUpdate
+    ) -> TodoDocument | None:
+        """Apply update only while the todo is still completed (compare-and-set); None otherwise."""
+        return await self._apply_update(
+            todo_id, user_id, {"user_id": user_id, "completed": True}, update
+        )
+
     async def update_if_scheduled_at(
         self, todo_id: str, user_id: str, *, expected: datetime | None, update: TodoUpdate
     ) -> TodoDocument | None:

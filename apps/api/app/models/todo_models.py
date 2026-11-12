@@ -248,6 +248,14 @@ class TodoResponse(TodoBase, ResponseModel):
 
 
 # Project models
+@dataclass(frozen=True)
+class TrackedTodoCreation:
+    """What create_tracked_todo made: a new todo, or the completed one its ref had, reopened."""
+
+    todo: TodoResponse
+    reopened: bool
+
+
 class ProjectBase(BaseModel):
     """Base model for project fields"""
 
@@ -571,6 +579,11 @@ class TodoDocument(UserScopedDocument):
     external_ref: ExternalRef | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    @property
+    def runs_once(self) -> bool:
+        """Whether nothing will wake this todo again: no recurrence and no watch."""
+        return not (self.recurrence or self.trigger_subscriptions)
 
 
 class TodoUpdate(BaseModel):

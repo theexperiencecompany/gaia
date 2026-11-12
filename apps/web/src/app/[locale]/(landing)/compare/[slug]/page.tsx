@@ -10,7 +10,10 @@ import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { getTranslatedAlternative } from "@/features/alternatives/data/getTranslatedAlternative";
-import { comparisonCategoryOf } from "@/features/comparisons/data/comparisonCategories";
+import {
+  comparisonCategoryGroups,
+  comparisonCategoryOf,
+} from "@/features/comparisons/data/comparisonCategories";
 import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import {
   getTranslatedComparison,
@@ -22,6 +25,7 @@ import { getTranslatedPersona } from "@/features/personas/data/getTranslatedPers
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { isRedirectedPath } from "@/lib/canonicalLinks";
 import { COMPARE_DOCS_LINKS } from "@/lib/docs-links";
+import { hubPageHref, hubPageOf } from "@/lib/hubPagination";
 import { relatedInGroup } from "@/lib/relatedInGroup";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
@@ -91,7 +95,17 @@ export default async function ComparisonPage({ params }: PageProps) {
     alternativeData !== undefined &&
     !isRedirectedPath(`/alternative-to/${slug}`);
 
-  const currentCategory = comparisonCategoryOf({ slug });
+  const categories = comparisonCategoryGroups(allComparisons);
+  const currentCategory = categories.find((group) =>
+    group.items.some((comparison) => comparison.slug === slug),
+  );
+  if (!currentCategory) {
+    throw new Error(`comparison ${slug} is missing from the /compare hub`);
+  }
+  const hubIndex = categories
+    .flatMap((group) => group.items)
+    .findIndex((comparison) => comparison.slug === slug);
+  const hubHref = `${hubPageHref("/compare", hubPageOf(hubIndex))}#${currentCategory.slug}`;
   const relatedComparisons = relatedInGroup(
     allComparisons,
     slug,
@@ -282,6 +296,7 @@ export default async function ComparisonPage({ params }: PageProps) {
             hasAlternativePage ? `/alternative-to/${slug}` : null
           }
           category={currentCategory}
+          hubHref={hubHref}
           relatedComparisons={relatedComparisons}
           relatedPersonas={relatedPersonaData}
           t={t}
@@ -292,7 +307,7 @@ export default async function ComparisonPage({ params }: PageProps) {
           guides={docsGuides}
         />
 
-        <CompareExploreMore name={data.name} t={t} />
+        <CompareExploreMore name={data.name} hubHref={hubHref} t={t} />
       </article>
       <FinalSection />
     </>

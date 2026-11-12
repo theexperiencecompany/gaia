@@ -16,6 +16,7 @@ import {
 import Link from "next/link";
 
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
+import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import type { Integration } from "@/features/integrations/types";
 
 /** The disconnect/remove action; presence decides whether the button renders. */
@@ -105,7 +106,7 @@ export function ConnectedActions({
                   isIconOnly: useIconOnly,
                   className: "w-full",
                 })}
-                href={`/marketplace/${integration.slug}`}
+                href={marketplacePath(integration.slug)}
                 aria-label="View on Marketplace"
               >
                 <LinkSquareIcon

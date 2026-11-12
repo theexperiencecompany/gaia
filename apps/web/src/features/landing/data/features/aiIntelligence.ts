@@ -86,7 +86,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
           'Say "Create a task, block 2 hours on my calendar Friday, and remind me Thursday afternoon." All three actions fire from one message.',
       },
     ],
-    relatedSlugs: ["deep-research", "memory", "rich-responses"],
+    relatedSlugs: ["deep-research", "memory", "pins"],
     demoComponent: "smart-chat",
   },
   {
@@ -178,7 +178,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
           "Paste a LinkedIn URL and ask for a briefing. GAIA returns company size, recent news, funding, and talking points in under 30 seconds.",
       },
     ],
-    relatedSlugs: ["smart-chat", "rich-responses", "document-generation"],
+    relatedSlugs: ["smart-chat", "pins", "document-generation"],
     demoComponent: "deep-research",
   },
   {
@@ -640,7 +640,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
           "Ask GAIA to compare three frameworks across five criteria. The result is an interactive comparison table with pros, cons, and a recommendation.",
       },
     ],
-    relatedSlugs: ["smart-chat", "deep-research", "code-execution"],
+    relatedSlugs: ["smart-chat", "image-generation", "code-execution"],
     demoComponent: "rich-responses",
   },
 ];

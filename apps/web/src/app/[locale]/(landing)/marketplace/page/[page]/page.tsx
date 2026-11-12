@@ -62,7 +62,6 @@ export async function generateMetadata({
     title: pageTitle(page, total),
     description: pageDescription(page, total),
     path: hubPagePath(MARKETPLACE_PATH, page),
-    image: "/api/og/integrations",
   });
 }
 

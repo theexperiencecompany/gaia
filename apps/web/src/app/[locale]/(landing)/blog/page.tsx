@@ -67,7 +67,6 @@ export default async function BlogPage() {
         <div className="flex min-h-screen w-full justify-center px-4 py-28 sm:px-6 lg:px-8">
           <div className="w-full max-w-(--breakpoint-lg) space-y-2">
             <h1 className="font-serif text-4xl sm:text-6xl">Blog</h1>
-
             <BlogList blogs={blogsMeta} />
           </div>
         </div>

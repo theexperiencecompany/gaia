@@ -223,8 +223,12 @@ cmd_files() {
   # instead of hanging until the job's timeout-minutes cap (which surfaces as a
   # `cancelled` lane and fails the quality gate). If the fetch dies, the diff
   # below falls back to whatever base ref is already local.
-  timeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
-    fetch --no-tags origin "$BASE" 2>/dev/null || true
+  # Off CI the local base ref is used as is: a commit hook calls this on every
+  # commit, and a network fetch there stalls the commit on a slow link.
+  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+    timeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
+      fetch --no-tags origin "$BASE" 2>/dev/null || true
+  fi
 
   # `...HEAD` diffs against the merge-base of the base ref and HEAD — the same set
   # of files GitHub shows as "Files changed" in the PR. --diff-filter=ACMR drops

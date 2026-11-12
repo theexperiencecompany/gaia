@@ -18,6 +18,8 @@ JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
+from pymongo.errors import DuplicateKeyError
+
 from app.constants.todos import (
     ACTIVE_TRACKED_SUMMARY_LIMIT,
     CANVAS_DONE_WHEN_SECTION,
@@ -25,6 +27,8 @@ from app.constants.todos import (
     CANVAS_STANDING_RULES_SECTION,
     EXECUTE_TRACKED_TODO_TASK,
     GAIA_TRACKED_LABEL,
+    REOPEN_CLEARED_SCHEDULE_FIELDS,
+    REOPEN_RESET_COUNTERS,
     SUB_TODO_PARENT_WAKE_DELAY,
     TodoActivityEvent,
     WaitingOn,
@@ -38,8 +42,10 @@ from app.models.todo_models import (
     TodoModel,
     TodoResponse,
     TodoUpdate,
+    TrackedTodoCreation,
     default_notify_on_run,
 )
+from app.services.analytics_service import capture
 from app.services.canvas_markdown import (
     canvas_problems,
     normalize_canvas,
@@ -52,15 +58,19 @@ from app.services.todo_activity import (
     agent_actor,
     field_change_lines,
     record_activity,
+    record_field_changes,
+    record_waiting_change,
     waiting_change_line,
 )
 from app.services.todo_canvas_storage import (
     append_log,
     build_vfs_label,
+    embedding_text,
     repair_notes,
 )
 from app.services.todos.errors import (
     CanvasShapeError,
+    ExternalRefTakenError,
     SubTodoParentError,
     UnwatchedTodoKeptError,
 )
@@ -70,13 +80,25 @@ from app.services.todos.open_state import (
     require_open_state,
     with_waiting_normalized,
 )
-from app.services.todos.todo_service import TodoService
+from app.services.todos.todo_service import (
+    TodoService,
+    raise_ref_taken,
+    reopening_todos,
+    require_project,
+    todo_responses,
+)
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.triggers.todo_trigger_window import release_trigger_events_held_while_paused
-from app.utils.canvas_vector_utils import mark_canvas_completed, store_canvas_embedding
+from app.utils.canvas_vector_utils import (
+    set_canvas_completed,
+    store_canvas_embedding,
+    update_canvas_embedding,
+)
 from app.utils.occurrence import occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import TodosRefReopened
 from shared.py.wide_events import log
 
 CANVAS_TEMPLATE = """# {title}
@@ -272,13 +294,12 @@ class TrackedTodoService:
         schedule: TodoUpdate | None = None,
         done_when: Sequence[str] = (),
         evidence: str | None = None,
-    ) -> TodoResponse:
+    ) -> TrackedTodoCreation:
         """Create a todo with its canvas (done_when / evidence in their sections), activity and log.
 
-        schedule is saved with the insert; external_ref makes it that object's one open, watching
-        todo; a sub-todo's runs reach the user only on request, unless its ref's kind speaks.
-        Raises OpenStateError (no valid next step), ExternalRefTakenError, SubTodoParentError,
-        CanvasShapeError and UnwatchedTodoKeptError (watch and rollback failed).
+        external_ref makes it that object's one open, watching todo; when the object's newest
+        todo is completed, that one is reopened instead. Raises OpenStateError, ExternalRefTakenError,
+        SubTodoParentError, CanvasShapeError and UnwatchedTodoKeptError (watch and rollback failed).
         """
         if parent_todo_id is not None:
             await require_sub_todo_parent(user_id, parent_todo_id)
@@ -296,6 +317,43 @@ class TrackedTodoService:
             ),
             datetime.now(UTC),
         )
+        previous = (
+            await todo_repository.find_latest_by_external_ref(user_id, external_ref)
+            if external_ref is not None
+            else None
+        )
+        if previous is not None and previous.completed:
+            # As on a new todo, a schedule field the create leaves out ends up empty; the
+            # project, description, references and priority it does not give stay as they were.
+            if project_id is not None:
+                await require_project(user_id, project_id)
+            given = {
+                "project_id": project_id,
+                "description": description,
+                "references": references,
+                "priority": None if priority is Priority.NONE else priority,
+            }
+            reopen = TodoUpdate.model_validate(
+                {
+                    **dict.fromkeys(REOPEN_CLEARED_SCHEDULE_FIELDS),
+                    **dict.fromkeys(REOPEN_RESET_COUNTERS, 0),
+                    **schedule.model_dump(exclude_unset=True),
+                    "title": title,
+                    "labels": all_labels,
+                    "notify_on_run": notify_on_run,
+                    "parent_todo_id": parent_todo_id,
+                    **{field: value for field, value in given.items() if value is not None},
+                }
+            )
+            reopened = await TrackedTodoService._reopen_for_its_ref(
+                previous,
+                reopen,
+                schedule,
+                done_when=done_when,
+                evidence=evidence,
+                actor=agent_actor(source_conversation_id),
+            )
+            return TrackedTodoCreation(todo=reopened, reopened=True)
 
         todo = TodoModel(
             title=title,
@@ -383,11 +441,96 @@ class TrackedTodoService:
         if parent_todo_id is not None:
             await _reconcile_parent_completion(user_id, parent_todo_id, todo_id)
         schedule_gaia_tasks_sync(user_id)
-        return result
+        return TrackedTodoCreation(todo=result, reopened=False)
+
+    @staticmethod
+    async def _reopen_for_its_ref(
+        previous: TodoDocument,
+        update: TodoUpdate,
+        schedule: TodoUpdate,
+        *,
+        done_when: Sequence[str],
+        evidence: str | None,
+        actor: str,
+    ) -> TodoResponse:
+        """Reopen the completed todo a create's outside object already had, as that create.
+
+        update carries the create's title, labels, delivery, family and schedule, plus the
+        description, references and priority it gave. canvas.md, activity.md and the chat keep
+        the todo's history; done_when and evidence join its canvas, initial_canvas is not written.
+        """
+        if previous.external_ref is None:
+            raise ValueError(f"Todo {previous.id} has no outside object to reopen for")
+        user_id = previous.user_id
+        # An older canvas can still hold activity or repeated sections; repair it as a create would.
+        stored, moved_activity = normalize_canvas(
+            previous.canvas_content or CANVAS_TEMPLATE.format(title=previous.title)
+        )
+        canvas = _with_ownership(stored, done_when, evidence)
+        if problems := canvas_problems(canvas):
+            raise CanvasShapeError(problems)
+        notes: dict[str, str] = {"canvas_content": canvas}
+        if moved_activity:
+            notes["activity_content"] = "\n\n".join(
+                p for p in (moved_activity, previous.activity_content) if p
+            )
+        update = TodoUpdate.model_validate(
+            {
+                **update.model_dump(exclude_unset=True),
+                **notes,
+                "completed": False,
+                "completed_at": None,
+            }
+        )
+        async with reopening_todos(user_id, [previous.id], reopening=True, detail=f"by {actor}"):
+            try:
+                written = await todo_repository.update_if_completed(
+                    previous.id, user_id, update=update
+                )
+            except DuplicateKeyError as taken:
+                # Another create opened a todo for the object after the lookup.
+                await raise_ref_taken(user_id, previous.external_ref, taken)
+            if written is None:
+                # A concurrent create reopened it first; that open todo owns the object now.
+                holder = await todo_repository.find_open_by_external_ref(
+                    user_id, previous.external_ref
+                )
+                if holder is None:
+                    raise LookupError(
+                        f"Todo {previous.id} was neither completed nor open to reopen"
+                    )
+                raise ExternalRefTakenError(holder)
+        await record_field_changes(previous.id, user_id, schedule, by=actor)
+        await record_waiting_change(previous.id, user_id, schedule, by=actor)
+
+        reopened = await todo_repository.get(previous.id, user_id=user_id)
+        if reopened is None:
+            raise LookupError(f"Todo {previous.id} vanished right after it was reopened")
+        await update_canvas_embedding(
+            todo_id=reopened.id,
+            canvas_content=embedding_text(reopened),
+            user_id=user_id,
+            title=reopened.title,
+            labels=reopened.labels,
+        )
+        log.info(
+            "tracked_todo.reopened_for_ref",
+            todo_id=reopened.id,
+            user_id=user_id,
+            ref_source=previous.external_ref.source.value,
+        )
+        capture(
+            UserId(user_id),
+            TodosRefReopened(todo_id=reopened.id, ref_source=previous.external_ref.source.value),
+        )
+        if reopened.parent_todo_id is not None:
+            await _reconcile_parent_completion(user_id, reopened.parent_todo_id, reopened.id)
+        (response,) = await todo_responses(user_id, [reopened])
+        return response
 
     @staticmethod
     async def complete_tracked_todo(todo_id: str, user_id: str, summary: str) -> bool:
-        """Complete a tracked todo and its open sub-todos: log it, mark done, archive label."""
+        """Complete a tracked todo and its open sub-todos: log it, mark it done, stop its watches."""
         doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
             return False
@@ -403,20 +546,15 @@ class TrackedTodoService:
 
         await record_activity(todo_id, user_id, TodoActivityEvent.COMPLETED, summary)
 
-        # Always derive the archived label — never persist a stored one back.
-        # Legacy docs still carry the host-side /users/<uid>/todos/<id> format;
-        # deriving here heals them on completion instead of re-saving the leak.
-        archive_path = build_vfs_label(todo_id, archived=True)
-
-        # The repository refreshes the entity cache and bumps the generation, so
-        # the frontend reflects completion immediately — no manual invalidation.
+        # Derived, never the stored one: legacy docs carry a host-side /users/<uid>/todos/<id>
+        # label this heals. The repository's cache refresh shows the completion at once.
         await todo_repository.update(
             todo_id,
             user_id=user_id,
-            update=TodoUpdate(completed=True, completed_at=now, vfs_path=archive_path),
+            update=TodoUpdate(completed=True, completed_at=now, vfs_path=build_vfs_label(todo_id)),
         )
 
-        await mark_canvas_completed(todo_id)
+        await set_canvas_completed(todo_id, completed=True)
 
         # A completed todo must stop watching. Teardown lives here rather than at
         # the callers (tool, sweep, worker) so no completion path can forget it.

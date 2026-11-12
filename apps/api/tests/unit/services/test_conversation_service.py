@@ -10,7 +10,6 @@ pin semantics) is covered by the real-DB contract suite.
 """
 
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
@@ -472,8 +471,30 @@ class TestBatchSyncConversations:
         assert result.conversations == []
         mock_repo.find_updated_since.assert_not_called()
 
-    async def test_returns_rows_with_active_stream_id(self, mock_repo, test_user):
+    async def test_reports_active_stream_of_an_up_to_date_conversation(self, mock_repo, test_user):
+        """A reloading client holding current history is sent no row, yet must still learn its turn is live."""
+        mock_repo.find_updated_since.return_value = []
+        mock_repo.owned_ids.return_value = {"conv_abc"}
+        resumable = AsyncMock(return_value="stream-1")
+        with patch.object(
+            conversation_service.stream_manager, "get_resumable_stream_id", new=resumable
+        ):
+            request = BatchSyncRequest(
+                conversations=[
+                    ConversationSyncItem(
+                        conversation_id="conv_abc", last_updated="2026-01-01T00:00:00+00:00"
+                    )
+                ]
+            )
+            result = await batch_sync_conversations(request, test_user)
+
+        assert result.conversations == []
+        assert result.active_streams == {"conv_abc": "stream-1"}
+        resumable.assert_awaited_once_with(USER_ID, "conv_abc")
+
+    async def test_returns_rows_and_active_streams(self, mock_repo, test_user):
         mock_repo.find_updated_since.return_value = [_document(description="Updated Chat")]
+        mock_repo.owned_ids.return_value = {"conv_abc"}
         with patch.object(
             conversation_service.stream_manager,
             "get_resumable_stream_id",
@@ -487,7 +508,7 @@ class TestBatchSyncConversations:
         assert len(result.conversations) == 1
         row = result.conversations[0]
         assert row.conversation_id == "conv_abc"
-        assert row.active_stream_id == "stream-1"
+        assert result.active_streams == {"conv_abc": "stream-1"}
         # The internal user_id/_id must not leak into a serialized sync row.
         serialized = row.model_dump()
         assert "user_id" not in serialized and "_id" not in serialized
@@ -667,14 +688,16 @@ class TestConversationSizeCap:
             seen.update(kwargs)
             return ["m1"]
 
-        monkeypatch.setattr(conversation_service.conversation_repository, "append_messages", record)
+        monkeypatch.setattr(
+            "app.services.conversation_service.conversation_repository.append_messages", record
+        )
 
         await conversation_service.update_messages(
             UpdateMessagesRequest(
                 conversation_id="c1",
-                messages=[MessageModel(type="user", message="hi", response="", message_id="m1")],
+                messages=[MessageModel(type="user", response="", message_id="m1")],
             ),
-            user=SimpleNamespace(user_id="u1"),
+            user=AuthenticatedUser(user_id="u1"),
         )
 
         assert seen["max_messages"] == CONVERSATION_MAX_MESSAGES

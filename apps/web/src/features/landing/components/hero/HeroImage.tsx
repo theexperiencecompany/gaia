@@ -3,24 +3,14 @@ import NextImage from "next/image";
 import { useEffect, useRef, useState } from "react";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import type { TimeOfDay } from "@/features/landing/utils/timeOfDay";
+import { WALLPAPER_IMAGE_QUALITY } from "../../../../../image-qualities.mjs";
 
-const WALLPAPERS: Record<TimeOfDay, { webp: string; png: string }> = {
-  morning: {
-    webp: "/images/wallpapers/swiss_morning.webp",
-    png: "/images/wallpapers/swiss_morning.png",
-  },
-  day: {
-    webp: "/images/wallpapers/swiss.webp",
-    png: "/images/wallpapers/swiss.png",
-  },
-  evening: {
-    webp: "/images/wallpapers/swiss_evening.webp",
-    png: "/images/wallpapers/swiss_evening.png",
-  },
-  night: {
-    webp: "/images/wallpapers/swiss_night.webp",
-    png: "/images/wallpapers/swiss_night.png",
-  },
+/** One webp per time of day: the resizer re-encodes any source lossily, so a PNG layer only doubled the bytes. */
+const WALLPAPERS: Record<TimeOfDay, string> = {
+  morning: "/images/wallpapers/swiss_morning.webp",
+  day: "/images/wallpapers/swiss.webp",
+  evening: "/images/wallpapers/swiss_evening.webp",
+  night: "/images/wallpapers/swiss_night.webp",
 };
 
 export default function HeroImage({
@@ -89,7 +79,7 @@ export default function HeroImage({
           aria-hidden="true"
           className="pointer-events-none fixed left-0 top-0 h-px w-px overflow-hidden opacity-0"
         >
-          {Object.entries(WALLPAPERS).flatMap(([t, { webp }]) =>
+          {Object.entries(WALLPAPERS).flatMap(([t, webp]) =>
             t === timeOfDay
               ? []
               : [
@@ -100,6 +90,7 @@ export default function HeroImage({
                     width={1920}
                     height={1080}
                     sizes="100vw"
+                    quality={WALLPAPER_IMAGE_QUALITY}
                     loading="eager"
                   />,
                 ],
@@ -117,8 +108,8 @@ export default function HeroImage({
             className="absolute inset-0 h-full w-full"
           >
             <ProgressiveImage
-              webpSrc={WALLPAPERS[previousTime].webp}
-              pngSrc={WALLPAPERS[previousTime].webp}
+              webpSrc={WALLPAPERS[previousTime]}
+              quality={WALLPAPER_IMAGE_QUALITY}
               alt="Hero wallpaper"
               className="object-cover"
               shouldHaveInitialFade={false}
@@ -138,8 +129,8 @@ export default function HeroImage({
           onAnimationComplete={() => setPreviousTime(null)}
         >
           <ProgressiveImage
-            webpSrc={wallpaper.webp}
-            pngSrc={wallpaper.webp}
+            webpSrc={wallpaper}
+            quality={WALLPAPER_IMAGE_QUALITY}
             alt="Hero wallpaper"
             className="object-cover"
             // LCP element: render immediately (no JS-gated opacity fade) so it

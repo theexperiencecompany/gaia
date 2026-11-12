@@ -13,31 +13,26 @@ import BotsGuide from "./BotsGuide";
 const stackedIcons = [
   {
     src: BOT_PLATFORM_ICONS.discord,
-    alt: "",
     rotate: "-rotate-12",
     z: "z-[1]",
   },
   {
     src: BOT_PLATFORM_ICONS.slack,
-    alt: "",
     rotate: "-rotate-6",
     z: "z-[2]",
   },
   {
     src: BOT_PLATFORM_ICONS.imessage,
-    alt: "",
     rotate: "rotate-0",
     z: "z-[3]",
   },
   {
     src: BOT_PLATFORM_ICONS.telegram,
-    alt: "",
     rotate: "rotate-6",
     z: "z-[4]",
   },
   {
     src: BOT_PLATFORM_ICONS.whatsapp,
-    alt: "",
     rotate: "rotate-12",
     z: "z-[5]",
   },
@@ -126,12 +121,12 @@ export default function BotsPage() {
         <div className="flex -space-x-4">
           {stackedIcons.map((icon) => (
             <div
-              key={icon.alt}
+              key={icon.src}
               className={`relative h-20 w-20 ${icon.rotate} ${icon.z}`}
             >
               <Image
                 src={icon.src}
-                alt={icon.alt}
+                alt=""
                 width={256}
                 height={256}
                 className="h-full w-full object-contain hover:scale-110 hover:-translate-y-4 transition"

@@ -69,7 +69,7 @@ vi.mock("@/lib/analytics", () => ({
   track: vi.fn(),
 }));
 
-import PaymentSuccessPage from "@/app/[locale]/(landing)/payment/success/page";
+import PaymentSuccessPage from "@/app/[locale]/(unindexed)/payment/success/page";
 import { track } from "@/lib/analytics";
 
 describe("PaymentSuccessPage", () => {

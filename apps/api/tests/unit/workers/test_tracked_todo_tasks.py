@@ -3492,7 +3492,7 @@ class TestExecuteOnExecutor:
         request = self._request()
         assert request.user is user
         assert request.todo_run == TodoRun(
-            todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO
+            todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True
         )
         assert request.todo_title == "Check the deploy"
         assert "Execute the following scheduled task: Check the deploy" in request.task
@@ -3500,25 +3500,33 @@ class TestExecuteOnExecutor:
         assert "Canvas (canvas.md):\n## Current State\nall good" in request.task
         assert "Recent activity (activity.md):\n- earlier run" in request.task
 
-    @pytest.mark.regression
-    async def test_an_inbox_desk_run_hands_its_spawns_the_mail_pass_budget(self) -> None:
-        """Regression: the desk's mail passes ran on the focused budget and ran out mid-inbox."""
-        desk = _doc(external_ref=ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail"))
-        # The desk's observations.md lives in Mongo; this run reads none.
-        with patch(f"{MODULE}.with_desk_notes", AsyncMock(return_value=desk)):
-            await self._execute(desk)
-
-        assert self._request().spawn_job == "inbox_mail"
-
     @pytest.mark.parametrize(
-        "ref",
-        [None, ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611")],
-        ids=["plain", "gmail_thread"],
+        ("fields", "runs_once"),
+        [
+            ({}, True),
+            ({"recurrence": "daily"}, False),
+            (
+                {
+                    "trigger_subscriptions": [
+                        TriggerSubscription(
+                            trigger_name="gmail_new_message",
+                            action=SubscriptionAction.EXECUTE,
+                            resolution=SubscriptionResolution.ACCOUNT,
+                        )
+                    ]
+                },
+                False,
+            ),
+        ],
+        ids=["once", "recurring", "watching"],
     )
-    async def test_any_other_run_spawns_focused_subagents(self, ref: ExternalRef | None) -> None:
-        await self._execute(_doc(external_ref=ref))
+    async def test_the_run_says_whether_its_todo_runs_again_as_it_starts(
+        self, fields: dict[str, object], runs_once: bool
+    ) -> None:
+        """Delivery cannot read it later: completing a todo tears its watches down mid-run."""
+        await self._execute(_doc(**fields))
 
-        assert self._request().spawn_job == "focused"
+        assert self._request().todo_run.runs_once is runs_once
 
     async def test_the_runs_inherited_context_is_gathered_for_this_todo(self) -> None:
         doc = _doc(references=["todo-0", "todo-00"])
@@ -4060,7 +4068,7 @@ class TestResumeTrackedTodo:
         assert request.fresh_thread is False
         assert request.user is run.user
         assert request.todo_run == TodoRun(
-            todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO
+            todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True
         )
         assert request.todo_title == "Check the deploy"
 

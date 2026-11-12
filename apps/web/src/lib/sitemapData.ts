@@ -20,6 +20,7 @@ import {
   MARKETPLACE_PATH,
   marketplaceDirectoryPages,
 } from "@/features/integrations/lib/marketplaceDirectoryPages";
+import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import {
   getAllCommunityIntegrations,
   getNativeIntegrations,
@@ -30,11 +31,15 @@ import {
   getAllCommunityWorkflowsServer,
   getExploreWorkflowsServer,
 } from "@/features/workflows/lib/serverWorkflowsApi";
-import { findCopiedTemplate } from "@/features/workflows/lib/templateCopies";
+import { withoutTemplateCopies } from "@/features/workflows/lib/templateCopies";
 import { defaultLocale, locales } from "@/i18n/config";
 import { getAlternates } from "@/i18n/getAlternates";
 import { blogLastModified, getAllBlogPosts } from "@/lib/blog";
-import { hubPagePath, laterHubPageParams } from "@/lib/hubPagination";
+import {
+  hubPageCount,
+  hubPagePath,
+  laterHubPageParams,
+} from "@/lib/hubPagination";
 import { getSiteUrl } from "@/lib/seo";
 
 /**
@@ -195,9 +200,8 @@ async function getCommunityWorkflowPages(
     getAllCommunityWorkflowsServer(),
     getExploreWorkflowsServer(1000),
   ]);
-  // A republished template canonicalizes to the template, so only the template is listed.
-  return workflows.flatMap((workflow) =>
-    workflow.slug && !findCopiedTemplate(workflow, templates)
+  return withoutTemplateCopies(workflows, templates).flatMap((workflow) =>
+    workflow.slug
       ? [
           {
             url: `${baseUrl}/use-cases/${workflow.slug}`,
@@ -229,7 +233,7 @@ async function getIntegrationPages(
   }));
   return [
     ...integrations.map((integration) => ({
-      url: `${baseUrl}/marketplace/${integration.slug}`,
+      url: `${baseUrl}${marketplacePath(integration.slug)}`,
       ...(integration.publishedAt
         ? { lastModified: new Date(integration.publishedAt) }
         : {}),
@@ -258,7 +262,21 @@ async function getComparisonPages(
       changeFrequency: "weekly" as const,
       priority: 0.7,
     })),
+    ...laterHubPageEntries(baseUrl, "/compare", comparisons.length),
   ];
+}
+
+/** A translated hub's /page/2 onwards: indexable, self-canonical directory pages. */
+function laterHubPageEntries(
+  baseUrl: string,
+  hubPath: string,
+  itemCount: number,
+): MetadataRoute.Sitemap {
+  return Array.from({ length: hubPageCount(itemCount) - 1 }, (_, index) => ({
+    url: `${baseUrl}${hubPagePath(hubPath, index + 2)}`,
+    changeFrequency: "weekly" as const,
+    priority: 0.6,
+  }));
 }
 
 const FEATURED_PERSONA_SLUGS = new Set([
@@ -311,6 +329,7 @@ async function getGlossaryPages(
       priority: 0.7,
     });
   }
+  pages.push(...laterHubPageEntries(baseUrl, "/learn", terms.length));
   return pages;
 }
 
@@ -350,6 +369,7 @@ async function getIntegrationComboPages(
       priority: 0.7,
     });
   }
+  pages.push(...laterHubPageEntries(baseUrl, "/automate", allCombos.length));
   return pages;
 }
 
@@ -362,7 +382,7 @@ async function getNativeIntegrationPages(
 ): Promise<MetadataRoute.Sitemap> {
   const integrations = await getNativeIntegrations();
   return integrations.map((integration) => ({
-    url: `${baseUrl}/marketplace/${integration.slug}`,
+    url: `${baseUrl}${marketplacePath(integration.slug)}`,
     changeFrequency: "weekly" as const,
     priority: 0.8,
   }));

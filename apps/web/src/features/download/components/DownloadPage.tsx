@@ -47,6 +47,7 @@ interface DownloadSectionLayoutProps {
   imagePriority?: boolean;
   imageWidth?: number;
   imageHeight?: number;
+  imageSizes?: string | null;
 }
 
 const CONTENT_ALIGNMENT_CLASSES: Record<"left" | "right" | "center", string> = {
@@ -70,6 +71,7 @@ function DownloadSectionLayout({
   imagePriority = true,
   imageWidth = 1920,
   imageHeight = 1080,
+  imageSizes = "(max-width: 768px) 100vw, 512px",
 }: DownloadSectionLayoutProps) {
   return (
     <section className="relative z-10 w-full max-w-5xl px-4 sm:px-6 py-16">
@@ -84,7 +86,7 @@ function DownloadSectionLayout({
             alt={imageAlt}
             className={imageClassName}
             priority={imagePriority}
-            sizes="(max-width: 768px) 100vw, 512px"
+            sizes={imageSizes}
             width={imageWidth}
             height={imageHeight}
           />
@@ -336,8 +338,9 @@ function MobileSection() {
       imageClassName="object-cover object-center"
       contentAlignment="left"
       imagePriority={false}
-      imageWidth={1024}
-      imageHeight={576}
+      imageWidth={512}
+      imageHeight={288}
+      imageSizes={null}
       chip={
         <Chip variant="tertiary" color="warning">
           Waitlist
@@ -447,16 +450,7 @@ export default function DownloadPage() {
           Download GAIA
         </h1>
         <p className="max-w-xl text-center text-lg text-zinc-400">
-          GAIA is available as a native desktop app in beta for macOS, Windows,
-          and Linux, with mobile apps for iOS and Android in development. Choose
-          the installer for your platform below: macOS has separate Apple
-          Silicon and Intel builds, while Windows and Linux each use a single
-          download. The page detects your platform and puts the matching
-          download first, so you can start there if you are unsure which build
-          to pick. The desktop app is the native option; the web app runs in
-          your browser without an install. Use All releases for previous
-          versions, and the release notes to see what changed in each update.
-          The beta ships frequently, so check those notes after an update.
+          Available for macOS, Windows and Linux. Choose your platform below.
         </p>
       </section>
 

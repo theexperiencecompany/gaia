@@ -13,7 +13,7 @@
   ],
   "breadcrumbName": "AI Assistant That Uses Your Computer",
   "heading": "An AI assistant that uses your computer and browser",
-  "answer": "GAIA can do real work on your computer, within clear limits. From the desktop app it can take a screenshot, read and write your clipboard, open links and apps, and list your open windows. For anything on the web it can run a browser task: a browser agent in a cloud browser that navigates sites, fills in forms and reports back, with you able to step in. What it cannot do is take over your mouse and keyboard to drive any app on your machine.",
+  "answer": "GAIA can do real work on your computer within clear limits. It takes screenshots, uses your clipboard, opens apps and runs browser tasks, but it never drives your mouse and keyboard.",
   "sections": [
     {
       "heading": "What GAIA can do on your desktop",

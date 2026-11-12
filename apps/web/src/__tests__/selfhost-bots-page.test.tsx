@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** A self-hosted instance's Bots page offers its own bots, never GAIA Cloud's. */
+/** The Bots page links to the bots that serve this instance, and only to pages the visitor can open. */
 
 import type { InstanceBots, SetupStatusResponse } from "@shared/api/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -18,6 +18,12 @@ vi.mock("@/features/settings/api/providersApi", async (importOriginal) => {
     providersApi: { fetchSetupStatus: () => fetchSetupStatus() },
   };
 });
+
+const currentUser = vi.hoisted(() => ({ email: "" }));
+
+vi.mock("@/features/auth/hooks/useCurrentUser", () => ({
+  useCurrentUser: () => currentUser,
+}));
 
 import BotsPage from "@/features/bots/components/BotsPage";
 
@@ -53,6 +59,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  currentUser.email = "";
   vi.unstubAllEnvs();
   vi.clearAllMocks();
 });
@@ -121,4 +128,31 @@ describe("BotsPage", () => {
     expect(screen.getByText("WhatsApp")).toBeTruthy();
     expect(fetchSetupStatus).not.toHaveBeenCalled();
   });
+
+  it("sends a signed-out visitor to sign up before connecting iMessage", () => {
+    vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "");
+
+    renderPage();
+
+    expect(imessageAction()).toBe("/signup");
+    expect(hrefs()).not.toContain("/settings/linked-accounts");
+  });
+
+  it("sends a signed-in user straight to connecting iMessage", () => {
+    vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "");
+    currentUser.email = "ada@example.com";
+
+    renderPage();
+
+    expect(imessageAction()).toBe("/settings/linked-accounts");
+  });
 });
+
+function imessageAction(): string | null {
+  return (
+    screen
+      .getByText("Connect Your Number")
+      .closest("a")
+      ?.getAttribute("href") ?? null
+  );
+}

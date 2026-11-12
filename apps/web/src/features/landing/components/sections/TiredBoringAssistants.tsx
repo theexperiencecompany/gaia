@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { RaisedButton } from "@/components/ui/raised-button";
+import { MARKETPLACE_PATH } from "@/features/integrations/lib/marketplaceDirectoryPages";
 import LargeHeader from "../shared/LargeHeader";
 
 const TOOL_ICONS = [
@@ -534,7 +535,7 @@ export default function Tired() {
       </div>
 
       {/* CTA */}
-      <SiteLink href="/integrations" className="mt-6 sm:mt-8">
+      <SiteLink href={MARKETPLACE_PATH} className="mt-6 sm:mt-8">
         <RaisedButton color="#00bbff">
           See All Integrations
           <CircleArrowRight02Icon width={20} height={20} />
