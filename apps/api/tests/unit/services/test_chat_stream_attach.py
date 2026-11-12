@@ -66,13 +66,10 @@ class TestAttachExecutorToolData:
         _ready_session_with_cards("s1")
         state = _state(cancelled=cancelled)
 
-        body = MagicMock()
-        body.voice_mode = False
-
         with patch.object(chat_stream, "conversation_repository") as repo:
             repo.append_message_tool_data = AsyncMock()
             await _attach_executor_tool_data(
-                "s1", body, AuthenticatedUser(user_id=USER_ID), "conv-1", state
+                "s1", AuthenticatedUser(user_id=USER_ID), "conv-1", state
             )
 
         repo.append_message_tool_data.assert_awaited_once()
@@ -86,34 +83,28 @@ class TestAttachExecutorToolData:
         session = create_session("s1", RunKind.LIVE)
         session.executor_spawned = True
         session.done_event.set()
-        body = MagicMock()
-        body.voice_mode = False
 
         with patch.object(chat_stream, "conversation_repository") as repo:
             repo.append_message_tool_data = AsyncMock()
             await _attach_executor_tool_data(
-                "s1", body, AuthenticatedUser(user_id=USER_ID), "conv-1", _state(cancelled=False)
+                "s1", AuthenticatedUser(user_id=USER_ID), "conv-1", _state(cancelled=False)
             )
 
         repo.append_message_tool_data.assert_not_awaited()
 
     async def test_mongo_failure_is_swallowed(self) -> None:
         _ready_session_with_cards("s1")
-        body = MagicMock()
-        body.voice_mode = False
 
         with patch.object(chat_stream, "conversation_repository") as repo:
             repo.append_message_tool_data = AsyncMock(side_effect=RuntimeError("mongo down"))
             # best-effort: must not raise into the stream orchestrator
             await _attach_executor_tool_data(
-                "s1", body, AuthenticatedUser(user_id=USER_ID), "conv-1", _state(cancelled=True)
+                "s1", AuthenticatedUser(user_id=USER_ID), "conv-1", _state(cancelled=True)
             )
 
     async def test_a_write_that_matched_no_message_is_reported(self) -> None:
         """A silently-unmatched write must be logged (see result_delivery._persist_follow_up_actions)."""
         _ready_session_with_cards("s1")
-        body = MagicMock()
-        body.voice_mode = False
 
         with (
             patch.object(chat_stream, "conversation_repository") as repo,
@@ -121,7 +112,7 @@ class TestAttachExecutorToolData:
         ):
             repo.append_message_tool_data = AsyncMock(return_value=False)
             await _attach_executor_tool_data(
-                "s1", body, AuthenticatedUser(user_id=USER_ID), "conv-1", _state(cancelled=False)
+                "s1", AuthenticatedUser(user_id=USER_ID), "conv-1", _state(cancelled=False)
             )
 
         assert log.error.called, "a silently dropped tool_data write was never reported"
@@ -129,8 +120,6 @@ class TestAttachExecutorToolData:
     async def test_a_successful_write_is_not_reported_as_a_failure(self) -> None:
         """Control: unconditionally logging an error would also satisfy the test above."""
         _ready_session_with_cards("s1")
-        body = MagicMock()
-        body.voice_mode = False
 
         with (
             patch.object(chat_stream, "conversation_repository") as repo,
@@ -138,7 +127,7 @@ class TestAttachExecutorToolData:
         ):
             repo.append_message_tool_data = AsyncMock(return_value=True)
             await _attach_executor_tool_data(
-                "s1", body, AuthenticatedUser(user_id=USER_ID), "conv-1", _state(cancelled=False)
+                "s1", AuthenticatedUser(user_id=USER_ID), "conv-1", _state(cancelled=False)
             )
 
         assert not log.error.called

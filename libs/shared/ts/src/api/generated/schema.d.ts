@@ -11575,11 +11575,6 @@ export interface components {
              * @default true
              */
             use_default_models?: boolean;
-            /**
-             * Voice Mode
-             * @default false
-             */
-            voice_mode?: boolean;
         };
         /**
          * MessageSearchResult

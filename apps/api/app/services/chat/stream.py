@@ -32,7 +32,7 @@ from app.agents.core.background.executor_capture import (
 from app.agents.core.background.session import get_session
 from app.agents.core.comms_directive import interpret_comms_output
 from app.constants.artifacts import ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT
-from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
+from app.constants.cache import EXECUTOR_WAIT_TIMEOUT
 from app.constants.chat import (
     EMPTY_RESPONSE_FALLBACK,
     GENERIC_TURN_ERROR,
@@ -322,8 +322,8 @@ async def _run_chat_stream(
 
     # Registered before comms runs so call_executor's background task can
     # append events while open; drained on executor finish, torn down in
-    # _finalize_stream. Voice mode marks the stream for a voice_tts frame.
-    register_executor_capture(stream_id, voice_mode=body.voice_mode)
+    # _finalize_stream.
+    register_executor_capture(stream_id)
 
     try:
         _set_stream_log_context(body, user_id, conversation_id, stream_id, is_new_conversation)
@@ -402,7 +402,7 @@ async def _run_chat_stream(
 
         # Saved before the executor wait: a reload during the wait shows the comms ack.
         await _persist_turn(stream_id, body, user, conversation_id, state)
-        await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
+        await _attach_executor_tool_data(stream_id, user, conversation_id, state)
         # A stop pressed during the executor wait arrives after the consume
         # loop's check: re-read it here or the turn closes as completed.
         await _note_cancellation(stream_id, state)
@@ -427,14 +427,12 @@ async def _run_chat_stream(
             stream_id,
             state,
             source=source,
-            voice_mode=body.voice_mode,
             status="cancelled" if state.is_cancelled else "success",
         )
         if user_id:
             capture(
                 UserId(user_id),
                 _turn_ended_event(
-                    body,
                     state,
                     stream_id,
                     conversation_id,
@@ -449,15 +447,12 @@ async def _run_chat_stream(
         state.error = await _handle_stream_error(stream_id, e)
         # A failed turn is the slow/broken one the SLOs exist to catch: it must
         # land in the histograms as an error, not vanish from them.
-        _close_turn_timings(
-            stream_id, state, source=source, voice_mode=body.voice_mode, status="error"
-        )
+        _close_turn_timings(stream_id, state, source=source, status="error")
     finally:
         await _finalize_stream(stream_id, body, user, conversation_id, state, artifact_task)
 
 
 def _turn_ended_event(
-    body: MessageRequestWithHistory,
     state: _StreamState,
     stream_id: str,
     conversation_id: str,
@@ -470,7 +465,6 @@ def _turn_ended_event(
     return event_type(
         stream_id=stream_id,
         conversation_id=conversation_id,
-        voice_mode=body.voice_mode,
         is_new_conversation=is_new_conversation,
         delegated=state.delegated,
         queued=state.queued,
@@ -872,33 +866,29 @@ def _executor_delegation(stream_id: str) -> tuple[bool, bool]:
 
 
 def _close_turn_timings(
-    stream_id: str, state: _StreamState, *, source: str | None, voice_mode: bool, status: str
+    stream_id: str, state: _StreamState, *, source: str | None, status: str
 ) -> None:
     """Fill the turn's terminal timings and emit them under the given status."""
     state.delegated, state.queued = _executor_delegation(stream_id)
     _stamp_turn_latencies(state)
     if state.t0_perf is not None:
         state.e2e_full_ms = round((time.perf_counter() - state.t0_perf) * 1000.0, 2)
-    _observe_turn_latencies(source=source, voice_mode=voice_mode, state=state, status=status)
+    _observe_turn_latencies(source=source, state=state, status=status)
 
 
-def _observe_turn_latencies(
-    *, source: str | None, voice_mode: bool, state: _StreamState, status: str
-) -> None:
+def _observe_turn_latencies(*, source: str | None, state: _StreamState, status: str) -> None:
     """Emit the turn's Prometheus observations. Never raises."""
     label_source = source or "unknown"
     if state.ttft_perf is not None and state.t0_perf is not None:
         observe_chat_ttft(
             state.ttft_perf - state.t0_perf,
             source=label_source,
-            voice_mode=voice_mode,
             status=status,
         )
     if state.ack_perf is not None and state.t0_perf is not None:
         observe_chat_e2e_ack(
             state.ack_perf - state.t0_perf,
             source=label_source,
-            voice_mode=voice_mode,
             delegated=state.delegated,
             status=status,
         )
@@ -906,7 +896,6 @@ def _observe_turn_latencies(
         observe_chat_e2e_full(
             state.e2e_full_ms / 1000.0,
             source=label_source,
-            voice_mode=voice_mode,
             delegated=state.delegated,
             status=status,
         )
@@ -989,9 +978,9 @@ def _start_instant_reaction(
     stream_id: str,
     state: _StreamState,
 ) -> asyncio.Task[str | None] | None:
-    """Start the instant reaction to a message the user typed; None for voice, a workflow run or no words."""
+    """Start the instant reaction to a message the user typed; None for a workflow run or no words."""
     text = user_message_content_from(body).strip()
-    if not user_id or not text or body.voice_mode or body.selectedWorkflow is not None:
+    if not user_id or not text or body.selectedWorkflow is not None:
         return None
     return asyncio.create_task(
         react_instantly(
@@ -1198,7 +1187,6 @@ async def _react_as_chat_model(
 
 async def _attach_executor_tool_data(
     stream_id: str,
-    body: MessageRequestWithHistory,
     user: AuthenticatedUser,
     conversation_id: str,
     state: _StreamState,
@@ -1207,11 +1195,9 @@ async def _attach_executor_tool_data(
 
     Sole owner of the executor tool_data drain for live delegated streams (the
     executor's own finalize self-persists only for queued/workflow runs), and
-    runs on cancellation too so already-produced cards aren't lost. Voice-mode
-    caps the wait lower, still reaching the user via WebSocket on timeout.
+    runs on cancellation too so already-produced cards aren't lost.
     """
-    timeout = VOICE_EXECUTOR_RESULT_TIMEOUT_S if body.voice_mode else EXECUTOR_WAIT_TIMEOUT
-    await await_executor_done(stream_id, timeout=timeout)
+    await await_executor_done(stream_id, timeout=EXECUTOR_WAIT_TIMEOUT)
     # Past the one interruptible await: the drain + append below are sync /
     # best-effort, so mark attached now — the finally backstop must not re-run.
     state.attached = True
@@ -1281,7 +1267,7 @@ async def _finalize_stream(
     # short there leaves saved=True but attached=False. Runs exactly once.
     if not state.attached:
         try:
-            await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
+            await _attach_executor_tool_data(stream_id, user, conversation_id, state)
         except Exception as attach_err:  # best-effort backstop
             log.error(
                 f"{LogTag.CHAT} Backstop executor tool_data attach failed",

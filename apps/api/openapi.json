@@ -12124,11 +12124,6 @@
             "default": true,
             "title": "Use Default Models",
             "type": "boolean"
-          },
-          "voice_mode": {
-            "default": false,
-            "title": "Voice Mode",
-            "type": "boolean"
           }
         },
         "required": [

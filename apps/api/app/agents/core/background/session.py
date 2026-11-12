@@ -56,9 +56,6 @@ class StreamSession:
     #: Why, when it failed: the executor's own error text, or the wait's.
     executor_failure: str | None = None
     tool_events: list[dict[str, Any]] = field(default_factory=list)
-    # Voice-mode streams: the executor's finalize step publishes a TTS-only
-    # ``voice_tts`` frame with its narrated answer for the voice agent to speak.
-    voice_mode: bool = False
     # ``perf_counter`` of this stream's first executor frame, set once by the
     # writer. A redirect's second run must not inherit the cancelled run's.
     executor_first_frame_perf: float | None = None

@@ -37,17 +37,13 @@ from app.utils.stream_utils import (
 from shared.py.wide_events import log
 
 
-def register_executor_capture(stream_id: str, voice_mode: bool = False) -> asyncio.Event:
+def register_executor_capture(stream_id: str) -> asyncio.Event:
     """Register the stream session that captures executor tool events.
 
     Must run before the comms agent executes so call_executor's background
-    task can append events to the session. voice_mode marks the stream so the
-    executor's finalize step publishes a TTS-only voice_tts frame with its
-    narrated answer for the voice agent to speak. Returns the done-event.
+    task can append events to the session. Returns the done-event.
     """
-    session = create_session(stream_id, RunKind.LIVE)
-    session.voice_mode = voice_mode
-    return session.done_event
+    return create_session(stream_id, RunKind.LIVE).done_event
 
 
 # The timeout cannot move to callers: this function owns the graceful

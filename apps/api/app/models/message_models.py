@@ -104,10 +104,6 @@ class MessageRequestWithHistory(BaseModel):
     is_onboarding_demo: bool = False
     # The user resent an earlier message from its retry action; only the client knows it was one.
     is_retry: bool = False
-    # Voice sessions set this so the stream holds open until a delegated executor
-    # delivers its narrated answer (a `voice_tts` SSE frame). Text clients leave
-    # it False — their executor result arrives out-of-band over the WebSocket.
-    voice_mode: bool = False
     # DEV-ONLY (ENV=development): per-request model overrides from the chat-header
     # selector. `use_default_models` keeps the plan-routed default; otherwise these
     # ids (keys of DEV_MODEL_OPTIONS) pin the comms / executor models. Ignored in prod.

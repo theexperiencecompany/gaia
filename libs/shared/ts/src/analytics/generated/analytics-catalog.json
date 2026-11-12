@@ -1967,10 +1967,6 @@
             "title": "Conversation Id",
             "type": "string"
           },
-          "voice_mode": {
-            "title": "Voice Mode",
-            "type": "boolean"
-          },
           "is_new_conversation": {
             "title": "Is New Conversation",
             "type": "boolean"
@@ -2036,7 +2032,6 @@
         "required": [
           "stream_id",
           "conversation_id",
-          "voice_mode",
           "is_new_conversation",
           "delegated",
           "queued"
@@ -2069,10 +2064,6 @@
             "title": "Conversation Id",
             "type": "string"
           },
-          "voice_mode": {
-            "title": "Voice Mode",
-            "type": "boolean"
-          },
           "is_new_conversation": {
             "title": "Is New Conversation",
             "type": "boolean"
@@ -2138,7 +2129,6 @@
         "required": [
           "stream_id",
           "conversation_id",
-          "voice_mode",
           "is_new_conversation",
           "delegated",
           "queued"

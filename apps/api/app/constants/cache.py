@@ -265,10 +265,6 @@ BACKGROUND_EXECUTOR_WAIT_TIMEOUT = 25 * 60
 # ElevenLabs voice lists (account + shared library) cached for the voice picker.
 ELEVENLABS_VOICES_CACHE_KEY = "voice:elevenlabs_voices"
 ELEVENLABS_SHARED_VOICES_CACHE_KEY = "voice:elevenlabs_shared_voices"
-# Upper bound a voice-mode stream waits for a delegated executor's narrated
-# answer before sending [DONE] anyway. Real action turns resolve in a few
-# seconds; on timeout the answer still reaches the user via the WebSocket push.
-VOICE_EXECUTOR_RESULT_TIMEOUT_S = 90.0
 
 # One-shot gate (SET NX) for the heads-up at PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION of
 # the month, so a pro user is told once per month, not once per request.
