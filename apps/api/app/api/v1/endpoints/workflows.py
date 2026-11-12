@@ -6,7 +6,6 @@ Provides CRUD operations, execution, and status endpoints.
 from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pymongo.errors import DuplicateKeyError
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
@@ -15,6 +14,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
 )
 from app.api.v1.middleware.rate_limiter import limiter
 from app.constants.log_tags import LogTag
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.workflows import workflow_repository
 from app.decorators import tiered_rate_limit
 from app.models.user_models import AuthenticatedUser
@@ -579,7 +579,7 @@ async def publish_workflow(
         existing_slug = workflow.slug
         slug = existing_slug
 
-        # Retry on DuplicateKeyError so a concurrent publish racing on the
+        # Retry on AlreadyExistsError so a concurrent publish racing on the
         # same suffix can't corrupt the unique index. Only a freshly generated
         # slug is retried; an existing slug that collides re-raises.
         for _ in range(5):
@@ -592,7 +592,7 @@ async def publish_workflow(
                     slug=slug or "",  # pragma: no mutate — slug is never empty here
                 )
                 break
-            except DuplicateKeyError:
+            except AlreadyExistsError:
                 if existing_slug:
                     raise
                 continue

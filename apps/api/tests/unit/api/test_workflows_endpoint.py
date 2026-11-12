@@ -4,10 +4,10 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.log_tags import LogTag
+from app.db.repositories.errors import AlreadyExistsError
 from app.models.payment_models import PlanType
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
@@ -972,7 +972,7 @@ class TestPublishWorkflow:
     async def test_publish_retries_on_duplicate_slug(self, client: AsyncClient):
         """A generated-slug collision retries with a fresh slug (the unique-index race)."""
         doc = _make_workflow_doc(slug=None)
-        publish = AsyncMock(side_effect=[DuplicateKeyError("dup"), doc])
+        publish = AsyncMock(side_effect=[AlreadyExistsError("dup"), doc])
         with (
             patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc),
             patch(f"{_WF_REPO}.publish", publish),

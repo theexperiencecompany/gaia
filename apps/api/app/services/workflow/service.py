@@ -1,11 +1,10 @@
 import secrets
 import uuid
 
-from pymongo.errors import DuplicateKeyError
-
 from app.constants.log_tags import LogTag
 from app.constants.trigger_gates import GateAuthor, GateOwner
 from app.db.chroma.chromadb import ChromaClient
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.caching import Cacheable
 from app.models.scheduler_models import DeactivationReason
@@ -70,7 +69,7 @@ async def generate_unique_workflow_slug(title: str, exclude_id: str | None = Non
 
     The 6-char suffix makes collisions vanishingly unlikely (1 in 16M per public
     workflow). The DB has a partial-unique index on slug for is_public=true,
-    so a true collision throws DuplicateKeyError at write time and the caller
+    so a true collision raises AlreadyExistsError at write time and the caller
     is expected to retry.
     """
     base = slugify(title) or "workflow"
@@ -111,7 +110,7 @@ async def ensure_public_workflow_slug(workflow: WorkflowDocument) -> None:
                 if fresh and fresh.slug:
                     workflow.slug = fresh.slug
             return
-        except DuplicateKeyError:
+        except AlreadyExistsError:
             continue
     raise RuntimeError(
         f"Failed to backfill a slug for workflow {workflow.id} after {_SLUG_MAX_RETRIES} retries"
