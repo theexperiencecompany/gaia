@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Modal, ModalContent } from "@heroui/modal";
 import { Cancel01Icon } from "@icons";
 import { useReducedMotion } from "motion/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 /**
  * The sheet tilts and settles onto the screen rather than fading in. HeroUI
@@ -97,20 +97,31 @@ export function LetterModal({
 }: LetterModalProps) {
   const reduceMotion = useReducedMotion();
   const { backdrop, scrollBehavior, classNames } = PRESENTATIONS[presentation];
+  // HeroUI attaches its motion asynchronously; a close before the entrance starts never runs
+  // the exit and strands the modal open, so it stays mounted until then and closes after.
+  const [isEntering, setIsEntering] = useState(isOpen);
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
+    if (isOpen) setIsEntering(true);
+  }
+  const motionProps =
+    presentation === "floating"
+      ? FLOATING_MOTION
+      : SHEET_MOTION[reduceMotion ? "reduced" : "full"];
   return (
     <Modal
-      isOpen={isOpen}
+      isOpen={isOpen || isEntering}
       onClose={onClose}
       hideCloseButton
       aria-label={ariaLabel}
       backdrop={backdrop}
       scrollBehavior={scrollBehavior}
       classNames={classNames}
-      motionProps={
-        presentation === "floating"
-          ? FLOATING_MOTION
-          : SHEET_MOTION[reduceMotion ? "reduced" : "full"]
-      }
+      motionProps={{
+        ...motionProps,
+        onAnimationStart: () => setIsEntering(false),
+      }}
     >
       <ModalContent>
         <Button
