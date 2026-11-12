@@ -47,6 +47,7 @@ from app.models.stream_events import (
     ToolOutputPayload,
 )
 from tests.unit.services.conversation.log_helpers import (
+    EMPTY,
     T0,
     asked,
     barge,
@@ -87,7 +88,7 @@ _FRAMES: TypeAdapter[OutputFrame] = TypeAdapter(OutputFrame)
 
 
 def _state(comms: CommsPhase, *work: LiveWork) -> ConversationState:
-    return ConversationState.empty().model_copy(update={"comms": comms, "work": work})
+    return EMPTY.model_copy(update={"comms": comms, "work": work})
 
 
 def _work(*approvals: str) -> LiveWork:

@@ -1,4 +1,4 @@
-"""verdict, merge_group, needs_reply and quote_target."""
+"""verdict, merge_group and quote_target."""
 
 from datetime import timedelta
 
@@ -8,30 +8,20 @@ from app.constants.conversation import RESTART_WINDOW_SECONDS
 from app.models.conversation_log_models import (
     Batch,
     CommitReason,
-    Entry,
     MergeGroup,
     PreemptHint,
     StepClaim,
     Verdict,
     VisibleEntry,
     WakingEntry,
-    WorkOutcome,
 )
-from app.services.conversation.verdict import merge_group, needs_reply, quote_target, verdict
+from app.services.conversation.verdict import merge_group, quote_target, verdict
 from tests.unit.services.conversation.log_helpers import (
     T0,
-    asked,
     barge,
-    decided,
     finished,
     fired,
     logged,
-    notice,
-    opened,
-    settled,
-    started,
-    stop,
-    todo_woke,
     user,
 )
 
@@ -118,30 +108,6 @@ def test_restart_window_is_exclusive_at_its_end(now_offset: float, expected: Ver
 )
 def test_only_a_workflow_fire_is_background(entry: WakingEntry, group: MergeGroup) -> None:
     assert merge_group(entry) is group
-
-
-@pytest.mark.parametrize(
-    ("entry", "expected"),
-    [
-        (user("u"), True),
-        (barge("b", "r"), True),
-        (fired("w"), True),
-        (finished("f", "t1", WorkOutcome.DONE), True),
-        (finished("f", "t1", WorkOutcome.FAILED), True),
-        (finished("f", "t1", WorkOutcome.LOST), True),
-        (finished("f", "t1", WorkOutcome.CANCELLED), False),
-        (stop("s"), False),
-        (todo_woke("t"), False),
-        (notice("n"), False),
-        (started("w", "t1", 1), False),
-        (asked("a", "t1", "ap"), False),
-        (decided("d", "ap"), False),
-        (opened("o"), False),
-        (settled("r", ["u"], 1), False),
-    ],
-)
-def test_needs_reply(entry: Entry, expected: bool) -> None:
-    assert needs_reply(entry) is expected
 
 
 def _msg(seq: int, entry_id: str) -> VisibleEntry:

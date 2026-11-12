@@ -9,6 +9,7 @@ from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
     BargeIn,
+    CommsPhase,
     ConversationState,
     Effect,
     Entry,
@@ -30,6 +31,15 @@ from app.models.conversation_log_models import (
 from app.models.todo_wake_models import TodoRunWake
 from app.services.conversation.reducer import reduce
 
+EMPTY = ConversationState(
+    head=0,
+    settled_through=0,
+    stopped_through=0,
+    unsettled_waking=(),
+    comms=CommsPhase.IDLE,
+    open_reply=None,
+    work=(),
+)
 T0 = datetime(2026, 11, 12, 9, 0, tzinfo=UTC)
 
 
@@ -120,7 +130,7 @@ def replied(
 
 def fold(entries: Sequence[Entry]) -> tuple[ConversationState, list[Effect]]:
     """Fold entries numbered 1..n from the empty state; fail on any rejection."""
-    state = ConversationState.empty()
+    state = EMPTY
     effects: list[Effect] = []
     for seq, entry in enumerate(entries, start=1):
         result = reduce(state, logged(seq, entry))

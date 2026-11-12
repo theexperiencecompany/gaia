@@ -5,33 +5,21 @@ from datetime import datetime
 
 from app.constants.conversation import RESTART_WINDOW
 from app.models.conversation_log_models import (
-    BargeIn,
     Batch,
     CommitReason,
-    Entry,
     MergeGroup,
     PreemptHint,
     StepClaim,
-    UserMessage,
     Verdict,
     VisibleEntry,
     WakingEntry,
-    WorkFinished,
     WorkflowFired,
-    WorkOutcome,
 )
 
 
 def merge_group(entry: WakingEntry) -> MergeGroup:
     """Return the group whose inputs may merge into one attempt with entry."""
     return MergeGroup.BACKGROUND if isinstance(entry, WorkflowFired) else MergeGroup.INTERACTIVE
-
-
-def needs_reply(entry: Entry) -> bool:
-    """Return whether entry wakes a step that owes it a reply."""
-    if isinstance(entry, WorkFinished):
-        return entry.outcome is not WorkOutcome.CANCELLED
-    return isinstance(entry, UserMessage | BargeIn | WorkflowFired)
 
 
 def verdict(

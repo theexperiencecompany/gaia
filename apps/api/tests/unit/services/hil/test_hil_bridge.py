@@ -33,6 +33,7 @@ from app.services.hil.bridge import (
     build_summary,
     flush_held_approval_cards,
     publish_approval_request,
+    publish_auto_approval,
     publish_decision,
     publish_ledger_request,
     recall_declined_call,
@@ -179,6 +180,41 @@ class TestPublishExactlyOnce:
         await publish(bridge)
 
         assert (REGISTRY.get_sample_value("hil_pause_total", {}) or 0.0) == before
+
+
+class TestTheAutoApprovalReceipt:
+    async def test_an_auto_approved_call_is_recorded_and_shown_settled(self, bridge: dict) -> None:
+        repository = AsyncMock()
+        approval = GatedApproval(
+            approval_id="appr-auto",
+            stream_id=STREAM_ID,
+            user_id=USER_ID,
+            conversation_id=CONVERSATION_ID,
+            tool_call=TOOL_CALL,
+            summary="Send email — to: bob@example.com",
+            integration_name="Gmail",
+        )
+        with patch("app.services.hil.approvals_store.hil_approval_repository", repository):
+            await publish_auto_approval(approval, reason="you said send it")
+
+        record = repository.create_if_absent.await_args.args[0]
+        assert (
+            record.approval_id,
+            record.tool_name,
+            record.tool_call_id,
+            record.integration_name,
+        ) == (
+            "appr-auto",
+            "send_email",
+            "call-1",
+            "Gmail",
+        )
+        assert (record.status, record.auto_reason) == (
+            HILApprovalStatus.AUTO_APPROVED,
+            "you said send it",
+        )
+        data = published_frame(bridge)["data"]
+        assert (data["status"], data["auto_reason"]) == ("auto_approved", "you said send it")
 
 
 class TestDualDelivery:

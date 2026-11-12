@@ -14,6 +14,7 @@ from app.models.conversation_log_models import (
 )
 from app.services.conversation.reducer import reduce
 from tests.unit.services.conversation.log_helpers import (
+    EMPTY,
     asked,
     barge,
     decided,
@@ -77,7 +78,7 @@ def _assert_invariants(state: ConversationState) -> None:
 
 def _valid_log(data: st.DataObject) -> list[Entry]:
     entries: list[Entry] = []
-    state = ConversationState.empty()
+    state = EMPTY
     for _ in range(data.draw(st.integers(1, 40))):
         seq = state.head + 1
         entry = _next_entry(data, state, seq)
@@ -89,7 +90,7 @@ def _valid_log(data: st.DataObject) -> list[Entry]:
 
 
 def _fold(entries: list[Entry]) -> ConversationState:
-    state = ConversationState.empty()
+    state = EMPTY
     for seq, entry in enumerate(entries, start=1):
         result = reduce(state, logged(seq, entry))
         assert isinstance(result, Transition)
@@ -99,7 +100,7 @@ def _fold(entries: list[Entry]) -> ConversationState:
 
 @given(st.data())
 def test_every_state_of_a_valid_log_keeps_the_invariants(data: st.DataObject) -> None:
-    state = ConversationState.empty()
+    state = EMPTY
     for seq, entry in enumerate(_valid_log(data), start=1):
         result = reduce(state, logged(seq, entry))
         assert isinstance(result, Transition)

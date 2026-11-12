@@ -278,19 +278,6 @@ class ConversationState(BaseModel):
     open_reply: str | None
     work: tuple[LiveWork, ...]
 
-    @classmethod
-    def empty(cls) -> "ConversationState":
-        """Return the state of a conversation with no entries."""
-        return cls(
-            head=0,
-            settled_through=0,
-            stopped_through=0,
-            unsettled_waking=(),
-            comms=CommsPhase.IDLE,
-            open_reply=None,
-            work=(),
-        )
-
     @property
     def display(self) -> DisplayState:
         """Return the status to show: comms first, then approvals, then work."""

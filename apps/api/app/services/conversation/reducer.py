@@ -38,11 +38,6 @@ def reduce(state: ConversationState, logged: LoggedEntry) -> Transition | Reject
     return _apply(state.model_copy(update={"head": seq}), seq, logged.entry)
 
 
-def with_comms(state: ConversationState, phase: CommsPhase) -> ConversationState:
-    """Return state with the comms phase the step observed; the log never sets thinking."""
-    return state.model_copy(update={"comms": phase})
-
-
 def _apply(state: ConversationState, seq: int, entry: Entry) -> Transition | Rejected:
     result: Transition | Rejected
     match entry:
