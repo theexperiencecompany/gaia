@@ -58,9 +58,13 @@ types; `TRANSIENT_MONGO_RETRY` retries `RepositoryError`.
 
 ## Caching (automatic — do not reimplement)
 
-Each cache-enabled repository declares a `CachePolicy(prefix, entity_ttl,
-query_ttl)`. Three key families per scope (`user_id` for user-scoped repos, the
-literal `"global"` otherwise):
+Only a cached repository knows a cache exists. It subclasses a base from
+`cached_base.py` and declares a `CachePolicy(prefix, entity_ttl, query_ttl)`; the
+base it picks is its scope rule. `CachedMongoRepository` caches under the literal
+`"global"`; `CachedUserScopedRepository` under the `user_id` of the document, or of
+the write's filter, which every cached user-scoped write must pin. The plain
+`MongoRepository` / `UserScopedRepository` have no cache, and their write primitives
+take no scope. Three key families per scope:
 
 ```
 {prefix}:{scope}:{id}            entity cache  — read-through on get, write-through on create/update, evicted on delete
@@ -117,7 +121,7 @@ read); update models use `extra="forbid"` on write (writes are fully controlled)
 2. Add `XDocument` (`extra="ignore"`) and `XUpdate` (all-optional, `extra="forbid"`)
    to the existing `app/models/<domain>_models.py`.
 3. Add `app/db/repositories/<domain>.py`: subclass `MongoRepository` /
-   `UserScopedRepository`, set the ClassVars and `CachePolicy`, turn every query in
+   `UserScopedRepository` (or a cached base with a `CachePolicy`), set the ClassVars, turn every query in
    the domain's services into a named finder and every aggregation into a named
    typed method, and export a module-level singleton `x_repository = XRepository()`.
 4. Write contract tests: inherit the base contract, add a per-finder test with

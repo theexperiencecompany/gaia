@@ -86,7 +86,6 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
     document_model = UsageDailyDocument
     update_model = UsageDailyUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def increment(
         self, user_id: str, day: str, delta: UsageDailyIncrement, *, charged: bool = True
@@ -115,7 +114,6 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
         await self._apply_raw_update(
             {"user_id": user_id, "date": day},
             {"$inc": inc},
-            scope=user_id,
             return_document=False,
             upsert=True,
         )
@@ -139,7 +137,6 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
                     "cost_actual_at": actuals.at,
                 }
             },
-            scope=user_id,
             upsert=False,
         )
         return matched > 0

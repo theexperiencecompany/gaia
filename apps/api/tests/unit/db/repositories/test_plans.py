@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.plans import PlansRepository
 from app.models.payment_models import PlanTier
 
@@ -24,5 +23,4 @@ class TestTagOneUntagged:
         raw.assert_awaited_once_with(
             {"name": "Pro", "plan_type": {"$exists": False}},
             {"$set": {"plan_type": "pro"}},
-            scope=REPO_GLOBAL_SCOPE,
         )

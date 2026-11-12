@@ -21,7 +21,6 @@ class BrowserProfilesRepository(UserScopedRepository[BrowserProfileDocument, Bro
     document_model = BrowserProfileDocument
     update_model = BrowserProfileUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def get_for_domain(self, user_id: str, domain: str) -> BrowserProfileDocument | None:
         """Return the saved profile for a domain, or None."""
@@ -49,7 +48,6 @@ class BrowserProfilesRepository(UserScopedRepository[BrowserProfileDocument, Bro
                 "$set": set_fields,
                 "$setOnInsert": {"user_id": user_id, "domain": domain, "created_at": now},
             },
-            scope=user_id,
             upsert=True,
         )
 
@@ -61,7 +59,7 @@ class BrowserProfilesRepository(UserScopedRepository[BrowserProfileDocument, Bro
         filter_: dict[str, object] = {"user_id": user_id}
         if domain is not None:
             filter_["domain"] = domain
-        return await self._delete_many(filter_, scope=user_id)
+        return await self._delete_many(filter_)
 
 
 browser_profile_repository = BrowserProfilesRepository()

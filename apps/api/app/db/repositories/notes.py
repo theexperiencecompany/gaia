@@ -1,12 +1,12 @@
 """Repository for the notes collection."""
 
 from app.constants.cache import NOTE_CACHE_PREFIX
-from app.db.repositories.base import UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
+from app.db.repositories.cached_base import CachedUserScopedRepository, cached_query
 from app.models.notes_models import NoteDocument, NoteSearchHit, NoteUpdate
 
 
-class NotesRepository(UserScopedRepository[NoteDocument, NoteUpdate]):
+class NotesRepository(CachedUserScopedRepository[NoteDocument, NoteUpdate]):
     collection_name = "notes"
     document_model = NoteDocument
     update_model = NoteUpdate

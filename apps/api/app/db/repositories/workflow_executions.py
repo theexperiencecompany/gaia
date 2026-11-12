@@ -24,7 +24,6 @@ class WorkflowExecutionsRepository(
     update_model = WorkflowExecutionUpdate
     uses_object_id = True
     identity_field = "execution_id"
-    cache_policy = None
 
     async def complete(
         self,

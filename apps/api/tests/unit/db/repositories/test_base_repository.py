@@ -123,7 +123,7 @@ async def _set_written(repo: _BaseRepository, *, touch: bool = True) -> dict[str
     collection = MagicMock()
     collection.find_one_and_update = AsyncMock(return_value=None)
     with patch("app.db.repositories.base.get_async_collection", return_value=collection):
-        await repo._apply_update("abc", "u1", {}, _Update(name="x"), touch=touch)
+        await repo._apply_update("abc", {}, _Update(name="x"), touch=touch)
     (_filter, operations), _ = collection.find_one_and_update.await_args
     return operations["$set"]
 

@@ -5,7 +5,6 @@ in the app. The plan-list cache in the payment service (a non-entity Redis cache
 of PlanResponse shapes) stays where it is, so this repository holds no policy.
 """
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.payment_models import PlanDocument, PlanTier, PlanUpdate
 
@@ -18,7 +17,6 @@ class PlansRepository(MongoRepository[PlanDocument, PlanUpdate]):
     document_model = PlanDocument
     update_model = PlanUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def list_plans(self, *, active_only: bool = True) -> list[PlanDocument]:
         """All plans (or only active ones), cheapest first."""
@@ -30,7 +28,6 @@ class PlansRepository(MongoRepository[PlanDocument, PlanUpdate]):
         matched = await self._apply_raw_update_unfetched(
             {"name": name, **_UNTAGGED},
             {"$set": {"plan_type": plan_type.value}},
-            scope=REPO_GLOBAL_SCOPE,
         )
         return matched > 0
 

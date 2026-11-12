@@ -5,7 +5,6 @@ get-or-create: the conversation_id is minted exactly once via $setOnInsert
 under the unique index, so two racing first-messages can never fork a session.
 """
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.bot_models import BotSessionDocument, BotSessionUpdate
 from app.utils.errors import AppError
@@ -20,7 +19,6 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
     document_model = BotSessionDocument
     update_model = BotSessionUpdate
     uses_object_id = True
-    cache_policy = None
     # created_at/updated_at are ISO strings written by hand (the TTL anchor), so
     # the base must not stamp a datetime over them.
     auto_stamp_timestamps = False
@@ -56,7 +54,6 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
                     "created_at": timestamp,
                 },
             },
-            scope=REPO_GLOBAL_SCOPE,
             upsert=True,
         )
         if session is None:
@@ -103,7 +100,6 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
         matched = await self._apply_raw_update_unfetched(
             {"session_key": session_key},
             {"$set": {"session_key": new_session_key, "channel_id": channel_id}},
-            scope=REPO_GLOBAL_SCOPE,
         )
         return matched > 0
 
@@ -112,19 +108,17 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
         matched = await self._apply_raw_update_unfetched(
             {"session_key": session_key},
             {"$set": {"conversation_id": conversation_id}},
-            scope=REPO_GLOBAL_SCOPE,
         )
         return matched > 0
 
     async def delete_by_session_key(self, session_key: str) -> int:
         """Remove the session on this key, returning how many rows were deleted."""
-        return await self._delete_many({"session_key": session_key}, scope=REPO_GLOBAL_SCOPE)
+        return await self._delete_many({"session_key": session_key})
 
     async def delete_for_platform_user(self, *, platform: str, platform_user_id: str) -> int:
         """Remove every session (DM and channels) of one platform account, returning the count."""
         return await self._delete_many(
             {"platform": platform, "platform_user_id": platform_user_id},
-            scope=REPO_GLOBAL_SCOPE,
         )
 
 

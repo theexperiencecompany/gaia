@@ -17,7 +17,6 @@ class InstanceSettingsRepository(MongoRepository[InstanceSettingsDocument, Insta
     update_model = InstanceSettingsUpdate
     uses_object_id = False
     identity_field = "key"
-    cache_policy = None
 
     async def find_by_key(self, key: str) -> InstanceSettingsDocument | None:
         """Return the single document stored under key, or None."""

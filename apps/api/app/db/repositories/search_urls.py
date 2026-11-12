@@ -15,7 +15,6 @@ class SearchUrlsRepository(MongoRepository[SearchUrlDocument, SearchUrlUpdate]):
     update_model = SearchUrlUpdate
     uses_object_id = True
     identity_field = "url"
-    cache_policy = None
 
     async def get_by_url(self, url: str) -> SearchUrlDocument | None:
         return await self._find_one({"url": url})

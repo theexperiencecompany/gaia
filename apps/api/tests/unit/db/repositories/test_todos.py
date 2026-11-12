@@ -68,7 +68,6 @@ async def test_a_skip_is_kept_only_on_the_users_gated_watch_without_reading_it_b
             },
             "$inc": {"trigger_subscriptions.$[watch].gate.skipped_count": 1},
         },
-        scope="u1",
         extra_filter={
             "trigger_subscriptions": {"$elemMatch": {"id": "watch-1", "gate": {"$ne": None}}}
         },
