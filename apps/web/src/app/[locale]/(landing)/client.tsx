@@ -98,7 +98,6 @@ export default function LandingPageClient({
                 fades in on top (lazy + low priority, never blocks the LCP). */}
             <ProgressiveImage
               webpSrc="/images/wallpapers/ethereal_alpine_valley.webp"
-              pngSrc="/images/wallpapers/ethereal_alpine_valley.webp"
               alt="Hero wallpaper"
               priority
               sizes="100vw"

@@ -1,5 +1,7 @@
 import type { ImageLoaderProps } from "next/image";
 
+import { DEFAULT_IMAGE_QUALITY } from "./image-qualities.mjs";
+
 /**
  * Cloudflare Image Resizing loader for next/image: same-origin images route
  * through `/cdn-cgi/image/` (edge-cached; Next's default optimizer runs uncached
@@ -32,6 +34,10 @@ export default function cloudflareLoader({
     return src;
   }
 
-  const params = [`width=${width}`, `quality=${quality || 75}`, "format=auto"];
+  const params = [
+    `width=${width}`,
+    `quality=${quality || DEFAULT_IMAGE_QUALITY}`,
+    "format=auto",
+  ];
   return `/cdn-cgi/image/${params.join(",")}/${normalizeSrc(src)}`;
 }
