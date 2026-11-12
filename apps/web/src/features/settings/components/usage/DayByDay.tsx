@@ -348,8 +348,6 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
               <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
           </Tabs.List>
-          <Tabs.Panel id="actions">{null}</Tabs.Panel>
-          <Tabs.Panel id="tokens">{null}</Tabs.Panel>
         </Tabs>
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-3">
@@ -376,11 +374,6 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
               </Tabs.Tab>
             ))}
           </Tabs.List>
-          {RANGES.map((r) => (
-            <Tabs.Panel key={r.key} id={r.key}>
-              {null}
-            </Tabs.Panel>
-          ))}
         </Tabs>
       </div>
 

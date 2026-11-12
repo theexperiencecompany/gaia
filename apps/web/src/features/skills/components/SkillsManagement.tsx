@@ -95,17 +95,20 @@ export default function SkillsManagement() {
           variant="primary"
           selectedKey={tab}
           onSelectionChange={(key) => setTab(key as string)}
+          className="shrink-0"
         >
-          <Tabs.List>
-            <Tabs.Tab id="yours">
-              <TabTitle icon={PuzzleIcon} label="Your Skills" />
-            </Tabs.Tab>
-            <Tabs.Tab id="builtin">
-              <TabTitle icon={FolderLibraryIcon} label="Built-in" />
-            </Tabs.Tab>
-          </Tabs.List>
-          <Tabs.Panel id="yours">{null}</Tabs.Panel>
-          <Tabs.Panel id="builtin">{null}</Tabs.Panel>
+          <Tabs.ListContainer>
+            <Tabs.List aria-label="Skills">
+              <Tabs.Tab id="yours">
+                <TabTitle icon={PuzzleIcon} label="Your Skills" />
+                <Tabs.Indicator />
+              </Tabs.Tab>
+              <Tabs.Tab id="builtin">
+                <TabTitle icon={FolderLibraryIcon} label="Built-in" />
+                <Tabs.Indicator />
+              </Tabs.Tab>
+            </Tabs.List>
+          </Tabs.ListContainer>
         </Tabs>
         <div className="flex-1" />
         <SearchField

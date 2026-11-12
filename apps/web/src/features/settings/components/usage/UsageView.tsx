@@ -232,8 +232,6 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
               <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
           </Tabs.List>
-          <Tabs.Panel id="month">{null}</Tabs.Panel>
-          <Tabs.Panel id="day">{null}</Tabs.Panel>
         </Tabs>
       )}
       <HeroGauge percent={percent} gauge={heroGauge(percent, resetIso, win)} />
@@ -746,8 +744,6 @@ function Tools({
               <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
           </Tabs.List>
-          <Tabs.Panel id="month">{null}</Tabs.Panel>
-          <Tabs.Panel id="day">{null}</Tabs.Panel>
         </Tabs>
       </div>
       {rows.length === 0 ? (

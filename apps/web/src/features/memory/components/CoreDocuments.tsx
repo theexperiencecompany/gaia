@@ -164,18 +164,16 @@ export function CoreDocuments() {
           setDraft(null);
         }}
       >
-        <Tabs.List>
-          {CORE_DOCUMENTS.map((doc) => (
-            <Tabs.Tab key={doc.docType} id={doc.docType}>
-              {doc.fileName}
-            </Tabs.Tab>
-          ))}
-        </Tabs.List>
-        {CORE_DOCUMENTS.map((doc) => (
-          <Tabs.Panel key={doc.docType} id={doc.docType}>
-            {null}
-          </Tabs.Panel>
-        ))}
+        <Tabs.ListContainer>
+          <Tabs.List aria-label="Core documents">
+            {CORE_DOCUMENTS.map((doc) => (
+              <Tabs.Tab key={doc.docType} id={doc.docType}>
+                {doc.fileName}
+                <Tabs.Indicator />
+              </Tabs.Tab>
+            ))}
+          </Tabs.List>
+        </Tabs.ListContainer>
       </Tabs>
 
       <div className="rounded-2xl bg-zinc-800 px-5 py-4">
