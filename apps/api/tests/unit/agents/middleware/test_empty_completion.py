@@ -16,7 +16,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 from langchain.agents.middleware.types import ModelRequest, ModelResponse
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 import pytest
 
 from app.agents.middleware.empty_completion import (
@@ -97,7 +97,7 @@ class TestAnEmptyCompletionIsRetriedOnce:
         assert response.result == [EMPTY]
 
 
-POISONED_HISTORY = [
+POISONED_HISTORY: list[AnyMessage] = [
     HumanMessage(content="hi"),
     AIMessage(content=NEW_MESSAGE_BREAKER * 40),
     HumanMessage(content="hello?"),

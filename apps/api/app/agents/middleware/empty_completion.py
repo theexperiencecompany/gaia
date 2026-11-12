@@ -33,7 +33,12 @@ from app.utils.message_breaks import (
     split_message_bubbles,
     strip_edge_message_breaks,
 )
-from app.utils.multimodal import MessageContent, extract_text_content
+from app.utils.multimodal import (
+    ContentBlockText,
+    ContentItem,
+    MessageContent,
+    extract_text_content,
+)
 from shared.py.wide_events import log
 
 ModelCallHandler = Callable[[ModelRequest], Awaitable[ModelResponse]]
@@ -115,14 +120,16 @@ def is_empty_completion(response: ModelResponse) -> bool:
 def _without_edge_breaks(content: MessageContent) -> MessageContent:
     if isinstance(content, str):
         return strip_edge_message_breaks(content)
-    return [
-        {**block, "text": strip_edge_message_breaks(block["text"])}
-        if isinstance(block, dict)
-        and block.get("type") == "text"
-        and isinstance(block.get("text"), str)
-        else block
-        for block in content
-    ]
+    return [_block_without_edge_breaks(block) for block in content]
+
+
+def _block_without_edge_breaks(block: ContentItem) -> ContentItem:
+    if not isinstance(block, dict):
+        return block
+    parsed = ContentBlockText.model_validate(block)
+    if parsed.type != "text" or not isinstance(parsed.text, str):
+        return block
+    return {**block, "text": strip_edge_message_breaks(parsed.text)}
 
 
 def _retry_history(messages: list[AnyMessage]) -> list[AnyMessage]:
