@@ -1,7 +1,6 @@
 "use client";
 
 import type { EventProperties } from "@gaia/shared/analytics/events";
-import { Button } from "@heroui/react";
 import {
   Calendar01Icon,
   CalendarUpload02Icon,
@@ -14,6 +13,7 @@ import {
 } from "@icons";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import Spinner from "@/components/ui/spinner";
 import AddProjectModal from "@/features/todo/components/AddProjectModal";
 import TodoModal from "@/features/todo/components/TodoModal";
@@ -121,11 +121,12 @@ function SidebarSection({
       )}
       {items.length > 0 ? (
         items.map((item) => (
-          <Button
+          <GaiaButton
             key={item.href}
             fullWidth
-            className={`justify-start px-2 text-start text-sm ${activeItem === item.href ? "bg-zinc-800 text-zinc-300" : "text-zinc-500 hover:text-zinc-300"}`}
-            variant="ghost"
+            className="justify-start text-start text-sm"
+            variant={activeItem === item.href ? "tertiary" : "ghost"}
+            tone={activeItem === item.href ? "dim" : "faint"}
             size="sm"
             onPress={() => onItemClick(item)}
           >
@@ -134,7 +135,7 @@ function SidebarSection({
             {item.count !== undefined && (
               <span className="ml-auto text-xs">{item.count}</span>
             )}
-          </Button>
+          </GaiaButton>
         ))
       ) : emptyState ? (
         emptyState.loading ? (
@@ -319,7 +320,7 @@ export default function TodoSidebar() {
               activeItem={pathname}
               onItemClick={handleNavigation}
               action={
-                <Button
+                <GaiaButton
                   isIconOnly
                   size="sm"
                   variant="ghost"
@@ -327,7 +328,7 @@ export default function TodoSidebar() {
                   className="h-6 w-6 min-w-6"
                 >
                   <PlusSignIcon className="h-3 w-3" />
-                </Button>
+                </GaiaButton>
               }
               emptyState={{
                 loading: isInitialLoad && loading,

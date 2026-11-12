@@ -5,6 +5,7 @@ import { SearchIcon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
+import { toneVariants } from "@/components/shared/tone";
 import { INTEGRATION_CATEGORIES } from "@/features/integrations/constants/categories";
 import { cn } from "@/lib/utils";
 
@@ -107,7 +108,8 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
               size="lg"
               className={cn(
                 "cursor-pointer font-light! backdrop-blur-2xl!",
-                category !== cat.key && "bg-white/5! text-foreground-500",
+                category !== cat.key &&
+                  `bg-white/5! ${toneVariants({ tone: "muted" })}`,
               )}
               onClick={() => handleCategoryChange(cat.key)}
             >

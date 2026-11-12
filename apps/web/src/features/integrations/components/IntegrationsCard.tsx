@@ -147,7 +147,6 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
     <div className="mx-2 mb-3 border-b-1 border-zinc-800">
       <Accordion
         variant="default"
-        className="px-0!"
         expandedKeys={expandedKeys}
         onExpandedChange={handleSelectionChange}
         allowsMultipleExpanded
@@ -170,7 +169,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
               <Accordion.Indicator />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className="pb-1">
+          <Accordion.Panel>
             <Accordion.Body>
               <div className="grid grid-cols-2 gap-2 pl-1">
                 {myIntegrations

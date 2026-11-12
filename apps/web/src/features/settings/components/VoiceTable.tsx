@@ -17,6 +17,7 @@ import {
 } from "@icons";
 import { useCallback, useDeferredValue, useMemo } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
 import { GenderIcon } from "@/features/settings/components/VoiceFilters";
 import { useVoicePreview } from "@/features/settings/hooks/useVoicePreview";
@@ -165,8 +166,11 @@ function VoiceCell({
               <Tooltip.Trigger>
                 <Chip
                   size="sm"
-                  variant="soft"
-                  className="cursor-default bg-zinc-800 text-zinc-400"
+                  variant="secondary"
+                  className={toneVariants({
+                    tone: "muted",
+                    className: "cursor-default",
+                  })}
                 >
                   +{voice.languages.length - 1}
                 </Chip>

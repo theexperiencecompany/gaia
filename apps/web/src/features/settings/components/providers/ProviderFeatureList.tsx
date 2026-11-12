@@ -6,6 +6,7 @@ import type {
   ProviderCatalog,
   SetupStatus,
 } from "@/features/settings/api/providersApi";
+import { ACCORDION_ROOT } from "@/lib/heroui/accordionParity";
 import { FeatureProviderPicker } from "./FeatureProviderPicker";
 import { featureState } from "./featureState";
 import { type FeatureGroup, featureAnchorId } from "./providerRows";
@@ -31,7 +32,7 @@ export function ProviderFeatureList({
       allowsMultipleExpanded
       variant="default"
       defaultExpandedKeys={openFeature ? [openFeature] : []}
-      className="rounded-2xl bg-zinc-900 px-2"
+      className={`rounded-2xl bg-zinc-900 ${ACCORDION_ROOT}`}
     >
       {groups.map((group) => {
         const state = featureState(group, catalog);
@@ -56,12 +57,14 @@ export function ProviderFeatureList({
                 <Accordion.Indicator />
               </Accordion.Trigger>
             </Accordion.Heading>
-            <Accordion.Panel className="pb-4">
-              <FeatureProviderPicker
-                group={group}
-                catalog={catalog}
-                status={status}
-              />
+            <Accordion.Panel>
+              <div className="pb-4">
+                <FeatureProviderPicker
+                  group={group}
+                  catalog={catalog}
+                  status={status}
+                />
+              </div>
             </Accordion.Panel>
           </Accordion.Item>
         );

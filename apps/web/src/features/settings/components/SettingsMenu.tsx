@@ -432,7 +432,7 @@ export default function SettingsMenu({
         <Dropdown.Popover
           placement="right"
           offset={21}
-          className="bg-secondary-bg text-foreground dark shadow-xl"
+          className="dark shadow-xl"
         >
           <Dropdown.Menu aria-label="Settings Menu">
             {menuSections.map((section) => (

@@ -35,7 +35,7 @@ export function IntegrationAccountRenameModal({
         }}
       >
         <Modal.Container>
-          <Modal.Dialog className="text-foreground dark">
+          <Modal.Dialog className="dark">
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Header className="pb-0">Rename account</Modal.Header>
             <Modal.Body>

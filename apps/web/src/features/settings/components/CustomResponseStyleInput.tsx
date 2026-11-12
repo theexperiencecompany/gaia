@@ -20,7 +20,7 @@ export function CustomResponseStyleInput({
           placeholder="Describe your preferred response style..."
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="min-h-[36px] rounded-lg bg-zinc-800/50 px-3 text-sm hover:bg-zinc-700/50"
+          className="min-h-[36px] rounded-lg bg-zinc-800/50 text-sm hover:bg-zinc-700/50"
         />
       </TextField>
     </div>
