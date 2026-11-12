@@ -493,6 +493,25 @@ class TestAReactionTheCatalogCannotCarryIsDeliveredAsText:
         update.assert_not_awaited()
         assert state.saved
 
+    async def test_an_emoji_with_no_message_to_react_to_is_saved_as_the_reply(self):
+        state = _StreamState()
+        state.complete_message = "<EMOJI>👍</EMOJI>"
+
+        with (
+            patch.object(
+                chat_stream,
+                "recover_stream_state",
+                new=AsyncMock(side_effect=lambda _sid, msg, td: (msg, td)),
+            ),
+            patch.object(chat_stream, "react_as_chat_model", new=AsyncMock(return_value=False)),
+            patch.object(chat_stream, "save_bot_reply", new=AsyncMock(return_value=None)) as save,
+            patch.object(chat_stream, "capture") as capture,
+        ):
+            await _persist_turn("s1", _body(), FAKE_USER, CONV, state)
+
+        assert save.await_args.kwargs["reply"].complete_message == "👍"
+        capture.assert_not_called()
+
 
 class TestUsageMetadata:
     async def test_the_turns_token_usage_is_saved_on_the_reply(self):

@@ -32,6 +32,7 @@ from app.services.chat.persistence import (
     save_user_message,
 )
 from app.services.chat.stream import run_chat_stream_background
+from app.services.conversation.reaction import ReactionTarget, react_as_chat_model
 from app.workers.tasks.reply_sweep_tasks import sweep_unfinished_replies
 from tests.conftest import FAKE_USER
 from tests.helpers import captured_wide_event
@@ -330,6 +331,33 @@ async def test_a_reply_whose_open_committed_but_raised_is_still_saved_in_full(
         "the full answer",
         None,
     )
+
+
+async def test_the_chat_models_reaction_is_announced_only_once_it_is_stored(
+    real_redis, mongo_db, make_conversation
+) -> None:
+    conversation_id = await make_conversation(FAKE_USER.user_id)
+    await save_user_message(_body(conversation_id, "A"), FAKE_USER, conversation_id, "msg-a")
+
+    def target(message_id: str) -> ReactionTarget:
+        return ReactionTarget(
+            stream_id="stream-r",
+            conversation_id=conversation_id,
+            user_id=FAKE_USER.user_id,
+            message_id=message_id,
+        )
+
+    published: list[str] = []
+
+    async def spy(_stream_id: str, chunk: str) -> None:
+        published.append(chunk)
+
+    with patch.object(stream_manager, "publish_chunk", new=spy):
+        assert await react_as_chat_model(target("never-saved"), "\U0001f44d") is False
+        assert _frames(published) == []
+        assert await react_as_chat_model(target("msg-a"), "\U0001f44d") is True
+
+    assert [f["reaction"]["message_id"] for f in _frames(published)] == ["msg-a"]
 
 
 async def test_a_second_sweep_changes_nothing(real_redis, mongo_db, make_conversation) -> None:

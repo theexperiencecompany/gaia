@@ -1150,8 +1150,12 @@ async def _save_reply(
     merge_tool_outputs(state.tool_data, state.tool_outputs)
     inject_todo_progress(state.tool_data, state.todo_progress_accumulated)
     reconstruct_subagent_groups(state.tool_data)
-    if reaction is not None:
-        await _react_as_chat_model(stream_id, user, conversation_id, state, reaction)
+    if reaction is not None and not await _react_as_chat_model(
+        stream_id, user, conversation_id, state, reaction
+    ):
+        # No message to put it on: the emoji is the answer, saved as the reply's text.
+        state.complete_message = reaction
+    elif reaction is not None:
         # The reaction is the whole answer; only a reply already shown, or the turn's cards, need a message.
         if not state.reply_opened and not _turn_did_work(stream_id, state):
             return None
@@ -1179,10 +1183,10 @@ async def _react_as_chat_model(
     conversation_id: str,
     state: _StreamState,
     emoji: str,
-) -> None:
-    """Put the chat model's emoji on the user's message in place of any instant one, and count it."""
+) -> bool:
+    """Put the chat model's emoji on the user's message in place of any instant one; count it once stored."""
     await _cancel_instant_reaction(state)
-    await react_as_chat_model(
+    stored = await react_as_chat_model(
         ReactionTarget(
             stream_id=stream_id,
             conversation_id=conversation_id,
@@ -1191,7 +1195,9 @@ async def _react_as_chat_model(
         ),
         emoji,
     )
-    capture(UserId(user.user_id), ChatTurnReacted(emoji=emoji))
+    if stored:
+        capture(UserId(user.user_id), ChatTurnReacted(emoji=emoji))
+    return stored
 
 
 async def _attach_executor_tool_data(
