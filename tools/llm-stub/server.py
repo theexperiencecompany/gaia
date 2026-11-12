@@ -12,7 +12,8 @@ scripted model instead of a real provider. Every chat-completions request is
 answered by parsing inline directives from the latest user message (see
 ``directives.py``): ``[[tool:<name> <json-args>]]`` for scripted tool calls and
 ``[[say:<text>]]`` for the final reply, ``[[fail:<message>]]`` to break the
-final call (after streaming any say text) — deterministic fault injection.
+final call (after streaming any say text) — deterministic fault injection —
+and ``[[wait:<ms>]]`` / ``[[pace:<ms>]]`` to hold a step or slow the reply.
 
 Run (no repo venv coupling — uv resolves the inline deps into an ephemeral env):
 
@@ -128,6 +129,8 @@ async def _complete(request: Request) -> JSONResponse | StreamingResponse:
             status_code=500,
             content={"error": {"message": str(exc), "type": "directive_error"}},
         )
+    if response.delay_ms:
+        await asyncio.sleep(response.delay_ms / 1000)
 
     if (
         isinstance(response, SayResponse)

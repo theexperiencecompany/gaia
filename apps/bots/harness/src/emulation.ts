@@ -8,12 +8,13 @@
  * from {@link renderForPlatform}. If the shared value changes, the harness
  * changes with it; there is nothing to drift.
  *
- * The single residual is {@link PlatformEmulation.supportsEdit}: whether a
- * platform can edit a delivered message in place, or must send a fresh one. That
- * bit lives in each real adapter's send wiring (grammY `editMessageText`, Slack
- * `chat.update`, Discord `message.edit`) rather than in any shared table, so it
- * is declared here — and the conformance suite pins every entry to the real
- * adapter, failing CI the moment it diverges.
+ * Two residuals live in each real adapter's wiring rather than in any shared
+ * table, so they are declared here: {@link PlatformEmulation.supportsEdit},
+ * whether a platform can edit a delivered message in place (grammY
+ * `editMessageText`, Slack `chat.update`, Discord `message.edit`) — pinned to
+ * the real adapter by the conformance suite — and
+ * {@link PlatformEmulation.serializesInbound}, whether the adapter handles one
+ * user's messages one at a time.
  */
 
 import {
@@ -40,6 +41,14 @@ export interface PlatformEmulation {
    * edit; whatsapp always sends new via `sendWhatsAppText`.
    */
   supportsEdit: boolean;
+  /**
+   * Whether the adapter handles a user's next message only after the previous
+   * one's handler finished. Telegram: grammY's built-in polling awaits each
+   * update in turn (`bot.js` handleUpdates). WhatsApp and iMessage: a per-user
+   * promise queue in the adapter (`messageQueues`). Discord and Slack run every
+   * event handler as it arrives.
+   */
+  serializesInbound: boolean;
 }
 
 /** Residual capability map — see {@link PlatformEmulation.supportsEdit}. */
@@ -49,6 +58,15 @@ const SUPPORTS_EDIT: Record<PlatformName, boolean> = {
   telegram: true,
   whatsapp: false,
   imessage: false,
+};
+
+/** Residual dispatch map — see {@link PlatformEmulation.serializesInbound}. */
+const SERIALIZES_INBOUND: Record<PlatformName, boolean> = {
+  discord: false,
+  slack: false,
+  telegram: true,
+  whatsapp: true,
+  imessage: true,
 };
 
 /**
@@ -70,6 +88,7 @@ export function resolveEmulation(platform: PlatformName): PlatformEmulation {
     streaming,
     render: (text: string) => renderForPlatform(text, platform),
     supportsEdit: SUPPORTS_EDIT[platform],
+    serializesInbound: SERIALIZES_INBOUND[platform],
   };
 }
 
