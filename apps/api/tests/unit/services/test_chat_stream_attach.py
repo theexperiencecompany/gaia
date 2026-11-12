@@ -264,26 +264,30 @@ class TestResolvePendingApprovalTurnApproves:
             conversation_id="conv-1",
         )
         classifier = AsyncMock(return_value="approve")
+        opener = AsyncMock(return_value=2)
+        user = AuthenticatedUser(user_id=USER_ID)
+        state = _StreamState()
         with (
             patch.object(chat_stream, "stream_manager") as sm,
             patch.object(chat_stream, "_persist_turn", new_callable=AsyncMock),
-            patch.object(chat_stream, "open_bot_reply", new=AsyncMock(return_value=2)),
+            patch.object(chat_stream, "open_bot_reply", new=opener),
             patch.object(chat_stream, "resolve_pending_from_message", new=classifier),
         ):
             sm.publish_chunk = AsyncMock()
             sm.complete_stream = AsyncMock()
             result = await _resolve_pending_approval_turn(
-                body,
-                AuthenticatedUser(user_id=USER_ID),
-                "conv-1",
-                "stream-1",
-                _StreamState(),
-                "whatsapp",
+                body, user, "conv-1", "stream-1", state, "whatsapp"
             )
 
         assert result is True
         classifier.assert_awaited_once_with(
             "conv-1", USER_ID, "yes", [{"role": "assistant", "content": "Send the email?"}]
+        )
+        opener.assert_awaited_once_with(body, user, "conv-1", state.bot_message_id)
+        stream_id, placed = sm.publish_chunk.await_args_list[0].args
+        assert (stream_id, json.loads(placed.removeprefix("data: "))) == (
+            "stream-1",
+            {"bot_message_seq": 2},
         )
 
 

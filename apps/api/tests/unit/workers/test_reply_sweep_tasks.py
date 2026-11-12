@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from app.constants.cache import STREAM_TTL
 from app.constants.chat import TURN_INTERRUPTED
 from app.workers.tasks.reply_sweep_tasks import sweep_unfinished_replies
+from tests.helpers import captured_wide_event
 
 MODULE = "app.workers.tasks.reply_sweep_tasks"
 DEAD = ("user-1", "conv-dead")
@@ -27,7 +28,12 @@ async def _sweep(owners: set[tuple[str, str]], failed: int) -> tuple[str, MagicM
         patch(f"{MODULE}.conversation_repository", repo),
         patch(f"{MODULE}.stream_manager", streams),
     ):
-        result = await sweep_unfinished_replies({})
+        async with captured_wide_event() as event:
+            result = await sweep_unfinished_replies({})
+    assert (event["unfinished_reply_conversations"], event["failed_reply_count"]) == (
+        len(owners),
+        failed,
+    )
     return result, repo, before
 
 

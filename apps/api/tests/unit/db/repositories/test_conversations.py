@@ -44,8 +44,10 @@ def repo() -> ConversationRepository:
     return ConversationRepository()
 
 
-def _update_call(collection: MagicMock) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    """Return the single update_one call's filter, update document and kwargs."""
+def _update_call(
+    collection: MagicMock,
+) -> tuple[dict[str, Any], dict[str, Any] | list[dict[str, Any]], dict[str, Any]]:
+    """Return the single update_one call's filter, update (a document or a pipeline) and kwargs."""
     collection.update_one.assert_awaited_once()
     args, kwargs = collection.update_one.await_args
     return args[0], args[1], kwargs
@@ -196,6 +198,7 @@ class TestFillMessage:
         assert await repo.fill_message(CONVERSATION_ID, user_id=USER_ID, message=reply) is True
 
         query, pipeline, _ = _update_call(collection)
+        assert isinstance(pipeline, list)
         assert query == {"user_id": USER_ID, "conversation_id": CONVERSATION_ID, "id": "bot-1"}
         [set_stage, unset_stage] = pipeline
         assert set_stage["$set"]["response"] == {"$literal": "Done."}
