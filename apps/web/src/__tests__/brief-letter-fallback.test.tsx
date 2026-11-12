@@ -18,7 +18,7 @@ vi.mock("@/features/briefing/components/EditionUnfold", () => ({
 
 import { BriefLetter } from "@/features/briefing/components/BriefLetter";
 
-const LAYOUT = { fold: 0.3, paper: "#fff" };
+const LAYOUT = { fold: 0.3, paper: null };
 const HEADLINE = "Three decisions are waiting on you";
 
 describe("BriefLetter without a usable edition image", () => {
