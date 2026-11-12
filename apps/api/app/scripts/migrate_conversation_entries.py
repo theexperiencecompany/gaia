@@ -159,9 +159,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--since",
         type=datetime.fromisoformat,
-        # pragma: no mutate start — help text only
-        help="Second pass: only conversations whose updatedAt is at or after this ISO datetime.",
-        # pragma: no mutate end
+        help="Second pass: only conversations whose updatedAt is at or after this ISO datetime.",  # pragma: no mutate
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(

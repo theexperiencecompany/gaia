@@ -354,9 +354,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         outbox = ConversationHead.model_validate(raw).outbox if raw else {}
         if not outbox:
             return
-        drained = {
-            f"{OUTBOX_FIELD}.{seq}": "" for seq in outbox
-        }  # pragma: no mutate — $unset ignores the value
+        # pragma: no mutate start — $unset ignores the value
+        drained = {f"{OUTBOX_FIELD}.{seq}": "" for seq in outbox}
+        # pragma: no mutate end
         with store_errors("flush"):  # pragma: no mutate — error label only
             await self._insert_entries(list(outbox.values()))
             unset = await self._raw_collection().update_one(head, {"$unset": drained})
@@ -1089,8 +1089,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         ids = await self._distinct("conversation_id", query)
         if not ids:
             return []
-        await self._delete_many(query, scope=user_id)
-        with store_errors("entry delete"):  # pragma: no mutate — error label only
+        with store_errors("delete"):  # pragma: no mutate — error label only
+            # Conversations are uncached (cache_policy None): there is no cache entry to evict.
+            await self._raw_collection().delete_many(query)
             await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(
                 {"user_id": user_id, "conversation_id": {"$in": ids}}
             )
