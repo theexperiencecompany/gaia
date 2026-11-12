@@ -610,6 +610,8 @@ Other control options, each one class in the gaia layer and one variant function
 
 Field placeholders are zinc-500 at normal weight everywhere (`--field-placeholder`).
 
+Field text is 14px at every width (`--gaia-field-font-size`). A Select trigger renders its value through `GaiaSelectValue` (`components/shared/GaiaSelectValue.tsx`, never bare `Select.Value`): it shows the selected item's `textValue` on one truncated line, as v2 did, so a rich item's description stays in the open list.
+
 ### Overlay Hierarchy
 
 | Use case | Component |

@@ -4,6 +4,7 @@ import { Chip, ListBox, Select } from "@heroui/react";
 import type { HilMode } from "@shared/chat";
 import { useRouter } from "next/navigation";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useHilPreferences } from "@/features/settings/hooks/useHilPreferences";
@@ -64,7 +65,7 @@ export function HilApprovalMode() {
           }}
         >
           <Select.Trigger>
-            <Select.Value />
+            <GaiaSelectValue />
             <Select.Indicator />
           </Select.Trigger>
           <Select.Popover>

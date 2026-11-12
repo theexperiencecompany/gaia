@@ -2,6 +2,7 @@
 
 import { Label, ListBox, Select } from "@heroui/react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import type { SkillTarget } from "../api/types";
 import { SkillTargetIcon } from "./SkillTargetIcon";
 
@@ -34,7 +35,7 @@ export function SkillTargetSelect({
             size={16}
           />
         )}
-        <Select.Value />
+        <GaiaSelectValue />
         <Select.Indicator />
       </Select.Trigger>
       <Select.Popover>

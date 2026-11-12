@@ -1350,6 +1350,7 @@ html {
   --gaia-chip-lg-font-size: 1rem;
   --gaia-chip-lg-padding-x: 0.5rem;
   --gaia-field-height: 2.5rem;
+  --gaia-field-font-size: 0.875rem;
   --gaia-field-background: #27272a;
   --gaia-switch-track-off: #3f3f46;
   --gaia-switch-padding: 0.25rem;
@@ -1470,6 +1471,23 @@ html {
   .search-field__group,
   .combo-box__input-group {
     min-height: var(--gaia-field-height);
+  }
+
+  /* Field text: v2's 14px at every width (v3 runs 16px below sm); a selected
+     value stays on one line and truncates, as v2's did. */
+  .input,
+  .textarea,
+  .input-group__input,
+  .search-field__input,
+  .number-field__input,
+  .select__value {
+    font-size: var(--gaia-field-font-size);
+  }
+  .select__value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* ComboBoxInput's clear button: v2 showed it only on hover or focus. */

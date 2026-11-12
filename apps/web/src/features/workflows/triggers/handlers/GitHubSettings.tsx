@@ -10,6 +10,7 @@
 import { Button, ListBox, Select } from "@heroui/react";
 import { useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
 import {
@@ -158,11 +159,11 @@ export function GitHubSettings({
               })}
             >
               <Select.Trigger className="w-full">
-                <Select.Value>
+                <GaiaSelectValue>
                   {isLoading && currentSelectedKeys.length === 0
                     ? "Loading..."
                     : selectValue}
-                </Select.Value>
+                </GaiaSelectValue>
                 <Select.Indicator />
               </Select.Trigger>
               <Select.Popover>

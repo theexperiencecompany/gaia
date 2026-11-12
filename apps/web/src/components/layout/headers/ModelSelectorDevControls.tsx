@@ -4,6 +4,7 @@ import { ListBox, Popover, Select, Switch } from "@heroui/react";
 import { CpuIcon } from "@icons";
 import Image from "next/image";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { DEV_MODEL_OPTIONS } from "@/features/chat/constants/devModels";
 import { isDevelopment } from "@/lib/environment";
 import { useComposerModelSelection } from "@/stores/composerStore";
@@ -61,7 +62,7 @@ function ModelSelect({
           {current ? (
             <ModelLogo src={current.logo} alt={current.provider} size={16} />
           ) : null}
-          <Select.Value>{current?.name ?? "Model"}</Select.Value>
+          <GaiaSelectValue>{current?.name ?? "Model"}</GaiaSelectValue>
           <Select.Indicator className="text-zinc-500" />
         </Select.Trigger>
         <Select.Popover className="bg-zinc-800">

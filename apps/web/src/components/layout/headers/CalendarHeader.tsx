@@ -10,6 +10,7 @@ import {
 import { useHotkeys } from "react-hotkeys-hook";
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import {
   useCreateEventAction,
   useDaysToShow,
@@ -77,14 +78,14 @@ export default function CalendarHeader() {
           className="w-34"
         >
           <Select.Trigger className="bg-zinc-800 text-xs! cursor-pointer">
-            <Select.Value className="text-zinc-300">
+            <GaiaSelectValue className="text-zinc-300">
               {
                 dayOptions.find(
                   (opt) =>
                     opt.value === (daysToShow ? daysToShow.toString() : "1"),
                 )?.label
               }
-            </Select.Value>
+            </GaiaSelectValue>
             <Select.Indicator />
           </Select.Trigger>
           <Select.Popover>

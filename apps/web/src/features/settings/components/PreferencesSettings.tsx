@@ -4,6 +4,7 @@ import { Button, ListBox, Select } from "@heroui/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { type Key, useCallback, useEffect, useRef, useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { authApi } from "@/features/auth/api/authApi";
 import {
   patchCurrentUser,
@@ -107,7 +108,7 @@ function IdentitySettingsSection({
           isDisabled={isUpdating}
         >
           <Select.Trigger className="bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]">
-            <Select.Value className="text-white text-sm" />
+            <GaiaSelectValue className="text-white text-sm" />
             <Select.Indicator />
           </Select.Trigger>
           <Select.Popover className="bg-zinc-800 z-50">
@@ -152,7 +153,7 @@ function IdentitySettingsSection({
             isDisabled={isUpdating}
           >
             <Select.Trigger className="bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]">
-              <Select.Value className="text-white text-sm" />
+              <GaiaSelectValue className="text-white text-sm" />
               <Select.Indicator />
             </Select.Trigger>
             <Select.Popover className="bg-zinc-800 z-50">
@@ -354,7 +355,7 @@ export default function PreferencesSettings({
             isDisabled={isUpdating}
           >
             <Select.Trigger className="bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]">
-              <Select.Value className="text-white text-sm" />
+              <GaiaSelectValue className="text-white text-sm" />
               <Select.Indicator />
             </Select.Trigger>
             <Select.Popover className="bg-zinc-800 z-50">

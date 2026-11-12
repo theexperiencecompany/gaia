@@ -12,6 +12,7 @@ import { Search01Icon } from "@icons";
 import { useDeferredValue, useState } from "react";
 import { modalVariants } from "@/components/shared/controlVariants";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { COMPOSIO_APP_COUNT } from "@/features/settings/api/composioSetupApi";
 import { ComposioKeyMissing } from "@/features/settings/components/composio/ComposioKeyMissing";
 import { ComposioToolkitDetail } from "@/features/settings/components/composio/ComposioToolkitDetail";
@@ -97,7 +98,7 @@ export function ComposioCatalogModal({
                       }
                     >
                       <Select.Trigger>
-                        <Select.Value />
+                        <GaiaSelectValue />
                         <Select.Indicator />
                       </Select.Trigger>
                       <Select.Popover>

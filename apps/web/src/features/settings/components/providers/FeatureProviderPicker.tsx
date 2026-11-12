@@ -10,6 +10,7 @@ import {
 } from "@heroui/react";
 import { SquareArrowUpRight02Icon } from "@icons";
 import { useMemo, useState } from "react";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { LinkButton } from "@/components/shared/LinkButton";
 import type {
   CredentialProvider,
@@ -97,7 +98,7 @@ export function FeatureProviderPicker({
             >
               <Label>Provider</Label>
               <Select.Trigger className="min-h-8">
-                <Select.Value>
+                <GaiaSelectValue>
                   {picked && (
                     <span className="flex items-center gap-2">
                       <ProviderFavicon
@@ -112,7 +113,7 @@ export function FeatureProviderPicker({
                       )}
                     </span>
                   )}
-                </Select.Value>
+                </GaiaSelectValue>
                 <Select.Indicator />
               </Select.Trigger>
               <Description>{picked?.description}</Description>

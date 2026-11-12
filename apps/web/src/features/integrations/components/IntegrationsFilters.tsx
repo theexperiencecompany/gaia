@@ -4,6 +4,7 @@ import { Chip, InputGroup, ListBox, Select, TextField } from "@heroui/react";
 import { SearchIcon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { INTEGRATION_CATEGORIES } from "@/features/integrations/constants/categories";
 import { cn } from "@/lib/utils";
 
@@ -128,7 +129,7 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
             aria-label="Sort by"
           >
             <Select.Trigger>
-              <Select.Value />
+              <GaiaSelectValue />
               <Select.Indicator />
             </Select.Trigger>
             <Select.Popover>
