@@ -45,7 +45,7 @@ from app.services.conversation.ports import (
 )
 from app.services.conversation.reducer import reduce
 from app.services.conversation.step import advance
-from tests.unit.services.conversation.log_helpers import asked, barge, fired, stop, user
+from tests.unit.services.conversation.log_helpers import EMPTY, asked, barge, fired, stop, user
 from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,
     USER,
@@ -280,7 +280,7 @@ async def _play(
 
 def _removals(entries: Sequence[LoggedEntry]) -> dict[int, LoggedEntry]:
     """Map each waking seq to the entry whose append took it out of unsettled_waking."""
-    state = ConversationState.empty()
+    state = EMPTY
     removed_by: dict[int, LoggedEntry] = {}
     for logged in entries:
         result = reduce(state, logged)
@@ -292,7 +292,7 @@ def _removals(entries: Sequence[LoggedEntry]) -> dict[int, LoggedEntry]:
 
 
 def _woken(entries: Sequence[LoggedEntry]) -> list[LoggedEntry]:
-    state = ConversationState.empty()
+    state = EMPTY
     woken = []
     for logged in entries:
         result = reduce(state, logged)

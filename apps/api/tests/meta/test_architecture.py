@@ -65,13 +65,16 @@ def test_the_embedding_sidecar_imports_without_settings() -> None:
 
 
 def test_the_conversation_core_imports_without_settings() -> None:
-    """The conversation log, its frames, the reducer and the verdict are pure: importing them never loads settings."""
+    """The log, frames, reducer, verdict and the step on its ports never load settings, a database or LangGraph."""
     probe = (
         "import sys\n"
         "import app.models.conversation_log_models, app.models.conversation_frame_models\n"
         "import app.services.conversation.reducer, app.services.conversation.verdict\n"
-        "loaded = 'app.config.settings' in sys.modules\n"
-        "sys.exit('app.config.settings was imported' if loaded else 0)\n"
+        "import app.services.conversation.ports, app.services.conversation.log\n"
+        "import app.services.conversation.step\n"
+        "banned = ('app.config.settings', 'langgraph', 'pymongo', 'motor', 'redis')\n"
+        "loaded = [name for name in banned if name in sys.modules]\n"
+        "sys.exit(f'imported {loaded}' if loaded else 0)\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", probe],
