@@ -1553,6 +1553,54 @@ def test_a_running_jobs_failing_verdict_is_printed_in_full_and_reds_the_exit(
     assert ":0" not in out
 
 
+def test_a_rerun_job_ignores_the_failing_verdict_of_its_previous_attempt(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: after `gh run rerun --failed` the watch exited red on attempt 1's verdict."""
+    rerun = dict(RUNNING_LINT, started_at="2026-11-12T16:31:09Z")
+    wire(
+        FakeGh(
+            checks=[rerun],
+            artifacts=[
+                {
+                    "id": 70,
+                    "name": "verdict-lint-python",
+                    "expired": False,
+                    "created_at": "2026-11-12T16:22:00Z",
+                }
+            ],
+            zip_blobs={70: verdict_zip(EARLY_VERDICT)},
+        )
+    )
+    assert run_cli(monkeypatch, []) == 0
+    out = capsys.readouterr().out
+    assert "[still running" not in out
+    assert "verdict with no matching check run" not in out
+    assert "PEND  lint-python" in out
+
+
+def test_a_verdict_uploaded_by_the_current_attempt_still_reds_a_running_job(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rerun = dict(RUNNING_LINT, started_at="2026-11-12T16:31:09Z")
+    wire(
+        FakeGh(
+            checks=[rerun],
+            artifacts=[
+                {
+                    "id": 70,
+                    "name": "verdict-lint-python",
+                    "expired": False,
+                    "created_at": "2026-11-12T16:33:00Z",
+                }
+            ],
+            zip_blobs={70: verdict_zip(EARLY_VERDICT)},
+        )
+    )
+    assert run_cli(monkeypatch, []) == 1
+    assert "FAIL  lint-python  [still running" in capsys.readouterr().out
+
+
 def test_a_running_job_with_no_failing_verdict_is_only_pending(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

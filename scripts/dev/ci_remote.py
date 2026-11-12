@@ -417,8 +417,29 @@ def fetch_run_verdicts(repo: Repo, run_id: int) -> list[Verdict]:
                 parsed: Verdict = json.loads(archive.read(member))
                 parsed["artifact"] = artifact["name"]
                 parsed["run_id"] = run_id
+                parsed["created_at"] = artifact.get("created_at")
                 verdicts.append(parsed)
     return verdicts
+
+
+def is_current_attempt(verdict: Verdict, checks: list[Check]) -> bool:
+    """Return False for a verdict uploaded before the job that owns it last (re)started.
+
+    `gh run rerun --failed` keeps the run id and its artifacts, so the previous
+    attempt's failing verdict sits beside a job that is running again. Artifacts
+    carry no `run_attempt`; the owning job's `started_at` does, and an upload
+    older than it belongs to an earlier attempt. A verdict no check owns, or
+    one with a missing timestamp, cannot be proven stale and is kept.
+    """
+    owners = [
+        c
+        for c in checks
+        if c["run_id"] == verdict.get("run_id") and verdict_matches(verdict, c["name"])
+    ]
+    uploaded = verdict.get("created_at")
+    if not owners or not uploaded:
+        return True
+    return any(c["started_at"] is None or c["started_at"] <= uploaded for c in owners)
 
 
 def cached_artifact(repo: Repo, artifact_id: int) -> bytes:
@@ -739,7 +760,7 @@ def diagnose(
 
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL_FETCHES) as pool:
         batches = list(pool.map(lambda r: fetch_run_verdicts(repo, r), run_ids))
-    verdicts = [v for batch in batches for v in batch]
+    verdicts = [v for batch in batches for v in batch if is_current_attempt(v, checks)]
 
     # Only a mutation job can own a shard record, so a PR whose red lanes are
     # all other jobs never pays for the listing.
