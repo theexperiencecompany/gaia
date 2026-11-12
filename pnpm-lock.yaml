@@ -857,9 +857,6 @@ importers:
       cmdk:
         specifier: ^1.1.1
         version: 1.1.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
-      cn:
-        specifier: ^0.2.4
-        version: 0.2.4
       cronstrue:
         specifier: ^3.24.0
         version: 3.24.0
@@ -9044,11 +9041,6 @@ packages:
     peerDependencies:
       react: 19.2.3
       react-dom: 19.2.3
-
-  cn@0.2.4:
-    resolution: {integrity: sha512-SzQvoh5FwizWtQg9+JueKdjWhlfCZMdu5DqNHm9q1wUlRVmKb9WXlepR9bTTbPwzEOyX1ujJ6lcCppmn3bNUCg==}
-    engines: {node: '>=20'}
-    hasBin: true
 
   code-excerpt@4.0.0:
     resolution: {integrity: sha512-xxodCmBen3iy2i0WtAK8FlFNrRzjUqjRsMfho58xT/wvZU1YTM3fCnRjcy1gJPMepaRlgm/0e6w8SpWHpn3/cA==}
@@ -24803,8 +24795,6 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
       - '@types/react-dom'
-
-  cn@0.2.4: {}
 
   code-excerpt@4.0.0:
     dependencies:

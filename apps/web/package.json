@@ -114,7 +114,6 @@
     "chrono-node": "^2.10.1",
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",
-    "cn": "^0.2.4",
     "cronstrue": "^3.24.0",
     "d3": "^7.9.0",
     "date-fns": "^4.4.0",

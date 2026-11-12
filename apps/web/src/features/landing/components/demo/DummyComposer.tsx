@@ -6,7 +6,6 @@ import {
   PlusSignIcon,
   ToolsIcon,
 } from "@icons";
-import { twMerge } from "cn";
 import type React from "react";
 import { useRef, useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -18,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { cn } from "@/lib/utils";
 import { dummyIntegrations } from "./constants";
 import DummySlashCommandDropdown from "./DummySlashCommandDropdown";
 
@@ -74,7 +74,7 @@ const DummyComposer: React.FC<{
 
   return (
     <div
-      className={twMerge(
+      className={cn(
         "mx-auto flex w-full max-w-7xl flex-col items-center",
         className,
       )}
