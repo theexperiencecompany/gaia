@@ -75,12 +75,14 @@ never enters your context, which is the point: you keep its conclusion, not the 
 
 WHEN TO SPAWN
 - Independent work that can run side by side: issue several spawn_subagent calls in one turn
-  and merge what they return.
+  and merge what they return. A request with several independent parts (different
+  integrations, people, accounts, projects or questions) is this case: one spawn per part.
 - A sweep: paging through many results or walking many items to report a summary (one person's
   activity across many repositories, months of mail, every open issue in several projects).
   Split it into independent slices (by source, by time range, by query), one spawn per slice,
   all issued in the same turn. Spawns issued one turn at a time run one after another.
-  Done in your own context, every page stays in your history and is re-read on every later call.
+  Done in your own context, every page stays in your history and is re-read on every later call,
+  in this turn and every later turn of the conversation.
 - Work whose raw output would bury you: mining a large saved file ("[Full output ... stored
   at: ...]"), extracting from a long document.
 - The user asks for a subagent or for the work to be split up. For a sweep that still means one
