@@ -1,4 +1,3 @@
-import { API_BASE } from "@/lib/api/baseUrl";
 import { api } from "@/lib/api/typed";
 import type { ShortLinkTargetType } from "@/types/features/shortLinkTypes";
 
@@ -44,22 +43,4 @@ export async function stopSharingShortLink(
     errorMessage: "Couldn't stop sharing",
   });
   return revoked;
-}
-
-/** Tell the API this browser opened a link; it decides whether that counts. Never surfaces an error. */
-export async function recordShortLinkOpen(slug: string): Promise<void> {
-  await api.post("/api/v1/l/{slug}/opened", {
-    path: { slug },
-    silent: true,
-  });
-}
-
-/** Browser URL of the raw file behind a session-artifact slug. */
-export function shortLinkFileUrl(slug: string): string {
-  return `${API_BASE}/l/${encodeURIComponent(slug)}/file`;
-}
-
-/** Browser URL of the PDF export of an artifact slug. */
-export function shortLinkPdfDownloadUrl(slug: string): string {
-  return `${API_BASE}/l/${encodeURIComponent(slug)}/pdf`;
 }

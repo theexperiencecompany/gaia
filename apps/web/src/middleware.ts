@@ -87,7 +87,10 @@ export default async function middleware(request: NextRequest) {
       `/l${request.nextUrl.pathname}${request.nextUrl.search}`,
       SHORTLINK_RESOLVE_ORIGIN,
     );
-    return NextResponse.redirect(target, 307);
+    const redirect = NextResponse.redirect(target, 307);
+    // The page behind it can be revoked at any moment; no cache may keep pointing at it.
+    redirect.headers.set("Cache-Control", "no-store");
+    return redirect;
   }
 
   if (INTL_BYPASS_PATH.test(request.nextUrl.pathname)) {
