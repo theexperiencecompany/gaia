@@ -2,6 +2,7 @@ import {
   SUBAGENT_GROUP_TOOL_NAME,
   TOOL_CALLS_DATA_TOOL_NAME,
 } from "@gaia/shared/chat";
+import { SEND_NOT_DELIVERED, STOPPED_NOTE } from "@gaia/shared/conversation";
 import {
   parseOpenUISegments,
   parseThinkingFromText,
@@ -20,7 +21,7 @@ import type { Message } from "../../types";
 import { OpenUIRenderer } from "../openui/OpenUIRenderer";
 import { ActivityBlock } from "../streaming/activity-block";
 import { buildTimeline } from "../streaming/activity-format";
-import { FailedResponse } from "./failed-response";
+import { FailedResponse, MessageNote } from "./failed-response";
 import { FollowUpActions } from "./follow-up-actions";
 import { ImageBubble } from "./image-bubble";
 import { LinkPreviewCard } from "./link-preview-card";
@@ -53,13 +54,11 @@ interface ChatMessageProps {
   onFollowUpAction?: (action: string) => void;
   onReply?: (message: Message) => void;
   onLongPress?: (config: MessageActionConfig) => void;
-  /** Re-run this failed turn (wired to useChat.retryLastMessage). */
+  /** Resend a send that failed, or ask again for a failed reply (useChat.retryMessage). */
   onRetry?: () => void;
   isLoading?: boolean;
   isLastMessage?: boolean;
   loadingMessage?: string;
-  progressToolName?: string | null;
-  progressMessage?: string | null;
 }
 
 type BubbleGrouping = "none" | "first" | "last" | "middle";
@@ -161,7 +160,11 @@ function UserChatMessage({
   message,
   handleLongPress,
   messageParts,
-}: ChatMessageLayoutProps & { messageParts: MessagePart[] }) {
+  onRetry,
+}: ChatMessageLayoutProps & {
+  messageParts: MessagePart[];
+  onRetry?: () => void;
+}) {
   const { spacing } = useResponsive();
 
   return (
@@ -198,7 +201,15 @@ function UserChatMessage({
               total={messageParts.length}
             />
           ))}
-          <MessageReactions reactions={message.reactions} align="end" />
+          <MessageReactions reaction={message.reaction} align="end" />
+          {message.sendFailed ? (
+            <MessageNote
+              text={SEND_NOT_DELIVERED}
+              alert
+              align="end"
+              onRetry={onRetry}
+            />
+          ) : null}
         </View>
       </PressableFeedback>
     </Animated.View>
@@ -440,7 +451,6 @@ function AIChatMessage({
   isLoading,
   isLastMessage,
   loadingMessage,
-  progressMessage,
   onFollowUpAction,
   onRetry,
 }: ChatMessageLayoutProps & {
@@ -448,9 +458,8 @@ function AIChatMessage({
   messageParts: MessagePart[];
   isLoading: boolean;
   isLastMessage: boolean;
-  /** Contextual loading label from the screen ("Thinking about X..."). */
+  /** The loading row's words: a playful thinking line, the status, or the newest tool progress. */
   loadingMessage: string;
-  progressMessage: string | null;
   onFollowUpAction?: (action: string) => void;
   /** Re-run the failed turn (only meaningful when message.error is set). */
   onRetry?: () => void;
@@ -490,8 +499,7 @@ function AIChatMessage({
             hasStreamedText={hasStreamedText}
             failed={failed}
             thinkingLabel={
-              progressMessage ??
-              (loadingMessage !== "Thinking..." ? loadingMessage : null)
+              loadingMessage !== "Thinking..." ? loadingMessage : null
             }
           />
         )}
@@ -519,11 +527,9 @@ function AIChatMessage({
           isLastMessage={isLastMessage}
         />
 
-        <MessageReactions
-          reactions={message.reactions}
-          align="start"
-          style={{ paddingHorizontal: spacing.md, marginTop: GAP_SM }}
-        />
+        {message.stopped ? (
+          <MessageNote text={STOPPED_NOTE} alert={false} />
+        ) : null}
 
         <AILinkPreview text={message.text ?? ""} isLoading={isLoading} />
 
@@ -548,7 +554,6 @@ export function ChatMessage({
   isLoading = false,
   isLastMessage = false,
   loadingMessage = "Thinking...",
-  progressMessage = null,
 }: ChatMessageProps) {
   const { parsedContent, messageParts } = useMessageParts(message.text);
   const handleLongPress = useMessageLongPress(message, onLongPress, onReply);
@@ -559,6 +564,7 @@ export function ChatMessage({
         message={message}
         handleLongPress={handleLongPress}
         messageParts={messageParts}
+        onRetry={onRetry}
       />
     );
   }
@@ -572,7 +578,6 @@ export function ChatMessage({
       isLoading={isLoading}
       isLastMessage={isLastMessage}
       loadingMessage={loadingMessage}
-      progressMessage={progressMessage}
       onFollowUpAction={onFollowUpAction}
       onRetry={onRetry}
     />

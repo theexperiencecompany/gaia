@@ -11,6 +11,9 @@ export const REPLY_FAILURE_MESSAGE: Record<FailureReason, string> = {
   server_restart: "GAIA restarted while answering. It will answer again.",
 };
 
+/** The label under a send that never reached the server, next to its retry. */
+export const SEND_NOT_DELIVERED = "Not delivered";
+
 /** The quiet line under a reply or task the user stopped. */
 export const STOPPED_NOTE = "Stopped";
 

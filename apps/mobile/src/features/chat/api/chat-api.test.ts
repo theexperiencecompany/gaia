@@ -1,6 +1,11 @@
 import { ApiError } from "@gaia/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchConversation, postApprovalDecision } from "./chat-api";
+import {
+  fetchConversation,
+  postApprovalDecision,
+  sendConversationMessage,
+  stopConversation,
+} from "./chat-api";
 
 const { getMock, postMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
@@ -97,5 +102,65 @@ describe("fetchConversation", () => {
     const conversation = await fetchConversation("todo-chat");
 
     expect(conversation?.messages[0]?.todoRunWake).toEqual(wake);
+  });
+});
+
+describe("the conversation routes", () => {
+  beforeEach(() => {
+    postMock.mockReset();
+  });
+
+  it("sends a message to the conversation's messages route with the client-minted id", async () => {
+    postMock.mockResolvedValue({
+      conversation_id: "c/1",
+      message_id: "m1",
+      seq: 3,
+    });
+
+    await sendConversationMessage("c/1", { message_id: "m1", text: "hi" });
+
+    expect(postMock).toHaveBeenCalledWith("/conversations/c%2F1/messages", {
+      message_id: "m1",
+      text: "hi",
+    });
+  });
+
+  it("stops through the conversation's stop route", async () => {
+    postMock.mockResolvedValue({});
+
+    await stopConversation("c1");
+
+    expect(postMock).toHaveBeenCalledWith("/conversations/c1/stop");
+  });
+
+  it("keeps the reaction the history carries on its message", async () => {
+    getMock.mockResolvedValue({
+      _id: "c",
+      user_id: "u",
+      conversation_id: "c1",
+      description: "",
+      is_system_generated: false,
+      system_purpose: null,
+      is_unread: false,
+      createdAt: "2026-10-31T14:05:00Z",
+      messages: [
+        {
+          type: "user",
+          response: "thanks",
+          date: "2026-10-31T14:05:00Z",
+          message_id: "m-1",
+          fileIds: [],
+          fileData: [],
+          reaction: { emoji: "🙌", by: "jev" },
+        },
+      ],
+    });
+
+    const conversation = await fetchConversation("c1");
+
+    expect(conversation?.messages[0]?.reaction).toEqual({
+      emoji: "🙌",
+      by: "jev",
+    });
   });
 });

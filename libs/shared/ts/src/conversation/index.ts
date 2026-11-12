@@ -2,6 +2,7 @@ export {
   DISPLAY_STATUS_TEXT,
   REPLY_CUT_SHORT,
   REPLY_FAILURE_MESSAGE,
+  SEND_NOT_DELIVERED,
   STOPPED_NOTE,
 } from "./copy";
 export { ENTRY_KIND, FAILURE_REASON } from "./entries";
