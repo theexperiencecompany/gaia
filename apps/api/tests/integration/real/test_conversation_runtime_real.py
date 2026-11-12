@@ -20,7 +20,13 @@ import pytest
 from redis.asyncio import Redis
 
 from app.agents.context.slots import TIME_CONTEXT_MARKER, PromptSlot, mark, slot_of
-from app.agents.core.background.executor_queue import build_lock_value, try_acquire_lock
+from app.agents.core.background import executor_runner
+from app.agents.core.background.executor_queue import (
+    PreparedQueuedTask,
+    build_lock_value,
+    try_acquire_lock,
+)
+from app.agents.core.background.executor_runner import deliver_to_executor
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.graph_manager import GraphManager
 from app.agents.tools.run_record import append_call
@@ -817,6 +823,83 @@ async def test_a_comms_run_on_the_step_emits_run_started_once_attributed_to_the_
         ("agent:run_started", by_user_on_web),
         ("agent:run_completed", by_user_on_web),
     ]
+
+
+# ---- work started outside a step ----
+
+
+@dataclass
+class _Spawned:
+    """The carry runs deliver_to_executor started, finished as their executor would when told to."""
+
+    rig: Rig
+    finish_with: str | None = None
+    task_ids: list[str] = field(default_factory=list)
+    finishing: list[asyncio.Task[None]] = field(default_factory=list)
+
+    def spawn(self, prepared: PreparedQueuedTask, conversation_id: str) -> None:
+        task_id = prepared.run.task_id
+        assert task_id is not None and prepared.run.work_logged
+        self.task_ids.append(task_id)
+        if self.finish_with is not None:
+            finished = record_work_finished(
+                conversation_id, self.rig.user_id, task_id, WorkOutcome.DONE, self.finish_with
+            )
+            self.finishing.append(asyncio.ensure_future(finished))
+
+
+async def _approve_after_the_turn(rig: Rig, spawned: _Spawned) -> int:
+    """Decide a ledger approval once its turn is over, as decide_ledger does; return the decision's seq."""
+    await record_approval_decided(rig.conversation_id, rig.user_id, "a1", "approve")
+    with patch.object(executor_runner, "_spawn_detached_run", spawned.spawn):
+        await deliver_to_executor(
+            rig.conversation_id,
+            AuthenticatedUser(user_id=rig.user_id),
+            "APPROVAL_READY a1: the user approved Send the invoice",
+        )
+    decided = await rig.entries()
+    return next(e.seq for e in decided if isinstance(e.entry, ApprovalDecided))
+
+
+@pytest.mark.service
+async def test_an_approval_decided_after_its_turn_ended_runs_its_work_under_the_step(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("I need your approval to send it", "Sent the invoice to Acme")
+    rig = await rig_for(model)
+    await rig.send("m1", "send the invoice")
+    await rig.settle()
+    spawned = _Spawned(rig, finish_with="invoice sent")
+    decided_seq = await _approve_after_the_turn(rig, spawned)
+    await asyncio.gather(*spawned.finishing)
+    await rig.settle()
+    [task_id] = spawned.task_ids
+    [started] = [w for w in await rig.of(WorkStarted) if w.task_id == task_id]
+    assert started.cause_through == decided_seq
+    replies = await rig.of(Reply)
+    assert [(r.reply_id, r.text) for r in replies][-1] == (task_id, "Sent the invoice to Acme")
+    assert [r.reply_id for r in replies].count(task_id) == 1
+    assert any("invoice sent" in text for text in humans(model.prompts[1]))
+
+
+@pytest.mark.service
+async def test_a_stop_cancels_the_work_an_approval_started_after_its_turn(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("I need your approval to send it")
+    rig = await rig_for(model)
+    await rig.send("m1", "send the invoice")
+    await rig.settle()
+    spawned = _Spawned(rig)
+    await _approve_after_the_turn(rig, spawned)
+    working = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+    await record_user_stop(rig.conversation_id, rig.user_id, "s1")
+    await rig.settle()
+    stopped = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+    assert working.display is DisplayState.WORKING
+    assert rig.effects.cancelled == [tuple(spawned.task_ids)]
+    assert stopped.work == ()
+    assert len(await rig.of(Reply)) == 1
 
 
 # ---- workflow fires on the step ----

@@ -141,6 +141,13 @@ class _Boundaries:
         )
 
 
+@pytest.fixture(autouse=True)
+def _carried_work_is_logged() -> Iterator[None]:
+    """Accept every carry run's WorkStarted on the conversation log."""
+    with patch.object(er, "record_work_carried", AsyncMock(return_value=True)):
+        yield
+
+
 @pytest.fixture
 def boundaries():
     with ExitStack() as stack:
@@ -424,7 +431,7 @@ async def test_a_step_dispatched_live_run_logs_its_cards_on_work_finished(bounda
     )
     run = replace(
         _run(RunKind.LIVE),
-        conversation_step={"epoch": 1, "batch_start": 1, "cause_through": 1, "answers": ["m1"]},
+        work_logged=True,
     )
     with patch.object(er, "record_work_finished", new_callable=AsyncMock) as finished:
         await er._finalize_executor_run(run, TASK, "the digest", "final")
@@ -1374,7 +1381,7 @@ async def test_a_step_run_paused_on_an_approval_logs_the_cards_summary_and_expir
     record = MagicMock(summary="Send the invoice to Sam", expires_at=expires)
     run = replace(
         _run(RunKind.LIVE),
-        conversation_step={"epoch": 1, "batch_start": 1, "cause_through": 1, "answers": ["m1"]},
+        work_logged=True,
     )
     with (
         patch.object(er, "get_approval", AsyncMock(return_value=record)),

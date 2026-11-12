@@ -2159,6 +2159,7 @@ class TestTheTicketReachesARunWhateverHeldTheConversation:
             patch.object(eq, "StreamManager", AsyncMock()),
             patch.object(eq, "websocket_manager", AsyncMock()),
             patch.object(er, "_spawn_detached_run") as spawn,
+            patch.object(er, "record_work_carried", AsyncMock(return_value=True)),
         ):
             await _deliver_ticket(_doc())
         return spawn

@@ -36,6 +36,7 @@ from app.constants.hil import (
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.approval_ledger import approval_ledger_repository
+from app.models.agent_config import work_is_logged
 from app.models.agent_models import AgentConfigurable, SubagentResumeItem
 from app.models.execute_models import DispatchError
 from app.models.hil_models import (
@@ -275,7 +276,7 @@ async def _decide_ledger(
         owner = configurable.get("thread_id") or "unknown"
         task_id = (
             await running_step_task(context.conversation_id, context.user_id)
-            if configurable.get("conversation_step") is not None
+            if work_is_logged(configurable)
             else None
         )
         # blocked_by arrives with ordering chains (Phase 3): the chain joins the

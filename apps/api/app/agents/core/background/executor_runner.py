@@ -92,6 +92,7 @@ from app.services.browser.job_stop import stop_browser_job
 from app.services.conversation.work_deltas import WorkDeltas
 from app.services.conversation.work_log import (
     record_approval_requested,
+    record_work_carried,
     record_work_finished,
 )
 from app.services.hil.approvals_store import get_approval, set_resume_item
@@ -497,7 +498,7 @@ async def _nothing_to_drain() -> None:
 def _stream_writer(run: ExecutorRun) -> tuple[StreamWriter, Callable[[], Awaitable[None]]]:
     """Return the run's stream writer and what drains it; a step-dispatched run also publishes its cards."""
     writer = make_redis_stream_writer(run.stream_id)
-    if run.conversation_step is None or not run.task_id:
+    if not run.work_logged or not run.task_id:
         return writer, _nothing_to_drain
     deltas = WorkDeltas(run.conversation_id, run.task_id)
     return deltas.wrap(writer), deltas.drain
@@ -644,7 +645,7 @@ async def _finalize_executor_run(
 
 async def _log_approvals_requested(run: ExecutorRun, approval_ids: tuple[str, ...]) -> None:
     """Log each approval a step-dispatched run paused on, so the conversation shows it awaiting the user."""
-    if run.conversation_step is None or not run.task_id:
+    if not run.work_logged or not run.task_id:
         return
     for approval_id in approval_ids:
         record = await get_approval(approval_id)
@@ -749,7 +750,7 @@ async def _deliver_unless_stepped(
     run: ExecutorRun, task: str, outcome: TerminalOutcome
 ) -> TerminalOutcome | None:
     """Deliver the result the legacy way; a step-dispatched run returns it for the step to narrate instead."""
-    if run.conversation_step is None:
+    if not run.work_logged:
         await _deliver_terminal_outcome(run, task, outcome)
         return None
     return outcome
@@ -921,16 +922,16 @@ async def _prepare_executor_run(
     conversation_id: str,
     user: AuthenticatedUser,
     task: str,
+    task_id: str,
     *,
     workflow_execution_id: str | None = None,
 ) -> PreparedQueuedTask | None:
-    """Claim the conversation and materialize a detached run for the task.
+    """Claim the conversation and materialize a detached run for the task, its work on the log.
 
     Built from the user alone: a caller's configurable belongs to the run that
     held it (its thread, subagent id, turn hints), never to the run started here.
     None means another run holds the conversation (or Redis is down).
     """
-    task_id = str(uuid4())
     # Equivalent under mutation: prepare_run_from_item claims the conversation it is
     # handed, never this item's copy, and the item is never stored.
     identity = RunIdentity(  # pragma: no mutate
@@ -949,6 +950,7 @@ async def _prepare_executor_run(
                 "user_timezone": user.timezone,
                 "thread_id": conversation_id,
                 "execution_mode": "interactive",
+                "work_on_log": True,
             },
             identity=identity,
             workflow_execution_id=workflow_execution_id,
@@ -964,11 +966,19 @@ async def _start_executor_run(
     *,
     workflow_execution_id: str | None = None,
 ) -> bool:
-    """Materialize and spawn a detached run for the task. Returns whether it started."""
+    """Materialize, log and spawn a detached run for the task. Returns whether it started.
+
+    Logged once the conversation is claimed, so the step narrates its end and a Stop cancels it.
+    """
+    task_id = str(uuid4())
     prepared = await _prepare_executor_run(
-        conversation_id, user, task, workflow_execution_id=workflow_execution_id
+        conversation_id, user, task, task_id, workflow_execution_id=workflow_execution_id
     )
     if prepared is None:
+        return False
+    if not await record_work_carried(conversation_id, user.user_id, task_id):
+        await release_lock_if_owned(conversation_id, prepared.run.stream_id, task_id)
+        await close_detached_stream(prepared.run.stream_id, cancelled=True)
         return False
     # Equivalent under mutation: the spawn reads conversation_id only for its log.info.
     _spawn_detached_run(prepared, conversation_id)  # pragma: no mutate

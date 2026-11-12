@@ -16,7 +16,7 @@ from enum import StrEnum
 from typing import Any
 
 from app.constants.log_tags import LogTag
-from app.models.agent_config import StepTurnRef
+from app.models.agent_config import work_is_logged
 from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
@@ -166,9 +166,9 @@ class ExecutorRun:
     queued: bool = False
     #: Dispatch time, carried from ``RunIdentity`` — see its comment.
     dispatched_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    #: The conversation step attempt that dispatched this run; its end is logged as
-    #: WorkFinished for the step to narrate. None on the legacy stream path.
-    conversation_step: StepTurnRef | None = None
+    #: The run's work is on its conversation's log (see work_is_logged): its end is
+    #: logged as WorkFinished for the step to narrate. False on the legacy stream path.
+    work_logged: bool = False
 
     @classmethod
     def from_configurable(
@@ -203,7 +203,7 @@ class ExecutorRun:
             t_dispatch_perf=identity.t_dispatch_perf,
             queued=identity.queued,
             dispatched_at=identity.dispatched_at,
-            conversation_step=configurable.get("conversation_step"),
+            work_logged=work_is_logged(configurable),
         )
 
     @property
@@ -265,9 +265,7 @@ class ExecutorRun:
         (detached, a workflow's, a tracked todo's, one the conversation step
         dispatched, whose cards ride its WorkFinished) self-persists.
         """
-        return (
-            self.owns_stream or self.workflow_id is not None or self.conversation_step is not None
-        )
+        return self.owns_stream or self.workflow_id is not None or self.work_logged
 
 
 # ── Session registry ─────────────────────────────────────────────────

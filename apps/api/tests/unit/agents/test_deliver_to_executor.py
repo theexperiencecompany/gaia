@@ -46,6 +46,13 @@ CONVERSATION = "conv-1"
 TASK = "summarize the thread"
 
 
+@pytest.fixture(autouse=True)
+def _carried_work_is_logged() -> Iterator[AsyncMock]:
+    """Accept every carry run's WorkStarted on the conversation log; the refusal has its own test."""
+    with patch.object(er, "record_work_carried", AsyncMock(return_value=True)) as logged:
+        yield logged
+
+
 def _seams(*, busy: list[bool], started: bool):
     """Patch deliver_to_executor's seams: the free-or-freed lock check, run start, inbox.
 
@@ -323,3 +330,23 @@ class TestCarryingPendingWork:
         (error,) = event["errors"]
         assert error["msg"] == f"{LogTag.AGENT} Could not carry pending work into a new run"
         assert (error["conversation_id"], error["error_type"]) == (CONVERSATION, "ConnectionError")
+
+
+class TestARunTheLogRefuses:
+    async def test_a_stopped_conversation_starts_no_carry_run_and_frees_what_it_claimed(
+        self, fake_redis, _carried_work_is_logged: AsyncMock
+    ) -> None:
+        _carried_work_is_logged.return_value = False
+        with (
+            patch.object(eq, "StreamManager", AsyncMock()),
+            patch.object(eq, "websocket_manager", AsyncMock()),
+            patch.object(er, "close_detached_stream", new_callable=AsyncMock) as closed,
+            patch.object(er, "_spawn_detached_run") as spawn,
+        ):
+            started = await er._start_executor_run(
+                CONVERSATION, AuthenticatedUser(user_id="u1"), TASK
+            )
+        assert started is False
+        spawn.assert_not_called()
+        closed.assert_awaited_once()
+        assert await get_lock_holder(CONVERSATION) is None

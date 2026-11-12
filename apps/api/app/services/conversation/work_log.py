@@ -120,15 +120,32 @@ async def record_approval_requested(
 async def record_approval_decided(
     conversation_id: str, user_id: str, approval_id: str, decision: ApprovalResolution
 ) -> None:
-    """Append ApprovalDecided when the conversation's live work is waiting on approval_id; else nothing."""
-    ports = runtime_ports()
-    state = await ports.log.state(conversation_id, user_id)
-    if not any(approval_id in work.pending_approvals for work in state.work):
-        return
+    """Append ApprovalDecided: it releases live work waiting on it, and causes the work a decision starts later."""
     entry = ApprovalDecided(
         id=f"approval:{approval_id}:decided", approval_id=approval_id, decision=decision
     )
-    await accept(ports, conversation_id, user_id, entry)
+    await accept(runtime_ports(), conversation_id, user_id, entry)
+
+
+async def record_work_carried(conversation_id: str, user_id: str, task_id: str) -> bool:
+    """Append WorkStarted for work started outside a step, caused by everything logged so far.
+
+    False when a Stop since refuses it, so nothing dispatches; the step narrates its WorkFinished.
+    """
+    ports = runtime_ports()
+    state = await ports.log.state(conversation_id, user_id)
+    entry = WorkStarted(id=f"work:{task_id}", task_id=task_id, cause_through=state.head)
+    try:
+        await accept(ports, conversation_id, user_id, entry)
+    except EntryRejected as refused:
+        log.warning(
+            "carried work not started: the conversation log refused its WorkStarted",
+            conversation_id=conversation_id,
+            task_id=task_id,
+            reason=refused.reason.value,
+        )
+        return False
+    return True
 
 
 async def record_gaia_stop(
