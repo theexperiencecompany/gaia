@@ -17,6 +17,7 @@ vi.mock("@/services/api/notifications", () => ({
     updateBriefingSchedule: (schedule: unknown) =>
       updateBriefingSchedule(schedule),
   },
+  readBriefsOffBlock: () => null,
 }));
 
 vi.mock("@/lib/toast", () => ({

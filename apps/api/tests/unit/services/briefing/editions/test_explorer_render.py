@@ -15,6 +15,8 @@ from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame
 from app.services.briefing.editions.artworks import ARTWORKS
 from app.services.briefing.editions.explorer_render import (
+    _TRANSPARENT_DESK_CSS,
+    EXPLORER_CANVAS_PX,
     _asset_data_uris,
     _font_faces_css,
     _module_sources,
@@ -200,6 +202,14 @@ class TestTransparentDesk:
 
         assert ("#root > article { background: none; }" in html) is transparent
         assert edition_frame(family).transparent_desk is transparent
+
+    @pytest.mark.parametrize("family", ["postal", "swiss"])
+    def test_nothing_but_the_family_rules_follows_the_body_width(self, family: str) -> None:
+        html = EXPLORER_RENDERER[family](_payload(), edition_no=12, generated_local="")
+
+        style = html.split("<style>")[1].split("</style>")[0]
+        after_body_width = style.split(f"body {{ width: {EXPLORER_CANVAS_PX}px; }}")[1]
+        assert after_body_width.strip() in {"", _TRANSPARENT_DESK_CSS}
 
 
 @pytest.mark.unit
