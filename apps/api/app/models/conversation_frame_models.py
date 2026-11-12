@@ -30,6 +30,7 @@ class FrameKind(StrEnum):
     WORK_DELTA = "work_delta"
     RETRACT = "retract"
     STATE = "state"
+    CONVERSATION_UPDATED = "conversation_updated"
 
 
 class StreamPayloadType(StrEnum):
@@ -213,7 +214,22 @@ class StateFrame(BaseModel):
     work: tuple[LiveTask, ...]
 
 
+class ConversationUpdatedFrame(BaseModel):
+    """The conversation's own metadata changed: its title, once generated from the first message."""
+
+    model_config = _FROZEN
+
+    kind: Literal[FrameKind.CONVERSATION_UPDATED] = FrameKind.CONVERSATION_UPDATED
+    description: str
+
+
 OutputFrame = Annotated[
-    EntryFrame | EntryUpdatedFrame | ReplyDeltaFrame | WorkDeltaFrame | RetractFrame | StateFrame,
+    EntryFrame
+    | EntryUpdatedFrame
+    | ReplyDeltaFrame
+    | WorkDeltaFrame
+    | RetractFrame
+    | StateFrame
+    | ConversationUpdatedFrame,
     Field(discriminator="kind"),
 ]

@@ -20,6 +20,7 @@ from app.models.conversation_log_models import (
     WorkOutcome,
 )
 from app.services.conversation.comms_input import (
+    AS_TYPED,
     absorbed_messages,
     attempt_messages,
     entry_messages,
@@ -96,7 +97,10 @@ def test_a_settled_answer_and_an_open_reply_show_the_model_nothing() -> None:
 
 def test_context_and_batch_render_in_seq_order() -> None:
     messages = attempt_messages(
-        batch(logged(3, user("u3"))), [logged(1, user("u1")), logged(2, stop("s2", 1))], []
+        batch(logged(3, user("u3"))),
+        [logged(1, user("u1")), logged(2, stop("s2", 1))],
+        [],
+        AS_TYPED,
     )
     assert ids(messages) == ["log:u1", "log:s2", "log:u3"]
 
@@ -109,7 +113,7 @@ def test_a_stop_the_thread_already_records_after_its_inputs_is_not_said_again() 
         ),
     ]
     context = [logged(1, user("u1")), logged(2, stop("s2", 1))]
-    assert ids(attempt_messages(batch(logged(3, user("u3"))), context, thread)) == [
+    assert ids(attempt_messages(batch(logged(3, user("u3"))), context, thread, AS_TYPED)) == [
         "log:u1",
         "log:u3",
     ]
@@ -123,12 +127,21 @@ def test_a_stop_whose_inputs_never_reached_the_thread_is_said() -> None:
         ),
     ]
     context = [logged(1, user("u1")), logged(2, stop("s2", 1))]
-    assert "log:s2" in ids(attempt_messages(batch(logged(3, user("u3"))), context, thread))
+    assert "log:s2" in ids(
+        attempt_messages(batch(logged(3, user("u3"))), context, thread, AS_TYPED)
+    )
 
 
 def test_absorbing_stops_at_the_first_stop() -> None:
     messages, stopped = absorbed_messages(
-        [logged(2, user("u2")), logged(3, stop("s3", 2)), logged(4, user("u4"))]
+        [logged(2, user("u2")), logged(3, stop("s3", 2)), logged(4, user("u4"))], AS_TYPED
     )
     assert (ids(messages), stopped) == (["log:u2"], True)
-    assert absorbed_messages([logged(5, user("u5"))])[1] is False
+    assert absorbed_messages([logged(5, user("u5"))], AS_TYPED)[1] is False
+
+
+def test_a_user_message_reads_as_its_reframed_content_when_it_has_one() -> None:
+    [message] = entry_messages(logged(4, user("u1")), {"u1": "text of u1\n\nFiles: invoice.pdf"})
+    [plain] = entry_messages(logged(5, user("u2")), {"u1": "other"})
+    assert message.content == "text of u1\n\nFiles: invoice.pdf"
+    assert plain.content == "text of u2"

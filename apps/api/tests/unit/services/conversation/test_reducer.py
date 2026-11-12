@@ -237,6 +237,40 @@ def test_work_started_is_rejected_when_the_task_is_already_live() -> None:
     assert isinstance(reduce(state, logged(3, started("w2", "t2", 1))), Transition)
 
 
+def _joining(entry_id: str, task_id: str, cause_through: int, joins: str) -> WorkStarted:
+    return started(entry_id, task_id, cause_through).model_copy(
+        update={"answers": ("u3",), "joins": joins}
+    )
+
+
+def test_work_handed_to_running_work_joins_it_and_answers_with_it() -> None:
+    first = started("w1", "t1", 1).model_copy(update={"answers": ("u1",)})
+    state, _ = fold([user("u1"), first, user("u3")])
+    result = _accept(state, 4, _joining("w2", "t2", 3, "t1"))
+    assert result.state.work == (
+        LiveWork(
+            task_id="t1",
+            cause_through=1,
+            answers=("u1", "u3"),
+            pending_approvals=frozenset(),
+            joined=("t2",),
+        ),
+    )
+    assert result.effects == ()
+
+
+def test_work_joining_work_that_is_not_live_is_rejected() -> None:
+    state, _ = fold([user("u1"), user("u2"), user("u3")])
+    assert _reason(state, 4, _joining("w2", "t2", 3, "t1")) is RejectReason.TASK_NOT_LIVE
+
+
+def test_a_stop_covering_joined_work_cancels_every_task_handed_to_it() -> None:
+    state, _ = fold([user("u1"), started("w1", "t1", 1), user("u3"), _joining("w2", "t2", 3, "t1")])
+    result = _accept(state, 5, stop("s"))
+    assert CancelWork(task_ids=("t1", "t2")) in result.effects
+    assert result.state.work == ()
+
+
 @pytest.mark.parametrize("cause_through", [3, 5])
 def test_work_started_whose_cause_is_not_before_it_is_rejected(cause_through: int) -> None:
     state, _ = fold([user("u1"), user("u2")])
@@ -422,7 +456,12 @@ def test_side_question_is_answered_while_work_stays_live() -> None:
 
 
 def test_approval_requested_then_decided() -> None:
-    log: list[Entry] = [user("u1"), started("w", "t1", 1), asked("a", "t1", "ap1")]
+    log: list[Entry] = [
+        user("u1"),
+        started("w", "t1", 1),
+        *replied("r", ["u1"], 1),
+        asked("a", "t1", "ap1"),
+    ]
     waiting, _ = fold(log)
     assert waiting.display is DisplayState.AWAITING_APPROVAL
     state, effects = fold([*log, decided("d", "ap1")])
@@ -603,3 +642,14 @@ def test_a_recovered_reply_fails_without_settling_its_inputs() -> None:
     recovered = settled("s", [], 0, outcome=ReplyOutcome.FAILED)
     state, _ = fold([user("u1"), opened("o"), recovered])
     assert (state.open_reply, state.settled_through, state.unsettled_waking) == (None, 0, (1,))
+
+
+def test_an_accepted_message_shows_gaia_thinking_before_a_step_picks_it_up() -> None:
+    state, _ = fold([user("u1")])
+    assert state.comms is CommsPhase.IDLE
+    assert state.display is DisplayState.THINKING
+
+
+def test_a_conversation_with_nothing_unsettled_and_no_work_is_idle() -> None:
+    state, _ = fold([user("u1"), stop("s")])
+    assert state.display is DisplayState.IDLE

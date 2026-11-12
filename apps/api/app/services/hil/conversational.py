@@ -12,11 +12,13 @@ user's flag is on, the LLM on its transport failure. Fails safe: a classifier
 error leaves approvals pending, never approves.
 """
 
+from collections.abc import Sequence
 import contextlib
 from typing import assert_never
 
 from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, silent_metered_config
 from app.constants.hil import (
+    HIL_CLASSIFIER_HISTORY_TURNS,
     HIL_CLASSIFIER_MAX_ARG_CHARS,
     HIL_CLASSIFIER_MAX_DETAIL_CHARS,
     HIL_LLM_TIMEOUT_SECONDS,
@@ -71,6 +73,11 @@ LEDGER_OUTCOME_TEXT: dict[LedgerState, str] = {
 def ledger_outcome_text(state: LedgerState) -> str:
     """One line of ground truth for a settled ledger row."""
     return LEDGER_OUTCOME_TEXT.get(state, state.value)
+
+
+def classifier_history(prior: Sequence[MessageDict]) -> list[MessageDict]:
+    """Keep the turns before a reply the approval classifier reads it against."""
+    return list(prior[-HIL_CLASSIFIER_HISTORY_TURNS:])
 
 
 async def resolve_pending_from_message(

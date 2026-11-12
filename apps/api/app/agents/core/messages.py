@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -155,7 +155,7 @@ async def construct_langchain_messages(
     scope = scope or MessageScope()
     attachments = attachments or MessageAttachments()
     context, content = await asyncio.gather(
-        build_turn_context(query, scope), _human_content(scope, attachments, query.strip())
+        build_turn_context(query, scope), human_content(scope, attachments, query.strip())
     )
     human_msg = HumanMessage(content=content)
     # Read after the context is built, never awaited: a reaction still deciding costs this turn nothing.
@@ -165,7 +165,7 @@ async def construct_langchain_messages(
     return [*context.chain, *turn_msgs, context.clock]
 
 
-async def _human_content(
+async def human_content(
     scope: MessageScope, attachments: MessageAttachments, user_content: str
 ) -> str:
     """Return the user's turn as the model reads it, reframed by what the turn carries."""
@@ -184,7 +184,9 @@ async def _human_content(
         if selected_tool
         else user_content
     )
-    files_block = await _uploaded_files_block(scope, attachments)
+    files_block = await _uploaded_files_block(
+        attachments.currently_uploaded_file_ids, scope.user_id, scope.conversation_id
+    )
 
     # Files alone are a whole turn: the user is handing them over to talk about.
     if not content and not files_block:
@@ -197,15 +199,17 @@ async def _human_content(
     return "\n\n".join(part for part in (content, files_block) if part)
 
 
-async def _uploaded_files_block(scope: MessageScope, attachments: MessageAttachments) -> str:
-    """Describe the files this turn uploaded, or an empty string when it uploaded none.
+async def _uploaded_files_block(
+    file_ids: Sequence[str] | None, user_id: str | None, conversation_id: str | None
+) -> str:
+    """Describe the files a user turn uploaded, or an empty string when it uploaded none.
 
     Mongo is the only source: filename, summary and the workspace path are read
     from the stored document, so an agent is never told a file is missing when
     it is on disk (or present when it is not).
     """
-    file_ids = attachments.currently_uploaded_file_ids
-    if not file_ids or not scope.user_id:
+    if not file_ids or not user_id:
         return ""
-    files = await FileService.get_uploads(file_ids, scope.user_id, scope.conversation_id)
-    return format_files_list(files, file_ids, scope.conversation_id, include_processing_guide=False)
+    ids = list(file_ids)
+    files = await FileService.get_uploads(ids, user_id, conversation_id)
+    return format_files_list(files, ids, conversation_id, include_processing_guide=False)

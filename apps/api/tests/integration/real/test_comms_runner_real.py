@@ -157,13 +157,17 @@ def claim(conversation_id: str) -> StepClaim:
     return StepClaim(conversation_id=conversation_id, user_id=USER, epoch=1)
 
 
+async def _ignore(_event: RunEvent) -> None:
+    return None
+
+
 async def collect(
-    run: CommsGraphRun, on_event: Callable[[RunEvent], None] = lambda _event: None
+    run: CommsGraphRun, on_event: Callable[[RunEvent], Awaitable[None]] = _ignore
 ) -> list[RunEvent]:
     events: list[RunEvent] = []
     async for event in run.events():
         events.append(event)
-        on_event(event)
+        await on_event(event)
     return events
 
 
@@ -391,9 +395,9 @@ async def test_absorbed_input_reaches_the_next_model_call(
                 claim(conversation_id), batch(logged(1, user("u1"))), ()
             )
 
-            def absorb_on_tool_call(event: RunEvent) -> None:
+            async def absorb_on_tool_call(event: RunEvent) -> None:
                 if event == ModelOutput(has_tool_calls=True):
-                    run.absorb([later])
+                    await run.absorb([later])
 
             events = await collect(run, absorb_on_tool_call)
             left = await thread_of(graph, conversation_id)
@@ -416,12 +420,12 @@ async def test_input_absorbed_past_a_stop_never_reaches_the_model(
                 claim(conversation_id), batch(logged(1, user("u1"))), ()
             )
 
-            def absorb_on_tool_call(event: RunEvent) -> None:
+            async def absorb_on_tool_call(event: RunEvent) -> None:
                 if event == ModelOutput(has_tool_calls=True):
-                    run.absorb(
+                    await run.absorb(
                         [logged(2, user("u2")), logged(3, stop("s3", 2)), logged(4, user("u4"))]
                     )
-                    run.absorb([logged(5, user("u5"))])
+                    await run.absorb([logged(5, user("u5"))])
 
             await collect(run, absorb_on_tool_call)
     shown = humans(model.prompts[1])

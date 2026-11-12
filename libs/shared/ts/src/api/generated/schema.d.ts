@@ -339,6 +339,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bot/conversations/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Active Bot Conversations
+         * @description The platform's conversations still answering or working, with the seq to follow after.
+         */
+        get: operations["bot_list_active_conversations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bot/create-link-token": {
         parameters: {
             query?: never;
@@ -5975,6 +5995,25 @@ export interface components {
          */
         ActionType: "redirect" | "api_call" | "modal";
         /**
+         * ActiveBotConversation
+         * @description A bot session's conversation still answering; a restarted bot follows its events after after_seq.
+         *
+         *     The log does not record what a platform delivered: after_seq is the newest settled reply's
+         *     seq, so the follower replays the reply in flight and everything after it.
+         */
+        ActiveBotConversation: {
+            /** After Seq */
+            after_seq: number;
+            /** Channel Id */
+            channel_id: string | null;
+            /** Conversation Id */
+            conversation_id: string;
+            /** Is Dm */
+            is_dm: boolean;
+            /** Platform User Id */
+            platform_user_id: string;
+        };
+        /**
          * ActivityDay
          * @description One UTC day of the heatmap: actions plus the tokens they burned.
          *
@@ -6156,6 +6195,8 @@ export interface components {
         ApprovalRequested: {
             /** Approval Id */
             approval_id: string;
+            /** Expires At */
+            expires_at?: string | null;
             /**
              * Id
              * @description Producer-minted idempotency key
@@ -6166,6 +6207,11 @@ export interface components {
              * @enum {string}
              */
             kind: "approval_requested";
+            /**
+             * Summary
+             * @default
+             */
+            summary?: string;
             /** Task Id */
             task_id: string;
         };
@@ -7723,7 +7769,6 @@ export interface components {
             is_unread?: boolean | null;
             /** Messages */
             messages?: components["schemas"]["ConversationEntry"][];
-            runtime?: components["schemas"]["ConversationRuntime"] | null;
             source?: components["schemas"]["ConversationSource"] | null;
             /** Starred */
             starred?: boolean | null;
@@ -7808,7 +7853,7 @@ export interface components {
          */
         ConversationEvent: {
             /** Frame */
-            frame: components["schemas"]["EntryFrame"] | components["schemas"]["EntryUpdatedFrame"] | components["schemas"]["ReplyDeltaFrame"] | components["schemas"]["WorkDeltaFrame"] | components["schemas"]["RetractFrame"] | components["schemas"]["StateFrame"];
+            frame: components["schemas"]["EntryFrame"] | components["schemas"]["EntryUpdatedFrame"] | components["schemas"]["ReplyDeltaFrame"] | components["schemas"]["WorkDeltaFrame"] | components["schemas"]["RetractFrame"] | components["schemas"]["StateFrame"] | components["schemas"]["ConversationUpdatedFrame"];
             /** Stream Id */
             stream_id: string | null;
         };
@@ -7869,12 +7914,6 @@ export interface components {
             source?: components["schemas"]["ConversationSource"] | null;
             system_purpose?: components["schemas"]["SystemPurpose"] | null;
         };
-        /**
-         * ConversationRuntime
-         * @description What runs a conversation: absent on the head means the legacy per-turn stream.
-         * @enum {string}
-         */
-        ConversationRuntime: "step";
         /**
          * ConversationSource
          * @description Client or channel a conversation originated from.
@@ -7967,6 +8006,19 @@ export interface components {
             todo_id: string | null;
             /** Updatedat */
             updatedAt: string | null;
+        };
+        /**
+         * ConversationUpdatedFrame
+         * @description The conversation's own metadata changed: its title, once generated from the first message.
+         */
+        ConversationUpdatedFrame: {
+            /** Description */
+            description: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "conversation_updated";
         };
         /**
          * CreateCheckoutSessionRequest
@@ -9043,6 +9095,12 @@ export interface components {
             /** Updated timezone offset in (+|-)HH:MM format */
             timezone_offset?: string | null;
         };
+        /**
+         * FailureReason
+         * @description Why a reply failed; a client words the line it shows under the reply from it.
+         * @enum {string}
+         */
+        FailureReason: "model_error" | "step_limit" | "server_restart";
         /**
          * FeaturePeriodUsage
          * @description One feature's usage within one window (day or month).
@@ -13592,6 +13650,8 @@ export interface components {
              * @enum {string}
              */
             kind: "reply";
+            /** Quote Target */
+            quote_target?: string | null;
             /** Reply Id */
             reply_id: string;
             /**
@@ -13642,6 +13702,7 @@ export interface components {
         ReplySettled: {
             /** Answers */
             answers: string[];
+            failure?: components["schemas"]["FailureReason"] | null;
             /**
              * Id
              * @description Producer-minted idempotency key
@@ -14053,10 +14114,17 @@ export interface components {
             message_id: string;
             /** Reply To */
             reply_to?: string | null;
+            reply_to_message?: components["schemas"]["ReplyToMessageData"] | null;
             /** Retry Of */
             retry_of?: string | null;
+            selected_calendar_event?: components["schemas"]["SelectedCalendarEventData"] | null;
+            /** Selected Tool */
+            selected_tool?: string | null;
+            selected_workflow?: components["schemas"]["SelectedWorkflowDataInput"] | null;
             /** Text */
             text: string;
+            /** Tool Category */
+            tool_category?: string | null;
             /**
              * Voice
              * @default false
@@ -16375,6 +16443,11 @@ export interface components {
              */
             file_ids?: string[];
             /**
+             * Files
+             * @default []
+             */
+            files?: components["schemas"]["FileData"][];
+            /**
              * Id
              * @description Producer-minted idempotency key
              */
@@ -16389,6 +16462,7 @@ export interface components {
             reaction?: components["schemas"]["Reaction"] | null;
             /** Reply To */
             reply_to?: string | null;
+            reply_to_message?: components["schemas"]["ReplyToMessageData"] | null;
             /** Retry Of */
             retry_of?: string | null;
             /**
@@ -16396,9 +16470,15 @@ export interface components {
              * @default 0
              */
             revision?: number;
+            selected_calendar_event?: components["schemas"]["SelectedCalendarEventData"] | null;
+            /** Selected Tool */
+            selected_tool?: string | null;
+            selected_workflow?: components["schemas"]["SelectedWorkflowDataOutput"] | null;
             surface: components["schemas"]["ConversationSource"];
             /** Text */
             text: string;
+            /** Tool Category */
+            tool_category?: string | null;
             /**
              * Voice
              * @default false
@@ -16738,6 +16818,11 @@ export interface components {
             report: string;
             /** Task Id */
             task_id: string;
+            /**
+             * Tool Data
+             * @default []
+             */
+            tool_data?: components["schemas"]["ToolDataEntry"][];
         };
         /**
          * WorkflowCreator
@@ -17265,6 +17350,8 @@ export interface components {
              * @description Producer-minted idempotency key
              */
             id: string;
+            /** Joins */
+            joins?: string | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -17328,6 +17415,7 @@ export type ActionConfig = components['schemas']['ActionConfig'];
 export type ActionExecutionResponse = components['schemas']['ActionExecutionResponse'];
 export type ActionStyle = components['schemas']['ActionStyle'];
 export type ActionType = components['schemas']['ActionType'];
+export type ActiveBotConversation = components['schemas']['ActiveBotConversation'];
 export type ActivityDay = components['schemas']['ActivityDay'];
 export type AddIntegrationResponse = components['schemas']['AddIntegrationResponse'];
 export type AddUserIntegrationRequest = components['schemas']['AddUserIntegrationRequest'];
@@ -17439,12 +17527,12 @@ export type ConversationEvent = components['schemas']['ConversationEvent'];
 export type ConversationListResponse = components['schemas']['ConversationListResponse'];
 export type ConversationMessageHit = components['schemas']['ConversationMessageHit'];
 export type ConversationModel = components['schemas']['ConversationModel'];
-export type ConversationRuntime = components['schemas']['ConversationRuntime'];
 export type ConversationSource = components['schemas']['ConversationSource'];
 export type ConversationStopResponse = components['schemas']['ConversationStopResponse'];
 export type ConversationSummary = components['schemas']['ConversationSummary'];
 export type ConversationSyncItem = components['schemas']['ConversationSyncItem'];
 export type ConversationSyncRow = components['schemas']['ConversationSyncRow'];
+export type ConversationUpdatedFrame = components['schemas']['ConversationUpdatedFrame'];
 export type CreateCheckoutSessionRequest = components['schemas']['CreateCheckoutSessionRequest'];
 export type CreateConversationResponse = components['schemas']['CreateConversationResponse'];
 export type CreateCustomIntegrationRequest = components['schemas']['CreateCustomIntegrationRequest'];
@@ -17502,6 +17590,7 @@ export type EventCreateRequest = components['schemas']['EventCreateRequest'];
 export type EventDeleteRequest = components['schemas']['EventDeleteRequest'];
 export type EventDeleteResponse = components['schemas']['EventDeleteResponse'];
 export type EventUpdateRequest = components['schemas']['EventUpdateRequest'];
+export type FailureReason = components['schemas']['FailureReason'];
 export type FeaturePeriodUsage = components['schemas']['FeaturePeriodUsage'];
 export type FeatureSpec = components['schemas']['FeatureSpec'];
 export type FeatureStage = components['schemas']['FeatureStage'];
@@ -18730,6 +18819,55 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    bot_list_active_conversations: {
+        parameters: {
+            query: {
+                platform: components["schemas"]["ConversationSource"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveBotConversation"][];
+                };
             };
             /** @description Unprocessable Entity */
             422: {

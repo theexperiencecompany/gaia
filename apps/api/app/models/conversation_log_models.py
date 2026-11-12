@@ -8,8 +8,15 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 from app.constants.chat import ConversationSource
 from app.constants.hil import ApprovalResolution
 from app.models.chat_models import ReactionBy
+from app.models.message_models import (
+    FileData,
+    ReplyToMessageData,
+    SelectedCalendarEventData,
+    SelectedWorkflowData,
+)
 from app.models.todo_wake_models import TodoRunWake
 from app.models.tool_data_models import ToolDataEntry
+from shared.py.analytics.catalog.properties import Identifier
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
@@ -58,6 +65,17 @@ class ReplyOutcome(StrEnum):
     SILENT = "silent"
 
 
+class FailureReason(StrEnum):
+    """Why a reply failed; a client words the line it shows under the reply from it."""
+
+    # The model call failed (a provider error, a dropped stream).
+    MODEL_ERROR = "model_error"
+    # The turn ran out of steps before it answered.
+    STEP_LIMIT = "step_limit"
+    # The process answering died; a later reply answers again.
+    SERVER_RESTART = "server_restart"
+
+
 _MAY_ANSWER_NOTHING = frozenset({ReplyOutcome.STOPPED, ReplyOutcome.FAILED})
 
 
@@ -86,7 +104,16 @@ class UserMessage(_Entry):
     reply_to: str | None = None
     retry_of: str | None = None
     file_ids: tuple[str, ...] = ()
+    # The attached files as stored when the message was accepted, so every device shows them.
+    files: tuple[FileData, ...] = ()
     voice: bool = False
+    # What reframes the turn, as a chat send carried it: a pinned tool, a workflow to run,
+    # a calendar event, the message replied to.
+    selected_tool: Identifier | None = None
+    tool_category: Identifier | None = None
+    selected_workflow: SelectedWorkflowData | None = None
+    selected_calendar_event: SelectedCalendarEventData | None = None
+    reply_to_message: ReplyToMessageData | None = None
     reaction: Reaction | None = None
     # Bumped on each in-place update; a client applies an update only when it is newer.
     revision: int = Field(default=0, ge=0)
@@ -142,6 +169,8 @@ class WorkStarted(_Entry):
     task_id: str
     cause_through: int = Field(ge=1)
     answers: tuple[str, ...] = ()
+    # The live task this one was handed to while it ran; the two finish, and stop, as one.
+    joins: str | None = None
 
 
 class ApprovalRequested(_Entry):
@@ -150,6 +179,9 @@ class ApprovalRequested(_Entry):
     kind: Literal[EntryKind.APPROVAL_REQUESTED] = EntryKind.APPROVAL_REQUESTED
     task_id: str
     approval_id: str
+    # What the approval card shows, and when the request lapses (None: it never does).
+    summary: str = ""
+    expires_at: AwareDatetime | None = None
 
 
 class ApprovalDecided(_Entry):
@@ -167,6 +199,8 @@ class WorkFinished(_Entry):
     task_id: str
     outcome: WorkOutcome
     report: str
+    # The cards the work showed; the reply that narrates it (reply_id = task_id) carries them.
+    tool_data: tuple[ToolDataEntry, ...] = ()
 
 
 class IntegrationNeeded(_Entry):
@@ -196,6 +230,8 @@ class Reply(_Entry):
     text: str = ""
     tool_data: tuple[ToolDataEntry, ...] = ()
     follow_up_actions: tuple[str, ...] = ()
+    # The user message the reply quotes, known when it opens so a first bubble can quote it.
+    quote_target: str | None = None
     # Characters of the reply the user heard before a voice barge-in.
     heard_through: int | None = Field(default=None, ge=0)
     # Bumped on each in-place fill; a client applies an update only when it is newer.
@@ -213,9 +249,13 @@ class ReplySettled(_Entry):
     through: int = Field(ge=0)
     # The user message this reply visibly points at; None when it sits directly under what it answers.
     quote_target: str | None
+    # Set exactly when outcome is FAILED.
+    failure: FailureReason | None = None
 
     @model_validator(mode="after")
     def _answers_unless_cut_short(self) -> "ReplySettled":
+        if (self.failure is None) is (self.outcome is ReplyOutcome.FAILED):
+            raise ValueError("a failed reply names its failure, and only a failed one does")
         if not self.answers and self.outcome not in _MAY_ANSWER_NOTHING:
             raise ValueError(f"a {self.outcome} reply answers at least one entry")
         return self
@@ -278,6 +318,8 @@ class LiveWork(BaseModel):
     cause_through: int
     answers: tuple[str, ...]
     pending_approvals: frozenset[str]
+    # Tasks handed to this work while it ran (WorkStarted.joins); a Stop that ends it ends them.
+    joined: tuple[str, ...] = ()
 
 
 class FinishedWork(BaseModel):
@@ -310,8 +352,11 @@ class ConversationState(BaseModel):
 
     @property
     def display(self) -> DisplayState:
-        """Return the status to show: comms first, then approvals, then work."""
-        if self.comms is not CommsPhase.IDLE:
+        """Return the status to show: comms first, then approvals, then work.
+
+        An input waiting for its step is already GAIA's to answer, so it shows as thinking.
+        """
+        if self.comms is not CommsPhase.IDLE or self.unsettled_waking:
             return DisplayState.THINKING
         if any(item.pending_approvals for item in self.work):
             return DisplayState.AWAITING_APPROVAL

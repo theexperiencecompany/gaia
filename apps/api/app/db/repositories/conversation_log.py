@@ -17,7 +17,6 @@ from pydantic import TypeAdapter
 from pymongo import ReturnDocument
 
 from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
-from app.constants.conversation import ConversationRuntime
 from app.db.repositories.conversation_entries import (
     LOG_HEAD_FIELD,
     OUTBOX_FIELD,
@@ -44,8 +43,16 @@ _ENTRY: TypeAdapter[Entry] = TypeAdapter(Entry)
 #: A stored entry's keys beside the log entry's own fields; id is both, so it stays.
 _POSITION_KEYS = ("conversation_id", "user_id", "seq", "at", "migration_hash")
 _INTEGRATION_KINDS = (EntryKind.INTEGRATION_NEEDED, EntryKind.INTEGRATION_CONNECTED)
-#: The head field naming what runs a conversation (ConversationDocument.runtime).
-RUNTIME_FIELD = "runtime"
+#: A head the sweep must visit: unflushed entries, unsettled inputs or live work. A non-empty
+#: outbox sorts after {}. Also the sweep index's partial filter, so only these heads are indexed.
+SWEEP_DUE_FILTER: dict[str, object] = {
+    "$or": [
+        {OUTBOX_FIELD: {"$gt": {}}},
+        {f"{STATE_FIELD}.unsettled_waking.0": {"$exists": True}},
+        {f"{STATE_FIELD}.work.0": {"$exists": True}},
+    ]
+}
+SWEEP_INDEX_NAME = "conversation_sweep_due"
 #: The fold of a log with no entries yet: what a head that stores no state holds.
 EMPTY_LOG_STATE = ConversationState(
     head=0,
@@ -196,17 +203,10 @@ class ConversationLogRepository(ConversationRepository):
         return True
 
     async def list_heads_to_sweep(self, limit: int) -> list[SweepHead]:
-        """Return the step-run heads with unflushed entries, unsettled inputs or live work."""
+        """Return the heads with unflushed entries, unsettled inputs or live work."""
         with store_errors("log sweep"):  # pragma: no mutate — error label
             cursor = self._raw_collection().find(
-                {
-                    RUNTIME_FIELD: ConversationRuntime.STEP.value,
-                    "$or": [
-                        {OUTBOX_FIELD: {"$nin": [{}, None]}},
-                        {f"{STATE_FIELD}.unsettled_waking.0": {"$exists": True}},
-                        {f"{STATE_FIELD}.work.0": {"$exists": True}},
-                    ],
-                },
+                SWEEP_DUE_FILTER,
                 # Equivalent under mutation: any truthy flag projects the field.
                 {
                     "_id": 0,
@@ -216,6 +216,7 @@ class ConversationLogRepository(ConversationRepository):
                     STATE_FIELD: 1,
                 },  # pragma: no mutate
                 limit=limit,
+                hint=SWEEP_INDEX_NAME,
             )
             rows = [row async for row in cursor]
         return [
@@ -227,6 +228,34 @@ class ConversationLogRepository(ConversationRepository):
             )
             for row in rows
         ]
+
+    async def list_live_heads(self, source: str, limit: int) -> list[SweepHead]:
+        """Return the source's heads with live work or unanswered inputs (an open reply has its inputs unsettled)."""
+        with store_errors("log live heads"):  # pragma: no mutate — error label
+            cursor = self._raw_collection().find(
+                {"source": source, **SWEEP_DUE_FILTER},
+                # Equivalent under mutation: any truthy flag projects the field.
+                {
+                    "_id": 0,
+                    "conversation_id": 1,
+                    "user_id": 1,
+                    OUTBOX_FIELD: 1,
+                    STATE_FIELD: 1,
+                },  # pragma: no mutate
+                limit=limit,
+                hint=SWEEP_INDEX_NAME,
+            )
+            rows = [row async for row in cursor]
+        heads = [
+            SweepHead(
+                conversation_id=str(row["conversation_id"]),
+                user_id=str(row["user_id"]),
+                has_outbox=bool(row.get(OUTBOX_FIELD)),
+                state=_state(row),
+            )
+            for row in rows
+        ]
+        return [head for head in heads if head.state.work or head.state.unsettled_waking]
 
     async def list_integration_entries(
         self, *, user_id: str, integration_id: str, since: datetime

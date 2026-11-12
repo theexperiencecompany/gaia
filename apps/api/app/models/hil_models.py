@@ -236,6 +236,9 @@ class ApprovalProposal(BaseModel):
     owner_run_type: str = ""
     owner_id: str = ""
     proposing_run_id: str | None = None
+    # The conversation step's live task the approval holds, when the step started the
+    # proposing run; its request and decision are then conversation log entries too.
+    task_id: str | None = None
 
 
 class ApprovalLedgerDocument(MongoDocument, ApprovalProposal):

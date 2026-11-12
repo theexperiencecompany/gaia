@@ -44,6 +44,8 @@ from app.constants.cache import (
 from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.db.mongodb.indexes import (
     CONVERSATION_ENTRY_INDEXES,
+    CONVERSATION_SWEEP_KEYS,
+    CONVERSATION_SWEEP_OPTIONS,
     TODO_OPEN_EXTERNAL_REF_KEYS,
     TODO_OPEN_EXTERNAL_REF_OPTIONS,
 )
@@ -102,6 +104,7 @@ async def conversations_collection(mongo_db):
     entries = mongo_db[CONVERSATION_ENTRIES_COLLECTION]
     for keys, options in CONVERSATION_ENTRY_INDEXES:
         await entries.create_index(keys, **options)
+    await coll.create_index(CONVERSATION_SWEEP_KEYS, **CONVERSATION_SWEEP_OPTIONS)
     await coll.delete_many({})
     await entries.delete_many({})
 

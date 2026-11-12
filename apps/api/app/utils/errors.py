@@ -122,13 +122,6 @@ class ConversationNotFoundError(AppError):
 
 
 @dataclass
-class ConversationOnStreamPathError(AppError):
-    """A conversation-runtime write named a conversation the legacy per-turn stream still runs."""
-
-    status_code: int = 409
-
-
-@dataclass
 class ConversationEntryNotFoundError(AppError):
     """The log entry a write named is not in the conversation, or is another kind."""
 

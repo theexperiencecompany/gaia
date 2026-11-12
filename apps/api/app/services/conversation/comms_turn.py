@@ -32,6 +32,7 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
     texts = [message.text for message in said]
     query = "\n\n".join(texts)
     source = _source(said)
+    pinned = next((message for message in reversed(said) if message.selected_tool), None)
     presence = await read_presence(claim.user_id)
     todo_id = await conversation_repository.get_todo_id(
         claim.conversation_id, user_id=claim.user_id
@@ -58,6 +59,8 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
         ),
         lane=AgentLane(role=AgentRole.COMMS),
         turn=AgentTurn(
+            selected_tool=pinned.selected_tool if pinned else None,
+            tool_category=pinned.tool_category if pinned else None,
             active_todo_id=todo_id,
             execution_mode="interactive",
             source=source,

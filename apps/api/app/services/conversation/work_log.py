@@ -1,15 +1,16 @@
-"""Background work as conversation log entries: started (fenced on the step's claim), approvals, finished.
+"""Background work as conversation log entries: started (fenced on the step's claim), approvals, finished."""
 
-Callers write these only for runs the conversation step started (conversation_step on their
-configurable), so the legacy stream path keeps its own side channels unchanged.
-"""
+from collections.abc import Sequence
+from datetime import datetime
 
+from app.agents.core.background.executor_queue import get_lock_holder, parse_lock_value
 from app.constants.hil import ApprovalResolution
 from app.models.agent_config import StepTurnRef
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
     CancelWork,
+    RejectReason,
     StepClaim,
     StopBy,
     StopRequested,
@@ -17,16 +18,26 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
+from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.log import accept, publish_appended
 from app.services.conversation.ports import ClaimLost, EntryRejected
-from app.services.conversation.runtime import runs_on_step, runtime_ports
+from app.services.conversation.runtime import runtime_ports
 from shared.py.wide_events import log
 
 
 async def record_work_started(
-    step: StepTurnRef, conversation_id: str, user_id: str, task_id: str
+    step: StepTurnRef,
+    conversation_id: str,
+    user_id: str,
+    task_id: str,
+    *,
+    joins: str | None = None,
 ) -> bool:
-    """Append WorkStarted under the step's claim; False when a Stop or a lost claim refuses it, so nothing dispatches."""
+    """Append WorkStarted under the step's claim; False when a Stop or a lost claim refuses it, so nothing dispatches.
+
+    joins names the running task the work is handed to; when that run is not on the log (one
+    the step did not start), the hand-over goes ahead unlogged and that run delivers it.
+    """
     ports = runtime_ports()
     claim = StepClaim(conversation_id=conversation_id, user_id=user_id, epoch=step["epoch"])
     entry = WorkStarted(
@@ -34,37 +45,74 @@ async def record_work_started(
         task_id=task_id,
         cause_through=step["cause_through"],
         answers=tuple(step["answers"]),
+        joins=joins,
     )
     try:
         appended = await ports.log.append_fenced(claim, entry)
     except (ClaimLost, EntryRejected) as refused:
+        unlogged_run = (
+            joins is not None
+            and isinstance(refused, EntryRejected)
+            and refused.reason is RejectReason.TASK_NOT_LIVE
+        )
         log.warning(
             "work not started: the conversation log refused its WorkStarted",
             conversation_id=conversation_id,
             task_id=task_id,
+            joins=joins,
             reason=type(refused).__name__,
+            handed_over_unlogged=unlogged_run,
         )
-        return False
+        return unlogged_run
     await publish_appended(ports.frames, conversation_id, appended)
     return True
 
 
 async def record_work_finished(
-    conversation_id: str, user_id: str, task_id: str, outcome: WorkOutcome, report: str
+    conversation_id: str,
+    user_id: str,
+    task_id: str,
+    outcome: WorkOutcome,
+    report: str,
+    tool_data: Sequence[ToolDataEntry] = (),
 ) -> None:
-    """Append WorkFinished; its kick wakes the step, which narrates the result in the task's own reply."""
+    """Append WorkFinished; its kick wakes the step, which narrates the result and its cards in the task's own reply."""
     entry = WorkFinished(
-        id=f"work:{task_id}:finished", task_id=task_id, outcome=outcome, report=report
+        id=f"work:{task_id}:finished",
+        task_id=task_id,
+        outcome=outcome,
+        report=report,
+        tool_data=tuple(tool_data),
     )
     await accept(runtime_ports(), conversation_id, user_id, entry)
 
 
+async def running_step_task(conversation_id: str, user_id: str) -> str | None:
+    """Return the task id of the executor running in the conversation when the step started it; else None."""
+    holder = await get_lock_holder(conversation_id)
+    if holder is None:
+        return None
+    task_id = parse_lock_value(holder)[1]
+    state = await runtime_ports().log.state(conversation_id, user_id)
+    return task_id if any(work.task_id == task_id for work in state.work) else None
+
+
 async def record_approval_requested(
-    conversation_id: str, user_id: str, task_id: str, approval_id: str
+    conversation_id: str,
+    user_id: str,
+    task_id: str,
+    approval_id: str,
+    *,
+    summary: str,
+    expires_at: datetime | None,
 ) -> None:
-    """Append ApprovalRequested for live work paused on the user's decision."""
+    """Append ApprovalRequested for live work waiting on the user's decision, as its card reads."""
     entry = ApprovalRequested(
-        id=f"approval:{approval_id}", task_id=task_id, approval_id=approval_id
+        id=f"approval:{approval_id}",
+        task_id=task_id,
+        approval_id=approval_id,
+        summary=summary,
+        expires_at=expires_at,
     )
     await accept(runtime_ports(), conversation_id, user_id, entry)
 
@@ -99,9 +147,7 @@ async def record_gaia_stop(
 
 
 async def record_user_stop(conversation_id: str, user_id: str, stop_id: str) -> None:
-    """Log the user's Stop on a step-run conversation; its effects preempt the step and cancel the work it covers."""
-    if not await runs_on_step(conversation_id, user_id):
-        return
+    """Log the user's Stop; its effects preempt the step and cancel the work it covers."""
     await accept(
         runtime_ports(),
         conversation_id,

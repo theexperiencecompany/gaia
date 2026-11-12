@@ -6,8 +6,6 @@ they never build them, so none of them imports the comms graph or the work it ca
 
 from dataclasses import dataclass
 
-from app.constants.conversation import ConversationRuntime
-from app.db.repositories.conversations import conversation_repository
 from app.services.conversation.ports import RuntimePorts
 from app.utils.errors import AppError
 
@@ -33,9 +31,3 @@ def runtime_ports() -> RuntimePorts:
             message="the conversation runtime was used before startup installed its ports"
         )
     return _Installed.ports
-
-
-async def runs_on_step(conversation_id: str, user_id: str) -> bool:
-    """Return whether the conversation step runs this conversation; False for a missing one."""
-    row = await conversation_repository.read_runtime(conversation_id, user_id=user_id)
-    return row is not None and row.runtime is ConversationRuntime.STEP
