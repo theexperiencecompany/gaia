@@ -1,6 +1,5 @@
 """Stop a conversation: cancel its live streams, then every kind of work it has running."""
 
-from app.agents.core.background.running_registry import stop_stream
 from app.agents.core.background.work_cancel import cancel_all_work
 from app.core.stream_manager import stream_manager
 from app.models.work_cancel_models import ConversationStopResponse
@@ -25,7 +24,8 @@ async def stop_conversation(
     live_turn = await stream_manager.get_resumable_stream_id(user_id, conversation_id)
     stream_ids = list(dict.fromkeys(s for s in (held_stream_id, live_turn) if s))
     for stream_id in stream_ids:
-        await stop_stream(conversation_id, stream_id)
+        await stream_manager.cancel_stream(stream_id)
+    # The turns alone: the sweep stops their subagents and counts only what it stopped itself.
     work = await cancel_all_work(conversation_id, user_id, requester)
     return ConversationStopResponse(
         conversation_id=conversation_id, stream_ids=stream_ids, work=work
