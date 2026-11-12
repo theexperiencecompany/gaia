@@ -127,28 +127,28 @@ export default function MemoryManagement({
         onSelectionChange={(key) => setSelectedTab(key as string)}
       >
         <Tabs.ListContainer>
-        <Tabs.List aria-label="Memory views">
-          <Tabs.Tab id="folders">
-            <TabTitle icon={Folder01Icon} label="Folders" />
-            <Tabs.Indicator />
-          </Tabs.Tab>
-          <Tabs.Tab id="documents">
-            <TabTitle icon={Note01Icon} label="Documents" />
-            <Tabs.Indicator />
-          </Tabs.Tab>
-          <Tabs.Tab id="graph">
-            <TabTitle icon={NeuralNetworkIcon} label="Graph" />
-            <Tabs.Indicator />
-          </Tabs.Tab>
-          <Tabs.Tab id="journal">
-            <TabTitle icon={BookOpen01Icon} label="Journal" />
-            <Tabs.Indicator />
-          </Tabs.Tab>
-          <Tabs.Tab id="all">
-            <TabTitle icon={ListViewIcon} label="All" />
-            <Tabs.Indicator />
-          </Tabs.Tab>
-        </Tabs.List>
+          <Tabs.List aria-label="Memory views">
+            <Tabs.Tab id="folders">
+              <TabTitle icon={Folder01Icon} label="Folders" />
+              <Tabs.Indicator />
+            </Tabs.Tab>
+            <Tabs.Tab id="documents">
+              <TabTitle icon={Note01Icon} label="Documents" />
+              <Tabs.Indicator />
+            </Tabs.Tab>
+            <Tabs.Tab id="graph">
+              <TabTitle icon={NeuralNetworkIcon} label="Graph" />
+              <Tabs.Indicator />
+            </Tabs.Tab>
+            <Tabs.Tab id="journal">
+              <TabTitle icon={BookOpen01Icon} label="Journal" />
+              <Tabs.Indicator />
+            </Tabs.Tab>
+            <Tabs.Tab id="all">
+              <TabTitle icon={ListViewIcon} label="All" />
+              <Tabs.Indicator />
+            </Tabs.Tab>
+          </Tabs.List>
         </Tabs.ListContainer>
       </Tabs>
 
