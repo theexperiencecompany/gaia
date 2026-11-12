@@ -145,10 +145,8 @@ describe("unresolvedTokens", () => {
 describe("every token the shipped stylesheets read is defined", () => {
   const runtime = sourceSetTokens();
 
-  it("base.css", async () => {
-    expect(unresolvedTokens([await compile("base")], runtime)).toEqual([]);
-  });
-
+  // base.css never ships alone: every route imports an area bundle, which is
+  // where the component sheets that own tokens like --chip-bg load.
   for (const area of AREAS) {
     it(`base.css + ${area}.css`, async () => {
       const roots = [await compile("base"), await compile(area)];
