@@ -15,6 +15,7 @@
     "./bridge-core/*": "./src/bridge-core/*.ts",
     "./bots": "./src/bots/index.ts",
     "./chat": "./src/chat/index.ts",
+    "./conversation": "./src/conversation/index.ts",
     "./constants/*": "./src/constants/*.ts",
     "./cli": "./src/cli/index.ts",
     "./desktop-tools": "./src/desktop-tools/index.ts",
