@@ -3,6 +3,7 @@
 from typing import Any, Literal, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.constants.error_codes import BRIEFS_OFF
 from app.constants.integrations import (
     MAX_INTEGRATION_SEARCH_RESULTS,
     MAX_MY_INTEGRATIONS_RESULTS,
@@ -22,7 +23,7 @@ from app.schemas.integrations.responses import (
 import app.services.workflow.service  # noqa: F401  # side-effect import breaks the documented circular-dependency chain
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.workflows import WorkflowCreated
-from tests.helpers import captured_wide_event
+from tests.helpers import briefs_off_users_get, captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -140,6 +141,30 @@ class TestCreateWorkflow:
         assert result["success"] is True
         assert result["data"]["status"] == "draft_sent"
         draft.to_stream_payload.assert_called_once_with(WorkflowDelivery.NOW)
+
+    async def test_a_brief_workflow_while_briefs_are_off_is_refused_with_what_to_ask(
+        self,
+    ) -> None:
+        """Regression: with briefs off the agent saved a brief workflow whose results were lost."""
+        from app.agents.tools.workflow_tool import create_workflow
+
+        with (
+            patch("app.utils.auth_utils.user_repository.get", new=briefs_off_users_get),
+            patch(f"{MODULE}.current_stream_writer", return_value=_writer_mock()),
+            patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
+        ):
+            mock_runner.execute = AsyncMock()
+
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
+                config=_make_config(),
+                user_request="check my email every morning, put it in my brief",
+                delivery=WorkflowDelivery.BRIEF,
+            )
+
+        assert result["success"] is False
+        assert result["error"] == BRIEFS_OFF
+        assert "Tell me now" in result["message"]
+        mock_runner.execute.assert_not_awaited()
 
     async def test_new_mode_clarifying(self) -> None:
         """Clarifying mode returns the question for the user."""

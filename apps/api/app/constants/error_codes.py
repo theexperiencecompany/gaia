@@ -24,6 +24,9 @@ MEMBER_OFFBOARDING_INCOMPLETE = "member_offboarding_incomplete"
 # 409 — briefs cannot be turned off while workflows deliver to the brief; body names them.
 BRIEF_DELIVERY_WORKFLOWS_EXIST = "brief_delivery_workflows_exist"
 
+# 409 — a workflow cannot send its results to the brief while the user has briefs off.
+BRIEFS_OFF = "briefs_off"
+
 # 409 — a standing-instructions save raced another write; body carries current_revision.
 INSTRUCTIONS_CONFLICT = "INSTRUCTIONS_CONFLICT"
 
