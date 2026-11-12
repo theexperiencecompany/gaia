@@ -5,8 +5,9 @@ the gate:
 
 - in-app WebSocket broadcast (open web/mobile clients, which render the SSE card);
 - Expo push (backgrounded mobile app), with interactive approve/deny actions;
-- the bot platform a bot conversation lives on, as its yes/no prompt. A bot's
-  turn ends with its reply, so the card's stream is not where a bot user sees it.
+- the bot platform a bot conversation lives on, as its yes/no prompt, for an
+  approval the conversation log does not hold (a workflow run); the bot's
+  conversation follower asks about a logged one.
 """
 
 import asyncio
@@ -18,6 +19,7 @@ from app.constants.hil import HIL_APPROVAL_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
 from app.db.repositories.conversations import conversation_repository
+from app.services.conversation.work_log import approval_is_logged
 from app.services.device_token_service import get_device_token_service
 from app.services.platform_message_service import deliver_message_to_platform, is_bot_platform
 from shared.py.wide_events import log
@@ -79,10 +81,12 @@ def _format_expiry(seconds: float) -> str:
 async def _prompt_on_bot_platform(
     user_id: str, conversation_id: str, approval_id: str, summary: str
 ) -> None:
-    """Ask a bot conversation's user through the platform's outbound queue; no-op off bots."""
+    """Ask a bot conversation's user through the platform's outbound queue; no-op off bots or once logged."""
     try:
         source = await conversation_repository.get_source(conversation_id, user_id=user_id)
         if not is_bot_platform(source):
+            return
+        if await approval_is_logged(conversation_id, user_id, approval_id):
             return
         delivered = await deliver_message_to_platform(
             source, user_id, bot_approval_prompt(summary), conversation_id=conversation_id

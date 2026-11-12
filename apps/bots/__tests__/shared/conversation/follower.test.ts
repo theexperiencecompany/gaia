@@ -18,6 +18,8 @@ import {
 } from "@gaia/shared/bots";
 import { describe, expect, it } from "vitest";
 import {
+  approvalDecided,
+  approvalRequested,
   entryFrame,
   entryUpdatedFrame,
   liveTask,
@@ -422,6 +424,76 @@ describe.each([
       "Let me look",
       "❌ Something went wrong. Please try again later.",
     ]);
+  });
+});
+
+describe("an approval the work waits on", () => {
+  const working: ConversationFrame[] = [
+    entryFrame(1, inbound("u1", "11")),
+    ...answer(2, "r1", "Sending it.", ["u1"], 1),
+    entryFrame(4, workStarted("t1", 1)),
+    stateFrame(4, "working", [liveTask("t1")]),
+  ];
+
+  it("asks once, as a yes/no prompt with its expiry, and not again on replay", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(0, NON_EDITING, surface);
+    follower.expect(1);
+    const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const asked = entryFrame(
+      5,
+      approvalRequested("t1", "ap1", "Send email to Sam", expiresAt),
+    );
+    await feed(follower, [
+      ...working,
+      asked,
+      stateFrame(5, "awaiting_approval", [liveTask("t1", true)]),
+      asked,
+    ]);
+
+    expect(sent(calls).slice(1)).toEqual([
+      {
+        text: "*Approval needed:* Send email to Sam\nReply *yes* to approve or *no* to decline. This expires in 2 hours.",
+        replyTo: null,
+      },
+    ]);
+    expect(follower.finished).toBe(false);
+  });
+
+  it("numbers every approval still open when another one arrives", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(0, NON_EDITING, surface);
+    follower.expect(1);
+    await feed(follower, [
+      ...working,
+      entryFrame(5, approvalRequested("t1", "ap1", "Send email to Sam")),
+      entryFrame(6, approvalRequested("t1", "ap2", "Book the 9am flight")),
+      entryFrame(7, approvalDecided("ap1")),
+      entryFrame(8, approvalRequested("t1", "ap3", "Pay the invoice")),
+    ]);
+
+    expect(
+      sent(calls)
+        .slice(1)
+        .map(({ text }) => text),
+    ).toEqual([
+      "*Approval needed:* Send email to Sam\nReply *yes* to approve or *no* to decline.",
+      "*Approvals needed:*\n1. Send email to Sam\n2. Book the 9am flight\nReply *yes* to approve all, *no* to decline all, or say which numbers you mean.",
+      "*Approvals needed:*\n1. Book the 9am flight\n2. Pay the invoice\nReply *yes* to approve all, *no* to decline all, or say which numbers you mean.",
+    ]);
+  });
+
+  it("does not ask for an approval from before the follow", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(5, NON_EDITING, surface);
+    follower.expect(6);
+    await feed(follower, [
+      ...working,
+      entryFrame(5, approvalRequested("t1", "ap1", "Send email to Sam")),
+      entryFrame(6, inbound("u2", "12")),
+    ]);
+
+    expect(sent(calls)).toEqual([]);
   });
 });
 

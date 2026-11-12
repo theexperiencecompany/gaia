@@ -117,18 +117,22 @@ async def record_approval_requested(
     await accept(runtime_ports(), conversation_id, user_id, entry)
 
 
+async def approval_is_logged(conversation_id: str, user_id: str, approval_id: str) -> bool:
+    """Return whether the conversation's live work is waiting on approval_id in the log."""
+    state = await runtime_ports().log.state(conversation_id, user_id)
+    return any(approval_id in work.pending_approvals for work in state.work)
+
+
 async def record_approval_decided(
     conversation_id: str, user_id: str, approval_id: str, decision: ApprovalResolution
 ) -> None:
     """Append ApprovalDecided when the conversation's live work is waiting on approval_id; else nothing."""
-    ports = runtime_ports()
-    state = await ports.log.state(conversation_id, user_id)
-    if not any(approval_id in work.pending_approvals for work in state.work):
+    if not await approval_is_logged(conversation_id, user_id, approval_id):
         return
     entry = ApprovalDecided(
         id=f"approval:{approval_id}:decided", approval_id=approval_id, decision=decision
     )
-    await accept(ports, conversation_id, user_id, entry)
+    await accept(runtime_ports(), conversation_id, user_id, entry)
 
 
 async def record_gaia_stop(

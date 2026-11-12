@@ -43,10 +43,16 @@ def mock_channels():
         patch(
             f"{_MOD}.deliver_message_to_platform", new=AsyncMock(return_value=True)
         ) as m_platform,
+        patch(f"{_MOD}.approval_is_logged", new=AsyncMock(return_value=False)) as m_logged,
     ):
         m_ws.broadcast_to_user = AsyncMock()
         yield SimpleNamespace(
-            ws=m_ws, dts=m_dts, device=device_service, source=m_source, platform=m_platform
+            ws=m_ws,
+            dts=m_dts,
+            device=device_service,
+            source=m_source,
+            platform=m_platform,
+            logged=m_logged,
         )
 
 
@@ -97,6 +103,17 @@ class TestPromptOnBotPlatform:
         mock_channels.platform.assert_awaited_once_with(
             source, USER_ID, bot_approval_prompt(SUMMARY), conversation_id=CONVERSATION_ID
         )
+
+    async def test_an_approval_on_the_conversation_log_is_asked_by_the_follower_not_the_queue(
+        self, mock_channels, mock_expo
+    ):
+        mock_channels.source.return_value = ConversationSource.TELEGRAM
+        mock_channels.logged.return_value = True
+
+        await notify_approval_pending(USER_ID, CONVERSATION_ID, APPROVAL_ID, SUMMARY)
+
+        mock_channels.logged.assert_awaited_once_with(CONVERSATION_ID, USER_ID, APPROVAL_ID)
+        mock_channels.platform.assert_not_awaited()
 
     @pytest.mark.parametrize("source", [ConversationSource.WEB, None])
     async def test_a_web_conversation_gets_no_platform_message(

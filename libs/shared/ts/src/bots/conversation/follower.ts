@@ -10,6 +10,8 @@
  * - a Reply's quote_target, known when it opens, makes its first message a
  *   native reply to that user message's platform message;
  * - a user message's reaction becomes a native reaction on it;
+ * - an approval the work waits on is asked in chat, with every approval still
+ *   open numbered;
  * - the typing indicator runs while GAIA is thinking or working.
  *
  * Entries at or below the floor (the seq the follow started after) are history:
@@ -30,6 +32,7 @@ import { REPLY_FAILURE_LINE } from "../utils/error-lines";
 import { PLATFORM_MARKDOWN } from "../utils/formatters";
 import { createBotLogger } from "../utils/logger";
 import { REACTION_OUTCOME } from "../utils/reaction-outcome";
+import { formatApprovalPrompt } from "./approval-prompt";
 import type {
   ConversationSurface,
   FollowSummary,
@@ -162,6 +165,9 @@ export class ConversationFollower {
         this.covered = Math.max(this.covered, entry.through);
         await this.finishReply(entry);
         return;
+      case ENTRY_KIND.APPROVAL_REQUESTED:
+        await this.askApproval();
+        return;
       default:
         return;
     }
@@ -182,6 +188,26 @@ export class ConversationFollower {
     if (reaction.by === "chat_model") {
       await this.surface.send(reaction.emoji, null);
     }
+  }
+
+  /** Ask about the approval just requested, numbered with every other one still open. */
+  private async askApproval(): Promise<void> {
+    const decided = new Set(
+      this.view.entries.flatMap(({ entry }) =>
+        entry.kind === ENTRY_KIND.APPROVAL_DECIDED ? [entry.approval_id] : [],
+      ),
+    );
+    const open = this.view.entries.flatMap(({ entry }) =>
+      entry.kind === ENTRY_KIND.APPROVAL_REQUESTED &&
+      !decided.has(entry.approval_id)
+        ? [entry]
+        : [],
+    );
+    const { platform } = this.options;
+    await this.surface.send(
+      PLATFORM_MARKDOWN[platform](formatApprovalPrompt(open, Date.now())),
+      null,
+    );
   }
 
   /** The open reply for an attempt whose Reply entry is past the floor; null for history. */
