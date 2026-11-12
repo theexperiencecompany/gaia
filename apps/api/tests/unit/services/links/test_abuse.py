@@ -5,9 +5,10 @@ sender and snapshot store are mocked at their seams. The report collection's
 one-per-reporter index runs over real Mongo in tests/contracts/test_link_reports_repository.py.
 """
 
-from collections.abc import Iterator
+from collections.abc import Awaitable, Iterator
 from dataclasses import dataclass
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from typing import cast
+from unittest.mock import AsyncMock, MagicMock, _Call, call, patch
 
 import fakeredis.aioredis
 import pytest
@@ -90,7 +91,8 @@ class TestGuessingLockout:
         await abuse.record_miss(VIEWER, SLUG)
 
         key = RESOLVE_MISS_KEY.format(viewer=VIEWER)
-        assert await fake_redis.smembers(key) == {hash_short_link_slug(SLUG)}
+        members = await cast("Awaitable[set[str]]", fake_redis.smembers(key))
+        assert members == {hash_short_link_slug(SLUG)}
         assert 0 < await fake_redis.ttl(key) <= RESOLVE_MISS_WINDOW_SECONDS
         assert await fake_redis.ttl(key) > RESOLVE_MISS_WINDOW_SECONDS - 5
 
@@ -139,7 +141,7 @@ def seams() -> Iterator[Seams]:
         yield Seams(reports, links, capture, send_email, delete_snapshot)
 
 
-def _reported(signed_in: bool = True) -> call:
+def _reported(signed_in: bool = True) -> _Call:
     return call(
         UserId(OWNER),
         ShortLinkReported(
@@ -148,7 +150,7 @@ def _reported(signed_in: bool = True) -> call:
     )
 
 
-def _suspended() -> call:
+def _suspended() -> _Call:
     return call(
         UserId(OWNER),
         ShortLinkTakenDown(target_type="session_artifact", reason="reports_threshold"),

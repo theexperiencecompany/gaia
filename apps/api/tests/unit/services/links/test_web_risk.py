@@ -8,7 +8,6 @@ import pytest
 
 from app.config.settings import settings
 from app.constants.short_links import WEB_RISK_CONCURRENCY, WEB_RISK_MAX_URLS
-from app.services.links import web_risk
 from app.services.links.web_risk import flagged_urls
 from app.utils.errors import AppError
 
@@ -34,7 +33,7 @@ class FakeWebRisk:
             self.clients.append(built)
             return built
 
-        monkeypatch.setattr(web_risk.httpx, "AsyncClient", client)
+        monkeypatch.setattr(httpx, "AsyncClient", client)
 
     async def _record(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)

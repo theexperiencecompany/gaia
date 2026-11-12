@@ -205,7 +205,12 @@ NOW = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
 SOURCE = SnapshotSource(
     filename="q3.html", declared_mime="text/html", size_bytes=11, data=b"<h1>Q3</h1>"
 )
-VIEW = PublicTodoDeliverable(target_type=TODO, title="Q3 plan", completed=True, content="Ship it")
+VIEW = PublicTodoDeliverable(
+    target_type=ShortLinkTargetType.TODO_DELIVERABLE,
+    title="Q3 plan",
+    completed=True,
+    content="Ship it",
+)
 IP, UA = "203.0.113.9", "Mozilla/5.0"
 RECIPIENT = LinkViewer(user_id=None, email=None, ip=IP, user_agent=UA)
 AS_OWNER = LinkViewer(user_id=OWNER, email=None, ip=IP, user_agent=UA)
