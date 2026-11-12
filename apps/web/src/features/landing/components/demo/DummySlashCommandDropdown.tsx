@@ -9,6 +9,12 @@ import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import {
+  ACCORDION_INDICATOR,
+  ACCORDION_PANEL_COMPACT,
+  ACCORDION_ROOT,
+  ACCORDION_TRIGGER_COMPACT,
+} from "@/lib/heroui/accordionParity";
 import { dummyIntegrations } from "./constants";
 
 // Dummy Integrations Card Component
@@ -19,15 +25,18 @@ const DummyIntegrationsCard: React.FC = () => {
     <div className="mx-2 mb-3 border-b-1 border-zinc-800">
       <Accordion
         variant="default"
+        className={ACCORDION_ROOT}
         expandedKeys={isExpanded ? new Set(["integrations"]) : new Set([])}
         onExpandedChange={(keys) => {
           const expanded = keys instanceof Set && keys.has("integrations");
           setIsExpanded(expanded);
         }}
       >
-        <Accordion.Item id="integrations">
+        <Accordion.Item id="integrations" className="pb-1">
           <Accordion.Heading>
-            <Accordion.Trigger className="cursor-pointer pb-1">
+            <Accordion.Trigger
+              className={`cursor-pointer ${ACCORDION_TRIGGER_COMPACT}`}
+            >
               <div className="flex items-center gap-3 px-1 pt-1">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between">
@@ -40,10 +49,10 @@ const DummyIntegrationsCard: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <Accordion.Indicator />
+              <Accordion.Indicator className={ACCORDION_INDICATOR} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel>
+          <Accordion.Panel className={ACCORDION_PANEL_COMPACT}>
             <div>
               <div className="grid grid-cols-2 gap-2">
                 {dummyIntegrations.map((integration) => (

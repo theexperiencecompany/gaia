@@ -2,6 +2,11 @@
 
 import { Accordion } from "@heroui/react";
 import type { FAQItem } from "@/lib/faq";
+import {
+  ACCORDION_INDICATOR,
+  ACCORDION_PANEL,
+  ACCORDION_TRIGGER,
+} from "@/lib/heroui/accordionParity";
 
 interface FAQPageClientProps {
   faqs: FAQItem[];
@@ -29,15 +34,17 @@ export default function FAQPageClient({ faqs }: FAQPageClientProps) {
           {faqs.map((item) => (
             <Accordion.Item key={item.question} id={item.question}>
               <Accordion.Heading className="font-normal">
-                <Accordion.Trigger className="cursor-pointer text-2xl">
+                <Accordion.Trigger
+                  className={`cursor-pointer text-2xl ${ACCORDION_TRIGGER}`}
+                >
                   {item.question}
-                  <Accordion.Indicator />
+                  <Accordion.Indicator className={ACCORDION_INDICATOR} />
                 </Accordion.Trigger>
               </Accordion.Heading>
-              <Accordion.Panel>
-                <Accordion.Body className="mb-6 max-w-[90%] text-xl font-light text-foreground-500">
-                  <span className="select-text">{item.answer}</span>
-                </Accordion.Body>
+              <Accordion.Panel
+                className={`${ACCORDION_PANEL} mb-6 max-w-[90%] text-xl font-light text-foreground-500`}
+              >
+                <span className="select-text">{item.answer}</span>
               </Accordion.Panel>
             </Accordion.Item>
           ))}
