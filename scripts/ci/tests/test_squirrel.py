@@ -13,7 +13,6 @@ from http_stub import Routes, serve
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "lib" / "squirrel.py"
-SNIPPET = Path(__file__).resolve().parents[3] / "apps/web/src/config/seoSnippet.json"
 SITE = "https://heygaia.io"
 # The slice of squirrel 0.0.133's project.db schema the ratchet reads.
 SCHEMA = """
@@ -166,7 +165,7 @@ def test_tighten_never_records_a_new_finding(tmp_path: Path) -> None:
 def test_strict_fails_on_a_fix_the_baseline_still_lists(tmp_path: Path) -> None:
     proc = _ratchet(tmp_path, [], "/a\tcore/h1/missing-h1\n", "--strict", "--sample")
     assert proc.returncode == 1
-    assert "SMOKE_SQUIRREL_UPDATE=1" in proc.stdout
+    assert "squirrel.py drop --log" in proc.stdout
 
 
 def test_a_sample_judges_only_the_pages_it_audited(tmp_path: Path) -> None:
@@ -213,11 +212,56 @@ def test_a_crawl_that_audited_other_pages_than_listed_fails_loud(tmp_path: Path)
     assert "not the 2 listed" in proc.stderr
 
 
+def test_a_full_crawl_may_audit_linked_pages_beyond_the_list_and_a_sample_may_not(
+    tmp_path: Path,
+) -> None:
+    pages, listed = ["/", "/de/automate", "/de/automate/page/2"], ["/", "/de/automate"]
+    assert _ratchet(tmp_path, [], "", pages=pages, listed=listed).returncode == 0
+    sample = _ratchet(tmp_path, [], "", "--sample", pages=pages, listed=listed)
+    assert sample.returncode != 0
+    assert "extra ['/de/automate/page/2']" in sample.stderr
+
+
+def test_drop_applies_the_fixes_a_ratchet_run_printed(tmp_path: Path) -> None:
+    baseline = "score:Images=51\n/a\tcore/h1/missing-h1\n/b\tcontent/keyword-stuffing/keyword-stuffing\tgaia\n/c\tcore/h1/missing-h1\n"
+    rows = [_row("/c", "core/h1", "missing-h1")]
+    proc = _ratchet(tmp_path, rows, baseline, scores={"Images": 60})
+    log = tmp_path / "ci.log"
+    log.write_text(
+        "".join(f"2026-11-12T00:00:00Z ##[error]{line}\n" for line in proc.stdout.splitlines())
+    )
+    dropped = subprocess.run(
+        [sys.executable, "-I", str(SCRIPT), "drop", "--log", str(log), "--baseline", str(tmp_path / "baseline.txt")],
+        capture_output=True,
+        text=True,
+        check=False,
+    )  # fmt: skip
+    assert dropped.returncode == 0, dropped.stderr
+    assert _lines(tmp_path) == ["score:Images=60", "/c\tcore/h1/missing-h1"]
+    assert _ratchet(tmp_path, rows, (tmp_path / "baseline.txt").read_text(), "--strict", scores={"Images": 60}).returncode == 0  # fmt: skip
+
+
+def test_drop_refuses_a_fix_the_baseline_does_not_list(tmp_path: Path) -> None:
+    (tmp_path / "baseline.txt").write_text("/a\tcore/h1/missing-h1\n")
+    log = tmp_path / "ci.log"
+    log.write_text("squirrel: fixed, drop it from the baseline: /z core/h1/missing-h1\n")
+    dropped = subprocess.run(
+        [sys.executable, "-I", str(SCRIPT), "drop", "--log", str(log), "--baseline", str(tmp_path / "baseline.txt")],
+        capture_output=True,
+        text=True,
+        check=False,
+    )  # fmt: skip
+    assert dropped.returncode != 0
+    assert "not in" in dropped.stderr
+
+
 @pytest.mark.parametrize(
     "row",
     [
-        _row("/pt-br/compare", "url/lowercase", "lowercase"),
         _row("/ja/compare/asana", "content/word-count", "word-count"),
+        _row("/ja/compare/asana", "core/meta-title", "meta-title"),
+        _row("/ko/compare/asana", "core/meta-description", "meta-description"),
+        _row("/learn/cron-job", "content/unrendered-markup", "unrendered-markup", [{"id": f"{SITE}/learn/cron-job", "label": "4 unrendered markup occurrence(s) in visible text (markdown-emphasis): example (*/15 in the minute field means every 15 minutes). Common examples: 0 2 *"}]),
         _row("/ko/compare/asana", "content/keyword-stuffing", "keyword-stuffing", [{"id": "asana"}]),
         _row("/a", "content/placeholder-text", "placeholder-content", [{"id": "unrendered-template", "snippet": "[[wiki links]]"}]),
         _row("/a", "content/word-count", "word-count"),
@@ -230,7 +274,7 @@ def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -
         "/a",
         "/a/x",
         "/contact",
-        "/pt-br/compare",
+        "/learn/cron-job",
         "/ja/compare/asana",
         "/ko/compare/asana",
     ]
@@ -242,14 +286,26 @@ def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -
     "row",
     [
         _row("/About", "url/lowercase", "lowercase"),
+        _row("/pt-br/compare", "url/lowercase", "lowercase"),
         _row("/de/compare/asana", "content/word-count", "word-count"),
-        _row("/ja/compare/asana", "core/meta-title", "meta-title"),
+        _row("/de/compare/asana", "core/meta-title", "meta-title"),
+        _row("/ja/compare/asana", "core/canonical", "canonical"),
+        _row("/b", "content/unrendered-markup", "unrendered-markup", [{"id": f"{SITE}/b", "label": "2 unrendered markup occurrence(s) in visible text (markdown-emphasis): example *bold* text"}]),
         _row("/b", "content/placeholder-text", "placeholder-content", [{"id": "unrendered-template", "snippet": "[['L-12345',85,'Hot']]"}]),
         _row("/b", "content/word-count", "word-count"),
     ],
 )  # fmt: skip
 def test_the_same_rules_still_count_a_real_finding(tmp_path: Path, row: Row) -> None:
-    pages = ["/", "/a", "/a/x", "/b", "/About", "/de/compare/asana", "/ja/compare/asana"]
+    pages = [
+        "/",
+        "/a",
+        "/a/x",
+        "/b",
+        "/About",
+        "/pt-br/compare",
+        "/de/compare/asana",
+        "/ja/compare/asana",
+    ]
     assert _ratchet(tmp_path, [row], "", pages=pages).returncode == 1
 
 
@@ -280,18 +336,6 @@ def test_a_malformed_baseline_line_fails_loud(tmp_path: Path) -> None:
     proc = _ratchet(tmp_path, [], "core/h1=2\n")
     assert proc.returncode != 0
     assert "expected `<page>" in proc.stderr
-
-
-def test_config_takes_the_snippet_windows_from_the_web_app(tmp_path: Path) -> None:
-    out = tmp_path / "squirrel.toml"
-    subprocess.run([sys.executable, "-I", str(SCRIPT), "config", "--out", str(out)], check=True)
-    snippet = json.loads(SNIPPET.read_text())
-    text = out.read_text()
-    title = f'[rule_options."core/meta-title"]\nmin_length = {snippet["titleLength"]["min"]}\nmax_length = {snippet["titleLength"]["max"]}\n'
-    description = f'[rule_options."core/meta-description"]\nmin_length = {snippet["descriptionLength"]["min"]}\nmax_length = {snippet["descriptionLength"]["max"]}\n'
-    assert title in text
-    assert description in text
-    assert text.startswith((SCRIPT.parents[3] / "config/squirrel.toml").read_text())
 
 
 def _git(repo: Path, *args: str) -> str:

@@ -1,13 +1,13 @@
 """Choose the pages squirrelscan audits for the SEO lane and hold its findings to a baseline.
 
-config  writes config/squirrel.toml plus the title and description windows from
-        apps/web/src/config/seoSnippet.json, so squirrel and seo_audit.py judge one standard.
 pages   lists the pages to audit: every sitemap URL (--all), or for a PR one page per
         template per locale plus every page the diff renders (indexnow.py's mapping).
 ratchet reads the finished crawl from squirrel's own database, one finding per page,
         check and item, and fails on any finding the baseline does not list. A full
         crawl also holds every category score to its baseline and, with --tighten,
         rewrites the baseline without what it fixed; a PR's crawl judges only its pages.
+drop    applies the fixes a ratchet run printed (its CI log or verdict) to the baseline,
+        so the PR that fixed them drops their lines without a full crawl.
 """
 
 from __future__ import annotations
@@ -31,18 +31,21 @@ from lib.indexnow import classify, load_repo, map_changes, split_url, web_diff
 from lib.seo_audit import LOCALE_PREFIX as SITE_LOCALE, Site, sitemap_urls
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-BASE_CONFIG = REPO_ROOT / "config/squirrel.toml"
-SNIPPET_CONFIG = REPO_ROOT / "apps/web/src/config/seoSnippet.json"
 FINDING_STATUSES = ("fail", "warn")
 SCORE_PREFIX = "score:"
 PERFECT_SCORE = 100
 SITE_WIDE = "*"
-UPDATE_HINT = "SMOKE_SQUIRREL_UPDATE=1 on the smoke-web.sh subcommand that checks it"
+UPDATE_HINT = "`python3 scripts/ci/lib/squirrel.py drop --log <this log> --baseline <it>`"
+FIXED = re.compile(r"squirrel: fixed, drop it from the baseline: (\S+) (\S+)(?: \[(.*)\])?\s*$")
+RAISED = re.compile(r"squirrel: (.+?) rose to (\d+), baseline (\d+)\s*$")
 ALERT_RULES = 4
 ALERT_EXAMPLES = 3
-# BCP 47 region casing, which hreflang requires: /pt-br is the locale prefix.
-LOCALE_PREFIX = re.compile(r"^/pt-br(?=/|$)")
 CJK_LOCALES = ("ja", "ko")
+CJK_LENGTH_RULES = frozenset(
+    {"content/word-count", "content/keyword-stuffing", "core/meta-title", "core/meta-description"}
+)
+# A cron field (*/15) or a run of them (0 2 * * *): squirrel reads the asterisks as markdown.
+CRON_SYNTAX = re.compile(r"\*/\d|\d \d+ \*|\* \* \*")
 # Next.js content-hashes every build asset: /_next/static/chunks/2o_wf2t990r7t.css.
 BUILD_ASSET = re.compile(r"(/_next/static/(?:chunks|media|css)/)[^/\s\"]+?(\.[a-z0-9]+)\b")
 BUILD_ID = re.compile(r"/_next/static/(?!chunks/|media/|css/)[^/\s\"]+/")
@@ -117,22 +120,21 @@ class Ignore:
     applies: Callable[[Observed, frozenset[str]], bool]
 
 
-def _locale_casing(seen: Observed, _pages: frozenset[str]) -> bool:
-    rest = LOCALE_PREFIX.sub("", seen.finding.page)
-    return (
-        seen.finding.rule == "url/lowercase" and rest != seen.finding.page and rest == rest.lower()
-    )
-
-
-def _cjk_word_count(seen: Observed, _pages: frozenset[str]) -> bool:
+def _cjk_length(seen: Observed, _pages: frozenset[str]) -> bool:
     page = seen.finding.page
     on_cjk = any(page == f"/{loc}" or page.startswith(f"/{loc}/") for loc in CJK_LOCALES)
-    return on_cjk and seen.finding.rule in ("content/word-count", "content/keyword-stuffing")
+    return on_cjk and seen.finding.rule in CJK_LENGTH_RULES
 
 
 def _wiki_link_text(seen: Observed, _pages: frozenset[str]) -> bool:
     snippet = seen.item.get("snippet", "")
     return seen.finding.rule == "content/placeholder-text" and bool(WIKI_LINK.match(snippet))
+
+
+def _cron_as_markdown(seen: Observed, _pages: frozenset[str]) -> bool:
+    label = seen.item.get("label", "")
+    emphasis = "(markdown-emphasis)" in label and bool(CRON_SYNTAX.search(label))
+    return seen.finding.rule == "content/unrendered-markup" and emphasis
 
 
 def _hub_word_count(seen: Observed, pages: frozenset[str]) -> bool:
@@ -142,30 +144,34 @@ def _hub_word_count(seen: Observed, pages: frozenset[str]) -> bool:
     return seen.finding.rule == "content/word-count" and (index or listing)
 
 
+# Only squirrel's own bugs, and one design decision: everything else is a finding.
 IGNORED = (
     Ignore(
-        "pt-BR's region capitals are the BCP 47 casing hreflang requires, not a mixed-case URL",
-        "url/lowercase flagged every /pt-BR page before #1574 lowercased the prefix",
-        _locale_casing,
+        "squirrel measures Japanese and Korean by Latin rules: words by spaces, lengths in "
+        "characters, so CJK prose reads thin, a Latin product name in it as stuffing, and a "
+        "title or description too short",
+        "/ja/compare/asana has 2,726 CJK characters, reported as 107 words and 'asana' at "
+        "16.9%; '2026年版 Any.do 最良の代替 | GAIA' reported as a 26-character title, too short",
+        _cjk_length,
     ),
     Ignore(
-        "squirrel counts words by spaces, so Japanese and Korean prose reads as a few words "
-        "and a Latin product name in it as stuffing",
-        "/ja/compare/asana: 2,726 CJK characters, reported as 107 words and 'asana' at 16.9%; "
-        "85 /ja pages thin and 181 /ja or /ko pages stuffed on the 1,100-page crawl",
-        _cjk_word_count,
-    ),
-    Ignore(
-        "[[...]] in copy is wiki-link syntax the glossary and comparisons describe, not an "
+        "[[...]] in copy is the wiki-link syntax the glossary and comparisons describe, not an "
         "unrendered template",
-        "content/placeholder-text on 9 pages quoting [[bracket]], [[wiki links]], [[entre crochets]]",
+        "/compare/obsidian quotes [[wiki links]]; /alternative-to/roam-research quotes [[bracket]]",
         _wiki_link_text,
     ),
     Ignore(
-        "hub indexes (a page other sitemap pages sit under: /marketplace, /blog, /use-cases, "
-        "/compare, /ja/for, ...) and the /download and /contact listings are short by design",
-        "/ja/for 49 words, /contact 59, /marketplace 178, /blog 188, /download 193 on the "
-        "1,100-page crawl; #1701 shortened their intros on purpose",
+        "a cron expression's asterisks read as markdown emphasis",
+        "/learn/cron-job: 'example (*/15 in the minute field means every 15 minutes). Common "
+        "examples: 0 2 *' reported as unrendered markdown-emphasis",
+        _cron_as_markdown,
+    ),
+    Ignore(
+        "founder's decision, not a squirrel bug: hub indexes (a page other pages sit under: "
+        "/marketplace, /blog, /use-cases, /compare, /ja/for) and the /download and /contact "
+        "listings are short by design",
+        "/ja/for 49 words, /contact 59, /marketplace 178, /blog 188, /download 193; #1701 "
+        "shortened their intros on purpose",
         _hub_word_count,
     ),
 )
@@ -392,10 +398,11 @@ def _write_output(path: Path, name: str, value: str) -> None:
         out.write(f"{name}<<SQUIRREL_EOF\n{value}\nSQUIRREL_EOF\n")
 
 
-def _check_coverage(crawl: Crawl, pages_file: Path, site: str) -> None:
+def _check_coverage(crawl: Crawl, pages_file: Path, site: str, sample: bool) -> None:
+    """Fail unless a sample audited exactly its list, and a full crawl at least every listed page."""
     listed = frozenset(_path(u, site) for u in pages_file.read_text().split())
-    if crawl.pages != listed:
-        missing, extra = sorted(listed - crawl.pages), sorted(crawl.pages - listed)
+    missing, extra = sorted(listed - crawl.pages), sorted(crawl.pages - listed)
+    if missing or (sample and extra):
         raise SystemExit(
             f"squirrel: audited {len(crawl.pages)} pages, not the {len(listed)} listed "
             f"(missing {missing[:5]}, extra {extra[:5]})"
@@ -414,14 +421,14 @@ def _report(verdict: Verdict, strict: bool, annotated: Path) -> bool:
     for category, old, new in verdict.raised:
         print(f"{prefix}squirrel: {category} rose to {new}, baseline {old}")
     if strict and (verdict.fixed or verdict.raised):
-        print(f"squirrel: rewrite {annotated} in this PR with {UPDATE_HINT}")
+        print(f"squirrel: drop the fixes from {annotated} in this PR: {UPDATE_HINT}")
     return bool(verdict.new or verdict.dropped or (strict and (verdict.fixed or verdict.raised)))
 
 
 def cmd_ratchet(args: argparse.Namespace) -> int:
     site = args.site.rstrip("/")
     crawl = read_crawl(project_db(args.home), site)
-    _check_coverage(crawl, args.pages, site)
+    _check_coverage(crawl, args.pages, site, args.sample)
     scores = None if args.sample else category_scores(json.loads(args.report.read_text()))
     if not args.baseline.exists() and not args.update:
         raise SystemExit(f"squirrel: no baseline at {args.baseline}; record one with {UPDATE_HINT}")
@@ -485,23 +492,34 @@ def cmd_pages(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_config(args: argparse.Namespace) -> int:
-    snippet = json.loads(SNIPPET_CONFIG.read_text())
-    windows = {"core/meta-title": "titleLength", "core/meta-description": "descriptionLength"}
-    generated = "".join(
-        f'\n[rule_options."{rule}"]\nmin_length = {snippet[key]["min"]}\nmax_length = {snippet[key]["max"]}\n'
-        for rule, key in windows.items()
-    )
-    args.out.write_text(BASE_CONFIG.read_text() + generated)
+def cmd_drop(args: argparse.Namespace) -> int:
+    baseline = read_baseline(args.baseline)
+    fixed: set[Finding] = set()
+    scores = dict(baseline.scores)
+    for line in args.log.read_text(errors="replace").splitlines():
+        if match := FIXED.search(line):
+            fixed.add(Finding(match[1], match[2], match[3] or ""))
+        elif match := RAISED.search(line):
+            scores[f"{SCORE_PREFIX}{match[1]}"] = int(match[2])
+    unknown = fixed - baseline.findings
+    if unknown:
+        raise SystemExit(
+            f"squirrel: {len(unknown)} fixed finding(s) not in {args.baseline}: {sorted(unknown)[:3]}"
+        )
+    write_baseline(args.baseline, Baseline(baseline.findings - fixed, scores))
+    print(f"squirrel: dropped {len(fixed)} fixed finding(s) from {args.baseline}")
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    config = sub.add_parser("config", help="write the effective squirrel.toml")
-    config.add_argument("--out", type=Path, required=True)
-    config.set_defaults(run=cmd_config)
+    drop = sub.add_parser("drop", help="apply the fixes a ratchet run printed to the baseline")
+    drop.add_argument(
+        "--log", type=Path, required=True, help="a CI log or verdict that printed them"
+    )
+    drop.add_argument("--baseline", type=Path, required=True)
+    drop.set_defaults(run=cmd_drop)
     pages = sub.add_parser("pages", help="list the pages to audit")
     pages.add_argument("--site", required=True, help="the origin the pages name")
     pages.add_argument("--base", required=True, help="where to fetch the sitemap from")
