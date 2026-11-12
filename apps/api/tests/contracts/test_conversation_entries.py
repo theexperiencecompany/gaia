@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Coroutine, Iterator
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 import uuid
 
+from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 
 from app.db.repositories import conversations as conversations_module
@@ -15,7 +17,11 @@ from app.db.repositories.conversation_entries import EntryWindow
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import MessageModel
 from app.models.conversation_models import ConversationDocument
-from app.utils.errors import ConversationNotFoundError, UnmigratedConversationError
+from app.utils.errors import (
+    ConversationNotFoundError,
+    ConversationStoreError,
+    UnmigratedConversationError,
+)
 
 # Every test here writes entries, so each needs the collection with its unique indexes.
 pytestmark = pytest.mark.usefixtures("entries_collection")
@@ -422,3 +428,124 @@ async def test_search_skips_a_todos_chat_and_cross_reads_refuse_unmigrated_data(
     )
     with pytest.raises(UnmigratedConversationError):
         await repo.has_sent_message(uid)
+
+
+_REFUSAL = (
+    "has messages the entries migration has not copied: run python -m "
+    "app.scripts.migrate_conversation_entries --apply (or --since for a second pass)"
+)
+
+
+async def test_a_migrated_head_reads_until_the_old_build_writes_its_array_again(
+    repo: ConversationRepository, raw_collection: Any, entries_collection: Any
+) -> None:
+    old = {"type": "user", "response": "old", "message_id": "o1"}
+    await raw_collection.insert_one(
+        {
+            "conversation_id": "migrated",
+            "user_id": "u",
+            "createdAt": datetime.now(UTC).isoformat(),
+            "messages": [old],
+            "log_head": 1,
+            "migrated_last_id": "o1",
+        }
+    )
+    await entries_collection.insert_one(
+        {
+            "conversation_id": "migrated",
+            "user_id": "u",
+            "seq": 1,
+            "id": "o1",
+            "type": "user",
+            "response": "old",
+            "at": datetime.now(UTC),
+        }
+    )
+    doc = await repo.get("migrated", user_id="u")
+    assert doc is not None and [m.message_id for m in doc.messages] == ["o1"]
+
+    await raw_collection.update_one(
+        {"conversation_id": "migrated"}, {"$push": {"messages": {**old, "message_id": "o2"}}}
+    )
+
+    with pytest.raises(UnmigratedConversationError) as refused:
+        await repo.get("migrated", user_id="u")
+    assert refused.value.message == f"conversation migrated {_REFUSAL}"
+    assert refused.value.why == "its messages still live only in the embedded messages array"
+
+
+async def test_a_head_written_before_log_head_existed_starts_its_log_at_one(
+    repo: ConversationRepository, raw_collection: Any, held: _HeldFlushes
+) -> None:
+    await raw_collection.insert_one(
+        {"conversation_id": "early", "user_id": "u", "createdAt": datetime.now(UTC).isoformat()}
+    )
+
+    assert await repo.append("early", user_id="u", entries=[_message("m1")]) == [1]
+    assert await repo.append("early", user_id="u", entries=[_message("m2")]) == [2]
+    head = await raw_collection.find_one({"conversation_id": "early"})
+    assert head is not None and head["log_head"] == 2
+
+
+async def test_a_flush_never_drops_an_entry_whose_seq_another_entry_holds(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    held: _HeldFlushes,
+    raw_collection: Any,
+    entries_collection: Any,
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    await repo.append(cid, user_id=uid, entries=[_message("m1")])
+    held.drop_all()
+    await entries_collection.insert_one(
+        {
+            "conversation_id": cid,
+            "user_id": uid,
+            "seq": 1,
+            "id": "intruder",
+            "at": datetime.now(UTC),
+        }
+    )
+
+    with pytest.raises(ConversationStoreError) as conflict:
+        await repo.flush_outbox(cid, user_id=uid)
+
+    assert conflict.value.message == "an outbox entry conflicts with a stored entry"
+    assert "E11000" in conflict.value.why
+    assert list(await _outbox(raw_collection, conversation)) == ["1"]
+
+
+async def test_an_entry_without_a_commit_time_is_refused_as_corrupt(
+    repo: ConversationRepository, conversation: ConversationDocument, entries_collection: Any
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    await entries_collection.insert_one(
+        {"conversation_id": cid, "user_id": uid, "seq": 1, "id": "m1", "pinned": True}
+    )
+
+    with pytest.raises(ConversationStoreError) as corrupt:
+        await repo.list_pinned_messages(uid)
+
+    assert corrupt.value.message == "a stored conversation entry has no commit time"
+    assert corrupt.value.meta == {"conversation_id": cid, "seq": "1"}
+
+
+async def test_a_driver_failure_surfaces_as_the_stores_error_naming_the_operation(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failure = ServerSelectionTimeoutError("no primary")
+
+    def down(*_: object, **__: object) -> None:
+        raise failure
+
+    monkeypatch.setattr(repo, "_raw_collection", lambda: SimpleNamespace(aggregate=down))
+
+    with pytest.raises(ConversationStoreError) as raised:
+        await repo.get(conversation.conversation_id, user_id=conversation.user_id)
+
+    assert raised.value.message == "conversation store head read failed"
+    assert raised.value.why == "no primary"
+    assert raised.value.meta == {"error_type": "ServerSelectionTimeoutError"}
+    assert raised.value.__cause__ is failure

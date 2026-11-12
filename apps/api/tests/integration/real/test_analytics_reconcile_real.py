@@ -48,7 +48,9 @@ def _seed(db: Database[Document], conversations: list[Document]) -> None:
     for n, conversation in enumerate(conversations):
         head = {k: v for k, v in conversation.items() if k != "messages"}
         head.update(conversation_id=f"c{n}-{uuid4().hex}", user_id="u1", log_head=0)
-        entries = [
+        messages = conversation.get("messages", [])
+        assert isinstance(messages, list)
+        entries: list[Document] = [
             {
                 **message,
                 "conversation_id": head["conversation_id"],
@@ -56,7 +58,7 @@ def _seed(db: Database[Document], conversations: list[Document]) -> None:
                 "seq": seq,
                 "id": f"m{seq}",
             }
-            for seq, message in enumerate(conversation.get("messages", []), 1)
+            for seq, message in enumerate(messages, 1)
         ]
         head["log_head"] = len(entries)
         db.conversations.insert_one(head)
