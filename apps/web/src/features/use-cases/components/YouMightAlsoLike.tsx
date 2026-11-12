@@ -6,7 +6,7 @@ interface YouMightAlsoLikeProps {
   readonly workflows: readonly CommunityWorkflow[];
 }
 
-export default function YouMightAlsoLike({ workflows }: YouMightAlsoLikeProps) {
+export function YouMightAlsoLike({ workflows }: YouMightAlsoLikeProps) {
   if (workflows.length === 0) return null;
 
   return (

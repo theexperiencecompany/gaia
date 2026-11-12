@@ -10,7 +10,7 @@ import { track } from "@/lib/analytics";
 
 import PublishWorkflowCTA from "./PublishWorkflowCTA";
 import ShareButton from "./ShareButton";
-import YouMightAlsoLike from "./YouMightAlsoLike";
+import { YouMightAlsoLike } from "./YouMightAlsoLike";
 
 interface UseCaseDetailLayoutProps {
   breadcrumbs: readonly PageCrumb[];

@@ -72,7 +72,7 @@ vi.mock("@/features/landing/components/sections/PersonaSEOSection", () => ({
 }));
 
 vi.mock("@/features/use-cases/components/YouMightAlsoLike", () => ({
-  default: () => null,
+  YouMightAlsoLike: () => null,
 }));
 
 vi.mock("@/features/auth/hooks/useAuth", () => ({
