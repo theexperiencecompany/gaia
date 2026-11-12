@@ -12586,7 +12586,7 @@
       },
       "Notice": {
         "additionalProperties": false,
-        "description": "Text delivered to the user outside a step.",
+        "description": "Text delivered to the user outside a step, with the cards of the work it reports.",
         "properties": {
           "id": {
             "description": "Producer-minted idempotency key",
@@ -12607,6 +12607,14 @@
           "text": {
             "title": "Text",
             "type": "string"
+          },
+          "tool_data": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ToolDataEntry"
+            },
+            "title": "Tool Data",
+            "type": "array"
           }
         },
         "required": [

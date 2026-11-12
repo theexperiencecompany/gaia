@@ -229,7 +229,7 @@ class _Harness:
                 f"{MODULE}.workflow_repository.update_for_user",
                 self.update_workflow,
             ),
-            patch(f"{MODULE}.add_playbook_run_messages", self.add_messages),
+            patch(f"{MODULE}.log_playbook_run", self.add_messages),
             patch(f"{MODULE}.deliver_workflow_result", self.platform_delivery),
             patch(
                 f"{MODULE}.send_workflow_completion_notification",

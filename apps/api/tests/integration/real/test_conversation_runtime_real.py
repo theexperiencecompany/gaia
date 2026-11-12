@@ -32,12 +32,14 @@ from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_exec
 from app.agents.core.background.todo_run_delivery import report_form_of
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.graph_manager import GraphManager
+from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.run_record import append_call
 from app.constants.browser import HandoffDecision, HandoffStatus
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
 from app.constants.graphs import GraphName
 from app.constants.todos import TodoWakeKind
+from app.core.lazy_loader import providers
 from app.db.redis import redis_cache
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
@@ -52,6 +54,7 @@ from app.models.conversation_log_models import (
     Entry,
     IntegrationConnected,
     LoggedEntry,
+    Notice,
     Reply,
     ReplyOutcome,
     ReplySettled,
@@ -67,6 +70,7 @@ from app.models.conversation_log_models import (
 )
 from app.models.conversation_send_models import SendMessageRequest
 from app.models.message_models import ReplyToMessageData
+from app.models.playbook_models import PlaybookDocument, ToolStep
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.todo_wake_models import TodoRunWake
 from app.models.tool_data_models import ToolDataEntry
@@ -90,6 +94,7 @@ from app.services.conversation.event_stream import (
     StreamedFrame,
     follow,
     read_frames,
+    replay_from_log,
 )
 from app.services.conversation.integration_log import (
     continue_after_connect,
@@ -113,6 +118,7 @@ from app.services.conversation.work_log import (
     running_step_task,
 )
 from app.services.delivery.chat_channel import ChatChannel
+from app.services.workflow.conversation_service import log_playbook_run
 from app.services.workflow.execution_service import WorkflowFireOverlapped, WorkflowTurnFailed
 from app.workers.tasks import workflow_tasks
 from app.workers.tasks.workflow_tasks import (
@@ -1101,6 +1107,45 @@ async def test_a_todo_run_that_found_nothing_for_the_user_settles_silent_and_sen
     assert [(r.text, r.tool_data) for r in await rig.of(Reply)] == [("", ())]
     delivery.sent.assert_not_awaited()
     assert "the run found nothing for the user" in delivery.finished.await_args.args[3]
+
+
+@pytest.mark.service
+async def test_a_playbook_replay_reads_back_from_its_conversations_log_with_its_cards(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated())
+    # Cards resolve their categories through the real tool registry.
+    if not providers.is_initialized("tool_registry"):
+        init_tool_registry()
+    now = datetime.now(UTC)
+    playbook = PlaybookDocument(
+        playbook_id="pb-1",
+        workflow_id="wf-1",
+        user_id=rig.user_id,
+        workflow_hash="h",
+        description="Fetch unread mail",
+        steps=[ToolStep(id="fetch", tool="GMAIL_FETCH_EMAILS", args={})],
+        result_brief="s",
+        created_at=now,
+        updated_at=now,
+    )
+    await log_playbook_run(
+        rig.conversation_id, rig.user_id, _workflow(rig.user_id), "3 unread", [_CALL], playbook
+    )
+    replayed = await replay_from_log(rig.ports.log, rig.conversation_id, rig.user_id, 0)
+    notices = [
+        f.frame.entry
+        for f in replayed
+        if isinstance(f.frame, EntryFrame) and isinstance(f.frame.entry, Notice)
+    ]
+    [notice] = notices
+    assert notice.text == "3 unread"
+    assert [card["data"]["tool_name"] for card in notice.tool_data] == [
+        "run_playbook",
+        "GMAIL_FETCH_EMAILS",
+    ]
+    assert len(notice.tool_data) == 2
+    assert running_steps() == ()
 
 
 # ---- workflow fires on the step ----

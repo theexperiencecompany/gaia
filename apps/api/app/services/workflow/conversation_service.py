@@ -1,31 +1,27 @@
 """Workflow conversation service for managing single conversations per workflow."""
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
 from uuid import uuid4
 
 from langchain_core.messages import ToolCall
 
-from app.constants.log_tags import LogTag
 from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import (
-    MessageModel,
     SystemPurpose,
     ToolDataEntry,
-    UpdateMessagesRequest,
 )
+from app.models.conversation_log_models import Notice
 from app.models.message_models import SelectedWorkflowData
 from app.models.playbook_models import PlaybookDocument, PlaybookStep
-from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import Workflow
+from app.services.conversation.log import accept
+from app.services.conversation.runtime import runtime_ports
 from app.services.conversation_service import (
     create_system_conversation,
-    update_messages,
 )
 from app.utils.agent_utils import format_tool_call_entry
 from app.utils.stream_utils import apply_outputs_to_tool_data
-from shared.py.wide_events import log
 
 
 async def get_or_create_workflow_conversation(
@@ -55,34 +51,6 @@ async def get_or_create_workflow_conversation(
     return conversation.conversation_id
 
 
-async def add_workflow_execution_messages(
-    conversation_id: str,
-    workflow_execution_messages: list[MessageModel],
-    user_id: str,
-) -> None:
-    """Append execution messages to the workflow's conversation."""
-    try:
-        # Create update request
-        messages_request = UpdateMessagesRequest(
-            conversation_id=conversation_id, messages=workflow_execution_messages
-        )
-
-        await update_messages(
-            messages_request,
-            AuthenticatedUser(user_id=user_id),
-        )
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.WORKFLOW} Failed to store messages in conversation",
-            conversation_id=conversation_id,
-            error=str(e),
-            error_type=type(e).__name__,
-            user_id=user_id,
-        )
-        raise
-
-
 def build_selected_workflow_data(workflow: Workflow) -> SelectedWorkflowData:
     """Build the workflow card a run's trigger message carries.
 
@@ -99,7 +67,7 @@ def build_selected_workflow_data(workflow: Workflow) -> SelectedWorkflowData:
     )
 
 
-async def add_playbook_run_messages(
+async def log_playbook_run(
     conversation_id: str,
     user_id: str,
     workflow: Workflow,
@@ -107,32 +75,19 @@ async def add_playbook_run_messages(
     trace: Sequence[RecordedCall],
     playbook: PlaybookDocument,
 ) -> None:
-    """Write a replayed run into the workflow's conversation as a normal turn.
+    """Log a replayed run in the workflow's conversation as what it delivered, with its cards.
 
     The calls render exactly as the live path renders them, led by a Run
     playbook card so the reader can tell WHY the run finished in seconds: the
-    steps were replayed from the workflow's playbook, not reasoned out. Without
-    that provenance an instant run with two cards reads as broken, not fast.
+    steps were replayed from the workflow's playbook, not reasoned out.
     """
-    trigger_message = MessageModel(
-        type="user",
-        response="",
-        date=datetime.now(UTC).isoformat(),
-        message_id=str(uuid4()),
-        selectedWorkflow=build_selected_workflow_data(workflow),
+    notice = Notice(
+        id=f"playbook:{uuid4()}",
+        text=response,
+        origin=f'workflow "{workflow.title}" (id {workflow.id}), replayed from its playbook',
+        tool_data=tuple(await build_playbook_tool_data(trace, user_id, playbook)),
     )
-    result_message = MessageModel(
-        type="bot",
-        response=response,
-        date=datetime.now(UTC).isoformat(),
-        message_id=str(uuid4()),
-        tool_data=await build_playbook_tool_data(trace, user_id, playbook),
-    )
-    await add_workflow_execution_messages(
-        conversation_id=conversation_id,
-        workflow_execution_messages=[trigger_message, result_message],
-        user_id=user_id,
-    )
+    await accept(runtime_ports(), conversation_id, user_id, notice)
 
 
 def _playbook_plan(steps: Sequence[PlaybookStep]) -> list[str]:

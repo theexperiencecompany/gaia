@@ -11773,7 +11773,7 @@ export interface components {
         };
         /**
          * Notice
-         * @description Text delivered to the user outside a step.
+         * @description Text delivered to the user outside a step, with the cards of the work it reports.
          */
         Notice: {
             /**
@@ -11790,6 +11790,11 @@ export interface components {
             origin: string;
             /** Text */
             text: string;
+            /**
+             * Tool Data
+             * @default []
+             */
+            tool_data?: components["schemas"]["ToolDataEntry"][];
         };
         /**
          * NotificationAction

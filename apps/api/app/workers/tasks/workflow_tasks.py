@@ -96,9 +96,9 @@ from app.services.triggers.batching import (
 from app.services.triggers.trigger_gate import quiet_hours_hold
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
-    add_playbook_run_messages,
     build_selected_workflow_data,
     get_or_create_workflow_conversation,
+    log_playbook_run,
 )
 from app.services.workflow.execution_service import (
     PlaybookFallbackFailed,
@@ -981,7 +981,7 @@ async def _deliver_replay(
     if isinstance(fire.quiet_hours, QuietHoursBypass):
         opening = QUIET_HOURS_BYPASS_OPENING.format(reason=fire.quiet_hours.reason)
         text = f"{opening}\n\n{text}"
-    await add_playbook_run_messages(
+    await log_playbook_run(
         conversation_id=conversation_id,
         user_id=workflow.user_id,
         workflow=workflow,

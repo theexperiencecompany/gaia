@@ -196,11 +196,12 @@ class TodoWoke(_Entry):
 
 
 class Notice(_Entry):
-    """Text delivered to the user outside a step."""
+    """Text delivered to the user outside a step, with the cards of the work it reports."""
 
     kind: Literal[EntryKind.NOTICE] = EntryKind.NOTICE
     text: str
     origin: str
+    tool_data: tuple[ToolDataEntry, ...] = ()
 
 
 class WorkStarted(_Entry):
