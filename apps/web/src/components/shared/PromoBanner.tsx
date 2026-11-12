@@ -1,8 +1,8 @@
 "use client";
 
 import { Button } from "@heroui/react";
-import Link from "next/link";
 import type { ReactNode } from "react";
+import { LinkButton } from "@/components/shared/LinkButton";
 
 export interface PromoBannerAction {
   label: string;
@@ -32,19 +32,10 @@ function renderAction(action: PromoBannerAction, isPrimary: boolean) {
 
   if (href) {
     return (
-      <Button
-        key={action.label}
-        render={(props) => (
-          <Link
-            {...(props as unknown as React.ComponentProps<typeof Link>)}
-            href={href}
-          />
-        )}
-        variant={variant}
-      >
+      <LinkButton href={href} key={action.label} variant={variant}>
         {action.label}
         {action.icon}
-      </Button>
+      </LinkButton>
     );
   }
 

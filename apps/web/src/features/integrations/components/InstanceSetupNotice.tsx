@@ -1,8 +1,7 @@
 "use client";
 
-import { Button, Chip, Tooltip } from "@heroui/react";
-import Link from "next/link";
-import type { ComponentProps } from "react";
+import { Chip, Tooltip } from "@heroui/react";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { COMPOSIO_SETUP_PATH } from "@/features/settings/api/composioSetupApi";
 
@@ -14,19 +13,14 @@ export function InstanceSetupNotice() {
   if (role === "admin") {
     return (
       <Tooltip>
-        <Button
-          render={(props) => (
-            <Link
-              {...(props as unknown as ComponentProps<"a">)}
-              href={COMPOSIO_SETUP_PATH}
-            />
-          )}
+        <LinkButton
+          href={COMPOSIO_SETUP_PATH}
           size="sm"
           variant="secondary"
           className="shrink-0 text-xs"
         >
           Set up
-        </Button>
+        </LinkButton>
 
         <Tooltip.Content>Not set up on this instance yet</Tooltip.Content>
       </Tooltip>
@@ -60,19 +54,14 @@ export function InstanceSetupCallout({ name }: { name: string }) {
         </p>
       </div>
       {role === "admin" && (
-        <Button
-          render={(props) => (
-            <Link
-              {...(props as unknown as ComponentProps<"a">)}
-              href={COMPOSIO_SETUP_PATH}
-            />
-          )}
+        <LinkButton
+          href={COMPOSIO_SETUP_PATH}
           size="sm"
           variant="primary"
           className="self-start"
         >
           Set it up
-        </Button>
+        </LinkButton>
       )}
     </div>
   );

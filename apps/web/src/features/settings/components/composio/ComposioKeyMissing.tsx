@@ -1,9 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { KeyIcon } from "@icons";
-import Link from "next/link";
-import type { ComponentProps } from "react";
+import { LinkButton } from "@/components/shared/LinkButton";
 import {
   COMPOSIO_APP_COUNT,
   COMPOSIO_SETUP_PATH,
@@ -25,18 +23,13 @@ export function ComposioKeyMissing({ onNavigate }: { onNavigate: () => void }) {
           key is saved.
         </p>
       </div>
-      <Button
-        render={(props) => (
-          <Link
-            {...(props as unknown as ComponentProps<"a">)}
-            href={COMPOSIO_SETUP_PATH}
-          />
-        )}
-        onPress={onNavigate}
+      <LinkButton
+        href={COMPOSIO_SETUP_PATH}
+        onClick={onNavigate}
         variant="primary"
       >
         Add Composio key
-      </Button>
+      </LinkButton>
     </div>
   );
 }

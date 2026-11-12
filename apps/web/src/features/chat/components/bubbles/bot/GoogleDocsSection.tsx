@@ -1,7 +1,6 @@
-import { Button } from "@heroui/react";
 import Image from "next/image";
 import type React from "react";
-
+import { LinkButton } from "@/components/shared/LinkButton";
 import type { GoogleDocsData } from "@/types/features/toolDataTypes";
 
 interface GoogleDocsSectionProps {
@@ -24,16 +23,11 @@ const GoogleDocsSection: React.FC<GoogleDocsSectionProps> = ({
           <span className="text-sm text-gray-600">{message}</span>
         </div>
         <div className="space-y-2 space-x-2">
-          <Button
+          <LinkButton
+            href={document.url}
+            target="_blank"
+            rel="noopener noreferrer"
             key={document.id}
-            render={(props) => (
-              <a
-                {...(props as unknown as React.ComponentProps<"a">)}
-                href={document.url}
-                target="_blank"
-                rel="noopener noreferrer"
-              />
-            )}
             variant="tertiary"
             className="max-w-60 min-w-60 justify-start py-7"
           >
@@ -66,7 +60,7 @@ const GoogleDocsSection: React.FC<GoogleDocsSectionProps> = ({
                 )}
               </div>
             </div>
-          </Button>
+          </LinkButton>
         </div>
       </div>
     );

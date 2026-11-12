@@ -5,7 +5,7 @@ import { Fire02Icon, SparklesIcon } from "@icons";
 import { USAGE_WARN_THRESHOLD } from "@shared/constants/usage";
 import type { FeatureUsage, UsageActivity, UsageSummary } from "@shared/types";
 import { formatCompactNumber, formatDateUTC } from "@shared/utils";
-import { type ComponentProps, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import BlurStack from "@/components/ui/blur-stack";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { useRecharts } from "@/components/ui/chart-loader";
@@ -765,17 +765,12 @@ function Tools({
           </div>
           {canCollapse && showAll && (
             <div className="mt-3 flex justify-center">
-              <Chip
+              <Chip<"button">
                 variant="primary"
                 size="sm"
                 className="cursor-pointer"
                 onClick={() => setShowAll(false)}
-                render={(props) => (
-                  <button
-                    {...(props as unknown as ComponentProps<"button">)}
-                    type="button"
-                  />
-                )}
+                render={(props) => <button type="button" {...props} />}
               >
                 Show less
               </Chip>
@@ -785,17 +780,12 @@ function Tools({
             <>
               <BlurStack className="pointer-events-none absolute inset-x-0 bottom-0 h-24" />
               <div className="absolute inset-x-0 bottom-3 z-20 flex justify-center">
-                <Chip
+                <Chip<"button">
                   variant="tertiary"
                   size="sm"
                   className="cursor-pointer"
                   onClick={() => setShowAll(true)}
-                  render={(props) => (
-                    <button
-                      {...(props as unknown as ComponentProps<"button">)}
-                      type="button"
-                    />
-                  )}
+                  render={(props) => <button type="button" {...props} />}
                 >
                   Show more
                 </Chip>

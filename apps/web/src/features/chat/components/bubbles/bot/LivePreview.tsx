@@ -7,8 +7,8 @@ import {
   SidebarRight01Icon,
   SquareArrowUpRight02Icon,
 } from "@icons";
-import type { AnchorHTMLAttributes } from "react";
 import { useState } from "react";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { useLiveBrowser } from "@/features/browser/hooks/useLiveBrowser";
 import type { LiveSurface } from "@/features/browser/types";
 import { LiveScreen } from "./LiveScreen";
@@ -94,22 +94,17 @@ export function LivePreview({
       )}
       {surface.kind === "mobile" && (
         <div className="mt-2 px-0.5">
-          <Button
-            render={(props) => (
-              <a
-                {...(props as AnchorHTMLAttributes<HTMLAnchorElement>)}
-                href={pageUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              />
-            )}
+          <LinkButton
+            href={pageUrl}
+            target="_blank"
+            rel="noopener noreferrer"
             size="sm"
             variant="tertiary"
             className="h-7 px-2 text-xs text-zinc-400"
           >
             <SquareArrowUpRight02Icon className="size-3.5" />
             Open full browser
-          </Button>
+          </LinkButton>
         </div>
       )}
 

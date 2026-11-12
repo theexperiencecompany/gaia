@@ -1,7 +1,7 @@
 "use client";
 
 import type { EventProperties } from "@gaia/shared/analytics/events";
-import { Button, Tooltip } from "@heroui/react";
+import { Tooltip } from "@heroui/react";
 import {
   // Calendar03Icon, // Temporarily disabled
   CheckListIcon,
@@ -10,9 +10,9 @@ import {
   MessageMultiple02Icon,
   ZapIcon,
 } from "@icons";
-import Link from "next/link";
 import React from "react";
 import { ChevronLeft } from "@/components/shared/icons";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { ShortcutKeysDisplay } from "@/config/keyboardShortcuts";
 import { getNavigationShortcut } from "@/config/keyboardShortcutsData";
 import { paywallCopyFor } from "@/features/pricing/constants";
@@ -76,20 +76,15 @@ export default function SidebarTopButtons() {
   // In settings, the app nav is noise — a single "Back to chats" is all you need.
   if (pathname.startsWith("/settings")) {
     return (
-      <Button
+      <LinkButton
+        href="/c"
         size="sm"
         variant="tertiary"
         className="w-full justify-start gap-2 text-sm text-zinc-400 hover:text-zinc-300"
-        render={(props) => (
-          <Link
-            {...(props as unknown as React.ComponentProps<"a">)}
-            href="/c"
-          />
-        )}
       >
         <ChevronLeft className="size-4" />
         Back to chats
-      </Button>
+      </LinkButton>
     );
   }
 
@@ -127,17 +122,12 @@ export default function SidebarTopButtons() {
           return (
             <div key={route + label} className="relative">
               <Tooltip delay={0} closeDelay={0}>
-                <Button
+                <LinkButton
+                  href={route}
                   size="sm"
                   variant={isRouteActive(route) ? "secondary" : "ghost"}
                   className={`group-topbtns focus-visible:outline-none w-full justify-start text-sm ${isRouteActive(route) ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
-                  render={(props) => (
-                    <Link
-                      {...(props as unknown as React.ComponentProps<"a">)}
-                      href={route}
-                    />
-                  )}
-                  onPress={() => {
+                  onClick={() => {
                     track("navigation:sidebar_clicked", {
                       destination: route,
                       label,
@@ -157,7 +147,7 @@ export default function SidebarTopButtons() {
                       {label}
                     </span>
                   </div>
-                </Button>
+                </LinkButton>
                 <Tooltip.Content
                   placement="right"
                   offset={1}
