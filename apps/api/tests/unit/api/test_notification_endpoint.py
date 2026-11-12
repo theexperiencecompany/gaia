@@ -13,6 +13,8 @@ import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.log_tags import LogTag
+from app.constants.notifications import MAX_DEVICES_PER_USER
+from app.models.device_token_models import PlatformType
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationContentView,
@@ -583,24 +585,33 @@ class TestMarkAllRead:
 # ---------------------------------------------------------------------------
 
 
+PUSH_TOKEN = "ExponentPushToken[abc123]"
+
+
+@pytest.fixture
+def device_tokens():
+    """Patch the repository under the real device token service; the user holds no tokens."""
+    with patch("app.services.device_token_service.device_token_repository") as repo:
+        repo.count_for_user = AsyncMock(return_value=0)
+        repo.get = AsyncMock(return_value=None)
+        repo.register = AsyncMock(return_value=True)
+        repo.delete = AsyncMock(return_value=False)
+        yield repo
+
+
 class TestRegisterDevice:
     """POST /api/v1/notifications/register-device."""
 
-    @patch("app.api.v1.endpoints.notification.get_device_token_service")
-    async def test_register_device_success(self, mock_svc_factory: MagicMock, client: AsyncClient):
-        svc = AsyncMock()
-        svc.get_user_device_count.return_value = 0
-        svc.register_device_token.return_value = True
-        mock_svc_factory.return_value = svc
+    async def test_register_device_success(self, device_tokens: MagicMock, client: AsyncClient):
         response = await client.post(
             f"{NOTIF_BASE}/register-device",
-            json={
-                "token": "ExponentPushToken[abc123]",
-                "platform": "ios",
-            },
+            json={"token": PUSH_TOKEN, "platform": "ios", "device_id": "iphone-15"},
         )
         assert response.status_code == 200
         assert response.json() == {"success": True, "message": "Device registered successfully"}
+        device_tokens.register.assert_awaited_once_with(
+            user_id=FAKE_USER_ID, token=PUSH_TOKEN, platform=PlatformType.IOS, device_id="iphone-15"
+        )
 
     async def test_register_device_invalid_token(self, client: AsyncClient):
         response = await client.post(
@@ -612,54 +623,53 @@ class TestRegisterDevice:
         )
         assert response.status_code == 400
 
-    @patch("app.api.v1.endpoints.notification.get_device_token_service")
     async def test_register_device_limit_exceeded(
-        self, mock_svc_factory: MagicMock, client: AsyncClient
+        self, device_tokens: MagicMock, client: AsyncClient
     ):
-        svc = AsyncMock()
-        svc.get_user_device_count.return_value = 10
-        svc.verify_token_ownership.return_value = False
-        mock_svc_factory.return_value = svc
+        device_tokens.count_for_user.return_value = MAX_DEVICES_PER_USER
         response = await client.post(
             f"{NOTIF_BASE}/register-device",
-            json={
-                "token": "ExponentPushToken[abc123]",
-                "platform": "ios",
-            },
+            json={"token": PUSH_TOKEN, "platform": "ios"},
         )
         assert response.status_code == 400
+        device_tokens.get.assert_awaited_once_with(PUSH_TOKEN, user_id=FAKE_USER_ID)
+        device_tokens.register.assert_not_awaited()
 
-    @patch("app.api.v1.endpoints.notification.get_device_token_service")
-    async def test_register_device_service_failure(
-        self, mock_svc_factory: MagicMock, client: AsyncClient
+    async def test_register_device_at_the_limit_still_updates_a_token_the_user_holds(
+        self, device_tokens: MagicMock, client: AsyncClient
     ):
-        svc = AsyncMock()
-        svc.get_user_device_count.return_value = 0
-        svc.register_device_token.return_value = False
-        mock_svc_factory.return_value = svc
+        device_tokens.count_for_user.return_value = MAX_DEVICES_PER_USER
+        device_tokens.get.return_value = MagicMock()
+        device_tokens.register.return_value = False
         response = await client.post(
             f"{NOTIF_BASE}/register-device",
-            json={
-                "token": "ExponentPushToken[abc123]",
-                "platform": "ios",
-            },
+            json={"token": PUSH_TOKEN, "platform": "android"},
+        )
+        assert response.status_code == 200
+        device_tokens.register.assert_awaited_once_with(
+            user_id=FAKE_USER_ID, token=PUSH_TOKEN, platform=PlatformType.ANDROID, device_id=None
+        )
+
+    async def test_register_device_service_failure(
+        self, device_tokens: MagicMock, client: AsyncClient
+    ):
+        device_tokens.register.side_effect = RuntimeError("mongo down")
+        response = await client.post(
+            f"{NOTIF_BASE}/register-device",
+            json={"token": PUSH_TOKEN, "platform": "ios"},
         )
         assert response.status_code == 500
         assert response.json()["message"] == "Failed to register device token"
 
-    @patch("app.api.v1.endpoints.notification.get_device_token_service")
-    async def test_register_device_exception(
-        self, mock_svc_factory: MagicMock, client: AsyncClient
-    ):
-        svc = AsyncMock()
-        svc.get_user_device_count.side_effect = Exception("boom")
-        mock_svc_factory.return_value = svc
+    @patch(
+        "app.api.v1.endpoints.notification.device_token_service.get_user_device_count",
+        new_callable=AsyncMock,
+        side_effect=Exception("boom"),
+    )
+    async def test_register_device_exception(self, _count: AsyncMock, client: AsyncClient):
         response = await client.post(
             f"{NOTIF_BASE}/register-device",
-            json={
-                "token": "ExponentPushToken[abc123]",
-                "platform": "ios",
-            },
+            json={"token": PUSH_TOKEN, "platform": "ios"},
         )
         assert response.status_code == 500
         assert response.json()["message"] == "Failed to register device token"
@@ -673,42 +683,33 @@ class TestRegisterDevice:
 class TestUnregisterDevice:
     """POST /api/v1/notifications/unregister-device."""
 
-    @patch("app.api.v1.endpoints.notification.get_device_token_service")
-    async def test_unregister_device_success(
-        self, mock_svc_factory: MagicMock, client: AsyncClient
-    ):
-        svc = AsyncMock()
-        svc.unregister_device_token.return_value = True
-        mock_svc_factory.return_value = svc
+    async def test_unregister_device_success(self, device_tokens: MagicMock, client: AsyncClient):
+        device_tokens.delete.return_value = True
         response = await client.post(
             f"{NOTIF_BASE}/unregister-device",
-            json={"token": "ExponentPushToken[abc123]"},
+            json={"token": PUSH_TOKEN},
         )
         assert response.status_code == 200
         assert response.json() == {"success": True, "message": "Device unregistered successfully"}
+        device_tokens.delete.assert_awaited_once_with(PUSH_TOKEN, user_id=FAKE_USER_ID)
 
-    @patch("app.api.v1.endpoints.notification.get_device_token_service")
-    async def test_unregister_device_not_found(
-        self, mock_svc_factory: MagicMock, client: AsyncClient
-    ):
-        svc = AsyncMock()
-        svc.unregister_device_token.return_value = False
-        mock_svc_factory.return_value = svc
+    async def test_unregister_device_not_found(self, device_tokens: MagicMock, client: AsyncClient):
         response = await client.post(
             f"{NOTIF_BASE}/unregister-device",
-            json={"token": "ExponentPushToken[abc123]"},
+            json={"token": PUSH_TOKEN},
         )
         assert response.status_code == 200
         assert response.json() == {"success": False, "message": "Device token not found"}
 
-    @patch("app.api.v1.endpoints.notification.get_device_token_service")
-    async def test_unregister_device_error(self, mock_svc_factory: MagicMock, client: AsyncClient):
-        svc = AsyncMock()
-        svc.unregister_device_token.side_effect = Exception("boom")
-        mock_svc_factory.return_value = svc
+    @patch(
+        "app.api.v1.endpoints.notification.device_token_service.unregister_device_token",
+        new_callable=AsyncMock,
+        side_effect=Exception("boom"),
+    )
+    async def test_unregister_device_error(self, _unregister: AsyncMock, client: AsyncClient):
         response = await client.post(
             f"{NOTIF_BASE}/unregister-device",
-            json={"token": "ExponentPushToken[abc123]"},
+            json={"token": PUSH_TOKEN},
         )
         assert response.status_code == 500
         assert response.json()["message"] == "Failed to unregister device token"
