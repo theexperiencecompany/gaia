@@ -228,6 +228,26 @@ class TestCreateArtifact:
         assert lines[0] == "The report could not be made (validation)."
         assert lines[1:] == [f"- problem {i}" for i in range(10)]
 
+    async def test_an_unexpected_failure_closes_the_card_and_still_surfaces(
+        self, writer: MagicMock
+    ) -> None:
+        async def broken(request: ArtifactRequest, title: str, sink) -> None:
+            await sink("root = Art")
+            raise ConnectionError("provider down")
+
+        with (
+            patch(f"{_TOOL}.create_openui_artifact", broken),
+            patch(f"{_TOOL}.optional_short_link", AsyncMock()) as link,
+            pytest.raises(ConnectionError, match="provider down"),
+        ):
+            await artifact_tool.create_artifact.ainvoke(ARGS, config=CONFIG)
+
+        delta, done = (c.args[0] for c in writer.call_args_list)
+        assert delta[ARTIFACT_DELTA_EVENT]["delta"] == "root = Art"
+        assert done[ARTIFACT_DONE_EVENT]["status"] == "failed"
+        assert "artifact_id" not in done[ARTIFACT_DONE_EVENT]
+        link.assert_not_awaited()
+
     async def test_deltas_are_flushed_before_the_outcome_frame(self, writer: MagicMock) -> None:
         async def streaming(request: ArtifactRequest, title: str, sink) -> MagicMock:
             await sink("root = Artifact()")

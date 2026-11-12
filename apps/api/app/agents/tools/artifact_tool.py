@@ -82,6 +82,11 @@ async def create_artifact(
         writer({ARTIFACT_DONE_EVENT: {**card, "status": ArtifactStatus.FAILED.value}})
         problems = "".join(f"\n- {p}" for p in exc.problems[:10])
         return f"The {kind.value} could not be made ({exc.reason.value}).{problems}"
+    except Exception:
+        # The card is already on screen streaming; close it, then let the failure surface.
+        batcher.flush()
+        writer({ARTIFACT_DONE_EVENT: {**card, "status": ArtifactStatus.FAILED.value}})
+        raise
     batcher.flush()
     short_url = await optional_short_link(
         request.user_id, ShortLinkTargetType.OPENUI_ARTIFACT, artifact.id

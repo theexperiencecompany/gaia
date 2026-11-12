@@ -49,6 +49,13 @@ describe("grounded figures", () => {
     expect(r.text).toBe("Saw the paywall to Paid loses 84.3% of people.");
   });
 
+  it("leaves a slot of a one-stage funnel visible instead of crashing on it", () => {
+    const program = `root = Artifact("Atlas launch", "Week one", [], [funnel1])\nfunnel1 = Funnel("One step", "Week one", [["Signed up", 1840]])\n`;
+    const r = resolveText("{funnel1.first} signed up.", indexOf(program));
+    expect(r.unknown).toEqual(["funnel1.first"]);
+    expect(r.text).toBe("{funnel1.first} signed up.");
+  });
+
   it("lists an unknown slot and leaves it visible", () => {
     const r = calloutText("{funnel1.maxDrops} people dropped.");
     expect(r.unknown).toEqual(["funnel1.maxDrops"]);

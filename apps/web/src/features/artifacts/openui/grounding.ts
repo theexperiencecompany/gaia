@@ -125,7 +125,7 @@ function funnelSlots(
   props: Record<string, unknown>,
 ): Record<string, SlotValue> | undefined {
   const stages = (props.stages as [string, number][] | undefined) ?? [];
-  if (!stages.length) return undefined;
+  if (stages.length < 2) return undefined;
   // largest absolute drop, and the lowest share carried from one stage to the next
   let drop = 1;
   let worst = 1;
