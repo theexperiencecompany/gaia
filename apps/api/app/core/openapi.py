@@ -5,10 +5,20 @@ moving a route renames every generated client type that hangs off it. The
 tag and the handler name are what a reader already knows the operation by.
 """
 
+from collections.abc import Sequence
 from enum import Enum
 import re
+from typing import Protocol
 
-from fastapi.routing import APIRoute
+
+class OperationRoute(Protocol):
+    """What an operation id is made of: an APIRoute, or a route context with its mount's tags."""
+
+    @property
+    def tags(self) -> Sequence[str | Enum]: ...
+
+    @property
+    def name(self) -> str: ...
 
 
 def _slug(text: str | Enum) -> str:
@@ -16,7 +26,7 @@ def _slug(text: str | Enum) -> str:
     return "_".join(re.findall(r"[a-z0-9]+", str(raw).lower()))
 
 
-def api_operation_id(route: APIRoute) -> str:
+def api_operation_id(route: OperationRoute) -> str:
     """Operation id for route; the first tag is the router's, per include_router.
 
     An untagged route (only the hidden /metrics mount today) gets its bare
