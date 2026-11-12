@@ -35,6 +35,7 @@ export const toolKeys = {
 /**
  * Refetch everything an integration change can move: the catalog, statuses,
  * per-integration tools and the workspace tool list (the composer's '/' menu).
+ * Called on every user mutation's success and by the status listener; both stay.
  */
 export function invalidateIntegrationCaches(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: integrationKeys.all });

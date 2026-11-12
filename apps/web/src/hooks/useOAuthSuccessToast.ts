@@ -80,7 +80,6 @@ export function useOAuthSuccessToast() {
         toast.success(`Connected to ${displayName}`);
       }
 
-      // Back from an OAuth redirect: no socket was open to hear the connect broadcast.
       invalidateIntegrationCaches(queryClient);
 
       // Automatically send a message to continue the chat (only on chat routes)

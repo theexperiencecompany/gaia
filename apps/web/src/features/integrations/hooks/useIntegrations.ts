@@ -159,8 +159,8 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         );
 
         if (result.status === "connected") {
-          // The connect's integration_status_update broadcast refreshes the caches.
           toast.success(`Connected to ${result.name}`, { id: toastId });
+          invalidateIntegrationCaches(queryClient);
         } else if (result.status === "redirecting") {
           // OAuth redirect in progress - dismiss toast, browser will navigate
           toast.dismiss(toastId);
@@ -178,7 +178,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         throw error;
       }
     },
-    [],
+    [queryClient],
   );
 
   // Disconnect integration
@@ -188,7 +188,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         await integrationsApi.disconnectIntegration(integrationId);
         toast.success("Integration disconnected");
         // Invalidate (not refetch) so the UI updates in the background while
-        // the modal closes immediately; a disconnect is never broadcast.
+        // the modal closes immediately.
         invalidateIntegrationCaches(queryClient);
       } catch (error) {
         toast.error(
@@ -205,7 +205,6 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   // Backend now auto-connects, so we need to refetch both integrations AND tools
   const createMutation = useMutation({
     mutationFn: integrationsApi.createCustomIntegration,
-    // The new entry exists even when its auto-connect needs auth and broadcasts nothing.
     onSuccess: () => invalidateIntegrationCaches(queryClient),
   });
 

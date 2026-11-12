@@ -66,12 +66,12 @@ export default function IntegrationsPage() {
   const clearSelection = useCallback(() => setSelectedIntegrationId(null), []);
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
 
-  // Bearer-token connect modal (MCP `status=bearer_required` flow). The
-  // connect's integration_status_update broadcast refreshes the caches.
+  // Bearer-token connect modal (MCP `status=bearer_required` flow).
   const bearer = useBearerTokenModal({
     connect: (id, token) => integrationsApi.addIntegration(id, token),
     onConnected: (_id, result) => {
       toast.success(`Connected to ${result.name}`);
+      invalidateIntegrationCaches(queryClient);
     },
   });
 
@@ -138,8 +138,6 @@ export default function IntegrationsPage() {
   useIntegrationDeepLink({
     onConnected: (integrationId, name) => {
       if (name) toast.success(`Connected to ${name}`);
-      // Back from an OAuth redirect: this page had no socket to hear the
-      // connect broadcast, so re-read by hand.
       invalidateIntegrationCaches(queryClient);
       markPending(integrationId);
       beginSettling(integrationId);
