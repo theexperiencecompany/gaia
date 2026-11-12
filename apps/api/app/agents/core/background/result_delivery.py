@@ -579,7 +579,7 @@ async def _react_to_request(
             {
                 "type": REACTION_WS_EVENT,
                 "conversation_id": run.conversation_id,
-                **reaction_frame(run.user_message_id, reaction).model_dump(mode="json"),
+                **reaction_frame(run.user_message_id, reaction).model_dump(),
             },
         )
         return "badge"

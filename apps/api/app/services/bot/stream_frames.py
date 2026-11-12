@@ -65,7 +65,7 @@ def message_boundary_frame(boundary: object) -> str:
 
 def reaction_frame(reaction: ReactionPayload) -> str:
     """Forward a reaction GAIA put on the user's message, which the bot sets on the inbound platform message."""
-    return sse_frame({"reaction": reaction.model_dump(mode="json")})
+    return sse_frame({"reaction": reaction.model_dump()})
 
 
 def error_frame(error_code: str) -> str:

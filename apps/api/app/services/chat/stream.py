@@ -408,7 +408,7 @@ async def _run_chat_stream(
         await _note_cancellation(stream_id, state)
 
         await _finalize_description(description_task, stream_id)
-        await _settle_instant_reaction(state, superseded=False)
+        await _await_instant_reaction(state)
         await stream_manager.publish_chunk(
             stream_id,
             format_sse_data(
@@ -1010,21 +1010,28 @@ def _start_instant_reaction(
 
 def _previous_assistant_text(messages: list[MessageDict]) -> str:
     """Return GAIA's last message before this turn, or "" when the turn opens the conversation."""
-    return next(
-        (m.get("content") or "" for m in reversed(messages) if m.get("role") == "assistant"), ""
-    )
+    previous = ""
+    for turn in messages:
+        if turn["role"] == "assistant":
+            previous = turn["content"]
+    return previous
 
 
-async def _settle_instant_reaction(state: _StreamState, *, superseded: bool) -> None:
-    """Let the instant reaction land before the turn closes, within a bound; cancel it when the chat model reacted."""
-    task = state.instant_reaction
-    if task is None:
+async def _await_instant_reaction(state: _StreamState) -> None:
+    """Let the instant reaction land before the turn closes, giving up on it past the settle bound."""
+    if state.instant_reaction is None:
         return
-    if not superseded:
-        # wait, not await: the reaction's own failure or cancellation must not end this turn.
-        await asyncio.wait([task], timeout=REACTION_SETTLE_SECONDS)
-    task.cancel()
-    await asyncio.wait([task])
+    # wait, not await: the reaction's own failure or cancellation must not end this turn.
+    await asyncio.wait([state.instant_reaction], timeout=REACTION_SETTLE_SECONDS)
+    await _cancel_instant_reaction(state)
+
+
+async def _cancel_instant_reaction(state: _StreamState) -> None:
+    """Stop an instant reaction still deciding, so it can never land after the chat model's."""
+    if state.instant_reaction is None:
+        return
+    state.instant_reaction.cancel()
+    await asyncio.wait([state.instant_reaction])
 
 
 def resolve_turn_reaction(complete_message: str) -> tuple[str, str | None]:
@@ -1176,7 +1183,7 @@ async def _react_as_chat_model(
     emoji: str,
 ) -> None:
     """Put the chat model's emoji on the user's message in place of any instant one, and count it."""
-    await _settle_instant_reaction(state, superseded=True)
+    await _cancel_instant_reaction(state)
     await react_as_chat_model(
         ReactionTarget(
             stream_id=stream_id,

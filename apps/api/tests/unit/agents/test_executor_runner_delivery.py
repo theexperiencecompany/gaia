@@ -2555,7 +2555,12 @@ class TestCommsDirectiveDelivery:
             save, platform, _ws = await _deliver(
                 ConversationSource.WHATSAPP, comms_text="Booked your 9am flight."
             )
-        assert platform.await_args.args[2] == "Booked your 9am flight."
+        platform.assert_awaited_once_with(
+            ConversationSource.WHATSAPP,
+            USER_ID,
+            "Booked your 9am flight.",
+            conversation_id="conv-1",
+        )
         # The baseline outcome is captured too, so silence/react rates have a denominator.
         assert capture.call_args.args[1] == ChatBackgroundUpdateResolved(
             outcome="reply", delivery="message"
@@ -2619,7 +2624,7 @@ async def _deliver_run(
                 rd, "_lookup_user_message_content", new_callable=AsyncMock, return_value=""
             ),
             patch.object(
-                rd.conversation_repository,
+                conversation_repository,
                 "get_message",
                 new_callable=AsyncMock,
                 return_value=MessageModel(
@@ -2630,7 +2635,7 @@ async def _deliver_run(
                 ),
             ) as lookup,
             patch.object(
-                rd.conversation_repository,
+                conversation_repository,
                 "set_message_reaction",
                 new_callable=AsyncMock,
                 return_value=True,
@@ -2824,6 +2829,9 @@ class TestAPlatformReaction:
             ConversationSource.WHATSAPP, USER_ID, "👍", conversation_id="conv-1"
         )
         assert delivered.event["platform_reaction"] == "fallback_text"
+        assert delivered.capture.call_args.args[1] == ChatBackgroundUpdateResolved(
+            outcome="react", emoji="👍", delivery="fallback_text"
+        )
 
 
 class TestBroadcastRetry:

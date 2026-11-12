@@ -81,13 +81,18 @@ class TestReactInstantly:
         io.publish.assert_not_awaited()
 
     async def test_a_failed_write_is_no_reaction_and_never_raises(self, io: _Io) -> None:
-        io.write.side_effect = RuntimeError("mongo down")
+        io.write.side_effect = RuntimeError("m" * 400)
 
         with patch("app.services.conversation.reaction.log.error") as log_error:
             assert await react_instantly(_TARGET, _INPUT) is None
 
         io.publish.assert_not_awaited()
-        assert log_error.call_args.kwargs["error_type"] == "RuntimeError"
+        log_error.assert_called_once_with(
+            "reaction_ack.place_failed",
+            conversation_id="conv-1",
+            error="m" * 300,
+            error_type="RuntimeError",
+        )
 
 
 class TestReactAsChatModel:

@@ -2004,7 +2004,7 @@ class TestRunChatStreamBackground:
             patch("app.services.chat.stream.capture") as capture,
             patch(
                 "app.services.chat.stream._executor_delegation",
-                return_value=(delegated, False),
+                side_effect=lambda sid: (delegated and sid == "stream_turn", False),
             ),
         ):
             await run_chat_stream_background(
@@ -2040,6 +2040,17 @@ class TestRunChatStreamBackground:
         order = [next(iter(frame)) for _, frame in frames]
         assert order.index("reaction") < order.index("main_response_complete")
         assert "response" in order
+
+    async def test_a_message_that_opens_the_conversation_is_judged_with_no_earlier_reply(
+        self, test_user: AuthenticatedUser, instant_decision: AsyncMock
+    ) -> None:
+        await self._run_turn(
+            test_user,
+            "Done.",
+            body_update={"messages": [{"role": "user", "content": "Booked it"}]},
+        )
+
+        instant_decision.assert_awaited_once_with("Booked it", "")
 
     @pytest.mark.parametrize(
         "body_update",
@@ -2095,7 +2106,12 @@ class TestRunChatStreamBackground:
         instant_decision.return_value = _reacted("🔎")
 
         reacted = asyncio.Event()
-        reaction_writes.side_effect = lambda *_, **__: reacted.set() or True
+
+        async def write_reaction(*_: object, **__: object) -> bool:
+            reacted.set()
+            return True
+
+        reaction_writes.side_effect = write_reaction
 
         async def until_reacted() -> None:
             await reacted.wait()
@@ -2107,6 +2123,7 @@ class TestRunChatStreamBackground:
             {"message_id": "umsg_1", "emoji": "😎", "by": "chat_model"},
         ]
         chat_model_write = reaction_writes.await_args_list[-1]
+        assert chat_model_write.args == ("conv_existing_123",)
         assert chat_model_write.kwargs == {
             "user_id": USER_ID,
             "message_id": "umsg_1",

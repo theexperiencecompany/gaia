@@ -79,6 +79,4 @@ async def react_as_chat_model(target: ReactionTarget, emoji: str) -> None:
 
 async def _publish(target: ReactionTarget, reaction: MessageReaction) -> None:
     frame = reaction_frame(target.message_id, reaction)
-    await stream_manager.publish_chunk(
-        target.stream_id, format_sse_data(frame.model_dump(mode="json"))
-    )
+    await stream_manager.publish_chunk(target.stream_id, format_sse_data(frame.model_dump()))

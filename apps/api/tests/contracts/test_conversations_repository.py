@@ -88,7 +88,7 @@ async def _seed_user_message(repo: ConversationRepository) -> tuple[Conversation
         messages=[MessageModel(type="user", response="book it")],
     )
     assert ids is not None
-    return doc, ids[0]
+    return doc, next(iter(ids))
 
 
 @pytest.fixture

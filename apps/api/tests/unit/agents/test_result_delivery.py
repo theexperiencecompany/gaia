@@ -382,7 +382,6 @@ class TestATrackedTodosRunReportIsKeptInItsChat:
                     "message_id": "placeholder-1",
                     "seq": SEQ,
                     "date": saved.date,
-                    "kind": saved.kind.value,
                     "tool_data": CARDS,
                     "task_id": "task-1",
                 },
