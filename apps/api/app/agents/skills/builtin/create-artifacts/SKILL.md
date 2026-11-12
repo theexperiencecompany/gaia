@@ -1,87 +1,38 @@
 ---
 name: create-artifacts
-description: Create rich file artifacts (documents, code, reports, HTML pages) that appear as interactive cards in chat when placed in artifacts/.
+description: Make reports, dashboards, plans, comparisons, memos and documents with create_artifact; code files and data exports go in artifacts/ as files.
 target: executor
 ---
 
 # Create Artifacts
 
-## When to Use
+## Reports, dashboards and other documents: create_artifact
 
-Activate when the user asks for standalone files that are better as viewable/downloadable outputs than inline chat text:
+When the user asks for a report, dashboard, plan, comparison, memo or any other document to read, call `create_artifact`. It writes the artifact itself, lays it out with GAIA's components (charts, tables, stats, callouts, boards), checks every figure against the facts you pass, and returns a public heygaia.link. The user sees it as a card in chat, opens it in the viewer and can export it as a PDF.
 
-- Reports, briefs, plans, strategy docs
-- Code files or multi-file deliverables
-- HTML pages/templates
-- Structured exports (CSV, JSON, YAML)
+1. Gather the facts first: tool results, memory, the conversation.
+2. Call `create_artifact` once with the kind, a title and the brief: every fact the artifact needs, verbatim, with complete data series and source URLs, plus the one-line message it should land. Never put in a number you worked out (a total, a difference, a share, an average); the artifact computes those from the data, and it can only state numbers the brief contains.
+3. Reply in a line or two and give the link from the tool result. Do not repeat the artifact's contents.
 
-## When Not to Use
+Never write HTML, Markdown or other files for these: an HTML page is not how GAIA delivers a document.
 
-- Short conversational answers
-- Small snippets that fit in normal response text
-- Cases where the user explicitly asks for inline output
+## Interactive tools: create_artifact with interactive
 
-## Core Rule
+A calculator, simulator or small tool the user asked to play with is also `create_artifact`: kind `document` and `interactive` true. Nothing else is HTML.
 
-Files are shown to the user only when they are in `artifacts/` for the current session.
+## Code, data exports and files the user asked for by format
 
-Use:
-vfs_write("artifacts/file-name.ext", content)
+Code files and data exports (`.py`, `.csv`, `.json`, `.yaml` and the like) stay files. Write them to `artifacts/` for the current session; only files there are shown to the user, each with a public heygaia.link in the tool result:
 
-This auto-resolves to the session-scoped location.
+    vfs_write("artifacts/file-name.ext", content)
 
-## Prerequisites
+Draft in `files/` and move the finished file into `artifacts/`, so the user never sees scratch or broken output:
 
-If `vfs_write` is not already available, bind it before proceeding:
+    vfs_write("files/draft.py", draft)
+    vfs_cmd("mv files/draft.py artifacts/report_export.py")
 
-    retrieve_tools(exact_tool_names=["vfs_write", "vfs_cmd"])
+If `vfs_write` is not bound yet: `retrieve_tools(exact_tool_names=["vfs_write", "vfs_cmd"])`. A PDF, Word or PowerPoint file the user asks for by format uses its own skill (create-pdf, create-docx, create-pptx); a PDF of an artifact is the export its viewer already offers.
 
-## Preferred Workflow (Robust)
+## Response pattern
 
-For substantial work, use a two-step flow:
-
-1. Write privately in `files/` or `notes/`
-2. Move the polished result into `artifacts/`
-
-Example:
-
-    vfs_write("files/draft-plan.md", draft_content)
-    # iterate, refine, validate
-    vfs_cmd("mv files/draft-plan.md artifacts/final-plan.md")
-
-This ensures users only see final artifacts, not intermediate drafts.
-
-## Important Safety Rules
-
-1. Never put temporary/scratch/debug files in `artifacts/`
-2. Never put partial or broken output in `artifacts/`
-3. Use descriptive filenames with clear extensions
-4. Always provide a short summary in the assistant response describing what was created
-
-## Format Preference
-
-1. HTML (`.html`) by default for user-facing artifacts that should look polished
-2. Markdown (`.md`) only when the user asks for Markdown or plain docs
-3. Language-specific code extensions for code
-4. Text (`.txt`) only when formatting is unnecessary
-
-## HTML Quality Standard
-
-When generating HTML artifacts, prioritize quality over speed:
-
-1. Use semantic structure (`header`, `main`, `section`, `article`, `footer`)
-2. Make layout responsive (desktop + mobile)
-3. Ensure clear visual hierarchy (headings, spacing, readable body text)
-4. Use cohesive styling with thoughtful typography, color, and contrast
-5. Deliver production-like output (no placeholder text, no broken sections)
-
-## Response Pattern
-
-After creating an artifact, briefly tell the user:
-
-- What file was created
-- What it contains
-- Why it is useful
-- Its heygaia.link from the tool result, as a markdown link, so they can open it anywhere
-
-Keep this concise and practical.
+After creating a file, tell the user in a line or two what it is and give its heygaia.link from the tool result as a markdown link.
