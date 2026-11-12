@@ -521,3 +521,9 @@ class TestCommsNarratesARunsResultUnderItsOutcomeNote:
 
         assert narrated == f"raw{outcome_delivery_note(OutcomeState.DONE, problem)}"
         assert narrated != "raw"
+
+    async def test_a_verified_outcome_is_narrated_under_its_own_reply_shape(self) -> None:
+        narrated = await self._narrated_input(OutcomeReview(OutcomeState.ASK, None))
+
+        assert narrated == f"raw{outcome_delivery_note(OutcomeState.ASK, None)}"
+        assert narrated != "raw"

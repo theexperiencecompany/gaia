@@ -29,3 +29,10 @@ class TestFinishTask:
             {"result": "Nothing is new.", "outcome": "schedule", "nothing_for_user": True}
         )
         assert result == "Nothing is new."
+
+    async def test_the_model_is_told_a_run_has_something_for_the_user_unless_it_says_not(
+        self,
+    ) -> None:
+        schema = finish_task.tool_call_schema.model_json_schema()
+        assert schema["properties"]["nothing_for_user"]["default"] is False
+        assert "nothing_for_user" not in schema.get("required", [])
