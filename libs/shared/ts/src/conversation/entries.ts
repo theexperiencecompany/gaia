@@ -23,7 +23,7 @@ export const ENTRY_KIND = {
   REPLY_SETTLED: "reply_settled",
 } as const;
 
-export const REPLY_OUTCOME = {
+const REPLY_OUTCOME = {
   ANSWERED: "answered",
   STOPPED: "stopped",
   FAILED: "failed",
@@ -57,13 +57,13 @@ const TodoRunWakeSchema = z.object({
 const id = z.string().min(1);
 const revision = z.number().int().min(0).default(0);
 
-const ReactionSchema = z.object({
+export const ReactionSchema = z.object({
   emoji: z.string().min(1),
   by: z.enum(["jev", "chat_model"]),
 });
 const nullableString = z.string().nullable().default(null);
 
-const UserMessageSchema = z.object({
+export const UserMessageSchema = z.object({
   kind: z.literal(ENTRY_KIND.USER_MESSAGE),
   id,
   text: z.string(),
@@ -143,7 +143,7 @@ const WorkFinishedSchema = z.object({
   report: z.string(),
 });
 
-const ReplySchema = z.object({
+export const ReplySchema = z.object({
   kind: z.literal(ENTRY_KIND.REPLY),
   id,
   reply_id: z.string(),
@@ -190,19 +190,3 @@ export const EntrySchema = z.discriminatedUnion("kind", [
   ReplySchema,
   ReplySettledSchema,
 ]);
-
-/** An entry at its position in the log, as an entry frame delivers it. */
-export interface LoggedEntry {
-  seq: number;
-  at: string;
-  entry: Entry;
-}
-
-export type Entry = z.infer<typeof EntrySchema>;
-export type UserMessage = z.infer<typeof UserMessageSchema>;
-export type Reaction = z.infer<typeof ReactionSchema>;
-export type Notice = z.infer<typeof NoticeSchema>;
-export type Reply = z.infer<typeof ReplySchema>;
-export type ReplySettled = z.infer<typeof ReplySettledSchema>;
-export type WorkStarted = z.infer<typeof WorkStartedSchema>;
-export type StopRequested = z.infer<typeof StopRequestedSchema>;

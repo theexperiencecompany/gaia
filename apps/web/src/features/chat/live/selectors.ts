@@ -165,19 +165,20 @@ export function visibleBubbles(view: ConversationView): LiveBubble[] {
       entry.kind === ENTRY_KIND.REPLY ? [entry.attempt_id] : [],
     ),
   );
-  const unopened = view.drafts
-    .filter(isReplyDraft)
-    .filter((draft) => !opened.has(draft.attemptId))
-    .map(
-      (draft): LiveBubble => ({
-        kind: "reply",
-        key: `draft:${draft.attemptId}`,
-        seq: null,
-        replyId: draft.replyId,
-        ...draftContent(draft.content),
-        streaming: true,
-      }),
-    );
+  const unopened = view.drafts.flatMap((draft): LiveBubble[] =>
+    isReplyDraft(draft) && !opened.has(draft.attemptId)
+      ? [
+          {
+            kind: "reply",
+            key: `draft:${draft.attemptId}`,
+            seq: null,
+            replyId: draft.replyId,
+            ...draftContent(draft.content),
+            streaming: true,
+          },
+        ]
+      : [],
+  );
   const placed = [
     ...view.entries.flatMap((logged) => entryBubble(view, logged) ?? []),
     ...workBubbles(view),

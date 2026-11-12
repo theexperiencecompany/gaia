@@ -128,12 +128,12 @@ const seq = z.number().int().min(1);
 const index = z.number().int().min(0);
 const deltaPayload = StreamPayloadSchema.transform(toStreamEvent);
 
-const LiveTaskSchema = z.object({
+export const LiveTaskSchema = z.object({
   task_id: z.string(),
   awaiting_approval: z.boolean(),
 });
 
-const ConversationFrameSchema = z.discriminatedUnion("kind", [
+export const ConversationFrameSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal(FRAME_KIND.ENTRY),
     seq,
@@ -172,23 +172,12 @@ const ConversationFrameSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-export type ConversationFrame = z.infer<typeof ConversationFrameSchema>;
-type FrameOf<K extends ConversationFrame["kind"]> = Extract<
-  ConversationFrame,
-  { kind: K }
->;
-export type ReplyDeltaFrame = FrameOf<"reply_delta">;
-export type WorkDeltaFrame = FrameOf<"work_delta">;
-export type StateFrame = FrameOf<"state">;
-export type DisplayState = StateFrame["display"];
-export type LiveTask = z.infer<typeof LiveTaskSchema>;
-
-export type FrameParseError =
+type FrameParseError =
   | { kind: "invalid_json"; raw: string }
   | { kind: "invalid_frame"; raw: string; issues: string[] };
 
 export type FrameParseResult =
-  | { ok: true; frame: ConversationFrame }
+  | { ok: true; frame: z.infer<typeof ConversationFrameSchema> }
   | { ok: false; error: FrameParseError };
 
 const readJson = (

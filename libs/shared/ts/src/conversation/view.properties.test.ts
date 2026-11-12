@@ -1,11 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ConversationFrame } from "./frames";
 import { generateConversation, seededRandom } from "./testing";
-import {
-  applyFrame,
-  type ConversationView,
-  EMPTY_CONVERSATION_VIEW,
-} from "./view";
+import type { ConversationFrame, ConversationView } from "./types";
+import { applyFrame, EMPTY_CONVERSATION_VIEW } from "./view";
 
 const SEEDS = Array.from({ length: 200 }, (_, index) => index + 1);
 

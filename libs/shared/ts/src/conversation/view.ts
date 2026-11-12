@@ -1,63 +1,21 @@
 import {
   applyStreamEvent,
   createTurnAccumulator,
-  type TurnAccumulator,
 } from "../chat/turnAccumulator";
-import { ENTRY_KIND, type Entry, type LoggedEntry } from "./entries";
-import {
-  type ConversationFrame,
-  DISPLAY_STATE,
-  type DisplayState,
-  FRAME_KIND,
-  type LiveTask,
-  type ReplyDeltaFrame,
-  type StateFrame,
-  type WorkDeltaFrame,
-} from "./frames";
-
-/** What one reply attempt or one task has streamed and the log has not saved yet. */
-export type StreamDraft =
-  | {
-      source: "reply";
-      attemptId: string;
-      /** Null until the attempt's Reply entry exists. */
-      replyId: string | null;
-      nextIndex: number;
-      content: TurnAccumulator;
-    }
-  | {
-      source: "work";
-      taskId: string;
-      nextIndex: number;
-      content: TurnAccumulator;
-    };
-
-/** A message this device sent that the log has not given a seq yet. */
-export interface PendingSend {
-  id: string;
-  text: string;
-}
-
-/** Everything a client knows about one conversation, folded from its event stream. */
-export interface ConversationView {
-  /** Ascending by seq, one entry per seq. */
-  entries: readonly LoggedEntry[];
-  /** In the order their first delta arrived. */
-  drafts: readonly StreamDraft[];
-  /** Attempts retracted or settled, and tasks whose cards a settled reply took over. */
-  closedAttempts: Readonly<Record<string, true>>;
-  closedTasks: Readonly<Record<string, true>>;
-  /** In send order. */
-  pending: readonly PendingSend[];
-  display: DisplayState;
-  work: readonly LiveTask[];
-  head: number;
-}
-
-export type FrameOutcome =
-  | { status: "applied"; view: ConversationView }
-  | { status: "unknown_seq"; seq: number; view: ConversationView }
-  | { status: "index_gap"; expected: number; view: ConversationView };
+import { ENTRY_KIND } from "./entries";
+import { DISPLAY_STATE, FRAME_KIND } from "./frames";
+import type {
+  ConversationFrame,
+  ConversationView,
+  Entry,
+  FrameOutcome,
+  LoggedEntry,
+  PendingSend,
+  ReplyDeltaFrame,
+  StateFrame,
+  StreamDraft,
+  WorkDeltaFrame,
+} from "./types";
 
 export const EMPTY_CONVERSATION_VIEW: ConversationView = {
   entries: [],

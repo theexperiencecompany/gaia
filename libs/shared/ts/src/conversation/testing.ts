@@ -1,5 +1,11 @@
-import type { Entry, Reaction, UserMessage } from "./entries";
-import type { ConversationFrame, DisplayState, LiveTask } from "./frames";
+import type {
+  ConversationFrame,
+  DisplayState,
+  Entry,
+  LiveTask,
+  Reaction,
+  UserMessage,
+} from "./types";
 
 /** Builders for conversation frames in tests, shaped as parseConversationFrame returns them. */
 
@@ -189,7 +195,7 @@ export function seededRandom(seed: number): () => number {
   };
 }
 
-export interface GeneratedConversation {
+interface GeneratedConversation {
   frames: ConversationFrame[];
   retractedAttempts: string[];
 }

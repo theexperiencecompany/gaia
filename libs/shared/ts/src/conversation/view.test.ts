@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { ConversationFrame } from "./frames";
 import {
   entryFrame,
   entryUpdatedFrame,
@@ -15,13 +14,8 @@ import {
   workFinished,
   workStarted,
 } from "./testing";
-import {
-  addPendingSend,
-  applyFrame,
-  type ConversationView,
-  EMPTY_CONVERSATION_VIEW,
-  type StreamDraft,
-} from "./view";
+import type { ConversationFrame, ConversationView, StreamDraft } from "./types";
+import { addPendingSend, applyFrame, EMPTY_CONVERSATION_VIEW } from "./view";
 
 const fold = (
   frames: ConversationFrame[],

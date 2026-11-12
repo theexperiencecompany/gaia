@@ -1,30 +1,18 @@
-export type {
-  Entry,
-  LoggedEntry,
-  Notice,
-  Reaction,
-  Reply,
-  ReplySettled,
-  StopRequested,
-  UserMessage,
-  WorkStarted,
-} from "./entries";
-export { ENTRY_KIND, REPLY_OUTCOME } from "./entries";
-export type {
-  ConversationFrame,
-  DisplayState,
-  FrameParseError,
-  FrameParseResult,
-  LiveTask,
-  ReplyDeltaFrame,
-  StateFrame,
-  WorkDeltaFrame,
-} from "./frames";
+export { ENTRY_KIND } from "./entries";
+export type { FrameParseResult } from "./frames";
 export { DISPLAY_STATE, FRAME_KIND, parseConversationFrame } from "./frames";
 export type {
+  ConversationFrame,
   ConversationView,
+  DisplayState,
+  Entry,
   FrameOutcome,
+  LiveTask,
+  LoggedEntry,
   PendingSend,
+  Reaction,
+  Reply,
   StreamDraft,
-} from "./view";
+  UserMessage,
+} from "./types";
 export { addPendingSend, applyFrame, EMPTY_CONVERSATION_VIEW } from "./view";
