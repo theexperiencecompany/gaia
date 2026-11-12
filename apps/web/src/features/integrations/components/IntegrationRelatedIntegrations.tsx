@@ -1,12 +1,14 @@
+import { SiteLink } from "@/components/seo/SiteLink";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import type { CommunityIntegration } from "../types";
-import { IntegrationChipLink } from "./IntegrationChipLink";
 
 interface IntegrationRelatedIntegrationsProps {
   /** Server-picked by relatedIntegrations, so the links are in the SSR HTML. */
   readonly integrations: readonly CommunityIntegration[];
 }
 
-/** "Related integrations" on a marketplace detail page, as compact chip links. */
+/** "Related integrations" on a marketplace detail page: a light row per integration, icon, name and one line of what it does. */
 export function IntegrationRelatedIntegrations({
   integrations,
 }: IntegrationRelatedIntegrationsProps) {
@@ -17,14 +19,30 @@ export function IntegrationRelatedIntegrations({
       <h2 className="text-2xl font-medium text-foreground">
         Related integrations
       </h2>
-      <div className="flex flex-wrap gap-2">
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {integrations.map((integration) => (
-          <IntegrationChipLink
-            key={integration.integrationId}
-            integration={integration}
-          />
+          <li key={integration.integrationId}>
+            <SiteLink
+              href={marketplacePath(integration.slug)}
+              className="flex h-full items-start gap-3 rounded-2xl bg-zinc-800 p-3 transition-colors hover:bg-zinc-700/60"
+            >
+              {getToolCategoryIcon(
+                integration.integrationId,
+                { size: 20, width: 20, height: 20, showBackground: false },
+                integration.iconUrl,
+              )}
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-zinc-100">
+                  {integration.name}
+                </span>
+                <span className="line-clamp-2 text-xs text-zinc-400">
+                  {integration.description}
+                </span>
+              </span>
+            </SiteLink>
+          </li>
         ))}
-      </div>
+      </ul>
     </section>
   );
 }
