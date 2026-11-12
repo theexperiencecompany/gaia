@@ -48,6 +48,7 @@ function UsageError({ onRetry }: { onRetry: () => void }) {
         it. Try again in a moment.
       </p>
       <GaiaButton
+        shape="pill"
         variant="accent-soft"
         size="sm"
         className="mt-1 font-medium"

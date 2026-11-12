@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Tooltip } from "@heroui/react";
+import { Tooltip } from "@heroui/react";
 import {
   AiWebBrowsingIcon,
   Cancel01Icon,
@@ -10,6 +10,7 @@ import {
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { Focusable } from "react-aria-components";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { BrowserStatusChip } from "@/features/browser/components/BrowserStatusChip";
 import { useLiveBrowser } from "@/features/browser/hooks/useLiveBrowser";
@@ -166,7 +167,8 @@ function TabStrip({
       </div>
       <div className="ml-auto flex items-center gap-1.5 pb-1.5 pl-4">
         <BrowserStatusChip phase={phase} />
-        <Button
+        <GaiaButton
+          shape="pill"
           isIconOnly
           size="sm"
           variant="tertiary"
@@ -175,7 +177,7 @@ function TabStrip({
           onPress={onClose}
         >
           <Cancel01Icon className="size-4" />
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );
@@ -205,6 +207,7 @@ function Omnibox({
         <Tooltip delay={400}>
           <Focusable>
             <LinkButton
+              shape="pill"
               href={pageUrl}
               target="_blank"
               rel="noopener noreferrer"

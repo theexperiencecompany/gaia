@@ -1,10 +1,11 @@
-import { Button, InputGroup, TextField } from "@heroui/react";
+import { InputGroup, TextField } from "@heroui/react";
 import { Cancel01Icon, SearchIcon } from "@icons";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   buildCategories,
   handleSlashCommandKey,
@@ -20,7 +21,6 @@ import { IntegrationsCard } from "@/features/integrations/components/Integration
 import { usePathname } from "@/i18n/navigation";
 import { track } from "@/lib/analytics";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
-
 import { CategoryTabs } from "./CategoryTabs";
 import { LockedCategorySection } from "./LockedCategorySection";
 import { LockedToolItem } from "./LockedToolItem";
@@ -376,9 +376,15 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                 </TextField>
               </div>
               {/* Close Button */}
-              <Button onPress={onClose} isIconOnly size="sm" variant="tertiary">
+              <GaiaButton
+                shape="pill"
+                onPress={onClose}
+                isIconOnly
+                size="sm"
+                variant="tertiary"
+              >
                 <Cancel01Icon size={14} />
-              </Button>
+              </GaiaButton>
             </div>
           )}
 

@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { Cancel01Icon } from "@icons";
 import Image from "next/image";
 import { useEffect } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { track } from "@/lib/analytics";
 import { useWhatsNewStore } from "@/stores/whatsNewStore";
 import { useReleases } from "../hooks/useReleases";
@@ -67,7 +67,8 @@ export function WhatsNewCard() {
           className="h-full w-full object-cover"
         />
         {/* Dismiss button */}
-        <Button
+        <GaiaButton
+          shape="pill"
           isIconOnly
           variant="tertiary"
           size="sm"
@@ -78,7 +79,7 @@ export function WhatsNewCard() {
           onClick={(e) => e.stopPropagation()}
         >
           <Cancel01Icon className="h-3 w-3" />
-        </Button>
+        </GaiaButton>
       </div>
 
       {/* Content */}

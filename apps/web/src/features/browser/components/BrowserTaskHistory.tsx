@@ -12,6 +12,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { RecapSlideshow } from "@/components/browser/RecapSlideshow";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { BOT_PLATFORM_LABELS, isBotPlatform } from "@/config/botPlatforms";
 import { useBrowserTasks } from "../hooks/useBrowserTasks";
 import type { BrowserTask } from "../types";
@@ -118,7 +119,8 @@ function TaskActions({
   return (
     <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
       {canOpenChat && (
-        <Button
+        <GaiaButton
+          shape="pill"
           isIconOnly
           size="sm"
           variant="ghost"
@@ -127,9 +129,10 @@ function TaskActions({
           onPress={() => router.push(`/c/${task.conversation_id}`)}
         >
           <Comment01Icon className="size-4" />
-        </Button>
+        </GaiaButton>
       )}
-      <Button
+      <GaiaButton
+        shape="pill"
         isIconOnly
         size="sm"
         variant="ghost"
@@ -138,7 +141,7 @@ function TaskActions({
         onPress={() => onDelete(task.id)}
       >
         {!isDeleting && <Delete02Icon className="size-4" />}
-      </Button>
+      </GaiaButton>
     </div>
   );
 }

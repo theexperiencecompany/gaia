@@ -5,6 +5,7 @@ import { ArrowRight02Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { FormError } from "@/components/shared/FormError";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { SecretInput } from "@/components/shared/SecretInput";
 import CopyButton from "@/components/ui/CopyButton";
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
@@ -78,15 +79,16 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
       />
       {/* Self-host has one admin and no email recovery — surface the CLI reset path. This form only renders on local-auth instances (see login/page.tsx). */}
       <div className="flex justify-end">
-        <Button
+        <GaiaButton
+          shape="pill"
           variant="ghost"
           size="sm"
           onPress={() => setShowResetHelp(true)}
-          className="rounded-full text-xs text-zinc-400"
+          className="text-xs text-zinc-400"
         >
           Forgot password?
           <ArrowRight02Icon size={14} />
-        </Button>
+        </GaiaButton>
       </div>
 
       {error && <FormError>{error}</FormError>}

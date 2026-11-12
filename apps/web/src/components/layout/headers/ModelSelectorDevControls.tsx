@@ -1,9 +1,9 @@
 "use client";
 
-import { Button, ListBox, Popover, Select, Switch } from "@heroui/react";
+import { ListBox, Popover, Select, Switch } from "@heroui/react";
 import { CpuIcon } from "@icons";
 import Image from "next/image";
-
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { DEV_MODEL_OPTIONS } from "@/features/chat/constants/devModels";
 import { isDevelopment } from "@/lib/environment";
 import { useComposerModelSelection } from "@/stores/composerStore";
@@ -100,7 +100,8 @@ export default function ModelSelectorDevControls() {
 
   return (
     <Popover>
-      <Button
+      <GaiaButton
+        shape="pill"
         isIconOnly
         size="sm"
         variant="ghost"
@@ -112,7 +113,7 @@ export default function ModelSelectorDevControls() {
         }
       >
         <CpuIcon width={20} height={20} />
-      </Button>
+      </GaiaButton>
       <Popover.Content
         placement="bottom end"
         offset={8}

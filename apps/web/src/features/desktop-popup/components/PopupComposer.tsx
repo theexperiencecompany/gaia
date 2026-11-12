@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, InputGroup, TextField } from "@heroui/react";
+import { InputGroup, TextField } from "@heroui/react";
 import { Cancel01Icon } from "@icons";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { sendMessage } from "@/features/chat/stream/sendMessage";
 import { useElectron } from "@/hooks/useElectron";
@@ -100,7 +101,8 @@ export default function PopupComposer({
             {/* The pill's capsule IS the window shape — a corner-overhanging
                 X would always be sliced by its curve, so the close button
                 lives inside the right end instead. */}
-            <Button
+            <GaiaButton
+              shape="pill"
               isIconOnly
               size="sm"
               variant="ghost"
@@ -109,7 +111,7 @@ export default function PopupComposer({
               className="h-6 min-h-6 w-6 max-w-6 min-w-6 shrink-0 text-zinc-500 hover:text-zinc-200"
             >
               <Cancel01Icon className="size-3.5" />
-            </Button>
+            </GaiaButton>
           </InputGroup.Suffix>
         </InputGroup>
       </TextField>

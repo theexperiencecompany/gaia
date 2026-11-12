@@ -2,6 +2,7 @@
 
 import { Checkbox, Input, TextArea } from "@heroui/react";
 import { useState } from "react";
+import { shapeVariants } from "@/components/shared/shape";
 
 interface TodoSidebarTitleProps {
   title: string;
@@ -27,7 +28,10 @@ export function TodoSidebarTitle({
       <Checkbox
         isSelected={completed}
         onChange={onToggleComplete}
-        className={`mt-1 ${completed ? "" : "border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-900 "}`}
+        className={shapeVariants({
+          shape: "pill",
+          className: `mt-1 ${completed ? "" : "border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-900 "}`,
+        })}
       >
         <Checkbox.Content className="w-[30vw]">
           <Checkbox.Control>

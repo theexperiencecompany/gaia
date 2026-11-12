@@ -3,6 +3,7 @@
 import { Checkbox } from "@heroui/react";
 import { Cancel01Icon, PlusSignIcon, Tick02Icon } from "@icons";
 import { useState } from "react";
+import { shapeVariants } from "@/components/shared/shape";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -137,7 +138,10 @@ export default function SubtaskManager({
               <Checkbox
                 isSelected={subtask.completed}
                 onChange={() => handleToggleSubtask(subtask.id)}
-                className="flex-shrink-0"
+                className={shapeVariants({
+                  shape: "pill",
+                  className: "flex-shrink-0",
+                })}
               >
                 <Checkbox.Content>
                   <Checkbox.Control>

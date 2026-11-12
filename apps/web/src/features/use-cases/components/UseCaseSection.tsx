@@ -4,6 +4,7 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import Link from "next/link";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronUp } from "@/components/shared/icons";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
@@ -275,15 +276,16 @@ export default function UseCaseSection({
             }}
             className="pl-2"
           >
-            <Button
+            <GaiaButton
+              shape="pill"
               isIconOnly
               size="sm"
               variant="tertiary"
               onPress={() => setShowUseCases(false)}
-              className="text-zinc-300 "
+              className="text-zinc-300"
             >
               <ChevronUp />
-            </Button>
+            </GaiaButton>
           </m.div>
         )}
       </div>

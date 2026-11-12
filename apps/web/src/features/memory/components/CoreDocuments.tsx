@@ -7,6 +7,7 @@ import { formatDistanceToNow } from "date-fns";
 import { type ReactNode, useEffect, useState, useTransition } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { shapeVariants } from "@/components/shared/shape";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
 import { CORE_DOCUMENTS } from "@/features/memory/constants";
@@ -155,6 +156,7 @@ export function CoreDocuments() {
     <div className="space-y-3">
       {/* Inner doc tabs — same variant/size as the main memory tabs */}
       <Tabs
+        className={shapeVariants({ shape: "pill" })}
         variant="primary"
         selectedKey={selectedDocType}
         onSelectionChange={(key) => {

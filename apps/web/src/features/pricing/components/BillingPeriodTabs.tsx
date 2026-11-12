@@ -1,6 +1,7 @@
 "use client";
 
 import { Chip, Tabs } from "@heroui/react";
+import { shapeVariants } from "@/components/shared/shape";
 import type { Plan } from "../api/pricingApi";
 import {
   type AnnualSavings,
@@ -34,6 +35,7 @@ export function BillingPeriodTabs({
 
   return (
     <Tabs
+      className={shapeVariants({ shape: "pill" })}
       variant="primary"
       selectedKey={isYearly ? "yearly" : "monthly"}
       onSelectionChange={(key) => onChange(key === "yearly")}

@@ -20,7 +20,7 @@ import {
 import { SparklesIcon } from "@icons";
 import * as m from "motion/react-m";
 import { memo } from "react";
-
+import { shapeVariants } from "@/components/shared/shape";
 import {
   isListedProfession,
   isRoleNeed,
@@ -292,7 +292,10 @@ function OptionChips({
             }}
             // One pastel per option, on the fill, the text and the icon; the
             // fill goes solid when picked. Founder's call, not a theme override.
-            className={`cursor-pointer ${selected ? tint.active : tint.idle} ${disabled ? "pointer-events-none opacity-50" : ""}`}
+            className={shapeVariants({
+              shape: "pill",
+              className: `cursor-pointer ${selected ? tint.active : tint.idle} ${disabled ? "pointer-events-none opacity-50" : ""}`,
+            })}
           >
             <Icon className="size-4 shrink-0" />
             <Chip.Label className="font-medium">{option.label}</Chip.Label>

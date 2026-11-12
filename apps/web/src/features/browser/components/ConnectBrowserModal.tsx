@@ -2,6 +2,7 @@
 
 import { Button, Modal, Skeleton, Tabs } from "@heroui/react";
 import { type ReactNode, useEffect, useState } from "react";
+import { shapeVariants } from "@/components/shared/shape";
 import CopyButton from "@/components/ui/CopyButton";
 import { useWindowOrigin } from "@/hooks/ui/useWindowOrigin";
 import { type ConnectRunner, SAVED_LOGIN_TTL_DAYS } from "../constants";
@@ -178,6 +179,7 @@ function ConnectBrowserBody({ onClose }: { onClose: () => void }) {
       <Modal.Body className="gap-3">
         <Surface label="Run in Terminal">
           <Tabs
+            className={shapeVariants({ shape: "pill" })}
             selectedKey={runner}
             onSelectionChange={(key) => setRunner(key as ConnectRunner)}
           >

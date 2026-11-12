@@ -597,6 +597,8 @@ v2's sizes on v3's components, set once as `--gaia-*` variables in the `gaia` la
 
 Buttons use font-weight 400.
 
+Corner shape is one closed dimension, `shape: "default" | "pill"` (`components/shared/shape.ts`). `default` is the radius above; `pill` fully rounds the control and means the same on Button (`GaiaButton shape="pill"`, `LinkButton shape="pill"`), Chip, Tabs, text fields, Checkbox and ButtonGroup (`className={shapeVariants({ shape: "pill" })}`). Never put a `rounded-*` class on a HeroUI control.
+
 ### Overlay Hierarchy
 
 | Use case | Component |
