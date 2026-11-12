@@ -10,11 +10,10 @@ from datetime import UTC, datetime, timedelta
 import json
 from typing import NamedTuple, cast
 
-from pymongo.errors import PyMongoError
-
 from app.config.rate_limits import FEATURE_LIMITS
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
+from app.db.repositories.errors import RepositoryError
 from app.db.repositories.usage_daily import UsageDailyIncrement, usage_daily_repository
 from app.db.repositories.users import user_repository
 from app.models.user_models import UserDocument
@@ -75,7 +74,7 @@ async def record_activity(user_id: str, amount: int = 1) -> None:
         await usage_daily_repository.increment(
             user_id, _day(datetime.now(UTC)), UsageDailyIncrement(count=amount)
         )
-    except PyMongoError as e:
+    except RepositoryError as e:
         log.warning(
             f"{LogTag.MONGO} record_activity failed",
             user={"id": user_id},
@@ -103,7 +102,7 @@ async def record_cost(user_id: str, spend: UsageDailyIncrement, *, charged: bool
         await usage_daily_repository.increment(
             user_id, _day(datetime.now(UTC)), spend, charged=charged
         )
-    except PyMongoError as e:
+    except RepositoryError as e:
         log.warning(
             f"{LogTag.MONGO} record_cost failed",
             user={"id": user_id},
