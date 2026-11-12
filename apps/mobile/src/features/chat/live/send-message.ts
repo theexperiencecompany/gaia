@@ -1,7 +1,4 @@
-import type {
-  ReplyToMessageData,
-  SelectedWorkflowDataInput,
-} from "@gaia/shared/api/generated";
+import type { SendMessageRequest } from "@gaia/shared/api/generated";
 import { messageToRetry } from "@gaia/shared/conversation";
 import { randomUUID } from "expo-crypto";
 import { queryClient } from "@/lib/query-provider";
@@ -19,18 +16,11 @@ import { toApiFileData } from "./live-messages";
 
 const NEW_CONVERSATION_TITLE = "New conversation";
 
-export interface SendInput {
-  text: string;
-  /** The conversation to send into; null starts a new one. */
-  conversationId: string | null;
-  files?: ApiFileData[];
-  replyToMessage?: ReplyToMessageData | null;
-  selectedTool?: string | null;
-  toolCategory?: string | null;
-  selectedWorkflow?: SelectedWorkflowDataInput | null;
-  /** The accepted message this one resends from its retry action. */
-  retryOf?: string | null;
-}
+/** What the user sends; the ids, the reply pointer and the file ids are filled in here. */
+export type OutgoingMessage = Omit<
+  SendMessageRequest,
+  "message_id" | "reply_to" | "file_ids"
+>;
 
 /** Mint a conversation id and show it in the sidebar before its first message is accepted. */
 function startConversation(): string {
@@ -51,25 +41,24 @@ function startConversation(): string {
 }
 
 /**
- * Send a user message: its bubble shows at once and the reply arrives on the
- * conversation's events. Returns the conversation it went into, minted for a new chat.
+ * Send a user message into a conversation, or a new one when it is null: its bubble
+ * shows at once and the reply arrives on the conversation's events. Returns the
+ * conversation it went into.
  */
-export function sendMessage(input: SendInput): string {
-  const conversationId = input.conversationId ?? startConversation();
-  const files = input.files ?? [];
-  const replyToMessage = input.replyToMessage ?? null;
+export function sendMessage(
+  conversationId: string | null,
+  message: OutgoingMessage,
+  files: ApiFileData[] = [],
+): string {
+  const target = conversationId ?? startConversation();
   const messageId = randomUUID();
   const send: MobileSend = {
     body: {
+      ...message,
       message_id: messageId,
-      text: input.text.trim(),
-      reply_to: replyToMessage?.id ?? null,
-      reply_to_message: replyToMessage,
-      retry_of: input.retryOf ?? null,
+      text: message.text.trim(),
+      reply_to: message.reply_to_message?.id ?? null,
       file_ids: files.map((file) => file.fileId),
-      selected_tool: input.selectedTool ?? null,
-      tool_category: input.toolCategory ?? null,
-      selected_workflow: input.selectedWorkflow ?? null,
     },
     fileData: files,
     sentAt: new Date().toISOString(),
@@ -77,11 +66,11 @@ export function sendMessage(input: SendInput): string {
   };
   // A previous wall comes straight back with the next 402; a subscribed user sends through.
   usePaywallStore.getState().clearBlock();
-  useLiveConversationStore.getState().queueSend(conversationId, send);
-  deliverSend(conversationId, messageId).catch((error: unknown) => {
+  useLiveConversationStore.getState().queueSend(target, send);
+  deliverSend(target, messageId).catch((error: unknown) => {
     console.error("[sendMessage] send failed:", error);
   });
-  return conversationId;
+  return target;
 }
 
 /**
@@ -97,19 +86,22 @@ export async function retryMessage(
     await deliverSend(conversationId, messageId);
     return;
   }
-  const message = messageToRetry(live.view, messageId);
-  if (!message) {
+  const asked = messageToRetry(live.view, messageId);
+  if (!asked) {
     console.error("[retryMessage] No user message to retry:", messageId);
     return;
   }
-  sendMessage({
-    text: message.text,
+  sendMessage(
     conversationId,
-    files: toApiFileData(message.files),
-    replyToMessage: message.reply_to_message,
-    selectedTool: message.selected_tool,
-    toolCategory: message.tool_category,
-    selectedWorkflow: message.selected_workflow,
-    retryOf: message.id,
-  });
+    {
+      text: asked.text,
+      reply_to_message: asked.reply_to_message,
+      selected_tool: asked.selected_tool,
+      tool_category: asked.tool_category,
+      selected_workflow: asked.selected_workflow,
+      selected_calendar_event: asked.selected_calendar_event,
+      retry_of: asked.id,
+    },
+    toApiFileData(asked.files),
+  );
 }

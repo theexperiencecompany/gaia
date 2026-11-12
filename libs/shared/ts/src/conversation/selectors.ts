@@ -1,4 +1,4 @@
-import type { ToolDataEntry } from "../api/generated";
+import type { ToolDataEntry, WorkOutcome } from "../api/generated";
 import { extractToolProgressMessage } from "../chat/streaming";
 import type { TurnAccumulator } from "../chat/turnAccumulator";
 import { ENTRY_KIND } from "./entries";
@@ -14,7 +14,6 @@ import type {
   UserMessage,
 } from "./types";
 
-type WorkOutcome = "done" | "failed" | "cancelled" | "lost";
 export type WorkStatus = "running" | "awaiting_approval" | WorkOutcome;
 
 /** One row of the chat screen, in the order visibleBubbles returns them. */

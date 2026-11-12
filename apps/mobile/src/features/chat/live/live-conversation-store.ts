@@ -1,8 +1,5 @@
 import type { SendMessageRequest } from "@gaia/shared/api/generated";
-import {
-  createLiveConversationStore,
-  type LiveConversation,
-} from "@gaia/shared/conversation/live";
+import { createLiveConversationStore } from "@gaia/shared/conversation/live";
 import type { ApiFileData } from "../api/chat-api";
 
 /**
@@ -16,8 +13,6 @@ export interface MobileSend {
   sentAt: string;
   failed: boolean;
 }
-
-export type MobileLiveConversation = LiveConversation<MobileSend>;
 
 export const {
   useLiveConversationStore,

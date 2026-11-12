@@ -23,7 +23,6 @@ apps/mobile/src/features/chat/api/chat-api.ts:ApiConversationDetail=Conversation
 apps/mobile/src/features/chat/api/chat-api.ts:ApiMessage=ConversationEntry
 apps/mobile/src/features/chat/api/chat-api.ts:ConversationDetail=ConversationDocument
 apps/mobile/src/features/chat/api/chat-api.ts:FileUploadResponse=FileDeletedResponse
-apps/mobile/src/features/chat/api/chat-stream.ts:ChatStreamRequest=MessageRequestWithHistory
 apps/mobile/src/features/chat/api/queries.ts:ApiConversation=ConversationDocument
 apps/mobile/src/features/chat/api/queries.ts:ConversationsResponse=ConversationListResponse
 apps/mobile/src/features/chat/components/chat/email-accordion.tsx:EmailAccordionItem=GmailMessageSummary
@@ -82,7 +81,6 @@ apps/web/src/features/chat/components/composer/ComposerLeft.tsx:DropdownItemConf
 apps/web/src/features/chat/components/memory/MemoryIndicator.tsx:MemoryItem=NotificationRequest
 # One of the ten raw-apiauth feature files the concurrent migration is moving
 # onto the typed client; expected to go with it.
-apps/web/src/features/chat/stream/types.ts:TurnOptions=MessageRequestWithHistory
 apps/web/src/features/chat/types/enhancedTools.ts:EnhancedToolInfo=ToolInfo
 apps/web/src/features/integrations/components/MCPIntegrationModal.tsx:MCPFormData=CreateCustomIntegrationRequest
 apps/web/src/features/integrations/data/combosData.ts:IntegrationCombo=IntegrationContent
@@ -126,7 +124,6 @@ apps/web/src/features/workflows/utils/creator.ts:ResolvableCreator=AuthorDetails
 # Owned by the concurrent lib/api migration, which deletes ErrorBody outright.
 apps/web/src/lib/blog.types.ts:Author=AuthorDetails
 apps/web/src/lib/db/chatDb.ts:IConversation=ConversationDocument
-apps/web/src/lib/db/chatDb.ts:IMessage=ReplyToMessageData
 apps/web/src/lib/seo.ts:PageMetadataOptions=SupportRequestCreate
 apps/web/src/stores/chatStore.ts:OptimisticMessage=ReplyToMessageData
 apps/web/src/types/api/aboutApiTypes.ts:Author=AuthorDetails
@@ -154,8 +151,6 @@ apps/web/src/types/features/todoToolTypes.ts:TodoToolStats=TodoCounts
 apps/web/src/types/features/toolDataTypes.ts:ArtifactData=ArtifactInfo
 apps/web/src/types/features/toolDataTypes.ts:WorkflowCreatedData=PublicWorkflowCard
 apps/web/src/types/features/workflowTypes.ts:UseCase=PublicWorkflowCard
-libs/shared/ts/src/api/conversationsApi.ts:ChatStreamParams=MessageRequestWithHistory
-libs/shared/ts/src/api/conversationsApi.ts:ChatStreamReplyTo=ReplyToMessageData
 libs/shared/ts/src/api/integrationsApi.ts:CreateCustomIntegrationParams=CreateCustomIntegrationRequest
 libs/shared/ts/src/api/integrationsApi.ts:IntegrationAddPublicResponse=AddIntegrationResponse
 libs/shared/ts/src/api/integrationsApi.ts:IntegrationConnectResponse=AddIntegrationResponse

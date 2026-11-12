@@ -40,12 +40,6 @@ vi.mock("@/lib/query-provider", () => ({
   queryClient: { setQueryData: vi.fn() },
 }));
 
-vi.mock("@/lib/api", async () => {
-  const shared =
-    await vi.importActual<typeof import("@gaia/shared")>("@gaia/shared");
-  return { ApiError: shared.ApiError };
-});
-
 vi.mock("@/lib/sse-client", () => {
   class EventStreamHttpError extends Error {
     constructor(readonly status: number) {
@@ -315,7 +309,7 @@ describe("sending", () => {
     expect(server.streams).toHaveLength(0);
 
     server.notFound.delete(CONVERSATION);
-    sendMessage({ text: "book it", conversationId: CONVERSATION });
+    sendMessage(CONVERSATION, { text: "book it" });
     expect(rows()).toMatchObject([
       { id: "id-1", text: "book it", isUser: true, inProgress: true },
     ]);
@@ -333,14 +327,14 @@ describe("sending", () => {
   });
 
   it("starts a new conversation under a minted id", () => {
-    const conversationId = sendMessage({ text: "hi", conversationId: null });
+    const conversationId = sendMessage(null, { text: "hi" });
     expect(conversationId).toBe("id-1");
     expect(sendResult.calls[0]?.conversationId).toBe("id-1");
   });
 
   it("marks a send that failed, and its retry resends the same message", async () => {
     sendResult.fail = new Error("offline");
-    sendMessage({ text: "hello", conversationId: CONVERSATION });
+    sendMessage(CONVERSATION, { text: "hello" });
     await flush();
     expect(rows()[0]).toMatchObject({ sendFailed: true, inProgress: false });
     expect(loading().visible).toBe(false);
@@ -363,7 +357,7 @@ describe("sending", () => {
       discount_code: null,
     };
     sendResult.fail = ApiError.fromBody(402, offer);
-    sendMessage({ text: "hello", conversationId: CONVERSATION });
+    sendMessage(CONVERSATION, { text: "hello" });
     await flush();
 
     expect(usePaywallStore.getState().offer).toEqual(offer);

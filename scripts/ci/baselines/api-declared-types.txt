@@ -22,8 +22,6 @@ apps/mobile/src/features/chat/api/chat-api.ts:FileUploadResponse
 apps/mobile/src/features/chat/api/chat-api.ts:MemoryData
 apps/mobile/src/features/chat/api/chat-api.ts:Message
 apps/mobile/src/features/chat/api/chat-api.ts:UploadFileInput
-apps/mobile/src/features/chat/api/chat-stream.ts:ChatStreamRequest
-apps/mobile/src/features/chat/api/chat-stream.ts:StreamCallbacks
 apps/mobile/src/features/chat/api/models-api.ts:ModelInfo
 apps/mobile/src/features/chat/api/models-api.ts:ModelSelectionResponse
 apps/mobile/src/features/chat/api/queries.ts:ApiConversation
@@ -65,7 +63,6 @@ apps/mobile/src/features/tools/api/tools-api.ts:ToolsResponse
 apps/mobile/src/features/workflows/api/workflow-api.ts:ListCommunityParams
 apps/mobile/src/features/workflows/api/workflow-api.ts:ListExecutionsParams
 apps/mobile/src/features/workflows/api/workflow-api.ts:ListWorkflowsParams
-apps/web/src/features/chat/api/chatApi.ts:ChatStreamRequest
 apps/web/src/features/integrations/api/integrationsApi.ts:AddIntegrationOutcome
 apps/web/src/features/memory/api/memoryApi.ts:ListMemoriesParams
 apps/web/src/features/notification/api/notificationCache.ts:Page

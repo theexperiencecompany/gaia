@@ -107,10 +107,16 @@ export function useChat(
   const send = useCallback(
     (text: string, opts?: SendMessageOptions) => {
       const attachments = opts?.attachments ?? [];
-      const sentTo = sendMessage({
-        text,
+      const sentTo = sendMessage(
         conversationId,
-        files: attachments.flatMap((attachment) =>
+        {
+          text,
+          reply_to_message: opts?.replyToMessage ?? null,
+          selected_tool: opts?.selectedTool ?? null,
+          tool_category: opts?.toolCategory ?? null,
+          selected_workflow: opts?.selectedWorkflow ?? null,
+        },
+        attachments.flatMap((attachment) =>
           attachment.fileId
             ? [
                 {
@@ -123,11 +129,7 @@ export function useChat(
               ]
             : [],
         ),
-        replyToMessage: opts?.replyToMessage,
-        selectedTool: opts?.selectedTool,
-        toolCategory: opts?.toolCategory,
-        selectedWorkflow: opts?.selectedWorkflow,
-      });
+      );
       if (sentTo === conversationId) return;
       // A new conversation has no saved history: nothing to fetch before its first message lands.
       queryClient.setQueryData(chatKeys.messages(sentTo), EMPTY_MESSAGES);

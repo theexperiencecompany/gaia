@@ -1,6 +1,5 @@
-import { parseSubscriptionRequiredBody } from "@gaia/shared";
+import { ApiError, parseSubscriptionRequiredBody } from "@gaia/shared";
 import { createConversationFollower } from "@gaia/shared/conversation/live";
-import { ApiError } from "@/lib/api";
 import { queryClient } from "@/lib/query-provider";
 import { EventStreamHttpError } from "@/lib/sse-client";
 import { usePaywallStore } from "@/stores/paywall-store";
@@ -16,7 +15,7 @@ const HTTP_NOT_FOUND = 404;
 const HTTP_PAYMENT_REQUIRED = 402;
 
 /** Write a conversation's title into the sidebar's list, the one place mobile reads it from. */
-export function retitleConversation(conversationId: string, title: string) {
+function retitleConversation(conversationId: string, title: string) {
   queryClient.setQueryData(
     chatKeys.conversations(),
     (previous: Conversation[] | undefined) =>
