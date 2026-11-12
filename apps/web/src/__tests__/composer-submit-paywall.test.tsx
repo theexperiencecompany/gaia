@@ -53,7 +53,6 @@ vi.mock("@/stores/composerStore", () => ({
     clearAllFiles,
   }),
   useComposerIsUploading: () => false,
-  useComposerUI: () => ({ isSlashCommandDropdownOpen: false }),
   useReplyToMessage: () => ({
     replyToMessage: null,
     clearReplyToMessage,
