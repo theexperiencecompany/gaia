@@ -12,7 +12,7 @@ import {
 } from "../../chat/approvals";
 
 /** Every fixed string of the bot approval prompt, in one place. */
-export const APPROVAL_PROMPT_COPY = {
+const APPROVAL_PROMPT_COPY = {
   single: (action: string) => `GAIA wants to ${action}`,
   singleReply: (confirm: string) => `Reply yes to ${confirm}, or no to cancel.`,
   several: (count: number) => `${count} things need your OK:`,

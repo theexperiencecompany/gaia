@@ -11,6 +11,8 @@ export type {
   HilMode,
   HilPreferences,
   HilPreferencesUpdate,
+  PendingApprovalCardData,
+  SettledApprovalCardData,
 } from "./approvals";
 export {
   APPROVAL_REQUEST_TOOL_NAME,

@@ -21,7 +21,6 @@ import type {
 
 export type {
   ApprovalDescription,
-  ApprovalDetail,
   BatchApprovalDecisionResponse,
   BatchDecisionItem,
   BatchDecisionOutcome,

@@ -11,7 +11,6 @@ export type {
   ApprovalDecision,
   ApprovalDecisionPayload,
   ApprovalDescription,
-  ApprovalDetail,
   ApprovalRequestData,
   ApprovalScope,
   ApprovalStatus,

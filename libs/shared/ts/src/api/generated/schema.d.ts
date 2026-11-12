@@ -6127,25 +6127,6 @@ export interface components {
             value: string;
         };
         /**
-         * ApprovalRequestEntry
-         * @description The ``approval_request`` tool_data entry built by ``hil.bridge``.
-         *
-         *     Emitted (wrapped in a ``tool_data`` envelope) when a gated call asks for the
-         *     user's decision, and re-emitted in its resolved status once decided —
-         *     ``stream_utils._append_or_upsert_tool_data`` replaces the earlier frame in
-         *     the persisted turn so only the final status survives.
-         */
-        ApprovalRequestEntry: {
-            /** Data */
-            data: components["schemas"]["PendingApprovalCardData"] | components["schemas"]["SettledApprovalCardData"];
-            /** Timestamp */
-            timestamp: string;
-            /** Tool Category */
-            tool_category: string;
-            /** Tool Name */
-            tool_name: string;
-        };
-        /**
          * ApprovePairingRequest
          * @description The signed-in browser approves a pairing by its short user_code.
          */
@@ -12100,8 +12081,8 @@ export interface components {
             /** Ledger Version */
             ledger_version?: number | null;
             /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
+             * Status
+             * @constant
              */
             status: "pending";
             /** Summary */
@@ -13732,10 +13713,10 @@ export interface components {
              */
             ledger_version?: number | null;
             /**
-             * @description discriminator enum property added by openapi-typescript
+             * Status
              * @enum {string}
              */
-            status: "abandoned" | "approved" | "auto_approved" | "cancelled" | "denied" | "executed" | "failed" | "revoked" | "timeout" | "unknown";
+            status: "approved" | "denied" | "timeout" | "abandoned" | "auto_approved" | "revoked" | "cancelled" | "executed" | "failed" | "unknown";
             /** Summary */
             summary: string;
             /** Tool Call Id */
@@ -16711,7 +16692,6 @@ export type ApprovalDecisionRequest = components['schemas']['ApprovalDecisionReq
 export type ApprovalDecisionResponse = components['schemas']['ApprovalDecisionResponse'];
 export type ApprovalDescription = components['schemas']['ApprovalDescription'];
 export type ApprovalDetail = components['schemas']['ApprovalDetail'];
-export type ApprovalRequestEntry = components['schemas']['ApprovalRequestEntry'];
 export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest'];
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];

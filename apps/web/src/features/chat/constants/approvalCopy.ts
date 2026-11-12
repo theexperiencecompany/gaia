@@ -5,7 +5,7 @@
  */
 
 /** Lower-case the first letter so an action reads inside a sentence. */
-export function inSentence(action: string): string {
+function inSentence(action: string): string {
   return action.charAt(0).toLowerCase() + action.slice(1);
 }
 

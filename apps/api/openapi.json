@@ -482,58 +482,6 @@
         "title": "ApprovalDetail",
         "type": "object"
       },
-      "ApprovalRequestEntry": {
-        "description": "The ``approval_request`` tool_data entry built by ``hil.bridge``.\n\nEmitted (wrapped in a ``tool_data`` envelope) when a gated call asks for the\nuser's decision, and re-emitted in its resolved status once decided \u2014\n``stream_utils._append_or_upsert_tool_data`` replaces the earlier frame in\nthe persisted turn so only the final status survives.",
-        "properties": {
-          "data": {
-            "discriminator": {
-              "mapping": {
-                "abandoned": "#/components/schemas/SettledApprovalCardData",
-                "approved": "#/components/schemas/SettledApprovalCardData",
-                "auto_approved": "#/components/schemas/SettledApprovalCardData",
-                "cancelled": "#/components/schemas/SettledApprovalCardData",
-                "denied": "#/components/schemas/SettledApprovalCardData",
-                "executed": "#/components/schemas/SettledApprovalCardData",
-                "failed": "#/components/schemas/SettledApprovalCardData",
-                "pending": "#/components/schemas/PendingApprovalCardData",
-                "revoked": "#/components/schemas/SettledApprovalCardData",
-                "timeout": "#/components/schemas/SettledApprovalCardData",
-                "unknown": "#/components/schemas/SettledApprovalCardData"
-              },
-              "propertyName": "status"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/PendingApprovalCardData"
-              },
-              {
-                "$ref": "#/components/schemas/SettledApprovalCardData"
-              }
-            ],
-            "title": "Data"
-          },
-          "timestamp": {
-            "title": "Timestamp",
-            "type": "string"
-          },
-          "tool_category": {
-            "title": "Tool Category",
-            "type": "string"
-          },
-          "tool_name": {
-            "title": "Tool Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "tool_name",
-          "tool_category",
-          "data",
-          "timestamp"
-        ],
-        "title": "ApprovalRequestEntry",
-        "type": "object"
-      },
       "ApprovePairingRequest": {
         "description": "The signed-in browser approves a pairing by its short user_code.",
         "properties": {
