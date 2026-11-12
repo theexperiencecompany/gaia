@@ -78,7 +78,7 @@ export default function Pins() {
             value={searchQuery}
             onChange={setSearchQuery}
           >
-            <SearchField.Group className="h-12 border-2 border-default-200 text-base">
+            <SearchField.Group className="h-12 border-2 border-default-200 pr-1 text-base">
               <SearchField.Input placeholder="Enter a message to filter pins" />
               <SearchField.ClearButton />
             </SearchField.Group>

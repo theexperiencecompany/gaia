@@ -50,7 +50,8 @@ export function StarterPromptsCard({ prompts }: StarterPromptsCardProps) {
                 router.push("/c");
               }}
               tone="dim"
-              className="h-11 justify-start gap-3 bg-zinc-900 text-sm font-normal hover:bg-zinc-700"
+              hoverTone="foreground"
+              className="h-11 justify-start gap-3 rounded-xl bg-zinc-900 text-sm font-normal hover:bg-zinc-700"
             >
               <Icon size={18} className="shrink-0 text-zinc-500" />
               <span className="truncate text-left">{prompt}</span>

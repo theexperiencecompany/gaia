@@ -195,6 +195,7 @@ function TokenScaleLine({ tokens }: { tokens: number }) {
           size="sm"
           variant="ghost"
           tone="faint"
+          hoverTone="foreground"
           className="size-6 min-w-6 shrink-0"
           aria-label="Show another comparison"
           onPress={next}

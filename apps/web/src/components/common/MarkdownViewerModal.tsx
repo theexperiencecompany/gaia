@@ -1,6 +1,6 @@
 "use client";
 
-import { Modal, Separator, Spinner } from "@heroui/react";
+import { Modal, Spinner } from "@heroui/react";
 import { AlertCircleIcon } from "@icons";
 import type React from "react";
 import { modalVariants } from "@/components/shared/controlVariants";
@@ -77,16 +77,13 @@ const MarkdownViewerModal: React.FC<MarkdownViewerModalProps> = ({
             })}
           >
             <Modal.CloseTrigger aria-label="Close" />
-            <Modal.Header>
+            <Modal.Header className="border-b border-zinc-800 pb-3">
               <Modal.Heading className="text-sm font-medium">
                 {title}
               </Modal.Heading>
             </Modal.Header>
-            <Separator />
-            <Modal.Body>
-              <div className="py-2">
-                {renderBody({ isLoading, hasError, errorMessage, content })}
-              </div>
+            <Modal.Body className="py-4">
+              {renderBody({ isLoading, hasError, errorMessage, content })}
             </Modal.Body>
           </Modal.Dialog>
         </Modal.Container>

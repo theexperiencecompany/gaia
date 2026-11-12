@@ -50,7 +50,7 @@ export const IntegrationConnectCard: React.FC<IntegrationConnectCardProps> = ({
       <GaiaButton
         onPress={handleConnect}
         size={small ? "sm" : "md"}
-        className="mt-2"
+        className="mt-2 px-4"
         variant="primary"
       >
         {buttonText}

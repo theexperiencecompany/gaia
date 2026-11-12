@@ -84,7 +84,7 @@ export default function PopupComposer({
         onChange={setText}
         isDisabled={disabled}
       >
-        <InputGroup className="bg-transparent shadow-none border-none outline-none ring-0 pr-2">
+        <InputGroup className="bg-transparent shadow-none border-none outline-none ring-0 py-0 pl-0.5 pr-2">
           <InputGroup.Prefix>
             {/* Canvas is larger than the visible sphere (glow padding) — the
                 negative margins keep the optical size in line with the send
@@ -111,6 +111,7 @@ export default function PopupComposer({
               onPress={dismissPopup}
               aria-label="Close"
               tone="faint"
+              hoverTone="foreground"
               className="h-6 min-h-6 w-6 max-w-6 min-w-6 shrink-0"
             >
               <Cancel01Icon className="size-3.5" />

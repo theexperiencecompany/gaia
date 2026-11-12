@@ -47,6 +47,7 @@ export const PermissionToolList = ({
             size="sm"
             variant="ghost"
             tone="muted"
+            inset="tight"
             className="-mr-1 h-7 shrink-0 text-xs"
             isPending={permissions.isSavingTools}
             onPress={permissions.resetToDefaults}

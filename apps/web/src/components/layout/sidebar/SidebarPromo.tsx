@@ -58,6 +58,8 @@ export function SidebarPromo({
               variant="ghost"
               size="sm"
               tone="muted"
+              hoverTone="foreground"
+              inset="none"
               className="relative left-3 group-hover/pricingsidebar:opacity-100 opacity-0 transition"
               onPress={() => handleCollapse()}
             >

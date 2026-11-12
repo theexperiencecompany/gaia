@@ -50,8 +50,8 @@ export const CustomSidebarTrigger = ({
         <span className="flex items-center gap-2 text-xs">
           {open ? "Collapse Sidebar" : "Open Sidebar"}
           <div>
-            <Kbd className="text-xs">{isMac ? "⌘" : "Ctrl"}</Kbd>
-            <Kbd className="text-xs">B</Kbd>
+            <Kbd className="text-xs rounded-md">{isMac ? "⌘" : "Ctrl"}</Kbd>
+            <Kbd className="text-xs rounded-md">B</Kbd>
           </div>
         </span>
       }
