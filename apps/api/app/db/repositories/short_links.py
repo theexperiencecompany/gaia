@@ -95,6 +95,17 @@ class ShortLinksRepository(UserScopedRepository[ShortLink, ShortLinkUpdate]):
             ShortLinkUpdate(revoked=True, revoked_at=datetime.now(UTC), revoked_reason=reason),
         )
 
+    async def update_live(
+        self, user_id: str, slug: str, update: ShortLinkUpdate
+    ) -> ShortLink | None:
+        """Set fields on a live link its owner holds; None when it is not theirs or already dead.
+
+        A revoked link's fields are its record: a rotation already carried them to the new link.
+        """
+        return await self._apply_update(
+            slug, user_id, {"user_id": user_id, "revoked": False}, update
+        )
+
     async def get_live_by_content_id(self, content_id: str) -> ShortLink | None:
         """Return the live link serving a snapshot; global like get_by_slug, for the content origin."""
         return await self._find_one({"snapshot.content_id": content_id, "revoked": False})

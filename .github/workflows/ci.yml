@@ -1596,7 +1596,7 @@ jobs:
   # ── Master only: ship the usercontent Worker (*.heygaia.link) ──────────
   # Its build (a wrangler dry-run bundle) ran in ts-build-test behind the same
   # gate. Off until vars.USERCONTENT_WORKER_DEPLOY is 'true': the heygaia.link
-  # zone, its *.u DNS record and the INTERNAL_API_TOKEN Worker secret must exist
+  # zone, its wildcard DNS record and the INTERNAL_API_TOKEN Worker secret must exist
   # first, or the deploy reds master. After turning it on, dispatch ci.yml on
   # master once (a dispatch runs every task) to ship the first version.
   deploy-usercontent-worker:

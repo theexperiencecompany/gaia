@@ -68,16 +68,16 @@ async def serve_link_content_route(
     sec_fetch_dest: Annotated[str | None, Header()] = None,
 ) -> Response:
     """Serve a snapshot's bytes with its render mode's headers; a missing or stale token goes back to the link."""
-    log.set(link_content={"operation": "serve", "fetch_dest": sec_fetch_dest})
+    log.set(short_link={"operation": "serve", "fetch_dest": sec_fetch_dest})
     link = await _live_link(request, content_id)
     snapshot = link.snapshot
     if snapshot is None or not servable(snapshot, link.access):
         raise _not_found()
     link_url = build_url(link.slug)
     if not token_valid(link, content_id, t, datetime.now(UTC)):
-        log.set(link_content={"signed_url": "stale"})
+        log.set(short_link={"signed_url": "stale"})
         return RedirectResponse(link_url, status_code=status.HTTP_302_FOUND)
-    log.set(link_content={"render": snapshot.render.value})
+    log.set(short_link={"render": snapshot.render.value})
     body = await read_snapshot(link.user_id, content_id)
     return snapshot_response(body, snapshot, sec_fetch_dest, link_url)
 
@@ -85,7 +85,7 @@ async def serve_link_content_route(
 @router.get(f"/{{content_id}}/{THUMBNAIL_PATH}", response_class=Response)
 async def serve_link_thumbnail_route(request: Request, content_id: str) -> Response:
     """Serve a public or unlisted snapshot's preview image, tokenless so chat apps can fetch it."""
-    log.set(link_content={"operation": "thumbnail"})
+    log.set(short_link={"operation": "thumbnail"})
     link = await _live_link(request, content_id)
     snapshot = link.snapshot
     if (

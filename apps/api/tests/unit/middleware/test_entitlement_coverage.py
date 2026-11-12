@@ -178,9 +178,13 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/device/token",
         "/api/v1/integrations/connect-link",
         "/api/v1/l/slug",
-        "/api/v1/l/slug/file",
+        "/api/v1/l/slug/content-token",
+        "/api/v1/l/slug/download",
+        "/api/v1/l/slug/meta",
         "/api/v1/l/slug/opened",
         "/api/v1/l/slug/pdf",
+        "/api/v1/l/slug/report",
+        "/api/v1/l/slug/rotate",
         "/api/v1/l/state",
         "/api/v1/l/unshare",
         "/api/v1/mcp/oauth/callback",
@@ -256,7 +260,7 @@ async def test_llm_spend_under_a_free_prefix_keeps_its_own_gate(gated_client: As
     ("method", "path"),
     [
         ("GET", "/api/v1/l/abcdefghijk"),
-        ("GET", "/api/v1/l/abcdefghijk/file"),
+        ("GET", "/api/v1/l/abcdefghijk/download"),
         ("POST", "/api/v1/l/abcdefghijk/opened"),
     ],
 )

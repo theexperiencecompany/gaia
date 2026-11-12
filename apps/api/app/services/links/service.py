@@ -204,6 +204,8 @@ async def share(
     existing = await _live_link(user_id, target_type, target_id)
     if existing is not None:
         return existing
+    grantees = [str(email) for email in link_settings.grantees]
+    grantee_ids = await _grantee_ids(grantees)
     snapshot = await _snapshot_for(user_id, target_type, target_id)
     candidate = ShortLink(
         slug="",
@@ -211,12 +213,17 @@ async def share(
         target_type=target_type,
         target_id=target_id,
         access=link_settings.access,
-        grantees=[str(email) for email in link_settings.grantees],
-        grantee_ids=await _grantee_ids([str(email) for email in link_settings.grantees]),
+        grantees=grantees,
+        grantee_ids=grantee_ids,
         expires_at=link_settings.expires_at,
         snapshot=snapshot,
     )
-    minted = await _insert(candidate)
+    try:
+        minted = await _insert(candidate)
+    except Exception:
+        # The bytes were published for this link alone; nothing will ever point at them.
+        await _release_snapshot(user_id, snapshot)
+        raise
     if minted is None:
         # Lost a concurrent mint: the winner's link is the one live link, and the snapshot just
         # published belongs to nobody.
@@ -253,10 +260,11 @@ async def _refresh_snapshot(link: ShortLink) -> None:
     if source is None or unchanged(link.snapshot, source):
         return
     fresh = await publish(link.user_id, link.target_type, source)
-    await short_link_repository.update(
-        link.slug, user_id=link.user_id, update=ShortLinkUpdate(snapshot=fresh)
+    moved = await short_link_repository.update_live(
+        link.user_id, link.slug, ShortLinkUpdate(snapshot=fresh)
     )
-    await _release_snapshot(link.user_id, link.snapshot)
+    # A link revoked meanwhile (a rotation carrying the old file forward) keeps it; the fresh one is nobody's.
+    await _release_snapshot(link.user_id, link.snapshot if moved is not None else fresh)
 
 
 async def optional_short_link(
@@ -314,15 +322,15 @@ async def update_settings(user_id: str, slug: str, change: LinkSettingsUpdate) -
             status_code=422,
             code="link_expiry_in_past",
         )
-    fields = change.model_dump(exclude_unset=True)
-    if not fields:
+    if not change.model_fields_set:
         raise AppError(message="Nothing to change", status_code=422, code="link_settings_empty")
-    if "grantees" in fields:
-        fields["grantees"] = [str(email) for email in change.grantees or []]
-        fields["grantee_ids"] = await _grantee_ids(fields["grantees"])
-    updated = await short_link_repository.update(
-        slug, user_id=user_id, update=ShortLinkUpdate(**fields)
+    update = ShortLinkUpdate.model_validate(
+        change.model_dump(exclude_unset=True, exclude={"grantees"})
     )
+    if "grantees" in change.model_fields_set:
+        update.grantees = [str(email) for email in change.grantees or []]
+        update.grantee_ids = await _grantee_ids(update.grantees)
+    updated = await short_link_repository.update_live(user_id, slug, update)
     if updated is None:
         raise LinkTargetNotFoundError(message="Link not found")
     if updated.access != link.access or updated.grantees != link.grantees:
@@ -344,8 +352,18 @@ async def rotate(user_id: str, slug: str) -> ShortLink:
     revoked = await short_link_repository.revoke(user_id, slug, RevokeReason.ROTATED)
     if revoked is None:
         raise LinkTargetNotFoundError(message="Link not found")
+    # The revoked doc, not the read before it: a refresh in between may have moved the file on.
     minted = await _insert(
-        link.model_copy(update={"id": "", "created_at": _now(), "updated_at": None})
+        revoked.model_copy(
+            update={
+                "id": "",
+                "created_at": _now(),
+                "updated_at": None,
+                "revoked": False,
+                "revoked_at": None,
+                "revoked_reason": None,
+            }
+        )
     )
     if minted is None:
         raise AppError(

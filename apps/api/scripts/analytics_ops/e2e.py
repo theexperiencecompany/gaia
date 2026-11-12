@@ -69,7 +69,7 @@ from shared.py.analytics.catalog.short_links import (
     ShortLinkRevoked,
     ShortLinkRotated,
 )
-from shared.py.analytics.catalog.todos import TodosRunResultDelivered
+from shared.py.analytics.catalog.todos import TodosCreated, TodosRunResultDelivered
 from shared.py.analytics.catalog.workflows import (
     WorkflowCreated,
     WorkflowExecuted,
@@ -337,6 +337,8 @@ def build_journeys(transcript: Path) -> list[Journey]:
             "link share",
             journeys.link_share,
             (
+                # The todo it shares is created by the journey itself.
+                Expect(TodosCreated.event, BROWSER, True),
                 Expect(
                     ShortLinkCreated.event,
                     None,

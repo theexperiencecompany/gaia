@@ -194,7 +194,12 @@ def _thumbnail(render: RenderMode, data: bytes) -> bytes | None:
             with pymupdf.open(stream=data, filetype="pdf") as document:
                 if document.page_count == 0:
                     return None
-                pixmap = document[0].get_pixmap(dpi=96)
+                page = document[0]
+                # Render at the card's size: a huge page at a fixed dpi would allocate its full bitmap.
+                scale = min(
+                    THUMBNAIL_SIZE[0] / page.rect.width, THUMBNAIL_SIZE[1] / page.rect.height
+                )
+                pixmap = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale))
                 return _jpeg(Image.open(io.BytesIO(pixmap.tobytes("png"))))
     except (UnidentifiedImageError, pymupdf.FileDataError, OSError, ValueError) as exc:
         # A broken file still shares; only its preview image is lost.

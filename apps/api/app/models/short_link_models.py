@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.models.briefing_models import BriefingItemKind, BriefingKind, BriefingMood, BriefingStat
@@ -377,6 +377,14 @@ class LinkSettingsUpdate(BaseModel):
     access: LinkAccess | None = None
     grantees: list[EmailStr] | None = Field(default=None, max_length=MAX_GRANTEES)
     expires_at: AwareDatetime | None = None
+
+    @field_validator("access")
+    @classmethod
+    def _access_is_a_level(cls, access: LinkAccess | None) -> LinkAccess:
+        """Refuse an explicit null: a link always has a level; omit access to keep it."""
+        if access is None:
+            raise ValueError("access must be a level; omit it to keep the current one")
+        return access
 
 
 class ShortLinkTargetRequest(BaseModel):
