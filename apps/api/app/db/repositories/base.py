@@ -124,7 +124,9 @@ def _translate_public_methods(cls: type) -> None:
                 why="only public async instance methods are wrapped to raise RepositoryError",
                 fix=f"make {name} an async instance method returning a list, or prefix it with _",
             )
-        if inspect.iscoroutinefunction(method) and not hasattr(method, _TRANSLATES_DRIVER_ERRORS):
+        if inspect.iscoroutinefunction(method) and not getattr(
+            method, _TRANSLATES_DRIVER_ERRORS, False
+        ):
             setattr(cls, name, _translating_driver_errors(method))
 
 
