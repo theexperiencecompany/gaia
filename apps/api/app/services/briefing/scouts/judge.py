@@ -22,6 +22,7 @@ from app.models.scout_models import (
 )
 from app.services.briefing.scouts.facts import memory_note
 from app.utils.errors import AppError
+from app.utils.timezone import Timezone
 
 
 class SignalVerdict(BaseModel):
@@ -85,7 +86,7 @@ async def judge_replayed(
         return list(remembered)
     apps = {remembered[at].signal.integration_id: remembered[at].signal.app for at in positions}
     prompt = SIGNAL_JUDGE_PROMPT.format(
-        today=now.date().isoformat(),
+        today=Timezone.parse(timezone).localize(now).date().isoformat(),
         timezone=timezone,
         criteria="\n".join(f"- {apps[iid]}: {criteria[iid]}" for iid in apps),
         items="\n".join(

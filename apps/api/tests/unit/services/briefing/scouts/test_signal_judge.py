@@ -100,6 +100,15 @@ class TestJudge:
             ("g1", SignalImportance.NORMAL, None),
         ]
 
+    async def test_the_judge_is_told_the_date_where_the_user_is_not_in_utc(
+        self, model: AsyncMock
+    ) -> None:
+        late_evening_utc = datetime(2026, 10, 22, 20, 0, tzinfo=UTC)
+
+        await judge_replayed(USER_ID, RESULTS, REMEMBERED, late_evening_utc, "Asia/Kolkata")
+
+        assert "2026-10-23 (Asia/Kolkata)" in model.await_args.args[1]
+
     async def test_every_app_is_judged_in_one_call_with_its_criteria_and_memory(
         self, model: AsyncMock
     ) -> None:

@@ -5,6 +5,7 @@ run, the replay and the scout store. Assertions are on what each scout contribut
 what was stored.
 """
 
+import asyncio
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -459,6 +460,29 @@ class TestOneScoutFailing:
         assert error["msg"] == "briefing.scout_failed"
         assert error["error"] == "no tools reachable for github"
         assert error["error_type"] == "AppError"
+
+    async def test_a_scout_that_never_returns_is_skipped_so_the_next_one_still_runs(
+        self, scouts: Scouts, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def watch(user: Any, user_id: str, frozen: FrozenWatch, tools: ScoutTools) -> Any:
+            if frozen.integration.integration_id == "github":
+                await asyncio.sleep(3600)
+            return [_signal(frozen.integration, "replayed-1")]
+
+        scouts.watch.side_effect = watch
+        scouts.integrations = [GITHUB, LINEAR]
+        scouts.stored["github"] = _scout(GITHUB)
+        scouts.stored["linear"] = _scout(LINEAR)
+        monkeypatch.setattr(service, "SCOUT_TURN_TIMEOUT", timedelta(milliseconds=50))
+
+        github, linear = await service.run_scouts(USER)
+
+        assert (github.outcome, github.skip_reason) == (
+            ScoutOutcome.SKIPPED,
+            ScoutSkipReason.FAILED,
+        )
+        assert github.error == "TimeoutError: "
+        assert (linear.outcome, _ids(linear)) == (ScoutOutcome.REPLAYED, ["replayed-1"])
 
 
 class TestWhatEachScoutIsHanded:
