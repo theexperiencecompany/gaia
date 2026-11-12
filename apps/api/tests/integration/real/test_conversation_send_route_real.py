@@ -1,5 +1,6 @@
 """POST /conversations/{id}/messages accepts into the step at once, checked against real MongoDB."""
 
+import asyncio
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -15,7 +16,7 @@ from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
 from app.models.bot_models import BotChatRequest
 from app.models.chat_models import MessageModel
-from app.models.conversation_frame_models import StateFrame
+from app.models.conversation_frame_models import ConversationUpdatedFrame, StateFrame
 from app.models.conversation_log_models import DisplayState, UserMessage
 from app.models.user_models import AuthenticatedUser
 from app.services.bot_service import BotService
@@ -23,6 +24,7 @@ from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports
 from app.services.conversation.send import submit_bot_message
+from shared.py.wide_events import _spawned_tasks
 from tests.conftest import FAKE_USER
 from tests.unit.services.conversation.runtime_doubles import (
     EffectCall,
@@ -189,3 +191,27 @@ async def test_a_sent_messages_files_are_stored_on_its_entry_for_every_device(
     assert [(f.fileId, f.filename, f.type, f.url) for f in message.files] == [
         ("f-1", "invoice-march.pdf", "application/pdf", "https://files.example/f-1")
     ]
+
+
+async def test_a_new_conversation_is_titled_and_its_title_streamed(
+    client: AsyncClient, sends: Sends
+) -> None:
+    conversation_id = f"convrt-{uuid4().hex[:10]}"
+    with patch(
+        "app.services.conversation.title.generate_and_update_description",
+        new_callable=AsyncMock,
+        return_value="Flights to Lisbon",
+    ) as titled:
+        first = await client.post(
+            f"/api/v1/conversations/{conversation_id}/messages",
+            json=_send("m1", "fly me to Lisbon"),
+        )
+        await client.post(
+            f"/api/v1/conversations/{conversation_id}/messages", json=_send("m2", "in May")
+        )
+        await asyncio.gather(*_spawned_tasks, return_exceptions=True)
+    updates = [f for f in sends.frames.published if isinstance(f, ConversationUpdatedFrame)]
+    assert first.status_code == 202, first.text
+    assert titled.await_count == 1
+    assert titled.await_args.args[1] == {"role": "user", "content": "fly me to Lisbon"}
+    assert [u.description for u in updates] == ["Flights to Lisbon"]

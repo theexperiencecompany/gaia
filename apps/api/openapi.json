@@ -4273,6 +4273,7 @@
           "frame": {
             "discriminator": {
               "mapping": {
+                "conversation_updated": "#/components/schemas/ConversationUpdatedFrame",
                 "entry": "#/components/schemas/EntryFrame",
                 "entry_updated": "#/components/schemas/EntryUpdatedFrame",
                 "reply_delta": "#/components/schemas/ReplyDeltaFrame",
@@ -4300,6 +4301,9 @@
               },
               {
                 "$ref": "#/components/schemas/StateFrame"
+              },
+              {
+                "$ref": "#/components/schemas/ConversationUpdatedFrame"
               }
             ],
             "title": "Frame"
@@ -4790,6 +4794,27 @@
           "source"
         ],
         "title": "ConversationSyncRow",
+        "type": "object"
+      },
+      "ConversationUpdatedFrame": {
+        "additionalProperties": false,
+        "description": "The conversation's own metadata changed: its title, once generated from the first message.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "kind": {
+            "const": "conversation_updated",
+            "default": "conversation_updated",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "description"
+        ],
+        "title": "ConversationUpdatedFrame",
         "type": "object"
       },
       "CreateCheckoutSessionRequest": {

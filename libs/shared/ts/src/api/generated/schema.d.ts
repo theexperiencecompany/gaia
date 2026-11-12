@@ -7807,7 +7807,7 @@ export interface components {
          */
         ConversationEvent: {
             /** Frame */
-            frame: components["schemas"]["EntryFrame"] | components["schemas"]["EntryUpdatedFrame"] | components["schemas"]["ReplyDeltaFrame"] | components["schemas"]["WorkDeltaFrame"] | components["schemas"]["RetractFrame"] | components["schemas"]["StateFrame"];
+            frame: components["schemas"]["EntryFrame"] | components["schemas"]["EntryUpdatedFrame"] | components["schemas"]["ReplyDeltaFrame"] | components["schemas"]["WorkDeltaFrame"] | components["schemas"]["RetractFrame"] | components["schemas"]["StateFrame"] | components["schemas"]["ConversationUpdatedFrame"];
             /** Stream Id */
             stream_id: string | null;
         };
@@ -7960,6 +7960,19 @@ export interface components {
             todo_id: string | null;
             /** Updatedat */
             updatedAt: string | null;
+        };
+        /**
+         * ConversationUpdatedFrame
+         * @description The conversation's own metadata changed: its title, once generated from the first message.
+         */
+        ConversationUpdatedFrame: {
+            /** Description */
+            description: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "conversation_updated";
         };
         /**
          * CreateCheckoutSessionRequest
@@ -17463,6 +17476,7 @@ export type ConversationStopResponse = components['schemas']['ConversationStopRe
 export type ConversationSummary = components['schemas']['ConversationSummary'];
 export type ConversationSyncItem = components['schemas']['ConversationSyncItem'];
 export type ConversationSyncRow = components['schemas']['ConversationSyncRow'];
+export type ConversationUpdatedFrame = components['schemas']['ConversationUpdatedFrame'];
 export type CreateCheckoutSessionRequest = components['schemas']['CreateCheckoutSessionRequest'];
 export type CreateConversationResponse = components['schemas']['CreateConversationResponse'];
 export type CreateCustomIntegrationRequest = components['schemas']['CreateCustomIntegrationRequest'];

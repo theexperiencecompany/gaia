@@ -25,18 +25,23 @@ from app.services.bot_service import BotService, charge_bot_turn
 from app.services.bot_token_service import create_bot_session_token
 from app.services.conversation.log import accept
 from app.services.conversation.runtime import runtime_ports
+from app.services.conversation.title import title_conversation
 from app.services.conversation_service import create_conversation_service
 from app.services.files import FileService
+from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from shared.py.wide_events import log
 
+_TITLE_TASK_NAME = "conversation-title"
+
 
 @dataclass(frozen=True)
 class Sent:
-    """An accepted send, and whether it was a resend of a message already accepted."""
+    """An accepted send, the message it logged, and whether it was a resend of one already accepted."""
 
     accepted: MessageAccepted
+    message: UserMessage
     duplicate: bool
 
 
@@ -98,6 +103,7 @@ async def send_message(
     log.set_ns("conversation", seq=seq, duplicate=duplicate)
     return Sent(
         accepted=MessageAccepted(conversation_id=conversation_id, message_id=message.id, seq=seq),
+        message=message,
         duplicate=duplicate,
     )
 
@@ -114,6 +120,10 @@ async def submit_message(
     sent = await send_message(conversation_id, user, body, surface)
     if sent.duplicate:
         return sent.accepted
+    if created:
+        spawn_background_task(
+            title_conversation(conversation_id, user, sent.message), name=_TITLE_TASK_NAME
+        )
     capture(
         UserId(user.user_id),
         ChatMessageSubmitted(
