@@ -165,7 +165,6 @@ apps/api/tests/unit/config/test_prod_isolation.py	arg-type
 apps/api/tests/unit/config/test_prod_isolation.py	attr-defined
 apps/api/tests/unit/config/test_prod_isolation.py	index
 apps/api/tests/unit/config/test_prod_isolation.py	misc
-apps/api/tests/unit/config/test_sentry_sink.py	attr-defined
 apps/api/tests/unit/config/test_settings_hermetic.py	attr-defined
 apps/api/tests/unit/config/test_token_repository.py	arg-type
 apps/api/tests/unit/config/test_workos.py	attr-defined
