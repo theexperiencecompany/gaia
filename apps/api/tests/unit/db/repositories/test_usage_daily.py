@@ -1,6 +1,6 @@
 """The usage-daily repository's window-totals read over a faked aggregate cursor."""
 
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Mapping, Sequence
 from unittest.mock import MagicMock, patch
 
 from pydantic import ValidationError
@@ -9,7 +9,7 @@ import pytest
 from app.db.repositories.usage_daily import UsageDailyRepository
 
 
-def _collection(rows: list[Mapping[str, object]]) -> MagicMock:
+def _collection(rows: Sequence[Mapping[str, object]]) -> MagicMock:
     async def cursor() -> AsyncIterator[Mapping[str, object]]:
         for row in rows:
             yield row
