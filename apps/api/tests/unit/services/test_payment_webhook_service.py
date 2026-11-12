@@ -743,12 +743,23 @@ class TestRefundsAndDisputesTakeTheMonthBack:
     async def test_a_full_refund_asks_for_the_friends_month_back(
         self, webhook_service, mock_processed_webhook_repository, mock_no_referral
     ):
-        result = await webhook_service.process_webhook(
-            _make_webhook_event("refund.succeeded", REFUND_PAYLOAD), "wh_refund"
-        )
+        async with captured_wide_event() as event:
+            result = await webhook_service.process_webhook(
+                _make_webhook_event("refund.succeeded", REFUND_PAYLOAD), "wh_refund"
+            )
 
         assert (result.status, result.payment_id) == ("processed", "pay_001")
         mock_no_referral.revocation.assert_awaited_once_with("pay_001", ReferralRevokeReason.REFUND)
+        mock_processed_webhook_repository.record_outcome.assert_awaited_once_with(
+            "wh_refund",
+            ProcessedWebhookUpdate(
+                status="processed", message="Refund noted", payment_id="pay_001"
+            ),
+        )
+        assert (event["payment"]["refund_id"], event["payment"]["refund_partial"]) == (
+            "ref_1",
+            False,
+        )
 
     async def test_a_partial_refund_leaves_the_month_alone(
         self, webhook_service, mock_processed_webhook_repository, mock_no_referral
@@ -765,14 +776,22 @@ class TestRefundsAndDisputesTakeTheMonthBack:
     async def test_an_opened_dispute_asks_for_the_friends_month_back(
         self, webhook_service, mock_processed_webhook_repository, mock_no_referral
     ):
-        result = await webhook_service.process_webhook(
-            _make_webhook_event("dispute.opened", DISPUTE_PAYLOAD), "wh_dispute"
-        )
+        async with captured_wide_event() as event:
+            result = await webhook_service.process_webhook(
+                _make_webhook_event("dispute.opened", DISPUTE_PAYLOAD), "wh_dispute"
+            )
 
         assert result.status == "processed"
         mock_no_referral.revocation.assert_awaited_once_with(
             "pay_001", ReferralRevokeReason.DISPUTE
         )
+        mock_processed_webhook_repository.record_outcome.assert_awaited_once_with(
+            "wh_dispute",
+            ProcessedWebhookUpdate(
+                status="processed", message="Dispute noted", payment_id="pay_001"
+            ),
+        )
+        assert event["payment"]["dispute_id"] == "dsp_1"
 
     async def test_a_revocation_that_could_not_be_queued_fails_so_dodo_retries(
         self, webhook_service, mock_processed_webhook_repository, mock_no_referral

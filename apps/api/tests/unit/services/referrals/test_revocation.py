@@ -20,6 +20,7 @@ from app.services.referrals.revocation import reclaim_reward, request_reward_rev
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.referrals import ReferralRewardRevoked
 from tests.factories import make_dodo_subscription
+from tests.helpers import captured_wide_event
 
 REVOCATION = "app.services.referrals.revocation"
 BILLING_DATE = "app.services.referrals.billing_date"
@@ -111,10 +112,12 @@ class TestTheRequest:
     ) -> None:
         seams.request.return_value = _referral()
 
-        await request_reward_revocation("pay_1", ReferralRevokeReason.REFUND)
+        async with captured_wide_event() as event:
+            await request_reward_revocation("pay_1", ReferralRevokeReason.REFUND)
 
         seams.request.assert_awaited_once_with("pay_1", reason=ReferralRevokeReason.REFUND, at=NOW)
         seams.queue.assert_awaited_once_with(REFERRER_ID, friend_user_id=FRIEND_ID)
+        assert event["referral"] == {"revoke": "refund", "referrer_id": REFERRER_ID}
 
     async def test_a_redelivered_refund_queues_a_revocation_not_yet_settled_again(
         self, seams: Seams
@@ -124,6 +127,7 @@ class TestTheRequest:
 
         await request_reward_revocation("pay_1", ReferralRevokeReason.REFUND)
 
+        seams.by_payment.assert_awaited_once_with("pay_1")
         seams.queue.assert_awaited_once_with(REFERRER_ID, friend_user_id=FRIEND_ID)
 
     @pytest.mark.parametrize(
@@ -137,16 +141,19 @@ class TestTheRequest:
         seams.request.return_value = None
         seams.by_payment.return_value = stored
 
-        await request_reward_revocation("pay_1", ReferralRevokeReason.DISPUTE)
+        async with captured_wide_event() as event:
+            await request_reward_revocation("pay_1", ReferralRevokeReason.DISPUTE)
 
         seams.queue.assert_not_awaited()
+        assert event["referral"] == {"revoke": "nothing_to_revoke"}
 
 
 class TestTheMonthComesBack:
     async def test_an_applied_month_not_yet_begun_moves_the_bill_back_a_month(
         self, seams: Seams
     ) -> None:
-        await reclaim_reward(_referral(), SUB_ID)
+        async with captured_wide_event() as event:
+            await reclaim_reward(_referral(), SUB_ID)
 
         seams.pin.assert_awaited_once_with(FRIEND_ID, ORIGINAL_BILL)
         seams.dodo.subscriptions.update.assert_called_once_with(
@@ -158,6 +165,15 @@ class TestTheMonthComesBack:
         assert seams.revoked() == ReferralRewardRevoked(
             friend_id=FRIEND_ID, reason="refund", prior_state="applied", reclaimed=True
         )
+        assert event["referral"] == {"revoked": "refund", "month_reclaimed": True}
+        assert event["audit"] == [
+            {
+                "msg": "referral free month taken back",
+                "actor": REFERRER_ID,
+                "resource": SUB_ID,
+                "provider": "dodo",
+            }
+        ]
 
     async def test_a_retry_after_the_bill_moved_back_does_not_move_it_again(
         self, seams: Seams
@@ -166,14 +182,27 @@ class TestTheMonthComesBack:
         seams.pin.side_effect = None
         seams.pin.return_value = _referral(revoke_target_billing_date=ORIGINAL_BILL)
 
-        await reclaim_reward(_referral(), SUB_ID)
+        async with captured_wide_event() as event:
+            await reclaim_reward(_referral(), SUB_ID)
 
         seams.dodo.subscriptions.update.assert_not_called()
         assert seams.revoked().reclaimed is True
+        assert event["referral"] == {
+            "billing_date_already_moved_back": True,
+            "revoked": "refund",
+            "month_reclaimed": True,
+        }
 
-    async def test_a_month_already_under_way_stays_with_the_referrer(self, seams: Seams) -> None:
-        # The Dec 14 bill would have been in the past: the free month has begun.
-        with time_machine.travel(datetime(2026, 12, 20, tzinfo=UTC), tick=False):
+    @pytest.mark.parametrize(
+        "now",
+        [ORIGINAL_BILL, datetime(2026, 12, 20, tzinfo=UTC)],
+        ids=["the-instant-it-begins", "days-into-it"],
+    )
+    async def test_a_month_already_under_way_stays_with_the_referrer(
+        self, seams: Seams, now: datetime
+    ) -> None:
+        # The Dec 14 bill it would move back to is no longer ahead: the free month has begun.
+        with time_machine.travel(now, tick=False):
             await reclaim_reward(_referral(), SUB_ID)
 
         seams.dodo.subscriptions.update.assert_not_called()
@@ -202,8 +231,11 @@ class TestTheMonthComesBack:
 
         await reclaim_reward(_referral(reward_state=ReferralRewardState.PENDING), SUB_ID)
 
+        seams.pin.assert_not_awaited()
         seams.dodo.subscriptions.update.assert_not_called()
-        assert seams.revoked().prior_state == "pending"
+        assert seams.revoked() == ReferralRewardRevoked(
+            friend_id=FRIEND_ID, reason="refund", prior_state="pending", reclaimed=True
+        )
 
     async def test_a_pending_month_whose_move_landed_before_its_job_died_is_moved_back(
         self, seams: Seams
@@ -213,6 +245,16 @@ class TestTheMonthComesBack:
         seams.dodo.subscriptions.update.assert_called_once_with(
             SUB_ID, next_billing_date=ORIGINAL_BILL
         )
+
+    async def test_a_referral_deleted_mid_revocation_fails_loudly(self, seams: Seams) -> None:
+        seams.pin.side_effect = None
+        seams.pin.return_value = None
+
+        with pytest.raises(RuntimeError, match=f"referral {FRIEND_ID} vanished mid-revocation"):
+            await reclaim_reward(_referral(), SUB_ID)
+
+        seams.dodo.subscriptions.update.assert_not_called()
+        seams.update.assert_not_awaited()
 
     async def test_a_referral_with_no_revocation_fails_loudly(self, seams: Seams) -> None:
         with pytest.raises(RuntimeError, match="has no revocation to settle"):

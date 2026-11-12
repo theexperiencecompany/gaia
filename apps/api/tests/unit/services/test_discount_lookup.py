@@ -1,18 +1,21 @@
 """Finding a Dodo discount by its code: Dodo only lists discounts, so each answer is cached."""
 
-from collections.abc import Iterator
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import MagicMock, call
 
 from dodopayments.types import Discount
 import pytest
+import time_machine
 
-from app.constants.cache import DISCOUNT_BY_CODE_CACHE_PREFIX, DISCOUNT_BY_CODE_CACHE_TTL
+from app.constants.cache import DISCOUNT_BY_CODE_CACHE_PREFIX
 from app.constants.payments import DISCOUNT_LIST_PAGE_SIZE, DISCOUNT_LOOKUP_MAX_PAGES
-from app.services.payments.discount_lookup import DiscountByCode, find_discount
+from app.db.redis import AsyncRedisCommands
+from app.services.payments import discount_lookup
+from app.services.payments.discount_lookup import find_discount
+from tests.helpers import captured_wide_event
 
-LOOKUP = "app.services.payments.discount_lookup"
+pytestmark = pytest.mark.usefixtures("fake_redis")
 
 
 def _discount(code: str) -> Discount:
@@ -34,57 +37,44 @@ def _client(*pages: list[Discount]) -> MagicMock:
     return client
 
 
-@pytest.fixture
-def cache() -> Iterator[SimpleNamespace]:
-    with (
-        patch(f"{LOOKUP}.redis_cache.get", AsyncMock(return_value=None)) as get,
-        patch(f"{LOOKUP}.redis_cache.set", AsyncMock(return_value=True)) as set_,
-    ):
-        yield SimpleNamespace(get=get, set=set_)
-
-
-async def test_a_code_on_a_later_page_is_found_and_cached(cache: SimpleNamespace) -> None:
+async def test_a_code_on_a_later_page_is_found_and_cached(
+    fake_redis: AsyncRedisCommands, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Apart from the cache's 3600s default, so the lookup is seen to pass its own TTL.
+    monkeypatch.setattr(discount_lookup, "DISCOUNT_BY_CODE_CACHE_TTL", 60)
     full_page = [_discount(f"GIFT{i}") for i in range(DISCOUNT_LIST_PAGE_SIZE)]
     client = _client(full_page, [_discount("FOUNDER")])
 
-    found = await find_discount(client, "FOUNDER")
+    with time_machine.travel(datetime(2026, 1, 1, tzinfo=UTC), tick=False):
+        found = await find_discount(client, "FOUNDER")
+        again = await find_discount(client, "FOUNDER")
+        ttl = await fake_redis.ttl(f"{DISCOUNT_BY_CODE_CACHE_PREFIX}FOUNDER")
 
-    assert found == _discount("FOUNDER")
+    assert found == again == _discount("FOUNDER")
     assert client.discounts.list.call_args_list == [
         call(page_number=0, page_size=DISCOUNT_LIST_PAGE_SIZE),
         call(page_number=1, page_size=DISCOUNT_LIST_PAGE_SIZE),
     ]
-    cache.set.assert_awaited_once_with(
-        f"{DISCOUNT_BY_CODE_CACHE_PREFIX}FOUNDER",
-        DiscountByCode(discount=found),
-        ttl=DISCOUNT_BY_CODE_CACHE_TTL,
-        model=DiscountByCode,
-    )
+    assert ttl == 60
 
 
-async def test_a_code_dodo_does_not_have_is_cached_as_missing(cache: SimpleNamespace) -> None:
+async def test_a_code_dodo_does_not_have_is_cached_as_missing() -> None:
     client = _client([_discount("OTHER")])
 
     assert await find_discount(client, "NOPE") is None
+    assert await find_discount(client, "NOPE") is None
 
-    assert cache.set.await_args.args[1] == DiscountByCode(discount=None)
-
-
-async def test_a_cached_answer_never_asks_dodo(cache: SimpleNamespace) -> None:
-    cache.get.return_value = DiscountByCode(discount=_discount("FOUNDER"))
-    client = _client()
-
-    assert await find_discount(client, "FOUNDER") == _discount("FOUNDER")
-
-    client.discounts.list.assert_not_called()
+    assert client.discounts.list.call_count == 1
 
 
-async def test_a_scan_stops_at_its_page_limit(cache: SimpleNamespace) -> None:
+async def test_a_scan_stops_at_its_page_limit() -> None:
     full_page = [_discount(f"GIFT{i}") for i in range(DISCOUNT_LIST_PAGE_SIZE)]
     client = _client(*([full_page] * DISCOUNT_LOOKUP_MAX_PAGES))
 
-    with patch(f"{LOOKUP}.log") as log:
+    async with captured_wide_event() as event:
         assert await find_discount(client, "FOUNDER") is None
 
     assert client.discounts.list.call_count == DISCOUNT_LOOKUP_MAX_PAGES
-    log.warning.assert_called_once()
+    assert event["warnings"] == [
+        {"msg": "Discount lookup gave up before reaching the end of Dodo's list", "code": "FOUNDER"}
+    ]

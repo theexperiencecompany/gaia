@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import secrets
 from typing import cast
-from urllib.parse import quote
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -299,7 +299,7 @@ async def workos_mobile_callback(
         )
 
         return _consume_referral_cookie(
-            RedirectResponse(url=f"{mobile_redirect}?token={quote(login.token, safe='')}"), login
+            RedirectResponse(url=f"{mobile_redirect}?{urlencode({'token': login.token})}"), login
         )
 
     except HTTPException as e:
@@ -381,7 +381,7 @@ async def workos_desktop_callback(
 
         # Return token via deep link - desktop app will handle storage
         return _consume_referral_cookie(
-            RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?token={quote(login.token, safe='')}"), login
+            RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?{urlencode({'token': login.token})}"), login
         )
 
     except HTTPException as e:
