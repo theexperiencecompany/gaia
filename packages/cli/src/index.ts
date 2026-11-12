@@ -54,6 +54,10 @@ interface UpCliOptions {
   webPort?: number;
   /** False when --no-domain is passed. */
   domain?: DomainFlag;
+  /** False when --no-link-domain is passed. */
+  linkDomain?: DomainFlag;
+  /** False when --no-usercontent-domain is passed. */
+  usercontentDomain?: DomainFlag;
   build?: boolean;
   /** Undefined unless --code-sandbox or --no-code-sandbox is passed. */
   codeSandbox?: boolean;
@@ -130,6 +134,22 @@ program
   .option(
     "--no-domain",
     "Stop serving the domain an earlier run set; GAIA goes back to port 3000 and gaia.local",
+  )
+  .option(
+    "--link-domain <domain>",
+    "Also serve short share links at https://<domain>/<code> (needs --domain)",
+  )
+  .option(
+    "--no-link-domain",
+    "Stop serving the short-link domain an earlier run set",
+  )
+  .option(
+    "--usercontent-domain <domain>",
+    "Serve shared files from https://<domain>, so HTML and PDFs open in the page (needs --domain)",
+  )
+  .option(
+    "--no-usercontent-domain",
+    "Stop serving shared files from the domain an earlier run set",
   )
   .option(
     "-b, --build",

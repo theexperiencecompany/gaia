@@ -88,6 +88,36 @@ services:
           http://localhost, http://host.docker.internal {
               import gaia
           }
+
+          # Optional share domains beside GAIA_DOMAIN, set by `gaia up --link-domain` /
+          # `--usercontent-domain`. Unset, each address is a .invalid name over plain
+          # HTTP that no request carries, so the block never serves. Compose sets the
+          # fallback itself: Caddy takes an empty variable as an empty address.
+
+          # GAIA_LINK_DOMAIN: short links. /<slug> goes to the app's /l/<slug> page,
+          # never cached, so a revoked or re-pointed link takes effect at once.
+          http://link.gaia.invalid {
+              header Cache-Control no-store
+              redir / https://:80/ 307
+              redir https://:80/l{uri} 307
+          }
+
+          # GAIA_USERCONTENT_DOMAIN: shared files' bytes, apart from GAIA's origin. Only
+          # the content route is reachable here; the API serves a snapshot only when it
+          # arrived on this host. No cookie or credential travels either way, and the
+          # API's CSP sandbox gives every document an opaque origin.
+          http://usercontent.gaia.invalid {
+              request_header -Cookie
+              request_header -Authorization
+              handle /api/v1/usercontent/* {
+                  reverse_proxy gaia-backend:8000 {
+                      header_down -Set-Cookie
+                  }
+              }
+              handle {
+                  respond 404
+              }
+          }
     depends_on:
       gaia-backend:
         condition: service_healthy

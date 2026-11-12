@@ -43,6 +43,7 @@ import {
   readDockerComposePortOverrides,
   readGaiaDomain,
   readPinnedGaiaVersion,
+  readShareDomains,
 } from "../../lib/env-writer.js";
 import { runPortChecks } from "../../lib/flow-utils.js";
 import { findReleaseImageGap } from "../../lib/image-availability.js";
@@ -67,6 +68,7 @@ import {
   removeLocalName,
   setUpLocalName,
 } from "../../lib/local-name.js";
+import { isInteractive } from "../../lib/non-tty.js";
 import { homeRelative } from "../../lib/paths.js";
 import {
   ensurePrerequisites,
@@ -90,6 +92,8 @@ import {
 } from "../../lib/run-steps.js";
 import { placeBundle, stageBundle } from "../../lib/selfhost-bundle.js";
 import { readSetupEndpoint } from "../../lib/setup-endpoints.js";
+import { resolveShareDomains } from "../../lib/share-domains.js";
+import type { ShareDomains } from "../../lib/share-domains.types.js";
 import {
   downloadReporter,
   imagesStep,
@@ -263,6 +267,14 @@ export async function runUpFlow(
     store,
     upSteps(options, source, localName, needsPublicCertificate(domain)),
   );
+  // Before anything downloads: a bad flag fails now, and the questions are answered up front.
+  let shareDomains: ShareDomains;
+  try {
+    shareDomains = await servedShareDomains(store, options, targetPath, domain);
+  } catch (e) {
+    fail(store, e as Error);
+    return;
+  }
 
   // 1. Docker, the release's images, and ports. Only a docker-group relaunch reads the step name;
   // a later setStep would draw the list between two steps with neither running.
@@ -324,6 +336,7 @@ export async function runUpFlow(
   await runEnvSetup(store, targetPath, "selfhost", portOverrides, {
     llmProvider: options.llmProvider,
     domain: options.domain,
+    shareDomains,
   });
   if (store.currentState.error) {
     endActiveStep(store, "failed");
@@ -516,6 +529,22 @@ function servedDomain(
 ): string | undefined {
   if (options.domain === false) return undefined;
   return options.domain ?? readGaiaDomain(targetPath);
+}
+
+/** The share domains this run serves beside its domain; asked only on a run that sets the domain. */
+function servedShareDomains(
+  store: CLIStore,
+  options: UpFlags,
+  targetPath: string,
+  domain: string | undefined,
+): Promise<ShareDomains> {
+  return resolveShareDomains(store, {
+    appDomain: domain,
+    flags: { link: options.linkDomain, usercontent: options.usercontentDomain },
+    recorded: readShareDomains(targetPath),
+    canAsk:
+      typeof options.domain === "string" && !options.yes && isInteractive(),
+  });
 }
 
 /** What this run does about gaia.local, from its flags, the install's domain and the last run. */
