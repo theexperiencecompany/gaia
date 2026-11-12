@@ -22,6 +22,7 @@ from app.constants.payments import (
     SUBSCRIPTION_WORKFLOW_SYNC_TASK,
     SubscriptionWorkflowSync,
 )
+from app.constants.referrals import SETTLE_REWARDS_TASK
 from app.models.payment_models import SubscriptionDocument
 from app.models.webhook_models import DodoSubscriptionData
 from app.services.payments.payment_service import DodoPaymentService
@@ -31,6 +32,7 @@ from app.services.payments.subscription_events import (
     SubscriptionEventKind,
     SubscriptionEventOutcome,
     SubscriptionEventResult,
+    _queue_banked_referral_months,
     apply_subscription_event,
     deactivate_workflows_safely,
     queue_inbox_desk_safely,
@@ -39,6 +41,7 @@ from app.services.payments.subscription_events import (
     resume_paywall_pauses_safely,
     send_welcome_email_safely,
 )
+from app.services.referrals.settlement_queue import settle_job_id
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.billing import (
     SubscriptionActivated,
@@ -269,6 +272,7 @@ class TestScheduledCancelNeverDowngradesEarly:
 
 EVENTS_MODULE = "app.services.payments.subscription_events"
 PAUSE = "app.services.workflow.subscription_pause"
+SETTLEMENT_QUEUE = "app.services.referrals.settlement_queue"
 NOW = datetime(2025, 3, 2, tzinfo=UTC)
 
 
@@ -1359,6 +1363,35 @@ class TestReferralHooks:
         await _apply(SubscriptionEventKind.ACTIVATED)
 
         mock_no_referral.banked.assert_awaited_once_with(FAKE_USER_ID)
+
+    async def test_banked_months_queue_under_the_referrers_settle_job_id(self) -> None:
+        pool = MagicMock()
+        with (
+            patch(f"{SETTLEMENT_QUEUE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+            patch(f"{SETTLEMENT_QUEUE}.enqueue_worker_job", AsyncMock()) as enqueue,
+        ):
+            await _queue_banked_referral_months(FAKE_USER_ID)
+
+        enqueue.assert_awaited_once_with(
+            pool, SETTLE_REWARDS_TASK, FAKE_USER_ID, _job_id=settle_job_id(FAKE_USER_ID)
+        )
+
+    async def test_banked_months_redis_refused_is_logged_not_raised(self) -> None:
+        with (
+            patch(
+                f"{SETTLEMENT_QUEUE}.RedisPoolManager.get_pool",
+                AsyncMock(side_effect=ConnectionError("redis down")),
+            ),
+            patch(f"{EVENTS_MODULE}.log") as mock_log,
+        ):
+            await _queue_banked_referral_months(FAKE_USER_ID)
+
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.PAYMENT} Banked referral months could not be queued",
+            error="redis down",
+            error_type="ConnectionError",
+            user_id=FAKE_USER_ID,
+        )
 
     async def test_a_renewal_of_an_active_subscription_queues_nothing(
         self, mock_webhook_subscription_repository, mock_track_subscription, mock_no_referral
