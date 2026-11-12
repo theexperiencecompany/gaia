@@ -91,7 +91,7 @@ export default function DemoSettingsDropdown({
       <Dropdown onOpenChange={onOpenChange}>
         <Dropdown.Trigger>{children}</Dropdown.Trigger>
         <Dropdown.Popover
-          placement="right"
+          placement="right bottom"
           offset={21}
           className="dark rounded-2xl bg-secondary-bg text-foreground shadow-xl"
         >

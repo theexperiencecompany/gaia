@@ -8,7 +8,7 @@
 
 import { Input, ListBox, Select } from "@heroui/react";
 import { useState } from "react";
-
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
 import {
@@ -89,7 +89,10 @@ export function LinearSettings({
         {isLoading ? (
           <Select
             aria-label="Team"
-            className="w-full"
+            className={fieldVariants({
+              labelPlacement: "inside",
+              className: "w-full",
+            })}
             isDisabled
             selectedKey={null}
           >
@@ -115,7 +118,10 @@ export function LinearSettings({
                   updateTriggerData({ team_id: String(key) });
                 }
               }}
-              className="w-full"
+              className={fieldVariants({
+                labelPlacement: "inside",
+                className: "w-full",
+              })}
             >
               <Select.Trigger>
                 <Select.Value>

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // The renderer takes streamdown's Components, not react-markdown's: the two are
 // structurally incompatible, and react-markdown's is not assignable to it.
 import type { Components } from "streamdown";
+import { modalVariants } from "@/components/shared/controlVariants";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import {
@@ -151,7 +152,13 @@ export const IntegrationInstructionsModal = ({
     >
       <Modal.Backdrop variant="blur">
         <Modal.Container placement="center" size="lg">
-          <Modal.Dialog className="max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900/95 outline-0 backdrop-blur-3xl">
+          <Modal.Dialog
+            className={modalVariants({
+              size: "2xl",
+              className:
+                "max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900/95 outline-0 backdrop-blur-3xl",
+            })}
+          >
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Header className="flex gap-3">
               <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-zinc-800">

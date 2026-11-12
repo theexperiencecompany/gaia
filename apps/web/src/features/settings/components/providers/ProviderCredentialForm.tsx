@@ -2,6 +2,7 @@
 
 import { Button, Description, Input, Label, TextField } from "@heroui/react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { StoredProviderConfig } from "@/features/settings/api/providersApi";
 import { useConfigureProvider } from "@/features/settings/hooks/useConfigureProvider";
@@ -39,6 +40,7 @@ export function ProviderCredentialForm({
     <div className="flex flex-col gap-3">
       {row.account_id_label && (
         <TextField
+          className={fieldVariants({ labelPlacement: "inside" })}
           value={form.accountId}
           onChange={form.setAccountId}
           isDisabled={isBusy}
@@ -84,6 +86,7 @@ export function ProviderCredentialForm({
       )}
       {(row.needs_base_url || showPresetChips) && (
         <TextField
+          className={fieldVariants({ labelPlacement: "inside" })}
           value={form.baseUrl}
           onChange={form.setBaseUrl}
           isDisabled={isBusy}
@@ -96,6 +99,7 @@ export function ProviderCredentialForm({
       )}
       {row.takes_model && (
         <TextField
+          className={fieldVariants({ labelPlacement: "inside" })}
           value={form.model}
           onChange={form.setModel}
           isDisabled={isBusy}

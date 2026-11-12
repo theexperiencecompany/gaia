@@ -8,7 +8,7 @@
 
 import { Input, ListBox, Select } from "@heroui/react";
 import { useState } from "react";
-
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { TriggerTagInput } from "./TriggerTagInput";
 import type { TriggerSelectToggleProps } from "./types";
 
@@ -66,7 +66,10 @@ export function TriggerSelectToggle({
           onChange={(keys) => {
             onSelectionChange(keys.map(String));
           }}
-          className="w-full"
+          className={fieldVariants({
+            labelPlacement: "inside",
+            className: "w-full",
+          })}
         >
           <Select.Trigger className="w-full">
             <Select.Value>{valueContent}</Select.Value>

@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Modal } from "@heroui/react";
-
+import { modalVariants } from "@/components/shared/controlVariants";
 import MemoryManagement from "@/features/memory/components/MemoryManagement";
 
 interface MemoryModalProps {
@@ -20,7 +20,9 @@ export default function MemoryModal({ isOpen, onClose }: MemoryModalProps) {
       {/* z-[50]: lower z-index than child modals */}
       <Modal.Backdrop isDismissable className="z-[50]">
         <Modal.Container size="lg" className="z-[50]">
-          <Modal.Dialog className="max-w-4xl">
+          <Modal.Dialog
+            className={modalVariants({ size: "4xl", className: "max-w-4xl" })}
+          >
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Body className="py-6">
               <div className="font-bold">Your Memories</div>

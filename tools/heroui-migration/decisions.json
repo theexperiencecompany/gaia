@@ -31,9 +31,8 @@
         "light": "secondary"
       },
       "color": {
-        "primary": "primary",
-        "default": "default",
-        "secondary": "secondary"
+        "primary": "tabsVariants({ color: \"accent\" })",
+        "default": "default"
       }
     },
     "accordion": {
@@ -49,11 +48,12 @@
         "sm": "sm",
         "md": "md",
         "lg": "lg",
-        "xl": "lg",
-        "2xl": "full",
-        "3xl": "full",
-        "4xl": "full",
-        "5xl": "full"
+        "xl": "lg + modalVariants({ size: \"xl\" }) on Modal.Dialog",
+        "2xl": "lg + modalVariants({ size: \"2xl\" }) on Modal.Dialog",
+        "3xl": "lg + modalVariants({ size: \"3xl\" }) on Modal.Dialog",
+        "4xl": "lg + modalVariants({ size: \"4xl\" }) on Modal.Dialog",
+        "5xl": "lg + modalVariants({ size: \"5xl\" }) on Modal.Dialog",
+        "full": "full"
       }
     },
     "badge": {
@@ -100,7 +100,8 @@
     },
     "chip": {
       "variant": {
-        "flat": "soft"
+        "flat": "soft",
+        "shadow": "chipVariants({ isSelected: true })"
       }
     },
     "radius": {
@@ -109,7 +110,33 @@
     },
     "autocomplete": {
       "component": "ComboBox"
-    }
+    },
+    "labelPlacement": {
+      "inside": "fieldVariants({ labelPlacement: \"inside\" }) on TextField/Select/ComboBox",
+      "(default, labelled md/lg field)": "inside",
+      "outside": "outside"
+    },
+    "avatar": {
+      "isBordered": "avatarVariants({ bordered: true })"
+    },
+    "slider": {
+      "size": {
+        "sm": "sliderVariants({ size: \"sm\" })",
+        "md": "default"
+      }
+    },
+    "dropdown": {
+      "placement": {
+        "right-end": "right bottom",
+        "right-start": "right top",
+        "bottom-end": "bottom end",
+        "bottom-start": "bottom start",
+        "top-end": "top end",
+        "top-start": "top start"
+      },
+      "DropdownSection showDivider": "<Separator /> after the section"
+    },
+    "tabsPanel": "no empty Tabs.Panel for a switcher; RAC Tabs need no panels"
   },
   "v3dims": {
     "accordion": ["variant"],

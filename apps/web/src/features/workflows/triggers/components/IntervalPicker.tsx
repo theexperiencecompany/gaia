@@ -13,6 +13,7 @@
 
 import { ListBox, NumberField, Select, Tabs } from "@heroui/react";
 import { useState } from "react";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 
 const UNIT_FACTOR = { minutes: 1, hours: 60, days: 1440 } as const;
 type TimeUnit = keyof typeof UNIT_FACTOR;
@@ -117,12 +118,6 @@ export function IntervalPicker({
             <Tabs.Indicator className="rounded-lg bg-zinc-700 shadow-sm" />
           </Tabs.Tab>
         </Tabs.List>
-        {presets.map((p) => (
-          <Tabs.Panel key={String(p)} id={String(p)}>
-            {null}
-          </Tabs.Panel>
-        ))}
-        <Tabs.Panel id="custom">{null}</Tabs.Panel>
       </Tabs>
       {customMode && (
         <div className="flex items-center gap-2">
@@ -144,7 +139,10 @@ export function IntervalPicker({
             onChange={(key) => {
               if (key != null) applyCustom(amount, key as TimeUnit);
             }}
-            className="w-32 shrink-0"
+            className={fieldVariants({
+              labelPlacement: "inside",
+              className: "w-32 shrink-0",
+            })}
           >
             <Select.Trigger>
               <Select.Value />

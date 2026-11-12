@@ -12,6 +12,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { RecapSlideshow } from "@/components/browser/RecapSlideshow";
+import { modalVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { BOT_PLATFORM_LABELS, isBotPlatform } from "@/config/botPlatforms";
 import { useBrowserTasks } from "../hooks/useBrowserTasks";
@@ -182,7 +183,12 @@ function TaskRow({
         <Modal isOpen={recapOpen} onOpenChange={setRecapOpen}>
           <Modal.Backdrop>
             <Modal.Container size="lg">
-              <Modal.Dialog className="max-w-2xl">
+              <Modal.Dialog
+                className={modalVariants({
+                  size: "2xl",
+                  className: "max-w-2xl",
+                })}
+              >
                 <Modal.CloseTrigger aria-label="Close" />
                 <RecapSlideshow
                   title={task.task}

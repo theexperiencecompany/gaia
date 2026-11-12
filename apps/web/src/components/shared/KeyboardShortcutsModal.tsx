@@ -1,7 +1,7 @@
 "use client";
 
 import { Modal } from "@heroui/react";
-
+import { modalVariants } from "@/components/shared/controlVariants";
 import { ShortcutKeysDisplay } from "@/config/keyboardShortcuts";
 import {
   getShortcutsByCategory,
@@ -59,7 +59,13 @@ export default function KeyboardShortcutsModal({
     <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
       <Modal.Backdrop>
         <Modal.Container size="lg">
-          <Modal.Dialog className="rounded-2xl bg-zinc-900/90 backdrop-blur-3xl outline-0 border-0">
+          <Modal.Dialog
+            className={modalVariants({
+              size: "4xl",
+              className:
+                "rounded-2xl bg-zinc-900/90 backdrop-blur-3xl outline-0 border-0",
+            })}
+          >
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Header className="flex flex-col gap-1">
               <Modal.Heading className="text-xl font-semibold">
