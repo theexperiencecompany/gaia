@@ -17263,6 +17263,8 @@ export interface components {
              * @description Producer-minted idempotency key
              */
             id: string;
+            /** Joins */
+            joins?: string | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}

@@ -8,6 +8,7 @@ from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
     CancelWork,
+    RejectReason,
     StepClaim,
     StopBy,
     StopRequested,
@@ -23,9 +24,18 @@ from shared.py.wide_events import log
 
 
 async def record_work_started(
-    step: StepTurnRef, conversation_id: str, user_id: str, task_id: str
+    step: StepTurnRef,
+    conversation_id: str,
+    user_id: str,
+    task_id: str,
+    *,
+    joins: str | None = None,
 ) -> bool:
-    """Append WorkStarted under the step's claim; False when a Stop or a lost claim refuses it, so nothing dispatches."""
+    """Append WorkStarted under the step's claim; False when a Stop or a lost claim refuses it, so nothing dispatches.
+
+    joins names the running task the work is handed to; when that run is not on the log (one
+    the step did not start), the hand-over goes ahead unlogged and that run delivers it.
+    """
     ports = runtime_ports()
     claim = StepClaim(conversation_id=conversation_id, user_id=user_id, epoch=step["epoch"])
     entry = WorkStarted(
@@ -33,17 +43,25 @@ async def record_work_started(
         task_id=task_id,
         cause_through=step["cause_through"],
         answers=tuple(step["answers"]),
+        joins=joins,
     )
     try:
         appended = await ports.log.append_fenced(claim, entry)
     except (ClaimLost, EntryRejected) as refused:
+        unlogged_run = (
+            joins is not None
+            and isinstance(refused, EntryRejected)
+            and refused.reason is RejectReason.TASK_NOT_LIVE
+        )
         log.warning(
             "work not started: the conversation log refused its WorkStarted",
             conversation_id=conversation_id,
             task_id=task_id,
+            joins=joins,
             reason=type(refused).__name__,
+            handed_over_unlogged=unlogged_run,
         )
-        return False
+        return unlogged_run
     await publish_appended(ports.frames, conversation_id, appended)
     return True
 

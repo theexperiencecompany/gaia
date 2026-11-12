@@ -22986,6 +22986,17 @@
             "title": "Id",
             "type": "string"
           },
+          "joins": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joins"
+          },
           "kind": {
             "const": "work_started",
             "default": "work_started",

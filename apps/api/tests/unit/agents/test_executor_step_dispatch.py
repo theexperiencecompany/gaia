@@ -1,6 +1,7 @@
 """call_executor on a conversation the step runs: WorkStarted is logged before the run spawns, or nothing runs."""
 
 from collections.abc import Coroutine
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -76,3 +77,45 @@ async def test_a_legacy_run_dispatches_without_touching_the_log() -> None:
             task="do it", task_id="task-1", configurable=configurable, conversation_id="conv-1"
         )
     record.assert_not_called()
+
+
+def _busy(stack: ExitStack, order: list[str], joined: bool) -> AsyncMock:
+    """Hold the busy lock for a running t-running; return the patched record_work_started."""
+
+    async def logged(*_: object, **__: object) -> bool:
+        order.append("logged")
+        return joined
+
+    async def handed(*_: object) -> None:
+        order.append("handed")
+
+    inbox = MagicMock()
+    inbox.return_value.append = AsyncMock(side_effect=handed)
+    stack.enter_context(patch.object(et, "try_acquire_lock", AsyncMock(return_value=False)))
+    stack.enter_context(patch.object(et, "reclaim_dead_lock", AsyncMock(return_value=False)))
+    stack.enter_context(
+        patch.object(et, "_acquire_lock_through_redirect", AsyncMock(return_value=False))
+    )
+    held = AsyncMock(return_value=b"other-stream:t-running")
+    stack.enter_context(patch.object(et.redis_cache.client, "get", held))
+    stack.enter_context(patch.object(et, "ExecutorInbox", inbox))
+    return stack.enter_context(patch.object(et, "record_work_started", side_effect=logged))
+
+
+async def test_work_handed_to_a_running_executor_is_logged_as_joining_it_first() -> None:
+    order: list[str] = []
+    with ExitStack() as stack:
+        record = _busy(stack, order, joined=True)
+        result = await _dispatch()
+    record.assert_awaited_once_with(STEP, "conv-1", USER_ID, "task-1", joins="t-running")
+    assert order == ["logged", "handed"]
+    assert "added to the work already in progress" in result
+
+
+async def test_work_whose_join_is_refused_is_not_handed_over() -> None:
+    order: list[str] = []
+    with ExitStack() as stack:
+        _busy(stack, order, joined=False)
+        result = await _dispatch()
+    assert order == ["logged"]
+    assert result == et._NOT_STARTED_STOPPED

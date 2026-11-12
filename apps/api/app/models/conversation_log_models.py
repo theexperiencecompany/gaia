@@ -142,6 +142,8 @@ class WorkStarted(_Entry):
     task_id: str
     cause_through: int = Field(ge=1)
     answers: tuple[str, ...] = ()
+    # The live task this one was handed to while it ran; the two finish, and stop, as one.
+    joins: str | None = None
 
 
 class ApprovalRequested(_Entry):
@@ -280,6 +282,8 @@ class LiveWork(BaseModel):
     cause_through: int
     answers: tuple[str, ...]
     pending_approvals: frozenset[str]
+    # Tasks handed to this work while it ran (WorkStarted.joins); a Stop that ends it ends them.
+    joined: tuple[str, ...] = ()
 
 
 class FinishedWork(BaseModel):

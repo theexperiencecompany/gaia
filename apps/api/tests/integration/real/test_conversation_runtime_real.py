@@ -43,6 +43,7 @@ from app.models.conversation_log_models import (
     UserMessage,
     WorkFinished,
     WorkOutcome,
+    WorkStarted,
 )
 from app.models.conversation_send_models import SendMessageRequest
 from app.models.tool_data_models import ToolDataEntry
@@ -600,3 +601,33 @@ async def test_a_messages_attached_files_are_listed_to_the_model(
     assert len(said) == 1
     assert "invoice-march.pdf" in said[0]
     assert "An invoice for March, due Friday" in said[0]
+
+
+@pytest.mark.service
+async def test_work_handed_to_running_work_is_logged_and_stopped_with_it(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("on it", "added that too")
+    rig = await rig_for(model)
+    joined: list[bool] = []
+
+    async def hand_over() -> None:
+        step = rig.step()
+        joined.append(
+            await record_work_started(step, rig.conversation_id, rig.user_id, "t2", joins="t1")
+        )
+
+    _during(model, 0, lambda: rig.start_work("t1"))
+    _during(model, 1, hand_over)
+    await rig.send("m1", "find me flights")
+    await rig.settle()
+    await rig.send("m2", "and a hotel")
+    await rig.settle()
+    state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+    started = await rig.of(WorkStarted)
+    await record_user_stop(rig.conversation_id, rig.user_id, "s1")
+    await rig.settle()
+    assert joined == [True]
+    assert [(w.task_id, w.joins) for w in started] == [("t1", None), ("t2", "t1")]
+    assert [(w.task_id, w.answers, w.joined) for w in state.work] == [("t1", ("m1", "m2"), ("t2",))]
+    assert rig.effects.cancelled == [("t1", "t2")]
