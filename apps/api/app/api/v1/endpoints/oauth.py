@@ -200,9 +200,11 @@ class _WorkOSLogin:
 
     token: str
     referral_consumed: bool
+    user_id: str
+    is_new_user: bool
 
 
-async def _complete_workos_login(request: Request, code: str, flow: str) -> _WorkOSLogin:
+async def _complete_workos_login(request: Request, code: str) -> _WorkOSLogin:
     """Trade WorkOS's code for a session and sign the user in, crediting the invite link this browser opened."""
     auth_response = get_workos_client().user_management.authenticate_with_code(
         code=code,
@@ -236,16 +238,11 @@ async def _complete_workos_login(request: Request, code: str, flow: str) -> _Wor
         referral=referral,
     )
     log.set(user_id=str(user_id), is_new_user=is_new_user)
-    log.audit(
-        "login succeeded",
-        actor=str(user_id),
-        flow=flow,
-        provider="authkit",
-        is_new_user=is_new_user,
-    )
     return _WorkOSLogin(
         token=auth_response.sealed_session or auth_response.access_token,
         referral_consumed=referral is not None,
+        user_id=str(user_id),
+        is_new_user=is_new_user,
     )
 
 
@@ -292,7 +289,14 @@ async def workos_mobile_callback(
             )
             return RedirectResponse(url=f"{mobile_redirect}?error=missing_code")
 
-        login = await _complete_workos_login(request, code, OAUTH_FLOW_MOBILE)
+        login = await _complete_workos_login(request, code)
+        log.audit(
+            "login succeeded",
+            actor=login.user_id,
+            flow=OAUTH_FLOW_MOBILE,
+            provider="authkit",
+            is_new_user=login.is_new_user,
+        )
 
         return _consume_referral_cookie(
             RedirectResponse(url=f"{mobile_redirect}?token={quote(login.token, safe='')}"), login
@@ -366,7 +370,14 @@ async def workos_desktop_callback(
             )
             return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error=missing_code")
 
-        login = await _complete_workos_login(request, code, OAUTH_FLOW_DESKTOP)
+        login = await _complete_workos_login(request, code)
+        log.audit(
+            "login succeeded",
+            actor=login.user_id,
+            flow=OAUTH_FLOW_DESKTOP,
+            provider="authkit",
+            is_new_user=login.is_new_user,
+        )
 
         # Return token via deep link - desktop app will handle storage
         return _consume_referral_cookie(
@@ -428,7 +439,14 @@ async def workos_callback(
             )
             return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=missing_code")
 
-        login = await _complete_workos_login(request, code, OAUTH_FLOW_WEB)
+        login = await _complete_workos_login(request, code)
+        log.audit(
+            "login succeeded",
+            actor=login.user_id,
+            flow=OAUTH_FLOW_WEB,
+            provider="authkit",
+            is_new_user=login.is_new_user,
+        )
 
         # Redirect to return_url if provided and safe, otherwise default /redirect
         if return_url and is_safe_redirect_path(return_url):
