@@ -76,7 +76,9 @@ never enters your context, which is the point: you keep its conclusion, not the 
 WHEN TO SPAWN
 - Independent work that can run side by side: issue several spawn_subagent calls in one turn
   and merge what they return. A request with several independent parts (different
-  integrations, people, accounts, projects or questions) is this case: one spawn per part.
+  integrations, people, accounts, projects or questions) is this case when each part needs
+  several calls or bulk reading: one spawn per part. Parts that are each one known lookup
+  stay with you (see WHEN NOT TO).
 - A sweep: paging through many results or walking many items to report a summary (one person's
   activity across many repositories, months of mail, every open issue in several projects).
   Split it into independent slices (by source, by time range, by query), one spawn per slice,
