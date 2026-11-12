@@ -10,10 +10,10 @@ from __future__ import annotations
 from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from pymongo.errors import PyMongoError
 import pytest
 
 from app.constants.log_tags import LogTag
+from app.db.repositories.errors import RepositoryError
 from app.services.mcp.oauth_callback import (
     KNOWN_OAUTH_ERRORS,
     ProviderError,
@@ -304,7 +304,7 @@ class TestCompleteOauth:
         self, connected_before, handle_oauth_callback: AsyncMock
     ):
         """Whether it is a reconnect is analytics; the user's connect must not hinge on it."""
-        connected_before.side_effect = PyMongoError("mongo down")
+        connected_before.side_effect = RepositoryError("mongo down")
         client = _client()
 
         with (
