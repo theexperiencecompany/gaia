@@ -19,6 +19,8 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import re
+import shutil
 import subprocess
 import textwrap
 from typing import Any
@@ -349,6 +351,51 @@ def test_pip_clean_report_passes(tmp_path: Path) -> None:
     proc = _pip(tmp_path, {"dependencies": []}, exit_code=0, PIP_AUDIT_ROOT=str(tmp_path))
 
     assert proc.returncode == 0, proc.stderr
+
+
+def _requirement_names(export: str) -> set[str]:
+    return {line.split("==")[0] for line in export.splitlines() if "==" in line}
+
+
+@pytest.mark.parametrize("dockerfile", ["apps/api/Dockerfile", "apps/voice-agent/Dockerfile"])
+def test_pip_audits_every_package_an_image_installs(tmp_path: Path, dockerfile: str) -> None:
+    """Regression: the export skipped apps/api's backend group, so oauthlib 4.0.0 went unaudited."""
+    repo_root = SCRIPT.parents[2]
+    audited = tmp_path / "audited.txt"
+    stub = tmp_path / "pipbin"
+    stub.mkdir()
+    (stub / "uv").write_text(
+        textwrap.dedent(f"""\
+        #!/usr/bin/env bash
+        [ "$1" = export ] && exec "{shutil.which("uv")}" "$@"
+        while [ "$#" -gt 0 ]; do
+          [ "$1" = -r ] && cp "$2" "{audited}"
+          [ "$1" = -o ] && echo '{{"dependencies": []}}' > "$2"
+          shift
+        done
+        """)
+    )
+    (stub / "uv").chmod(0o755)
+    subprocess.run(
+        ["bash", str(SCRIPT), "pip"],
+        env={**os.environ, "PATH": f"{stub}{os.pathsep}{os.environ['PATH']}"},
+        cwd=repo_root,
+        capture_output=True,
+        check=True,
+        timeout=120,
+    )
+
+    sync = re.search(r"^\s*uv sync (--.+)$", (repo_root / dockerfile).read_text(), re.M)
+    assert sync, f"{dockerfile} has no uv sync step"
+    installed = subprocess.run(
+        ["uv", "export", *sync.group(1).split(), "--no-emit-workspace"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    missing = _requirement_names(installed) - _requirement_names(audited.read_text())
+    assert sorted(missing) == []
 
 
 def write_project(directory: Path, name: str, dependencies: list[str]) -> None:
