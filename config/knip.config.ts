@@ -444,6 +444,15 @@ const config: KnipConfig = {
       ignoreDependencies: ["@grpc/grpc-js", "nice-grpc", "nice-grpc-common"],
     },
 
+    // ── Usercontent Worker (*.u.heygaia.link) ─────────────────────────
+    "apps/usercontent-worker": {
+      entry: ["src/index.ts"],
+      // Tests are not live references — see apps/bots note.
+      project: ["src/**/*.ts", "!src/**/*.test.ts"],
+      // Pins the node types vitest and wrangler peer on to the workspace's 24.x, not the newest.
+      ignoreDependencies: ["@types/node"],
+    },
+
     // ── CLI Package ──────────────────────────────────────────────────
     "packages/cli": {
       // scripts/: generators run from package.json (bake:logo), not imported.

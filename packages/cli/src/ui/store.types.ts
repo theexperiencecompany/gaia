@@ -24,6 +24,7 @@ import type {
   PortCheckResult,
 } from "../lib/prerequisites.types.js";
 import type { RunStep } from "../lib/run-steps.js";
+import type { ShareDomainRequest } from "../lib/share-domains.types.js";
 
 /** The prerequisite rows `gaia init` / `gaia setup` show while checking. */
 export interface SystemChecks {
@@ -115,6 +116,7 @@ export interface CLIInputs {
     answer: Record<string, string>;
   };
   bot_credential: { args: [meta: CredentialRequest]; answer: string };
+  share_domain: { args: [meta: ShareDomainRequest]; answer: string };
   update_confirm: { args: []; answer: boolean };
   uninstall_confirm: { args: []; answer: boolean };
   uninstall_delete_data: { args: []; answer: boolean };

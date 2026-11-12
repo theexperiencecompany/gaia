@@ -664,6 +664,21 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@7.3.7(@types/node@26.6.6)(jiti@2.7.0)(less@4.6.4)(lightningcss@1.33.0)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.1))
 
+  apps/usercontent-worker:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.13.3
+        version: 24.13.3
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@7.3.7(@types/node@24.13.3)(jiti@2.7.0)(less@4.6.4)(lightningcss@1.33.0)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.1))
+      wrangler:
+        specifier: ^4.110.0
+        version: 4.110.0(@types/node@24.13.3)
+
   apps/web:
     dependencies:
       '@gaia/shared':
@@ -14718,10 +14733,6 @@ packages:
     resolution: {integrity: sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A==}
     engines: {node: '>=12'}
 
-  picomatch@4.0.5:
-    resolution: {integrity: sha512-RvwwcruNjI1ncT5xRakeyS9Lf8lcItv34KD+aif+VH9kduAyfYBipGh12274xtenIPZ119/R9BdTBa8gAwSh0A==}
-    engines: {node: '>=12'}
-
   picomatch@4.0.7:
     resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
     engines: {node: '>=12'}
@@ -17602,7 +17613,7 @@ snapshots:
 
   '@apm-js-collab/code-transformer@0.15.0':
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
       astring: 1.9.0
       esquery: 1.7.0
       meriyah: 6.1.4
@@ -19965,7 +19976,7 @@ snapshots:
       node-forge: 1.4.1
       npm-package-arg: 11.0.3
       ora: 3.4.0
-      picomatch: 4.0.5
+      picomatch: 4.0.7
       pretty-format: 29.7.0
       progress: 2.0.3
       prompts: 2.4.2
@@ -20210,7 +20221,7 @@ snapshots:
       hermes-parser: 0.36.1
       jsc-safe-url: 0.2.4
       lightningcss: 1.33.0
-      picomatch: 4.0.5
+      picomatch: 4.0.7
       postcss: 8.5.32
       resolve-from: 5.0.0
     optionalDependencies:
@@ -21878,7 +21889,7 @@ snapshots:
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
-      '@jridgewell/sourcemap-codec': 1.5.5
+      '@jridgewell/sourcemap-codec': 1.6.0
       '@jridgewell/trace-mapping': 0.3.31
 
   '@jridgewell/remapping@2.3.5':
@@ -21900,12 +21911,12 @@ snapshots:
   '@jridgewell/trace-mapping@0.3.31':
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
-      '@jridgewell/sourcemap-codec': 1.5.5
+      '@jridgewell/sourcemap-codec': 1.6.0
 
   '@jridgewell/trace-mapping@0.3.9':
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
-      '@jridgewell/sourcemap-codec': 1.5.5
+      '@jridgewell/sourcemap-codec': 1.6.0
 
   '@js-sdsl/ordered-map@4.4.2': {}
 
@@ -25068,7 +25079,7 @@ snapshots:
       nullthrows: 1.1.1
       open: 7.4.2
       serve-static: 1.16.3
-      ws: 7.5.11
+      ws: 7.5.13
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -25885,7 +25896,7 @@ snapshots:
 
   '@rollup/pluginutils@5.4.0(rollup@4.62.2)':
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
       estree-walker: 2.0.2
       picomatch: 4.0.4
     optionalDependencies:
@@ -27298,7 +27309,7 @@ snapshots:
 
   '@types/estree-jsx@1.0.5':
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
 
   '@types/estree@1.0.10': {}
 
@@ -29670,7 +29681,7 @@ snapshots:
 
   estree-util-attach-comments@3.0.0:
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
 
   estree-util-build-jsx@3.0.1:
     dependencies:
@@ -29683,7 +29694,7 @@ snapshots:
 
   estree-util-scope@1.0.0:
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
       devlop: 1.1.0
 
   estree-util-to-js@2.0.0:
@@ -29701,7 +29712,7 @@ snapshots:
 
   estree-walker@3.0.3:
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
 
   esutils@2.0.3: {}
 
@@ -30738,7 +30749,7 @@ snapshots:
 
   hast-util-to-estree@3.1.3:
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
       '@types/estree-jsx': 1.0.5
       '@types/hast': 3.0.5
       comma-separated-tokens: 2.0.3
@@ -31256,7 +31267,7 @@ snapshots:
 
   is-reference@1.2.1:
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
 
   is-regex@1.2.1:
     dependencies:
@@ -32749,7 +32760,7 @@ snapshots:
       serialize-error: 2.1.0
       source-map: 0.5.7
       throat: 5.0.0
-      ws: 7.5.11
+      ws: 7.5.13
       yargs: 17.7.3
     transitivePeerDependencies:
       - bufferutil
@@ -32794,7 +32805,7 @@ snapshots:
       serialize-error: 2.1.0
       source-map: 0.5.7
       throat: 5.0.0
-      ws: 7.5.11
+      ws: 7.5.13
       yargs: 17.7.3
     transitivePeerDependencies:
       - bufferutil
@@ -32985,7 +32996,7 @@ snapshots:
 
   micromark-extension-mdx-expression@3.0.1:
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
       devlop: 1.1.0
       micromark-factory-mdx-expression: 2.0.3
       micromark-factory-space: 2.0.1
@@ -32996,7 +33007,7 @@ snapshots:
 
   micromark-extension-mdx-jsx@3.0.2:
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
       devlop: 1.1.0
       estree-util-is-identifier-name: 3.0.0
       micromark-factory-mdx-expression: 2.0.3
@@ -33013,7 +33024,7 @@ snapshots:
 
   micromark-extension-mdxjs-esm@3.0.0:
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
       devlop: 1.1.0
       micromark-core-commonmark: 2.0.3
       micromark-util-character: 2.1.1
@@ -33049,7 +33060,7 @@ snapshots:
 
   micromark-factory-mdx-expression@2.0.3:
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
       devlop: 1.1.0
       micromark-factory-space: 2.0.1
       micromark-util-character: 2.1.1
@@ -33113,7 +33124,7 @@ snapshots:
 
   micromark-util-events-to-acorn@2.0.3:
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
       '@types/unist': 3.0.3
       devlop: 1.1.0
       estree-util-visit: 2.0.0
@@ -34125,8 +34136,6 @@ snapshots:
 
   picomatch@4.0.4: {}
 
-  picomatch@4.0.5: {}
-
   picomatch@4.0.7: {}
 
   pify@4.0.1:
@@ -35060,7 +35069,7 @@ snapshots:
 
   recma-build-jsx@1.0.0:
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
       estree-util-build-jsx: 3.0.1
       vfile: 6.0.3
 
@@ -35075,14 +35084,14 @@ snapshots:
 
   recma-parse@1.0.0:
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
       esast-util-from-js: 2.0.1
       unified: 11.0.5
       vfile: 6.0.3
 
   recma-stringify@1.0.0:
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
       estree-util-to-js: 2.0.0
       unified: 11.0.5
       vfile: 6.0.3
@@ -35166,7 +35175,7 @@ snapshots:
 
   rehype-recma@1.0.0:
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
       '@types/hast': 3.0.5
       hast-util-to-estree: 3.1.3
     transitivePeerDependencies:

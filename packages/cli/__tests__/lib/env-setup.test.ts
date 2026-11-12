@@ -332,4 +332,55 @@ describe("runEnvSetup env policy", () => {
     expect(apiEnv).toMatch(/^HOST=http:\/\/localhost:3000$/m);
     expect(apiEnv).toMatch(/^FRONTEND_URL=http:\/\/localhost:3000$/m);
   });
+
+  it("writes the share domains for Caddy and their settings for the API, and a rerun without them removes both", async () => {
+    const repo = makeRepo();
+    await runEnvSetup(
+      makeHeadlessStore(),
+      repo,
+      "selfhost",
+      { 3000: 80, 3443: 443 },
+      {
+        domain: "gaia.example.com",
+        shareDomains: {
+          link: "go.example.com",
+          usercontent: "files.example.com",
+        },
+      },
+    );
+
+    const composeEnvPath = path.join(
+      repo,
+      "packages",
+      "cli",
+      "selfhost",
+      ".env",
+    );
+    const composeEnv = readFileSync(composeEnvPath, "utf-8");
+    expect(composeEnv).toMatch(/^GAIA_LINK_DOMAIN=go\.example\.com$/m);
+    expect(composeEnv).toMatch(
+      /^GAIA_USERCONTENT_DOMAIN=files\.example\.com$/m,
+    );
+    const apiEnv = readApiEnv(repo);
+    expect(apiEnv).toMatch(/^SHORTLINK_BASE_URL=https:\/\/go\.example\.com$/m);
+    expect(apiEnv).toMatch(
+      /^LINK_CONTENT_URL_TEMPLATE=https:\/\/files\.example\.com\/api\/v1\/usercontent\/\{content_id\}$/m,
+    );
+    expect(apiEnv).toMatch(/^LINK_CONTENT_SIGNING_KEY=[0-9a-f]{64}$/m);
+
+    await runEnvSetup(
+      makeHeadlessStore(),
+      repo,
+      "selfhost",
+      { 3000: 80, 3443: 443 },
+      { domain: "gaia.example.com", shareDomains: {} },
+    );
+
+    expect(readFileSync(composeEnvPath, "utf-8")).not.toMatch(
+      /GAIA_(LINK|USERCONTENT)_DOMAIN/,
+    );
+    expect(readApiEnv(repo)).not.toMatch(
+      /SHORTLINK_BASE_URL|LINK_CONTENT_URL_TEMPLATE|LINK_CONTENT_SIGNING_KEY/,
+    );
+  });
 });

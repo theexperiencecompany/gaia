@@ -1,0 +1,17 @@
+{
+  "name": "@gaia/usercontent-worker",
+  "description": "Cloudflare Worker on *.u.heygaia.link that forwards shared-file requests to the API's content origin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "lint": "biome check ."
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5",
+    "wrangler": "^4.110.0"
+  }
+}
