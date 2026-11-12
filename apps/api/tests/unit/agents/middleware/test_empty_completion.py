@@ -16,7 +16,8 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 from langchain.agents.middleware.types import ModelRequest, ModelResponse
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+import pytest
 
 from app.agents.middleware.empty_completion import (
     EmptyCompletionRetryMiddleware,
@@ -86,14 +87,6 @@ class TestAnEmptyCompletionIsRetriedOnce:
         assert len(handler.requests) == 2
         assert response.result == [ANSWER]
 
-    async def test_the_retry_asks_the_same_question_unchanged(self):
-        """Nothing about the request was wrong; appending a correction note would teach the model that silence was a turn."""
-        handler = _ScriptedHandler(EMPTY, ANSWER)
-
-        await EmptyCompletionRetryMiddleware().awrap_model_call(_request(), handler)
-
-        assert handler.requests[1].messages == handler.requests[0].messages
-
     async def test_the_retry_is_bounded_to_one_call(self):
         """The second call is charged to the user like any other."""
         handler = _ScriptedHandler(EMPTY)
@@ -102,6 +95,52 @@ class TestAnEmptyCompletionIsRetriedOnce:
 
         assert len(handler.requests) == 2
         assert response.result == [EMPTY]
+
+
+POISONED_HISTORY = [
+    HumanMessage(content="hi"),
+    AIMessage(content=NEW_MESSAGE_BREAKER * 40),
+    HumanMessage(content="hello?"),
+    AIMessage(
+        content=f"{NEW_MESSAGE_BREAKER}sure{NEW_MESSAGE_BREAKER}on it{NEW_MESSAGE_BREAKER * 3}"
+    ),
+    TOOL_CALL,
+    ToolMessage(content="2 meetings", tool_call_id="tc-1"),
+    HumanMessage(content="what's on my calendar?"),
+]
+
+
+def _poisoned_request() -> ModelRequest:
+    return _request().override(messages=list(POISONED_HISTORY))
+
+
+class TestTheRetryDoesNotReplayAPoisonedHistory:
+    """Regression: a breaks-only reply saved to the thread was copied by every later turn, and the retry resent it verbatim."""
+
+    @pytest.mark.regression
+    async def test_the_retry_drops_breaks_only_replies_trims_edge_breaks_and_adds_one_notice(self):
+        handler = _ScriptedHandler(EMPTY, ANSWER)
+
+        await EmptyCompletionRetryMiddleware().awrap_model_call(_poisoned_request(), handler)
+
+        *history, notice = handler.requests[1].messages
+        assert history == [
+            HumanMessage(content="hi"),
+            HumanMessage(content="hello?"),
+            AIMessage(content=f"sure{NEW_MESSAGE_BREAKER}on it"),
+            TOOL_CALL,
+            ToolMessage(content="2 meetings", tool_call_id="tc-1"),
+            HumanMessage(content="what's on my calendar?"),
+        ]
+        assert isinstance(notice, HumanMessage)
+        assert notice not in handler.requests[0].messages
+
+    async def test_the_first_call_is_sent_the_history_untouched(self):
+        handler = _ScriptedHandler(ANSWER)
+
+        await EmptyCompletionRetryMiddleware().awrap_model_call(_poisoned_request(), handler)
+
+        assert handler.requests[0].messages == POISONED_HISTORY
 
 
 class TestOnlyGenuineSilenceIsRetried:
@@ -171,6 +210,7 @@ class TestTheRetryIsRecordedOnTheTurn:
         assert fields == {
             "retried_empty_completion": True,
             "empty_completion_retry_recovered": True,
+            "empty_completion_runaway_stops": 0,
         }
 
     async def test_a_turn_still_empty_after_the_retry_is_recorded_as_unrecovered(self):
@@ -179,6 +219,7 @@ class TestTheRetryIsRecordedOnTheTurn:
         assert fields == {
             "retried_empty_completion": True,
             "empty_completion_retry_recovered": False,
+            "empty_completion_runaway_stops": 0,
         }
 
     async def test_an_ordinary_turn_records_nothing(self):
@@ -215,6 +256,7 @@ class TestTheRetryIsLoggedExactly:
         log.warning.assert_called_once_with(
             f"{LogTag.AGENT} Empty completion, retrying the model call once",
             agent_name="comms_agent",
+            retry_dropped_messages=0,
         )
         log.error.assert_called_once_with(
             f"{LogTag.AGENT} Empty completion survived the retry",
