@@ -278,3 +278,48 @@ export function quoteFor(
   }
   return opened;
 }
+
+/**
+ * Whether GAIA owes this device a reply the server has not announced yet: a send not
+ * accepted (and not failed), or an accepted one whose following state frame is still due.
+ */
+export function awaitingServerState(
+  view: ConversationView,
+  sends: Readonly<Record<string, { failed: boolean }>>,
+): boolean {
+  if (view.pending.some((pending) => !sends[pending.id]?.failed)) return true;
+  for (let at = view.entries.length - 1; at >= 0; at -= 1) {
+    const { seq, entry } = view.entries[at];
+    if (seq <= view.head) return false;
+    if (sends[entry.id]) return true;
+  }
+  return false;
+}
+
+/** The user message a retry resends: the message itself, or the newest one before the reply. */
+export function messageToRetry(
+  view: ConversationView,
+  messageId: string,
+): UserMessage | null {
+  const { entries } = view;
+  const at = entries.findIndex(
+    ({ entry }) =>
+      entry.id === messageId ||
+      (entry.kind === ENTRY_KIND.REPLY && entry.reply_id === messageId),
+  );
+  if (at === -1) return null;
+  const asked = entries
+    .slice(0, at + 1)
+    .findLast(({ entry }) => entry.kind === ENTRY_KIND.USER_MESSAGE)?.entry;
+  return asked?.kind === ENTRY_KIND.USER_MESSAGE ? asked : null;
+}
+
+/** The loading row a sending client shows: the server's, raised to thinking while this device's send is owed a state. */
+export function sendingLoadingRow(
+  view: ConversationView,
+  sends: Readonly<Record<string, { failed: boolean }>>,
+): LoadingRow {
+  const row = loadingRow(view);
+  if (row.visible || !awaitingServerState(view, sends)) return row;
+  return { visible: true, status: DISPLAY_STATE.THINKING, detail: null };
+}

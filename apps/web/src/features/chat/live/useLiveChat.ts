@@ -2,8 +2,9 @@ import { TOOL_CALLS_DATA_TOOL_NAME } from "@shared/chat";
 import {
   type ConversationView,
   DISPLAY_STATE,
+  DISPLAY_STATUS_TEXT,
   type DisplayState,
-  loadingRow,
+  sendingLoadingRow,
 } from "@shared/conversation";
 import { useEffect, useMemo } from "react";
 import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
@@ -16,17 +17,10 @@ import type { MessageType } from "@/types/features/convoTypes";
 import { getRandomThinkingMessage } from "@/utils/playfulThinking";
 import { openConversation } from "./connection";
 import {
-  type LocalSend,
   useLiveConversation,
   useLiveConversationStore,
 } from "./liveConversationStore";
 import { liveMessages } from "./liveMessages";
-
-const STATUS_TEXT: Record<Exclude<DisplayState, "thinking">, string> = {
-  [DISPLAY_STATE.IDLE]: "",
-  [DISPLAY_STATE.WORKING]: "Working on it",
-  [DISPLAY_STATE.AWAITING_APPROVAL]: "Waiting for your approval",
-};
 
 /** Follow the conversation's events while the component that shows it is mounted. */
 export function useOpenConversation(conversationId: string | null): void {
@@ -66,21 +60,6 @@ function newestToolInfo(view: ConversationView): ActiveToolInfo | undefined {
   return toolInfo;
 }
 
-// A send is owed a reply before the server says thinking: until it is accepted, and until the
-// state frame that follows its entry arrives.
-function awaitingServerState(
-  view: ConversationView,
-  sends: Readonly<Record<string, LocalSend>>,
-): boolean {
-  if (view.pending.some((pending) => !sends[pending.id]?.failed)) return true;
-  for (let at = view.entries.length - 1; at >= 0; at -= 1) {
-    const { seq, entry } = view.entries[at];
-    if (seq <= view.head) return false;
-    if (sends[entry.id]) return true;
-  }
-  return false;
-}
-
 export interface LiveLoading {
   isLoading: boolean;
   loadingText: string;
@@ -91,22 +70,21 @@ export interface LiveLoading {
 function useLiveLoading(conversationId: string | null): LiveLoading {
   const { view, sends } = useLiveConversation(conversationId);
   const aux = useAuxLoadingStore((state) => state.auxLoading);
-  const row = loadingRow(view);
-  const sending = awaitingServerState(view, sends);
-  const status = !row.visible && sending ? DISPLAY_STATE.THINKING : row.status;
+  const row = sendingLoadingRow(view, sends);
+  const { status } = row;
   // One playful line per thinking phase, not a new one per frame.
   const thinkingText = useMemo(
     () => (status === DISPLAY_STATE.THINKING ? getRandomThinkingMessage() : ""),
     [status],
   );
-  if (row.visible || sending) {
+  if (row.visible) {
     return {
       isLoading: true,
       loadingText:
         row.detail ??
         (status === DISPLAY_STATE.THINKING
           ? thinkingText
-          : STATUS_TEXT[status]),
+          : DISPLAY_STATUS_TEXT[status]),
       toolInfo: newestToolInfo(view),
     };
   }

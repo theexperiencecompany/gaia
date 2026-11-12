@@ -1,27 +1,9 @@
-import { ENTRY_KIND, type UserMessage } from "@shared/conversation";
+import { messageToRetry } from "@shared/conversation";
 import { useCallback, useState } from "react";
 
 import { deliverSend } from "@/features/chat/live/connection";
 import { liveConversation } from "@/features/chat/live/liveConversationStore";
 import { sendMessage } from "@/features/chat/live/sendMessage";
-
-/** The user message a retry resends: the message itself, or the newest one before the reply. */
-function messageToRetry(
-  conversationId: string,
-  messageId: string,
-): UserMessage | null {
-  const { entries } = liveConversation(conversationId).view;
-  const at = entries.findIndex(
-    ({ entry }) =>
-      entry.id === messageId ||
-      (entry.kind === ENTRY_KIND.REPLY && entry.reply_id === messageId),
-  );
-  if (at === -1) return null;
-  const asked = entries
-    .slice(0, at + 1)
-    .findLast(({ entry }) => entry.kind === ENTRY_KIND.USER_MESSAGE)?.entry;
-  return asked?.kind === ENTRY_KIND.USER_MESSAGE ? asked : null;
-}
 
 /**
  * Retry from a bubble's action. A send that never reached the server is resent
@@ -41,7 +23,7 @@ export const useRetryMessage = () => {
           await deliverSend(conversationId, messageId);
           return;
         }
-        const message = messageToRetry(conversationId, messageId);
+        const message = messageToRetry(live.view, messageId);
         if (!message) {
           console.error(
             "[useRetryMessage] No user message to retry:",
