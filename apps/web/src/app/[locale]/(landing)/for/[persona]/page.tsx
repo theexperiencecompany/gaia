@@ -1,4 +1,3 @@
-import { Chip } from "@heroui/chip";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
@@ -8,8 +7,7 @@ import JsonLd from "@/components/seo/JsonLd";
 import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { RelatedComparisonsGrid } from "@/components/seo/RelatedComparisonsGrid";
 import { SiteLink } from "@/components/seo/SiteLink";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import type { CommunityIntegration } from "@/features/integrations/types";
+import { IntegrationChipLink } from "@/features/integrations/components/IntegrationChipLink";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   AGENCY_FAQS,
@@ -286,29 +284,6 @@ export async function generateMetadata({
   });
 }
 
-function IntegrationBadge({
-  integration,
-}: {
-  readonly integration: CommunityIntegration;
-}) {
-  return (
-    <SiteLink href={`/marketplace/${integration.slug}`}>
-      <Chip
-        variant="flat"
-        size="md"
-        className="bg-zinc-800 text-zinc-300"
-        startContent={getToolCategoryIcon(
-          integration.integrationId,
-          { size: 16, width: 16, height: 16, showBackground: false },
-          integration.iconUrl,
-        )}
-      >
-        {integration.name}
-      </Chip>
-    </SiteLink>
-  );
-}
-
 async function RelatedRoles({
   persona,
   locale,
@@ -508,7 +483,7 @@ export default async function PersonaPage({ params }: PageProps) {
           </p>
           <div className="flex flex-wrap gap-3">
             {integrations.map((integration) => (
-              <IntegrationBadge
+              <IntegrationChipLink
                 key={integration.slug}
                 integration={integration}
               />
