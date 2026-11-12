@@ -14,7 +14,7 @@ surviving.
 from collections.abc import Mapping
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.repositories.base import UserScopedDocument, UserScopedRepository
 
@@ -54,6 +54,11 @@ class TrueCostActuals(BaseModel):
     coverage: float
     provider_mix: dict[str, float]
     at: datetime
+
+
+class _UserWindowTotal(BaseModel):
+    user_id: str = Field(alias="_id")
+    total: int
 
 
 class UsageDailyIncrement(BaseModel):
@@ -195,15 +200,14 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
 
     async def user_window_totals(self, window_start: str) -> list[tuple[str, int]]:
         """Every user's summed action count since window_start, one pass."""
-        return [
-            (str(row["_id"]), int(row["total"]))
-            async for row in self._raw_collection().aggregate(
-                [
-                    {"$match": {"date": {"$gte": window_start}}},
-                    {"$group": {"_id": "$user_id", "total": {"$sum": "$count"}}},
-                ]
-            )
-        ]
+        rows = await self._aggregate(
+            [
+                {"$match": {"date": {"$gte": window_start}}},
+                {"$group": {"_id": "$user_id", "total": {"$sum": "$count"}}},
+            ],
+            _UserWindowTotal,
+        )
+        return [(row.user_id, row.total) for row in rows]
 
 
 usage_daily_repository = UsageDailyRepository()

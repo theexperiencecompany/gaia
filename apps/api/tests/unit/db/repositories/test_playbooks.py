@@ -604,9 +604,10 @@ class TestTheWriteIsTheTransition:
             "suspect_streak": before.suspect_streak,
         }
         doc.update(update["$set"])
-        doc["suspect_streak"] = int(doc["suspect_streak"]) + int(
-            update.get("$inc", {}).get("suspect_streak", 0)
-        )
+        streak = doc["suspect_streak"]
+        grown = update.get("$inc", {}).get("suspect_streak", 0)
+        assert isinstance(streak, int) and isinstance(grown, int)
+        doc["suspect_streak"] = streak + grown
 
         expected = transition(before, Replayed(outcome))
         assert doc == {
