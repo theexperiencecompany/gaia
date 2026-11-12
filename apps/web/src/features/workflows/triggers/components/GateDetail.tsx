@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Separator, Switch, TextArea } from "@heroui/react";
+import { Separator, Switch, TextArea } from "@heroui/react";
 import type { GateSkipRecord } from "@shared/api/generated";
 import { type KeyboardEvent, useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -100,17 +100,21 @@ export function GateDetail({
             className="max-h-32 resize-none field-sizing-content text-sm"
           />
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onPress={() => setDraft(null)}>
+            <GaiaButton
+              size="sm"
+              variant="ghost"
+              onPress={() => setDraft(null)}
+            >
               Cancel
-            </Button>
-            <Button
+            </GaiaButton>
+            <GaiaButton
               size="sm"
               variant="primary"
               onPress={save}
               isDisabled={!edited || edited === condition}
             >
               Save
-            </Button>
+            </GaiaButton>
           </div>
         </div>
       )}

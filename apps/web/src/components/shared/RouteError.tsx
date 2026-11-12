@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Spinner } from "@heroui/react";
+import { Spinner } from "@heroui/react";
 import { Home01Icon } from "@icons";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
@@ -114,13 +114,13 @@ export default function RouteError({ error, reset }: RouteErrorProps) {
         An unexpected error occurred. Please try again or return home.
       </p>
       <div className="flex items-center gap-3 pt-4">
-        <Button
+        <GaiaButton
           isDisabled={isPending}
           onPress={handleTryAgain}
           variant="primary"
         >
           Try again
-        </Button>
+        </GaiaButton>
         <GaiaButton
           variant="default-soft"
           onPress={() => window.location.assign("/")}

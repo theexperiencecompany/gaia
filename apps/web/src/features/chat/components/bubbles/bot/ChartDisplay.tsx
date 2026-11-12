@@ -10,6 +10,7 @@ import Image from "next/image";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { tabsVariants } from "@/components/shared/tabsVariants";
 import {
   type ChartConfig,
   ChartContainer,
@@ -20,13 +21,8 @@ import {
   loadRecharts,
   type RechartsModule,
 } from "@/components/ui/chart-loader";
-import {
-  TABS_INDICATOR,
-  TABS_LIST_LIGHT,
-  TABS_ROOT,
-  TABS_SELECTED,
-  TABS_TAB,
-} from "@/lib/heroui/tabsParity";
+
+const tabsStyles = tabsVariants({ variant: "light" });
 
 interface ChartData {
   id: string;
@@ -372,14 +368,13 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
               onSelectionChange={(key) =>
                 setViewMode(key as "static" | "dynamic")
               }
-              className={`mb-3 w-full ${TABS_ROOT}`}
+              className={tabsStyles.base({ className: "mb-3 w-full" })}
               aria-label="Chart view options"
             >
-              <Tabs.List className={`${TABS_LIST_LIGHT} w-full`}>
-                <Tabs.Tab
-                  id="static"
-                  className={`${TABS_TAB} ${TABS_SELECTED}`}
-                >
+              <Tabs.List
+                className={tabsStyles.tabList({ className: "w-full" })}
+              >
+                <Tabs.Tab id="static" className={tabsStyles.tab()}>
                   <div className="flex items-center gap-2">
                     <Image02Icon className="h-5 w-5" />
                     Static
@@ -387,12 +382,9 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
                       {staticCharts.length}
                     </div>
                   </div>
-                  <Tabs.Indicator className={TABS_INDICATOR} />
+                  <Tabs.Indicator className={tabsStyles.tabIndicator()} />
                 </Tabs.Tab>
-                <Tabs.Tab
-                  id="dynamic"
-                  className={`${TABS_TAB} ${TABS_SELECTED}`}
-                >
+                <Tabs.Tab id="dynamic" className={tabsStyles.tab()}>
                   <div className="flex items-center gap-2">
                     <ChartIcon className="h-5 w-5" />
                     Dynamic
@@ -400,7 +392,7 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
                       {dynamicCharts.length}
                     </div>
                   </div>
-                  <Tabs.Indicator className={TABS_INDICATOR} />
+                  <Tabs.Indicator className={tabsStyles.tabIndicator()} />
                 </Tabs.Tab>
               </Tabs.List>
             </Tabs>

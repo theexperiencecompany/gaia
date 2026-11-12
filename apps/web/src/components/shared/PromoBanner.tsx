@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import type { ReactNode } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
 
 export interface PromoBannerAction {
@@ -40,10 +40,10 @@ function renderAction(action: PromoBannerAction, isPrimary: boolean) {
   }
 
   return (
-    <Button key={action.label} variant={variant} onPress={action.onPress}>
+    <GaiaButton key={action.label} variant={variant} onPress={action.onPress}>
       {action.label}
       {action.icon}
-    </Button>
+    </GaiaButton>
   );
 }
 

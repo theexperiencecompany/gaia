@@ -1,4 +1,4 @@
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import { StarAward01Icon, WorkflowCircle03Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -496,7 +496,7 @@ function UseCaseEmptyStates({
                 Create your first workflow to get started
               </p>
               <Link href={"/workflows"}>
-                <Button variant="primary">Create</Button>
+                <GaiaButton variant="primary">Create</GaiaButton>
               </Link>
             </div>
           </div>

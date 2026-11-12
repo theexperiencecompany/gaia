@@ -1,5 +1,5 @@
 import type { Key } from "@heroui/react";
-import { Accordion, Button } from "@heroui/react";
+import { Accordion } from "@heroui/react";
 import { Add01Icon, RedoIcon } from "@icons";
 import {
   CONNECT_ACTION_LABEL,
@@ -89,7 +89,7 @@ const IntegrationItem: React.FC<{
           <InstanceSetupNotice />
         ) : (
           (isAvailable || needsAttention) && (
-            <Button
+            <GaiaButton
               size="sm"
               variant="secondary"
               className="text-xs"
@@ -97,7 +97,7 @@ const IntegrationItem: React.FC<{
             >
               {needsAttention && <RedoIcon width={16} height={16} />}
               {CONNECT_ACTION_LABEL[state]}
-            </Button>
+            </GaiaButton>
           )
         )}
       </div>

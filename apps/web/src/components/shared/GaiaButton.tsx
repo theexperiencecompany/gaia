@@ -7,28 +7,12 @@ import {
   type ButtonVariants,
   buttonOverlayVariants,
   buttonVariants,
+  isGaiaButtonFill,
 } from "./buttonVariants";
 import type { Shape } from "./shape";
 
 /** HeroUI's button variants plus GAIA's, closed: a misspelt or v2 variant is a type error. */
 export type GaiaButtonVariant = NonNullable<ButtonVariants["variant"]>;
-
-type GaiaOnlyVariant =
-  | "default-solid"
-  | "default-soft"
-  | "accent-soft"
-  | "success-soft"
-  | "warning-soft";
-
-function isGaiaVariant(variant: GaiaButtonVariant): variant is GaiaOnlyVariant {
-  return (
-    variant === "default-solid" ||
-    variant === "default-soft" ||
-    variant === "accent-soft" ||
-    variant === "success-soft" ||
-    variant === "warning-soft"
-  );
-}
 
 type GaiaButtonProps = Omit<ButtonProps, "variant" | "className"> & {
   variant?: GaiaButtonVariant;
@@ -48,7 +32,7 @@ export function GaiaButton({
   className,
   ...props
 }: GaiaButtonProps) {
-  if (!isGaiaVariant(variant)) {
+  if (!isGaiaButtonFill(variant)) {
     return (
       <Button
         variant={variant}

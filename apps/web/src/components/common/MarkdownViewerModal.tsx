@@ -69,7 +69,7 @@ const MarkdownViewerModal: React.FC<MarkdownViewerModalProps> = ({
       }}
     >
       <Modal.Backdrop>
-        <Modal.Container size="lg">
+        <Modal.Container>
           <Modal.Dialog
             className={modalVariants({
               size: "3xl",

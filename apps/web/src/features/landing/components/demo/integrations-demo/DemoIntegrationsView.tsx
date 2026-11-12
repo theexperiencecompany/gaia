@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, ButtonGroup, Chip, InputGroup } from "@heroui/react";
+import { ButtonGroup, Chip, InputGroup } from "@heroui/react";
 import {
   ArrowRight02Icon,
   Cancel01Icon,
@@ -106,7 +106,7 @@ function DemoIntegrationSidebar({
     >
       {/* Close button */}
       <div className="flex w-full items-end justify-end px-6 pt-4 pb-0">
-        <Button
+        <GaiaButton
           onPress={onClose}
           variant="ghost"
           isIconOnly
@@ -114,7 +114,7 @@ function DemoIntegrationSidebar({
           aria-label="Close"
         >
           <Cancel01Icon className="size-4" />
-        </Button>
+        </GaiaButton>
       </div>
 
       <div className="flex-1 overflow-y-auto px-5">
@@ -167,12 +167,16 @@ function DemoIntegrationSidebar({
 
           {/* Action buttons */}
           {!isConnected ? (
-            <Button className="w-full font-medium" size="md" variant="primary">
+            <GaiaButton
+              className="w-full font-medium"
+              size="md"
+              variant="primary"
+            >
               Connect
-            </Button>
+            </GaiaButton>
           ) : (
             <ButtonGroup variant="secondary" className="w-full" fullWidth>
-              <Button
+              <GaiaButton
                 isIconOnly={useIconOnly}
                 className="w-full"
                 aria-label="Disconnect"
@@ -180,9 +184,9 @@ function DemoIntegrationSidebar({
               >
                 <Unlink04Icon width={18} height={18} />
                 {!useIconOnly && "Disconnect"}
-              </Button>
+              </GaiaButton>
               {isPublic && (
-                <Button
+                <GaiaButton
                   isIconOnly={useIconOnly}
                   className="w-full"
                   aria-label="View on Marketplace"
@@ -190,10 +194,10 @@ function DemoIntegrationSidebar({
                 >
                   <InternetIcon width={18} height={18} />
                   {!useIconOnly && "View"}
-                </Button>
+                </GaiaButton>
               )}
               {isCustom && !isPublic && (
-                <Button
+                <GaiaButton
                   isIconOnly={useIconOnly}
                   className="w-full"
                   aria-label="Publish"
@@ -201,7 +205,7 @@ function DemoIntegrationSidebar({
                 >
                   <GlobalIcon width={18} height={18} />
                   {!useIconOnly && "Publish"}
-                </Button>
+                </GaiaButton>
               )}
               {isPublic && (
                 <GaiaButton
@@ -346,10 +350,10 @@ export default function DemoIntegrationsView({
                   Browse Marketplace
                   <ArrowRight02Icon className="h-4 w-4" />
                 </GaiaButton>
-                <Button size="sm" variant="primary">
+                <GaiaButton size="sm" variant="primary">
                   <ZapIcon className="h-4 w-4" />
                   Create Custom
-                </Button>
+                </GaiaButton>
               </div>
             </div>
           </div>

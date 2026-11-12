@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Input, Link } from "@heroui/react";
+import { Input, Link } from "@heroui/react";
 import {
   BookOpen01Icon,
   CheckmarkCircle02Icon,
@@ -11,6 +11,7 @@ import {
 import { type ReactNode, useState } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { devicesApi } from "@/features/devices/api/devicesApi";
 import { PAIRING_CODE_LENGTH } from "@/features/devices/constants";
 import { useBridge } from "@/features/devices/hooks/useBridge";
@@ -71,7 +72,7 @@ function CommandSnippet({ command }: { command: string }) {
   return (
     <div className="flex w-full items-center justify-between gap-2 rounded-md bg-zinc-800 px-3 py-1.5 text-zinc-200">
       <span className="truncate font-mono text-xs">{command}</span>
-      <Button
+      <GaiaButton
         isIconOnly
         size="sm"
         variant="ghost"
@@ -83,7 +84,7 @@ function CommandSnippet({ command }: { command: string }) {
         ) : (
           <Copy01Icon width={14} height={14} />
         )}
-      </Button>
+      </GaiaButton>
     </div>
   );
 }
@@ -120,7 +121,7 @@ function DesktopEnableCard({ platform }: { platform: NodeJS.Platform | null }) {
         Connect the machine you&apos;re on right now — one click, runs inside
         this app.
       </p>
-      <Button
+      <GaiaButton
         size="sm"
         className="w-fit"
         isPending={busy === "pair"}
@@ -128,7 +129,7 @@ function DesktopEnableCard({ platform }: { platform: NodeJS.Platform | null }) {
         variant="primary"
       >
         Enable on {noun}
-      </Button>
+      </GaiaButton>
     </div>
   );
 }
@@ -170,14 +171,14 @@ function CliOnboardingSteps({
       <StepCard index={startIndex} title="Install the GAIA CLI">
         <div className="flex flex-wrap items-center gap-1.5">
           {PACKAGE_MANAGERS.map((pm) => (
-            <Button
+            <GaiaButton
               key={pm}
               size="sm"
               variant={pm === packageManager ? "primary" : "tertiary"}
               onPress={() => setPackageManager(pm)}
             >
               {pm}
-            </Button>
+            </GaiaButton>
           ))}
         </div>
         <CommandSnippet command={install_commands[packageManager]} />
@@ -227,14 +228,14 @@ function CliOnboardingSteps({
                 onChange={(e) => setCode(e.target.value)}
                 aria-label="Pairing code"
               />
-              <Button
+              <GaiaButton
                 isPending={isApproving}
                 isDisabled={!canApprove}
                 onPress={approve}
                 variant="primary"
               >
                 Approve device
-              </Button>
+              </GaiaButton>
             </div>
           </>
         )}

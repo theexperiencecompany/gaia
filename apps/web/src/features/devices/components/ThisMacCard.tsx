@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Chip, Spinner, Switch, Tooltip } from "@heroui/react";
+import { Chip, Spinner, Switch, Tooltip } from "@heroui/react";
 import {
   ComputerIcon,
   Delete02Icon,
@@ -100,7 +100,7 @@ function ServerRow({
         onRetry={() => onRetry(server.key)}
         disabled={disabled}
       />
-      <Button
+      <GaiaButton
         isIconOnly
         size="sm"
         variant="ghost"
@@ -109,7 +109,7 @@ function ServerRow({
         onPress={() => onRemove(server.key)}
       >
         <Delete02Icon className="size-4" />
-      </Button>
+      </GaiaButton>
     </div>
   );
 }

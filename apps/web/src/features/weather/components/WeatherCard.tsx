@@ -18,6 +18,7 @@ import {
 } from "@icons";
 import type React from "react";
 import { useMemo, useState } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 import { CloudFogIcon } from "@/components/shared/icons";
 import {
   DropdownMenu,
@@ -26,14 +27,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  ACCORDION_INDICATOR,
-  ACCORDION_PANEL_COMPACT,
-  ACCORDION_ROOT,
-  ACCORDION_TRIGGER_COMPACT,
-} from "@/lib/heroui/accordionParity";
 import type { WeatherData } from "@/types/features/convoTypes";
 import { WeatherDetailItem } from "./WeatherDetailItem";
+
+const accordionStyles = accordionVariants({
+  variant: "light",
+  density: "compact",
+});
 
 interface WeatherCardProps {
   weatherData: WeatherData;
@@ -332,7 +332,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
 
       {/* weather Details Accordion */}
       <Accordion
-        className={`mt-2 ${ACCORDION_ROOT}`}
+        className={accordionStyles.base({ className: "mt-2" })}
         allowsMultipleExpanded
         defaultExpandedKeys={["weekly-forecast"]}
       >
@@ -340,7 +340,9 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
           <Accordion.Item id="weekly-forecast">
             <Accordion.Heading>
               <Accordion.Trigger
-                className={`cursor-pointer ${ACCORDION_TRIGGER_COMPACT}`}
+                className={accordionStyles.trigger({
+                  className: "cursor-pointer",
+                })}
               >
                 <div className="flex items-center">
                   <span className="text-sm font-normal text-white">
@@ -348,11 +350,13 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
                   </span>
                 </div>
                 <Accordion.Indicator
-                  className={`${ACCORDION_INDICATOR} text-white`}
+                  className={accordionStyles.indicator({
+                    className: "text-white",
+                  })}
                 />
               </Accordion.Trigger>
             </Accordion.Heading>
-            <Accordion.Panel className={ACCORDION_PANEL_COMPACT}>
+            <Accordion.Panel className={accordionStyles.panel()}>
               <div className="space-y-2 pb-2">
                 {weatherData.forecast.map((day) => (
                   <WeeklyForecastRow
@@ -370,7 +374,9 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
         <Accordion.Item id="weather-details">
           <Accordion.Heading>
             <Accordion.Trigger
-              className={`cursor-pointer ${ACCORDION_TRIGGER_COMPACT}`}
+              className={accordionStyles.trigger({
+                className: "cursor-pointer",
+              })}
             >
               <div className="flex items-center">
                 <span className="text-sm font-normal text-white">
@@ -378,11 +384,13 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
                 </span>
               </div>
               <Accordion.Indicator
-                className={`${ACCORDION_INDICATOR} text-white`}
+                className={accordionStyles.indicator({
+                  className: "text-white",
+                })}
               />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className={ACCORDION_PANEL_COMPACT}>
+          <Accordion.Panel className={accordionStyles.panel()}>
             <WeatherDetailsGrid
               weatherData={weatherData}
               weatherTheme={weatherTheme}

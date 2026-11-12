@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Dropdown,
   DropdownItem,
   DropdownMenu,
@@ -92,7 +91,7 @@ interface ToolbarButtonProps {
 
 function ToolbarButton({ active, onClick, children }: ToolbarButtonProps) {
   return (
-    <Button
+    <GaiaButton
       variant="ghost"
       size="sm"
       onPress={() => onClick()}
@@ -105,7 +104,7 @@ function ToolbarButton({ active, onClick, children }: ToolbarButtonProps) {
       ].join(" ")}
     >
       {children}
-    </Button>
+    </GaiaButton>
   );
 }
 

@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { ArrowDown01Icon, ArrowUp01Icon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   NOTIFICATION_PLATFORM_ICONS,
   NOTIFICATION_PLATFORM_LABELS,
@@ -53,7 +53,7 @@ export function ChatChannelSettings({
             }
           >
             <div className="flex items-center gap-1">
-              <Button
+              <GaiaButton
                 isIconOnly
                 size="sm"
                 variant="ghost"
@@ -62,8 +62,8 @@ export function ChatChannelSettings({
                 onPress={() => move(index, "up")}
               >
                 <ArrowUp01Icon className="size-4" />
-              </Button>
-              <Button
+              </GaiaButton>
+              <GaiaButton
                 isIconOnly
                 size="sm"
                 variant="ghost"
@@ -72,7 +72,7 @@ export function ChatChannelSettings({
                 onPress={() => move(index, "down")}
               >
                 <ArrowDown01Icon className="size-4" />
-              </Button>
+              </GaiaButton>
             </div>
           </SettingsRow>
         );

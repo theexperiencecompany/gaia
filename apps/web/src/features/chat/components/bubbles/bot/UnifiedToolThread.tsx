@@ -3,18 +3,17 @@
 import { Accordion, AccordionItem } from "@heroui/react";
 import { ToolsIcon } from "@icons";
 import { useMemo, useState } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 import { ChevronDown } from "@/components/shared/icons";
 import type {
   SubagentGroupData,
   ToolCallEntry,
 } from "@/config/registries/toolRegistry";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import {
-  ACCORDION_PANEL_COMPACT,
-  ACCORDION_TRIGGER_BASE,
-} from "@/lib/heroui/accordionParity";
 import { type ApprovalOutcome, StepRow, SubagentRow } from "./SubagentRow";
 import { deriveTimelineItemKeys } from "./TextBubble/useSubagentSynthesis";
+
+const accordionStyles = accordionVariants({ density: "flush" });
 
 /**
  * Unified timeline item — either a regular tool call or a subagent invocation.
@@ -176,7 +175,9 @@ export default function UnifiedToolThread({
         <AccordionItem key="tools" id="tools">
           <Accordion.Heading>
             <Accordion.Trigger
-              className={`cursor-pointer py-0 ${ACCORDION_TRIGGER_BASE}`}
+              className={accordionStyles.trigger({
+                className: "cursor-pointer",
+              })}
             >
               <div className="flex items-center hover:text-white text-zinc-500">
                 {totalToolCount > 1 && <StackedIcons icons={uniqueIcons} />}
@@ -197,7 +198,7 @@ export default function UnifiedToolThread({
               </div>
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className={ACCORDION_PANEL_COMPACT}>
+          <Accordion.Panel className={accordionStyles.panel()}>
             <div className="py-2">
               {timeline.map((item, idx) => {
                 const isLast = idx === timeline.length - 1;

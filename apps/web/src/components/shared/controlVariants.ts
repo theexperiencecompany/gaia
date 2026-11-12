@@ -8,17 +8,11 @@ export const chipVariants = tv({
 
 /** v2's Avatar isBordered: a 2px zinc-700 ring outside a 2px background gap; gaia-avatar-bordered in base.css. */
 export const avatarVariants = tv({
-  variants: { bordered: { true: "gaia-avatar-bordered", false: "" } },
-  defaultVariants: { bordered: false },
+  variants: { isBordered: { true: "gaia-avatar-bordered", false: "" } },
+  defaultVariants: { isBordered: false },
 });
 
-/** v2's Tabs color="primary": the selected tab on the accent with accent-foreground text over the track; gaia-tabs-accent in base.css. */
-export const tabsVariants = tv({
-  variants: { color: { default: "", accent: "gaia-tabs-accent" } },
-  defaultVariants: { color: "default" },
-});
-
-/** v2's wide modal sizes, which v3 lacks (it stops at lg, 32rem); on Modal.Dialog inside a size="lg" Container. */
+/** v2's wide modal sizes, which v3 lacks (it stops at lg, 32rem); on Modal.Dialog, whose Container then takes no size. */
 export const modalVariants = tv({
   variants: {
     size: {
@@ -54,10 +48,10 @@ export const inputVariants = tv({
   defaultVariants: { size: "md", variant: "default" },
 });
 
-/** v2's quieter divider inside a zinc-800 card (zinc-700 at 50%); gaia-separator-subtle in base.css. */
+/** surface raised: v2's quieter divider on a raised (zinc-800) surface, zinc-700 at 50%; gaia-separator-raised in gaia.css. */
 export const separatorVariants = tv({
-  variants: { tone: { default: "", subtle: "gaia-separator-subtle" } },
-  defaultVariants: { tone: "default" },
+  variants: { surface: { default: "", raised: "gaia-separator-raised" } },
+  defaultVariants: { surface: "default" },
 });
 
 /** v2's zinc-800 overlay surface on Popover.Content, Tooltip.Content or Select.Popover; gaia-overlay-raised in base.css. */

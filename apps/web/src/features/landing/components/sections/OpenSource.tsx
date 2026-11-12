@@ -38,7 +38,7 @@ const LazyContributors = lazy(() =>
               key={contributor.login}
               asChild
               className={avatarVariants({
-                bordered: true,
+                isBordered: true,
                 className:
                   "cursor-pointer transition-transform hover:scale-110",
               })}

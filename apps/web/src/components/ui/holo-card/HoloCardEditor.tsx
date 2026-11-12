@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  Button,
-  ButtonGroup,
-  Dropdown,
-  Popover,
-  Slider,
-  Tooltip,
-} from "@heroui/react";
+import { ButtonGroup, Dropdown, Popover, Slider, Tooltip } from "@heroui/react";
 import {
   Copy01Icon,
   Download01Icon,
@@ -281,7 +274,7 @@ const EditorToolbar = ({
             <div className="flex flex-col gap-3 p-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-white/70">Color Picker</span>
-                <Button
+                <GaiaButton
                   size="sm"
                   variant="ghost"
                   isIconOnly
@@ -289,7 +282,7 @@ const EditorToolbar = ({
                   aria-label="Reset Color"
                 >
                   <ReloadIcon size={16} />
-                </Button>
+                </GaiaButton>
               </div>
               <ColorPicker
                 value={color}

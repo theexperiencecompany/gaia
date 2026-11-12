@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, type ButtonProps } from "@heroui/react";
+import type { ButtonProps } from "@heroui/react";
 import { CheckmarkCircle01Icon, Copy01Icon } from "@icons";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { copyWithFeedback } from "@/lib/clipboard";
 
 interface CopyButtonProps {
@@ -40,7 +41,7 @@ export default function CopyButton({
   };
 
   return (
-    <Button
+    <GaiaButton
       isIconOnly
       variant={variant}
       size={size}
@@ -53,6 +54,6 @@ export default function CopyButton({
       ) : (
         <Copy01Icon className="h-4 w-4" />
       )}
-    </Button>
+    </GaiaButton>
   );
 }

@@ -1,21 +1,18 @@
 import { Accordion, AccordionItem, Chip, ScrollShadow } from "@heroui/react";
 import { NotificationIcon } from "@icons";
 import { useMemo, useState } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toneVariants } from "@/components/shared/tone";
 import { NotificationItem } from "@/features/notification/components/NotificationItem";
-import {
-  ACCORDION_INDICATOR,
-  ACCORDION_PANEL,
-  ACCORDION_ROOT,
-  ACCORDION_TRIGGER,
-} from "@/lib/heroui/accordionParity";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
   NotificationStatus,
   type NotificationView,
 } from "@/types/features/notificationTypes";
+
+const accordionStyles = accordionVariants({ variant: "light" });
 
 interface NotificationListSectionProps {
   notifications: NotificationView[];
@@ -100,22 +97,22 @@ export default function NotificationListSection({
     return (
       <div className="mx-auto mb-3 w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-colors duration-300">
         <Accordion
-          className={ACCORDION_ROOT}
+          className={accordionStyles.base()}
           defaultExpandedKeys={["notifications"]}
         >
           <AccordionItem id="notifications">
             <Accordion.Heading>
-              <Accordion.Trigger className={ACCORDION_TRIGGER}>
+              <Accordion.Trigger className={accordionStyles.trigger()}>
                 <div className="flex items-center gap-3">
                   <NotificationIcon className="h-5 w-5 text-zinc-400" />
                   <div className="flex flex-col">
                     <span className="text-sm font-medium">{title}</span>
                   </div>
                 </div>
-                <Accordion.Indicator className={ACCORDION_INDICATOR} />
+                <Accordion.Indicator className={accordionStyles.indicator()} />
               </Accordion.Trigger>
             </Accordion.Heading>
-            <Accordion.Panel className={ACCORDION_PANEL}>
+            <Accordion.Panel className={accordionStyles.panel()}>
               <div className="flex flex-col items-center justify-center p-8 text-center">
                 <NotificationIcon className="mb-4 h-10 w-10 text-zinc-600" />
                 <p className="font-medium text-zinc-300">
@@ -135,12 +132,12 @@ export default function NotificationListSection({
   return (
     <div className="mx-auto w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-colors duration-300">
       <Accordion
-        className={ACCORDION_ROOT}
+        className={accordionStyles.base()}
         defaultExpandedKeys={["notifications"]}
       >
         <AccordionItem id="notifications">
           <Accordion.Heading>
-            <Accordion.Trigger className={ACCORDION_TRIGGER}>
+            <Accordion.Trigger className={accordionStyles.trigger()}>
               <div className="flex items-center gap-3">
                 <NotificationIcon className="h-5 w-5 text-zinc-400" />
                 <div className="flex flex-col">
@@ -165,10 +162,10 @@ export default function NotificationListSection({
                   </Chip>
                 )}
               </div>
-              <Accordion.Indicator className={ACCORDION_INDICATOR} />
+              <Accordion.Indicator className={accordionStyles.indicator()} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className={ACCORDION_PANEL}>
+          <Accordion.Panel className={accordionStyles.panel()}>
             <div className="flex flex-col gap-3">
               {/* Mark All Read Button */}
               {unreadNotifications.length > 0 && (

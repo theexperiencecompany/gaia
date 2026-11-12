@@ -311,7 +311,7 @@ export default function WorkflowModal({
     <>
       <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
         <Modal.Backdrop variant="blur">
-          <Modal.Container size="lg">
+          <Modal.Container>
             {/* Two-column mode uses a definite height so the side panel's
                 flex/overflow chain (h-full → min-h-0 → overflow-y-auto) resolves
                 and the Steps panel doesn't clip. */}

@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import type { GateSkipRecord } from "@shared/api/generated";
 import { formatDistanceToNowStrict } from "date-fns";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   GATE_NO_SKIPS_NOTE,
   GATE_SKIPS_LABEL,
@@ -26,7 +26,7 @@ export function GateSkipList({ skips }: { skips: GateSkipRecord[] }) {
             const isOpen = openKey === key;
             return (
               <li key={key}>
-                <Button
+                <GaiaButton
                   variant="ghost"
                   size="sm"
                   onPress={() => setOpenKey(isOpen ? null : key)}
@@ -52,7 +52,7 @@ export function GateSkipList({ skips }: { skips: GateSkipRecord[] }) {
                       {gateSkipReason(skip.certainty)}
                     </span>
                   )}
-                </Button>
+                </GaiaButton>
               </li>
             );
           })}

@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { Comment01Icon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useOpenTodoChat } from "@/features/todo/hooks/useOpenTodoChat";
 
 interface OpenTodoChatButtonProps {
@@ -13,7 +13,7 @@ export function OpenTodoChatButton({ todoId }: OpenTodoChatButtonProps) {
   const { openChat, isOpening } = useOpenTodoChat(todoId);
 
   return (
-    <Button
+    <GaiaButton
       size="sm"
       variant="secondary"
       onPress={openChat}
@@ -21,6 +21,6 @@ export function OpenTodoChatButton({ todoId }: OpenTodoChatButtonProps) {
     >
       {isOpening ? null : <Comment01Icon className="size-4" />}
       Open chat
-    </Button>
+    </GaiaButton>
   );
 }

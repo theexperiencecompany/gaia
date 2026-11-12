@@ -1,11 +1,11 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { Delete02Icon } from "@icons";
 import { isTrackedTodo } from "@shared/todos";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 import type React from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { PanelRowGroup } from "@/components/shared/PanelRowGroup";
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
@@ -173,7 +173,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
 
           <div className="flex items-center gap-2">
             {isTrackedTodo(todo) && <OpenTodoChatButton todoId={todo.id} />}
-            <Button
+            <GaiaButton
               variant="danger-soft"
               type="button"
               isIconOnly
@@ -182,7 +182,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
               aria-label="Delete todo"
             >
               <Delete02Icon className="size-5" />
-            </Button>
+            </GaiaButton>
           </div>
         </div>
       </SidebarFooter>

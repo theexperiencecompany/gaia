@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Input } from "@heroui/react";
+import { Input } from "@heroui/react";
 import {
   Camera01Icon,
   Logout02Icon,
@@ -129,7 +129,7 @@ export default function AccountSection({
                 placeholder="Enter your name"
               />
               <div className="flex items-center space-x-3">
-                <Button
+                <GaiaButton
                   onPress={handleSave}
                   isDisabled={isLoading}
                   size="sm"
@@ -137,7 +137,7 @@ export default function AccountSection({
                   variant="primary"
                 >
                   {isLoading ? "Saving..." : "Save Changes"}
-                </Button>
+                </GaiaButton>
                 <GaiaButton
                   variant="default-solid"
                   fullWidth
@@ -177,14 +177,14 @@ export default function AccountSection({
           label="Sign out"
           description="Sign out of your account on this device"
         >
-          <Button
+          <GaiaButton
             variant="danger-soft"
             size="sm"
             onPress={() => setModalAction("logout")}
           >
             <Logout02Icon className="h-4 w-4" />
             Sign out
-          </Button>
+          </GaiaButton>
         </SettingsRow>
       </SettingsSection>
     </SettingsPage>

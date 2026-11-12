@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Chip,
   FieldError,
   Input,
@@ -128,12 +127,12 @@ function EditTicketModal({
               </div>
             </Modal.Body>
             <Modal.Footer>
-              <Button variant="ghost" onPress={onClose}>
+              <GaiaButton variant="ghost" onPress={onClose}>
                 Cancel
-              </Button>
-              <Button onPress={onSave} variant="primary">
+              </GaiaButton>
+              <GaiaButton onPress={onSave} variant="primary">
                 Save Changes
-              </Button>
+              </GaiaButton>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

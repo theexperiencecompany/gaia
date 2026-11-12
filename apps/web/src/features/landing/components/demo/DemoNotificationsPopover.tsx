@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Tooltip } from "@heroui/react";
+import { Tooltip } from "@heroui/react";
 import { CheckmarkBadge01Icon } from "@icons";
 import { ScrollArea } from "@radix-ui/react-scroll-area";
 import { AnimatePresence } from "motion/react";
@@ -116,9 +116,9 @@ export default function DemoNotificationsPopover({
               <GaiaButton variant="default-solid" size="sm" fullWidth>
                 Mark all as read
               </GaiaButton>
-              <Button size="sm" variant="outline" fullWidth>
+              <GaiaButton size="sm" variant="outline" fullWidth>
                 View all notifications
-              </Button>
+              </GaiaButton>
             </div>
           </m.div>
         </>

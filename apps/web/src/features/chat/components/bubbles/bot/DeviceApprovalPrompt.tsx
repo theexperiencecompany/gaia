@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import { CheckmarkCircle02Icon, ComputerIcon } from "@icons";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { devicesApi } from "@/features/devices/api/devicesApi";
 import { BRIDGE_UP_COMMAND } from "@/features/devices/constants";
 import type { DeviceApprovalRequiredData } from "@/features/devices/types";
@@ -74,14 +75,14 @@ export function DeviceApprovalPrompt({
           <Chip variant="soft" color="accent" className="font-mono">
             {code}
           </Chip>
-          <Button
+          <GaiaButton
             size="sm"
             isPending={isApproving}
             onPress={approve}
             variant="primary"
           >
             Approve
-          </Button>
+          </GaiaButton>
         </div>
       </div>
     </div>

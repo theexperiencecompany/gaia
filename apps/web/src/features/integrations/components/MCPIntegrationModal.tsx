@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Description,
   InputGroup,
   Kbd,
@@ -12,6 +11,7 @@ import {
 } from "@heroui/react";
 import { ConnectIcon, KeyIcon, PuzzleIcon } from "@icons";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useModalForm } from "@/hooks/ui/useModalForm";
 import { useModalKeyboardSubmit } from "@/hooks/ui/useModalKeyboardSubmit";
@@ -237,14 +237,14 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
             </Modal.Body>
 
             <Modal.Footer>
-              <Button
+              <GaiaButton
                 variant="ghost"
                 onPress={handleClose}
                 isDisabled={loading}
               >
                 Cancel
-              </Button>
-              <Button
+              </GaiaButton>
+              <GaiaButton
                 onPress={handleSubmit}
                 isPending={loading}
                 variant="primary"
@@ -256,7 +256,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
                     <Kbd.Abbr keyValue="enter" />
                   </Kbd>
                 )}
-              </Button>
+              </GaiaButton>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

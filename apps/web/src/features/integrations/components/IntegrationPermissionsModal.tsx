@@ -29,7 +29,7 @@ export const IntegrationPermissionsModal = ({
 }: IntegrationPermissionsModalProps) => (
   <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
     <Modal.Backdrop>
-      <Modal.Container size="lg">
+      <Modal.Container>
         <Modal.Dialog className={modalVariants({ size: "xl" })}>
           <Modal.CloseTrigger aria-label="Close" />
           <Modal.Header className="flex-col items-start gap-1">

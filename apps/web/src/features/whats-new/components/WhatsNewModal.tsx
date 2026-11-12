@@ -80,7 +80,7 @@ export function WhatsNewModal() {
   return (
     <Modal isOpen={isModalOpen} onOpenChange={closeModal}>
       <Modal.Backdrop>
-        <Modal.Container size="lg">
+        <Modal.Container>
           <Modal.Dialog className={modalVariants({ size: "2xl" })}>
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Header>What&apos;s new in GAIA</Modal.Header>

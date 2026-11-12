@@ -4,18 +4,18 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useMemo, useState } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import {
-  ACCORDION_INDICATOR,
-  ACCORDION_PANEL_COMPACT,
-  ACCORDION_ROOT,
-  ACCORDION_TRIGGER_COMPACT,
-} from "@/lib/heroui/accordionParity";
 import { dummyIntegrations } from "./constants";
+
+const accordionStyles = accordionVariants({
+  variant: "light",
+  density: "compact",
+});
 
 // Dummy Integrations Card Component
 const DummyIntegrationsCard: React.FC = () => {
@@ -25,7 +25,7 @@ const DummyIntegrationsCard: React.FC = () => {
     <div className="mx-2 mb-3 border-b-1 border-zinc-800">
       <Accordion
         variant="default"
-        className={ACCORDION_ROOT}
+        className={accordionStyles.base()}
         expandedKeys={isExpanded ? new Set(["integrations"]) : new Set([])}
         onExpandedChange={(keys) => {
           const expanded = keys instanceof Set && keys.has("integrations");
@@ -35,7 +35,9 @@ const DummyIntegrationsCard: React.FC = () => {
         <Accordion.Item id="integrations">
           <Accordion.Heading>
             <Accordion.Trigger
-              className={`cursor-pointer ${ACCORDION_TRIGGER_COMPACT}`}
+              className={accordionStyles.trigger({
+                className: "cursor-pointer",
+              })}
             >
               <div className="flex items-center gap-3 px-1 pt-1">
                 <div className="min-w-0 flex-1">
@@ -49,10 +51,10 @@ const DummyIntegrationsCard: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <Accordion.Indicator className={ACCORDION_INDICATOR} />
+              <Accordion.Indicator className={accordionStyles.indicator()} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className={ACCORDION_PANEL_COMPACT}>
+          <Accordion.Panel className={accordionStyles.panel()}>
             <div>
               <div className="grid grid-cols-2 gap-2">
                 {dummyIntegrations.map((integration) => (

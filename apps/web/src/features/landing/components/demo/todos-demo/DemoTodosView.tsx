@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import {
   ArrowDown01Icon,
   CalendarCheckOut01Icon,
@@ -14,6 +14,7 @@ import {
 } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import { useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
@@ -469,14 +470,14 @@ function DemoTodoSidebar({
             addSuffix: true,
           })}
         </span>
-        <Button
+        <GaiaButton
           variant="danger-soft"
           isIconOnly
           size="sm"
           aria-label="Delete todo"
         >
           <Delete02Icon className="size-5" />
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );

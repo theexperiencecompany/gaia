@@ -1,8 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import type { DesktopAppIconOption } from "@shared/desktop-tools";
 import Image from "next/image";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { cn } from "@/lib/utils";
 
 interface AppIconPickerProps {
@@ -22,7 +22,7 @@ export function AppIconPicker({
       {icons.map((icon) => {
         const isSelected = icon.id === selectedId;
         return (
-          <Button
+          <GaiaButton
             key={icon.id}
             isIconOnly
             variant="ghost"
@@ -49,7 +49,7 @@ export function AppIconPicker({
               className="aspect-square h-full w-full rounded-[22%] object-cover"
               unoptimized
             />
-          </Button>
+          </GaiaButton>
         );
       })}
     </div>

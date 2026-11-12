@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Input, Separator } from "@heroui/react";
+import { Input, Separator } from "@heroui/react";
 import { Cancel01Icon, Clock01Icon } from "@icons";
 import { useMemo } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -187,7 +187,7 @@ export default function ScheduledFieldChip({
           {value && (
             <>
               <Separator className="my-1" />
-              <Button
+              <GaiaButton
                 variant="ghost"
                 fullWidth
                 className="justify-start gap-2 text-red-400"
@@ -198,7 +198,7 @@ export default function ScheduledFieldChip({
               >
                 <Cancel01Icon width={18} height={18} />
                 Clear schedule
-              </Button>
+              </GaiaButton>
             </>
           )}
         </div>

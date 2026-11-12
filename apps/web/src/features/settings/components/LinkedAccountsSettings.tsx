@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   PhoneLinkModal,
   type PhoneLinkTarget,
@@ -292,7 +293,7 @@ export default function LinkedAccountsSettings() {
                 {isConnected && platform.chat && (
                   <OpenPlatformChatButton platform={platform.id} />
                 )}
-                <Button
+                <GaiaButton
                   variant={isConnected ? "danger-soft" : "primary"}
                   size="sm"
                   onPress={() =>
@@ -305,7 +306,7 @@ export default function LinkedAccountsSettings() {
                   className="text-xs"
                 >
                   {isConnected ? "Disconnect" : "Connect"}
-                </Button>
+                </GaiaButton>
               </div>
             </SettingsRow>
           );

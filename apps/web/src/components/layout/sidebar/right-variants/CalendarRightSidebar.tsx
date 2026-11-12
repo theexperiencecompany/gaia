@@ -1,19 +1,12 @@
 "use client";
 
-import {
-  Button,
-  Input,
-  Label,
-  ListBox,
-  Select,
-  Switch,
-  TextArea,
-} from "@heroui/react";
+import { Input, Label, ListBox, Select, Switch, TextArea } from "@heroui/react";
 import { Delete02Icon, RepeatIcon, UserCircleIcon } from "@icons";
 import React, { useEffectEvent } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import {
@@ -544,7 +537,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
         {/* Create/Delete Actions */}
         <div className="flex items-center gap-3">
           {isCreating ? (
-            <Button
+            <GaiaButton
               onPress={onCreate}
               isDisabled={isSaving || !summary.trim()}
               fullWidth
@@ -552,7 +545,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
               variant="primary"
             >
               {isSaving ? "Creating..." : "Create Event"}
-            </Button>
+            </GaiaButton>
           ) : (
             <>
               <div className="flex-1 text-center text-sm text-zinc-500">

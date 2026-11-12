@@ -183,7 +183,7 @@ export function CoreDocuments() {
           <>
             <Separator
               className={separatorVariants({
-                tone: "subtle",
+                surface: "raised",
                 className: "my-3",
               })}
             />

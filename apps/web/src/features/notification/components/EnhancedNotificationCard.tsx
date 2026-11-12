@@ -1,6 +1,6 @@
 "use client";
 
-import { Button as HeroButton, Tooltip } from "@heroui/react";
+import { Tooltip } from "@heroui/react";
 import {
   AlertCircleIcon,
   CheckmarkBadge01Icon,
@@ -114,14 +114,14 @@ export const EnhancedNotificationCard = ({
             notification.status !== NotificationStatus.ARCHIVED && (
               <Tooltip delay={300}>
                 <Tooltip.Trigger>
-                  <HeroButton
+                  <GaiaButton
                     size="sm"
                     onPress={handleMarkAsRead}
                     variant="tertiary"
                     isIconOnly
                   >
                     <CheckmarkBadge01Icon className="h-4 w-4 text-zinc-500" />
-                  </HeroButton>
+                  </GaiaButton>
                 </Tooltip.Trigger>
                 <Tooltip.Content>Mark as read</Tooltip.Content>
               </Tooltip>

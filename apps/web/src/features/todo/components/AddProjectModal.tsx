@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Input,
   Label,
   Modal,
@@ -12,6 +11,7 @@ import {
 } from "@heroui/react";
 import { useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { todoApi } from "@/features/todo/api/todoApi";
 import { toast } from "@/lib/toast";
 import type { ProjectCreate } from "@/types/features/todoTypes";
@@ -146,16 +146,16 @@ export default function AddProjectModal({
               </div>
             </Modal.Body>
             <Modal.Footer>
-              <Button variant="ghost" onPress={() => onOpenChange(false)}>
+              <GaiaButton variant="ghost" onPress={() => onOpenChange(false)}>
                 Cancel
-              </Button>
-              <Button
+              </GaiaButton>
+              <GaiaButton
                 onPress={handleSubmit}
                 isPending={loading}
                 variant="primary"
               >
                 Create Project
-              </Button>
+              </GaiaButton>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

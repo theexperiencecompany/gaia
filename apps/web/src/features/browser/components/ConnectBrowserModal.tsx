@@ -1,7 +1,8 @@
 "use client";
 
-import { Button, Modal, Skeleton, Tabs } from "@heroui/react";
+import { Modal, Skeleton, Tabs } from "@heroui/react";
 import { type ReactNode, useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import CopyButton from "@/components/ui/CopyButton";
 import { useWindowOrigin } from "@/hooks/ui/useWindowOrigin";
@@ -76,9 +77,9 @@ function CodeStatus({
   return (
     <div className="flex items-center justify-between gap-3 rounded-xl bg-zinc-900 p-3 text-sm text-zinc-400">
       <span>{text}</span>
-      <Button size="sm" onPress={onAction} variant="primary">
+      <GaiaButton size="sm" onPress={onAction} variant="primary">
         {action}
-      </Button>
+      </GaiaButton>
     </div>
   );
 }
@@ -210,9 +211,9 @@ function ConnectBrowserBody({ onClose }: { onClose: () => void }) {
         <p className="text-xs text-zinc-500">
           macOS or Linux, with Chromium browsers and Firefox.
         </p>
-        <Button size="sm" onPress={onClose} variant="primary">
+        <GaiaButton size="sm" onPress={onClose} variant="primary">
           Done
-        </Button>
+        </GaiaButton>
       </Modal.Footer>
     </>
   );

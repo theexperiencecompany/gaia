@@ -38,7 +38,7 @@ export function SkillPreviewModal({
           if (!isOpen) onClose();
         }}
       >
-        <Modal.Container size="lg" scroll="inside">
+        <Modal.Container scroll="inside">
           <Modal.Dialog className={modalVariants({ size: "2xl" })}>
             <Modal.CloseTrigger aria-label="Close" />
             {skill && (

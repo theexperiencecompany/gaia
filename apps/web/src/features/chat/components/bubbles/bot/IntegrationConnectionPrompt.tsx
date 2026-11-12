@@ -1,4 +1,4 @@
-import { Button, Chip, Input, Spinner } from "@heroui/react";
+import { Chip, Input, Spinner } from "@heroui/react";
 import { AlertCircleIcon } from "@icons";
 import {
   type ConnectionPromptState,
@@ -7,6 +7,7 @@ import {
 } from "@shared/utils";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useInlineIntegrationConnect } from "@/features/integrations/hooks/useInlineIntegrationConnect";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -114,14 +115,14 @@ function InlineConnectAction({
             disabled={connecting}
           />
         )}
-        <Button
+        <GaiaButton
           variant={isDanger ? "danger-soft" : "primary"}
           isPending={connecting}
           isDisabled={needsBearerToken && !token.trim()}
           onPress={() => connect(needsBearerToken ? token : undefined)}
         >
           {failed ? "Retry" : PROMPT_ACTION_LABEL[state]}
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );

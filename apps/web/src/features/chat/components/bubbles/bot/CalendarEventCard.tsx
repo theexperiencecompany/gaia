@@ -1,6 +1,6 @@
-import { Button } from "@heroui/react";
 import { Tick02Icon } from "@icons";
 import type { ReactNode } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 export type EventStatus = "idle" | "loading" | "completed";
 export type EventVariant = "display" | "action";
@@ -71,7 +71,7 @@ export const EventCard = ({
       </div>
 
       {hasAction && (
-        <Button
+        <GaiaButton
           variant={buttonColor === "danger" ? "danger" : "primary"}
           size="sm"
           isDisabled={status === "completed"}
@@ -88,7 +88,7 @@ export const EventCard = ({
           ) : (
             <>Confirm</>
           )}
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );

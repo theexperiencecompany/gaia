@@ -1,16 +1,13 @@
 import { Accordion, Chip, ScrollShadow } from "@heroui/react";
 import { useCallback } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 
 import { Gmail } from "@/components/shared/icons";
 import { sanitizeEmailHtml } from "@/features/mail/utils/sanitizeEmailHtml";
-import {
-  ACCORDION_INDICATOR,
-  ACCORDION_PANEL,
-  ACCORDION_ROOT,
-  ACCORDION_TRIGGER,
-} from "@/lib/heroui/accordionParity";
 import type { EmailThreadData } from "@/types/features/mailTypes";
 import { parseEmail } from "../../../../mail/utils/mailUtils";
+
+const accordionStyles = accordionVariants({ variant: "light" });
 
 // Use the same formatTime function as EmailListCard
 function formatTime(time: string | null): string {
@@ -88,12 +85,12 @@ export default function EmailThreadCard({
       className={`mx-auto w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-colors duration-300`}
     >
       <Accordion
-        className={ACCORDION_ROOT}
+        className={accordionStyles.base()}
         defaultExpandedKeys={["email-thread"]}
       >
         <Accordion.Item id="email-thread">
           <Accordion.Heading>
-            <Accordion.Trigger className={ACCORDION_TRIGGER}>
+            <Accordion.Trigger className={accordionStyles.trigger()}>
               <div className="flex items-center gap-3">
                 <Gmail width={22} height={22} />
                 <div className="flex flex-col">
@@ -102,10 +99,10 @@ export default function EmailThreadCard({
                   </span>
                 </div>
               </div>
-              <Accordion.Indicator className={ACCORDION_INDICATOR} />
+              <Accordion.Indicator className={accordionStyles.indicator()} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className={ACCORDION_PANEL}>
+          <Accordion.Panel className={accordionStyles.panel()}>
             <ScrollShadow className="max-h-[50vh]">
               <div className="space-y-3">
                 {emailThreadData.messages.map((message) => {

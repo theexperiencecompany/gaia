@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import type { MemberResponse } from "@shared/api/generated";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useConfirmation } from "@/hooks/useConfirmation";
@@ -52,14 +53,14 @@ export function MemberListSection({
               Admin
             </Chip>
           ) : (
-            <Button
+            <GaiaButton
               variant="danger-soft"
               size="sm"
               isPending={removingUserId === member.user_id}
               onPress={() => void remove(member)}
             >
               Remove
-            </Button>
+            </GaiaButton>
           )}
         </SettingsRow>
       ))}

@@ -5,7 +5,7 @@
  * one — and Restart, which confirms via a modal before invoking `onRestart`.
  */
 
-import { Button, Dropdown, Header, Modal } from "@heroui/react";
+import { Dropdown, Header, Modal } from "@heroui/react";
 import { Logout02Icon, RedoIcon, UserCircleIcon } from "@icons";
 import * as m from "motion/react-m";
 import { memo, useState } from "react";
@@ -152,7 +152,7 @@ function OnboardingProgressImpl({
                 >
                   Cancel
                 </GaiaButton>
-                <Button
+                <GaiaButton
                   onPress={() => {
                     setConfirmOpen(false);
                     onRestart?.();
@@ -160,7 +160,7 @@ function OnboardingProgressImpl({
                   variant="danger"
                 >
                   Restart
-                </Button>
+                </GaiaButton>
               </Modal.Footer>
             </Modal.Dialog>
           </Modal.Container>

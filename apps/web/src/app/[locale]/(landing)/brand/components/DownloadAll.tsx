@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { Download01Icon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 function downloadAllAssets() {
   const link = document.createElement("a");
@@ -14,9 +14,9 @@ function downloadAllAssets() {
 
 export function DownloadAll() {
   return (
-    <Button onPress={downloadAllAssets} variant="primary">
+    <GaiaButton onPress={downloadAllAssets} variant="primary">
       <Download01Icon className="h-5 w-5" />
       Download All Assets
-    </Button>
+    </GaiaButton>
   );
 }

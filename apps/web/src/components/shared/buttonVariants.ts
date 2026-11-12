@@ -15,35 +15,42 @@ export const BUTTON_TONE_CLASSES = {
 
 export type ButtonTone = TextTone;
 
-/** Shape and tone, the two GAIA dimensions layered on any HeroUI button variant. */
+/** Shape and tone alone, layered on a Button that keeps one of HeroUI's own variants. */
 export const buttonOverlayVariants = tv({
   variants: { shape: SHAPE_CLASSES, tone: BUTTON_TONE_CLASSES },
   defaultVariants: { shape: "default", tone: "default" },
 });
 
 /**
- * HeroUI's button variants plus GAIA's, extended the way HeroUI documents.
- * default-solid is v2's bare default button (zinc-700 fill); accent-soft is v2's
- * primary flat button (accent text on an accent tint, via the bridged tokens);
- * default-soft is v2's default flat button (zinc-700 at 40%); success-soft and
- * warning-soft are v2's success/warning flat buttons (danger flat is HeroUI's
- * own danger-soft, which reads the same bridged tokens).
+ * GAIA's fills, which HeroUI's Button lacks. default-solid is v2's bare default
+ * button (zinc-700 fill); accent-soft is v2's primary flat button; default-soft is
+ * v2's default flat button (zinc-700 at 40%); success-soft and warning-soft are v2's
+ * success/warning flat buttons (danger flat is HeroUI's own danger-soft).
  */
+export const GAIA_BUTTON_FILLS = {
+  "default-solid":
+    "bg-zinc-700 text-foreground hover:bg-zinc-600 active:bg-zinc-600",
+  "default-soft":
+    "bg-default-soft text-foreground hover:bg-default-soft-hover active:bg-default-soft-hover",
+  "success-soft":
+    "bg-success-soft text-success-soft-foreground hover:bg-success-soft-hover active:bg-success-soft-hover",
+  "warning-soft":
+    "bg-warning-soft text-warning-soft-foreground hover:bg-warning-soft-hover active:bg-warning-soft-hover",
+  "accent-soft":
+    "bg-accent-soft text-accent-soft-foreground hover:bg-accent-soft-hover active:bg-accent-soft-hover",
+} as const;
+
+export type GaiaButtonFill = keyof typeof GAIA_BUTTON_FILLS;
+
+export function isGaiaButtonFill(variant: string): variant is GaiaButtonFill {
+  return Object.hasOwn(GAIA_BUTTON_FILLS, variant);
+}
+
+/** HeroUI's button variants plus GAIA's fills, shape and tone, extended the way HeroUI documents. */
 export const buttonVariants = tv({
   extend: heroButtonVariants,
   variants: {
-    variant: {
-      "default-solid":
-        "bg-zinc-700 text-foreground hover:bg-zinc-600 active:bg-zinc-600",
-      "default-soft":
-        "bg-default-soft text-foreground hover:bg-default-soft-hover active:bg-default-soft-hover",
-      "success-soft":
-        "bg-success-soft text-success-soft-foreground hover:bg-success-soft-hover active:bg-success-soft-hover",
-      "warning-soft":
-        "bg-warning-soft text-warning-soft-foreground hover:bg-warning-soft-hover active:bg-warning-soft-hover",
-      "accent-soft":
-        "bg-accent-soft text-accent-soft-foreground hover:bg-accent-soft-hover active:bg-accent-soft-hover",
-    },
+    variant: GAIA_BUTTON_FILLS,
     shape: SHAPE_CLASSES,
     tone: BUTTON_TONE_CLASSES,
   },

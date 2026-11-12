@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import {
   ArrowRight02Icon,
   PlayIcon,
@@ -190,10 +190,10 @@ export default function DemoWorkflowsView() {
                 Browse Use Cases
                 <ArrowRight02Icon className="h-4 w-4" />
               </GaiaButton>
-              <Button size="sm" variant="primary">
+              <GaiaButton size="sm" variant="primary">
                 <ZapIcon className="h-4 w-4" />
                 Create New Workflow
-              </Button>
+              </GaiaButton>
             </div>
           </div>
         </div>

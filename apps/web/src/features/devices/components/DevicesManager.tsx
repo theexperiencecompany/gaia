@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Chip, Link, Spinner } from "@heroui/react";
+import { Chip, Link, Spinner } from "@heroui/react";
 import {
   BookOpen01Icon,
   ComputerIcon,
@@ -55,7 +55,7 @@ function DeviceRow({
             </p>
           </div>
         </div>
-        <Button
+        <GaiaButton
           variant="danger-soft"
           size="sm"
           isPending={isRevoking}
@@ -63,7 +63,7 @@ function DeviceRow({
         >
           <Delete02Icon className="size-4" />
           Revoke
-        </Button>
+        </GaiaButton>
       </div>
 
       {device.servers.length > 0 && (

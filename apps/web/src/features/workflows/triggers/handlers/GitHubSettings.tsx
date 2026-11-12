@@ -7,9 +7,10 @@
 
 "use client";
 
-import { Button, ListBox, Select } from "@heroui/react";
+import { ListBox, Select } from "@heroui/react";
 import { useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -207,7 +208,7 @@ export function GitHubSettings({
               </button>
             </div>
             {hasNextPage && !isLoading && (
-              <Button
+              <GaiaButton
                 size="sm"
                 variant="ghost"
                 className="w-full text-xs"
@@ -215,7 +216,7 @@ export function GitHubSettings({
                 isPending={isFetchingNextPage}
               >
                 Load more repositories
-              </Button>
+              </GaiaButton>
             )}
           </div>
         ) : (

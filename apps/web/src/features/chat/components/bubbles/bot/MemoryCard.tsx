@@ -321,7 +321,7 @@ export default function MemoryCard({ items: rawItems }: MemoryCardProps) {
             {index > 0 && (
               <Separator
                 className={separatorVariants({
-                  tone: "subtle",
+                  surface: "raised",
                   className: "mb-3",
                 })}
               />
