@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import UseCasesPageClient from "@/app/[locale]/(landing)/use-cases/client";
 import JsonLd from "@/components/seo/JsonLd";
 import {
-  getCommunityWorkflowsServer,
+  getAllCommunityWorkflowsServer,
   getExploreWorkflowsServer,
 } from "@/features/workflows/lib/serverWorkflowsApi";
 import { withoutTemplateCopies } from "@/features/workflows/lib/templateCopies";
@@ -39,13 +39,14 @@ const EXPLORE_TEMPLATE_LIMIT = 1000;
 
 export default async function UseCasesPage() {
   const [community, templates] = await Promise.all([
-    getCommunityWorkflowsServer(COMMUNITY_LISTING_SIZE),
+    getAllCommunityWorkflowsServer(),
     getExploreWorkflowsServer(EXPLORE_TEMPLATE_LIMIT),
   ]);
   // The official templates are listed above; a community copy of one would be the same card twice.
-  const communityWorkflows = withoutTemplateCopies(
-    community.workflows,
-    templates,
+  // Filter the whole list before taking the newest few, so copies never crowd out originals.
+  const communityWorkflows = withoutTemplateCopies(community, templates).slice(
+    0,
+    COMMUNITY_LISTING_SIZE,
   );
 
   const webPageSchema = generateWebPageSchema(
