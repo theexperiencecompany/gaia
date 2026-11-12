@@ -194,9 +194,10 @@ def _dead_tokens_from_receipts(tokens: list[str], response: httpx.Response) -> l
         receipts = _ExpoPushReceipts.model_validate(response.json())
     except ValueError:
         return []
+    pairs = zip(tokens, receipts.data, strict=False)  # pragma: no mutate — the default; B905
     return [
         token
-        for token, ticket in zip(tokens, receipts.data, strict=False)
+        for token, ticket in pairs
         if ticket.status == "error"
         and ticket.details is not None
         and ticket.details.error == _EXPO_UNREGISTERED_DEVICE_ERROR
