@@ -568,7 +568,7 @@
     "name": "Asana",
     "tagline": "チーム向けプロジェクト・タスク管理プラットフォーム",
     "description": "Asanaは、チームの協力とプロジェクト管理のために作られたツールで、複数のチームの業務進捗を可視化・管理することができます。GAIAは、あなたのメール、カレンダー、タスク、ワークフローを自動的に管理するプロアクティブなAIアシスタントです。あなたのデジタルライフ全体を横断してサポートします。",
-    "metaTitle": "Asanaとの比較：ユーザー単位の料金がないAIアシスタント",
+    "metaTitle": "Asanaとの比較：メールからタスクを作る能動的なAIアシスタント",
     "metaDescription": "Asanaはユーザーごとに料金がかかり、タスク管理は手動です。GAIAはソースコード公開のAsana代替AIで、メールからタスクを自動生成し、ワークフローを自動化。非商用ならセルフホストも無料。",
     "keywords": [
       "GAIA vs Asana",
@@ -5522,7 +5522,7 @@
     "name": "Loom",
     "tagline": "Async video messaging that replaces meetings",
     "description": "Loom is an async video messaging tool that lets teams share screen recordings to replace unnecessary meetings. GAIA is a proactive AI productivity assistant that manages the tasks, workflows, and communications that surround your work — with or without video.",
-    "metaTitle": "Loomの代替：非同期の動画連絡とワークフローを自動化するGAIA",
+    "metaTitle": "Loomの代替：動画連絡の前後の作業を自動化するAIアシスタントGAIA",
     "metaDescription": "Loomは動画で会議を減らしますが、タスクは管理しません。GAIAは受信トレイとカレンダー、ツール横断のワークフローを自動化します。日々の手間を減らせます。",
     "keywords": [
       "loom alternative",
@@ -7230,7 +7230,7 @@
     "name": "Otter.ai",
     "tagline": "AI meeting transcription and notes",
     "description": "Otter.ai automatically transcribes meetings, generates summaries, and identifies action items from calls. GAIA is a proactive AI assistant that goes further by connecting meeting outcomes to your tasks, calendar, and entire tool stack.",
-    "metaTitle": "Otter.aiの代替：会議の文字起こしから次の行動まで実行するGAIA",
+    "metaTitle": "Otter.aiの代替：既存の議事録から次の行動まで実行するGAIA",
     "metaDescription": "Otter.aiは文字起こし止まりです。GAIAは会議の準備から文字起こし、フォローアップ、タスク自動化まで、仕事の流れ全体を管理します。日々の手間を減らせます。",
     "keywords": [
       "otter.ai alternative",
