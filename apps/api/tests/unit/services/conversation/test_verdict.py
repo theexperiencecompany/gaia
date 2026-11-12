@@ -177,6 +177,10 @@ def test_quote_target_ignores_visible_entries_at_or_after_the_reply() -> None:
     assert quote_target(["u1"], 2, [_msg(1, "u1"), _reply(2, "r1"), _msg(3, "u3")]) is None
 
 
+def test_quote_target_ignores_unanswered_entries_before_the_newest_answered_message() -> None:
+    assert quote_target(["u2"], 3, [_msg(1, "u1"), _msg(2, "u2")]) is None
+
+
 def test_quote_target_picks_the_newest_answered_message() -> None:
     visible = [_msg(1, "u1"), _msg(2, "u2"), _reply(3, "r2"), _msg(4, "u4"), _reply(5, "r4")]
     assert quote_target(["u1", "u4"], 6, visible) == "u4"

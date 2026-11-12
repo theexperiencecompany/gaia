@@ -23,7 +23,6 @@ from typing import Any, TypedDict, cast
 from langgraph.types import Command
 
 from app.agents.core.background.executor_queue import (
-    ExecutorRunItem,
     LockClaim,
     prepare_run_from_item,
 )
@@ -34,6 +33,7 @@ from app.constants.hil import (
     ApprovalResolution,
 )
 from app.constants.log_tags import LogTag
+from app.models.agent_models import ExecutorRunItem
 from app.models.hil_models import ApprovalScope, HILApprovalRecord, HILApprovalStatus
 from app.schemas.hil_schemas import BatchDecisionOutcome
 from app.services.hil.approvals_store import (

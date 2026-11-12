@@ -65,9 +65,10 @@ def test_the_embedding_sidecar_imports_without_settings() -> None:
 
 
 def test_the_conversation_core_imports_without_settings() -> None:
-    """The reducer and verdict are pure, so a fresh interpreter importing them never loads settings."""
+    """The conversation log, its frames, the reducer and the verdict are pure: importing them never loads settings."""
     probe = (
         "import sys\n"
+        "import app.models.conversation_log_models, app.models.conversation_frame_models\n"
         "import app.services.conversation.reducer, app.services.conversation.verdict\n"
         "loaded = 'app.config.settings' in sys.modules\n"
         "sys.exit('app.config.settings was imported' if loaded else 0)\n"

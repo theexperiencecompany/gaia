@@ -16,7 +16,7 @@ from typing import Any, ClassVar, Generic, TypeVar, cast
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorCollection
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ValidationError
 from pymongo import ReturnDocument, UpdateOne
 from pymongo.errors import BulkWriteError
 
@@ -29,27 +29,9 @@ from app.db.repositories.cache import (
     query_arg_hash,
     read_generation,
 )
+from app.models.document_models import MongoDocument, UserScopedDocument
 from app.utils.errors import AppError, EmptyUpdateError, RepositoryMisconfiguredError
 from shared.py.wide_events import log
-
-
-class MongoDocument(BaseModel):
-    """Base for every repository document model — carries the string id.
-
-    ``extra="ignore"`` so a legacy document with stray fields still reads (the
-    write side is fully controlled by the update model's ``extra="forbid"``).
-    """
-
-    model_config = ConfigDict(extra="ignore")
-
-    id: str = ""
-
-
-class UserScopedDocument(MongoDocument):
-    """A document owned by a user — the base for user-scoped repositories."""
-
-    user_id: str
-
 
 TDoc = TypeVar("TDoc", bound=MongoDocument)
 TUserDoc = TypeVar("TUserDoc", bound=UserScopedDocument)

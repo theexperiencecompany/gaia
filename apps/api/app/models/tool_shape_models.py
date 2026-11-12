@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 
 
 class ToolOutputShapeDocument(MongoDocument):

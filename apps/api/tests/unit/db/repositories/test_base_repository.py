@@ -16,7 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pydantic import BaseModel
 import pytest
 
-from app.db.repositories.base import MongoDocument, _BaseRepository
+from app.db.repositories.base import _BaseRepository
+from app.models.document_models import MongoDocument
 from app.utils.errors import RepositoryMisconfiguredError
 
 

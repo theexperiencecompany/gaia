@@ -30,7 +30,6 @@ from app.constants.log_tags import LogTag
 from app.models.hil_models import ApprovalLedgerDocument, HILApprovalStatus, LedgerState
 from app.services.hil.bridge import (
     ApprovalOutcome,
-    GatedApproval,
     build_summary,
     flush_held_approval_cards,
     publish_approval_request,
@@ -41,7 +40,7 @@ from app.services.hil.bridge import (
     settle_session_approval_frame,
     sync_conversation_approval_flag,
 )
-from app.services.hil.utils import GatedCall
+from app.services.hil.utils import GatedApproval, GatedCall
 from app.utils.general_utils import ELLIPSIS
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilCardShown

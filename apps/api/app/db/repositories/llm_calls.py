@@ -22,7 +22,8 @@ from pydantic import BaseModel, ConfigDict, model_validator
 from pymongo import UpdateOne
 
 from app.constants.general import EXECUTOR_THREAD_PREFIX, SPAWN_THREAD_PREFIX
-from app.db.repositories.base import MongoDocument, MongoRepository
+from app.db.repositories.base import MongoRepository
+from app.models.document_models import MongoDocument
 
 CostSource = Literal["provider", "table"]
 CallStatus = Literal["ok", "error"]

@@ -16,7 +16,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from app.db.repositories.base import UserScopedDocument, UserScopedRepository
+from app.db.repositories.base import UserScopedRepository
+from app.models.document_models import UserScopedDocument
 
 
 class UsageDailyDocument(UserScopedDocument):

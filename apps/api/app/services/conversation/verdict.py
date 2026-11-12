@@ -57,12 +57,14 @@ def verdict(
 def quote_target(
     answers: Sequence[str], reply_seq: int, visible: Sequence[VisibleEntry]
 ) -> str | None:
-    """Return the newest answered user message's id when an unanswered visible entry sits between it and the reply."""
+    """Return the newest answered user message's id when an unanswered entry sits between it and the reply; visible is in seq order."""
     answered = set(answers)
     earlier = [item for item in visible if item.seq < reply_seq]
-    asked = [item for item in earlier if item.is_user_message and item.id in answered]
+    asked = [
+        index for index, item in enumerate(earlier) if item.is_user_message and item.id in answered
+    ]
     if not asked:
         return None
-    newest = max(asked, key=lambda item: item.seq)
-    interrupted = any(item.id not in answered for item in earlier if item.seq > newest.seq)
-    return newest.id if interrupted else None
+    newest = asked[-1]
+    interrupted = any(item.id not in answered for item in earlier[newest + 1 :])
+    return earlier[newest].id if interrupted else None

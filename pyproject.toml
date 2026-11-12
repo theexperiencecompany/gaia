@@ -142,6 +142,13 @@ ignore_names = [
   "render_by_suite",  # rescore report helper consumed only by unit tests (vulture excludes tests)
   "contract_failures",  # prompt-contract API consumed only by test_prompt_contracts.py (vulture excludes tests)
   "reset_captured_loop",  # server-loop test cleanup consumed only by unit tests (vulture excludes tests)
+  # Conversation-runtime pure core: consumed only by its unit tests until the step and
+  # sweeper land (conversation-runtime plan PRs 3, 7, 8); delete these entries when they do.
+  "empty",
+  "with_comms",
+  "merge_group",
+  "needs_reply",
+  "quote_target",
 ]
 
 # ---------------------------------------------------------------------------

@@ -26,7 +26,6 @@ import pytest
 from app.agents.core.background import executor_queue as eq, session as sess
 from app.agents.core.background.executor_queue import (
     QUEUED_STREAM_ID_PREFIX,
-    ExecutorRunItem,
     LockClaim,
     LockState,
     adopt_lock,
@@ -56,7 +55,7 @@ from app.constants.cache import (
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.models.agent_models import AgentConfigurable
+from app.models.agent_models import AgentConfigurable, ExecutorRunItem
 from app.models.user_models import AuthenticatedUser
 from shared.py.analytics import Dedupe
 from tests.helpers import captured_wide_event
