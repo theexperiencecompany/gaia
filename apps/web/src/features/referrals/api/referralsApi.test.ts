@@ -61,13 +61,13 @@ describe("referralsApi failure reporting", () => {
     vi.restoreAllMocks();
   });
 
-  it.each<[string, ReferralCall, string]>([
-    ["getMe", getMe, "REFERRAL_SUBSCRIPTION_REQUIRED"],
-    ["getMe", getMe, "REFERRALS_DISABLED"],
-    ["getSuggestions", getSuggestions, "REFERRALS_DISABLED"],
+  it.each<[string, string, ReferralCall]>([
+    ["getMe", "REFERRAL_SUBSCRIPTION_REQUIRED", getMe],
+    ["getMe", "REFERRALS_DISABLED", getMe],
+    ["getSuggestions", "REFERRALS_DISABLED", getSuggestions],
   ])(
     "%s answers %s without logging, tracking or toasting a failure",
-    async (_name, call, code) => {
+    async (_name, code, call) => {
       apiauth.defaults.adapter = answerWith(HTTP_FORBIDDEN, code);
 
       await expect(call()).rejects.toMatchObject({
@@ -82,13 +82,13 @@ describe("referralsApi failure reporting", () => {
   );
 
   // An invite is a click, so the paused-program toast is the user's only answer.
-  it.each<[string, ReferralCall, number, string]>([
-    ["getMe", getMe, HTTP_FORBIDDEN, "FORBIDDEN"],
-    ["getMe", getMe, HTTP_SERVER_ERROR, "internal_error"],
-    ["sendInvites", sendInvite, HTTP_FORBIDDEN, "REFERRALS_DISABLED"],
+  it.each<[string, number, string, ReferralCall]>([
+    ["getMe", HTTP_FORBIDDEN, "FORBIDDEN", getMe],
+    ["getMe", HTTP_SERVER_ERROR, "internal_error", getMe],
+    ["sendInvites", HTTP_FORBIDDEN, "REFERRALS_DISABLED", sendInvite],
   ])(
     "%s still reports a %i %s as a failure",
-    async (_name, call, status, code) => {
+    async (_name, status, code, call) => {
       apiauth.defaults.adapter = answerWith(status, code);
 
       await expect(call()).rejects.toMatchObject({ status, code });
