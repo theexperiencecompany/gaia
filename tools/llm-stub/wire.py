@@ -11,13 +11,15 @@ each parsed chunk itself, so the stub emits plain OpenAI chunks.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import asyncio
+from collections.abc import AsyncIterator, Iterator
 import json
+import re
 import time
 from typing import Any
 from uuid import uuid4
 
-from directives import Response, ToolCallResponse
+from directives import Response, SayResponse, ToolCallResponse
 
 
 class ScriptedFault(RuntimeError):
@@ -122,6 +124,13 @@ def _chunk(
     }
 
 
+def _words(text: str) -> list[str]:
+    """Split text into words, each keeping the whitespace after it, so the pieces rejoin exactly."""
+    words = re.findall(r"\S+\s*", text)
+    leading = text[: len(text) - len(text.lstrip())]
+    return [leading + words[0], *words[1:]] if words else [text]
+
+
 def _split(text: str, pieces: int) -> list[str]:
     if not text:
         return [""]
@@ -165,7 +174,10 @@ def stream_chunks(model: str, response: Response, prompt_tokens: int) -> Iterato
             )
         finish_reason = "tool_calls"
     else:
-        for piece in _split(response.text, _STREAM_PIECES):
+        pieces = (
+            _words(response.text) if response.pace_ms else _split(response.text, _STREAM_PIECES)
+        )
+        for piece in pieces:
             yield _chunk(model, completion_id, created, {"content": piece}, None)
         if response.fail is not None:
             # Raising inside the body generator makes uvicorn drop the connection
@@ -185,8 +197,11 @@ def stream_chunks(model: str, response: Response, prompt_tokens: int) -> Iterato
     }
 
 
-def sse_lines(model: str, response: Response, prompt_tokens: int) -> Iterator[str]:
-    """Serialize streaming chunks as SSE ``data:`` lines terminated by ``[DONE]``."""
+async def sse_lines(model: str, response: Response, prompt_tokens: int) -> AsyncIterator[str]:
+    """Serialize streaming chunks as SSE ``data:`` lines terminated by ``[DONE]``, paced if asked."""
+    pace_s = response.pace_ms / 1000 if isinstance(response, SayResponse) else 0
     for chunk in stream_chunks(model, response, prompt_tokens):
+        if pace_s and chunk["choices"] and "content" in chunk["choices"][0]["delta"]:
+            await asyncio.sleep(pace_s)
         yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
     yield "data: [DONE]\n\n"
