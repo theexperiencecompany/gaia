@@ -118,7 +118,7 @@ async def test_a_close_and_a_save_racing_each_other_land_every_card_once(
     conversation: ConversationDocument, raw_collection: Any
 ) -> None:
     for n in range(12):
-        card = {"tool_name": "step", "data": {"n": n}}
+        card: ToolDataEntry = {"tool_name": "step", "data": {"n": n}}
         close = save_folded_cards(
             conversation.conversation_id, conversation.user_id, f"m{n}", [card]
         )
