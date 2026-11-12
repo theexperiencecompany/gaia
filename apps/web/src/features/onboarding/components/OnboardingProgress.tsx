@@ -5,7 +5,7 @@
  * one — and Restart, which confirms via a modal before invoking `onRestart`.
  */
 
-import { Button, Dropdown, Modal } from "@heroui/react";
+import { Button, Dropdown, Header, Modal } from "@heroui/react";
 import { Logout02Icon, RedoIcon, UserCircleIcon } from "@icons";
 import * as m from "motion/react-m";
 import { memo, useState } from "react";
@@ -91,6 +91,7 @@ function OnboardingProgressImpl({
           }
           aria-label="Account"
         >
+          {!isRestarting && !isMobile && <UserCircleIcon size={14} />}
           {isMobile
             ? !isRestarting && <UserCircleIcon size={16} />
             : isRestarting
@@ -99,28 +100,31 @@ function OnboardingProgressImpl({
         </Button>
         <Dropdown.Popover placement={isMobile ? "bottom end" : "top end"}>
           <Dropdown.Menu aria-label="Account">
-            <Dropdown.Item
-              id={RESTART_KEY}
-              textValue="Restart onboarding"
-              isDisabled={currentStep === 0 || isRestarting}
-              onAction={() => setConfirmOpen(true)}
-            >
-              <div className="flex flex-row items-center justify-start gap-2">
-                <RedoIcon size={16} />
-                Restart onboarding
-              </div>
-            </Dropdown.Item>
-            <Dropdown.Item
-              id={LOGOUT_KEY}
-              textValue="Log out"
-              className="text-danger"
-              onAction={onLogout}
-            >
-              <div className="flex flex-row items-center justify-start gap-2">
-                <Logout02Icon size={16} />
-                Log out
-              </div>
-            </Dropdown.Item>
+            <Dropdown.Section>
+              {email && <Header>Signed in as {email}</Header>}
+              <Dropdown.Item
+                id={RESTART_KEY}
+                textValue="Restart onboarding"
+                isDisabled={currentStep === 0 || isRestarting}
+                onAction={() => setConfirmOpen(true)}
+              >
+                <div className="flex flex-row items-center justify-start gap-2">
+                  <RedoIcon size={16} />
+                  Restart onboarding
+                </div>
+              </Dropdown.Item>
+              <Dropdown.Item
+                id={LOGOUT_KEY}
+                textValue="Log out"
+                className="text-danger"
+                onAction={onLogout}
+              >
+                <div className="flex flex-row items-center justify-start gap-2">
+                  <Logout02Icon size={16} />
+                  Log out
+                </div>
+              </Dropdown.Item>
+            </Dropdown.Section>
           </Dropdown.Menu>
         </Dropdown.Popover>
       </Dropdown>

@@ -70,12 +70,18 @@ function InstructionsField({
           selectedKey={tab}
           onSelectionChange={(key) => setTab(key as "write" | "preview")}
         >
-          <Tabs.List>
-            <Tabs.Tab id="write">Write</Tabs.Tab>
-            <Tabs.Tab id="preview">Preview</Tabs.Tab>
-          </Tabs.List>
-          <Tabs.Panel id="write">{null}</Tabs.Panel>
-          <Tabs.Panel id="preview">{null}</Tabs.Panel>
+          <Tabs.ListContainer>
+            <Tabs.List aria-label="Instructions view">
+              <Tabs.Tab id="write">
+                Write
+                <Tabs.Indicator />
+              </Tabs.Tab>
+              <Tabs.Tab id="preview">
+                Preview
+                <Tabs.Indicator />
+              </Tabs.Tab>
+            </Tabs.List>
+          </Tabs.ListContainer>
         </Tabs>
       </div>
       {tab === "write" ? (
@@ -287,15 +293,21 @@ function SkillEditorForm({
             onSelectionChange={(key) => setMode(key as "write" | "import")}
             className="mb-1"
           >
-            <Tabs.List>
-              <Tabs.Tab id="write">Write your own</Tabs.Tab>
-              <Tabs.Tab id="import">
-                <div className="flex items-center gap-1.5">
-                  <Github01Icon className="size-4" />
-                  <span>Import from GitHub</span>
-                </div>
-              </Tabs.Tab>
-            </Tabs.List>
+            <Tabs.ListContainer>
+              <Tabs.List aria-label="Skill source">
+                <Tabs.Tab id="write">
+                  Write your own
+                  <Tabs.Indicator />
+                </Tabs.Tab>
+                <Tabs.Tab id="import">
+                  <div className="flex items-center gap-1.5">
+                    <Github01Icon className="size-4" />
+                    <span>Import from GitHub</span>
+                  </div>
+                  <Tabs.Indicator />
+                </Tabs.Tab>
+              </Tabs.List>
+            </Tabs.ListContainer>
             <Tabs.Panel id="write">{writeForm}</Tabs.Panel>
             <Tabs.Panel id="import">
               <SkillImportForm targets={targets} onInstalled={onSaved} />
