@@ -21,6 +21,7 @@ from standardwebhooks.webhooks import Webhook
 
 from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.models.message_models import MessageDict, MessageRequestWithHistory
+from app.models.stream_events import ConversationInitializedFrame
 from app.models.user_models import (
     OnboardingAnswers,
     OnboardingNeed,
@@ -50,7 +51,8 @@ from .posthog_api import REPO_ROOT
 DEV_USER_HEADER = "X-Dev-User"
 BOT_PLATFORM = "telegram"
 WEBHOOK_SECRET_ENV = "DODO_WEBHOOK_PAYMENTS_SECRET"
-STREAM_DONE = "data: [DONE]"
+SSE_DATA_PREFIX = "data: "
+STREAM_DONE = f"{SSE_DATA_PREFIX}[DONE]"
 HTTP_TIMEOUT_S = 120.0
 BOT_SIM_TIMEOUT_S = 300
 # A Pro price in cents; the webhook reports it, nothing is charged.
@@ -245,16 +247,34 @@ def payment(stack: Stack) -> None:
 
 
 def chat(stack: Stack) -> None:
-    """Run one scripted chat turn through /chat-stream and read the stream to its end."""
-    with (
-        stack.client() as api,
-        api.stream("POST", "/chat-stream", json=_chat_request(), headers=stack.browser()) as reply,
-    ):
-        if reply.status_code != HTTPStatus.OK:
-            reply.read()
-            _expect(reply, HTTPStatus.OK)
-        if not any(line.strip() == STREAM_DONE for line in reply.iter_lines()):
+    """Run one scripted chat turn through /chat-stream to its end, then press Stop on its conversation."""
+    with stack.client() as api:
+        with api.stream(
+            "POST", "/chat-stream", json=_chat_request(), headers=stack.browser()
+        ) as reply:
+            if reply.status_code != HTTPStatus.OK:
+                reply.read()
+                _expect(reply, HTTPStatus.OK)
+            lines = [line.strip() for line in reply.iter_lines()]
+        if STREAM_DONE not in lines:
             raise JourneyError("/chat-stream ended without its [DONE] frame")
+        conversation_id = _initialized_conversation(lines)
+        _expect(
+            api.post(f"/conversations/{conversation_id}/stop", headers=stack.browser()),
+            HTTPStatus.OK,
+        )
+
+
+def _initialized_conversation(lines: list[str]) -> str:
+    """Return the conversation id the turn's identity frame bound."""
+    for line in lines:
+        payload = line.removeprefix(SSE_DATA_PREFIX)
+        if not payload.startswith("{") or "user_message_id" not in payload:
+            continue
+        frame = ConversationInitializedFrame.model_validate_json(payload)
+        if frame.conversation_id:
+            return frame.conversation_id
+    raise JourneyError("/chat-stream sent no identity frame naming its conversation")
 
 
 def workflow(stack: Stack) -> None:

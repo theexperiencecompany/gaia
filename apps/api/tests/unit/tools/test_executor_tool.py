@@ -19,6 +19,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 import pytest
 
+from app.agents.core.background import work_cancel
 from app.agents.core.background.confirmation_gate import record_confirmation_asked
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import release_lock_if_owned, try_acquire_lock
@@ -64,6 +65,12 @@ from app.services.browser.jobs import (
 )
 from app.utils import background_tasks
 from tests.browser_factories import make_browser_job_state
+from tests.work_cancel_fakes import (
+    BROWSER_JOB,
+    EXECUTOR_STREAM,
+    SUBAGENT_STREAM,
+    seed_live_work,
+)
 
 
 def tool_function(tool_obj: BaseTool) -> Callable[..., Awaitable[str]]:
@@ -222,7 +229,7 @@ def release_lock_on_attempt(
 def closed_approvals(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     """List which conversations had their approvals closed (the Mongo-backed HIL boundary)."""
     mock = AsyncMock(return_value=[])
-    monkeypatch.setattr(executor_tool, "cancel_conversation_approvals", mock)
+    monkeypatch.setattr(work_cancel, "cancel_conversation_approvals", mock)
     return mock
 
 
@@ -230,7 +237,7 @@ def closed_approvals(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 def closed_ledger_approvals(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     """List which conversations had their ledger approvals closed."""
     mock = AsyncMock(return_value=[])
-    monkeypatch.setattr(executor_tool, "cancel_ledger_approvals", mock)
+    monkeypatch.setattr(work_cancel, "cancel_ledger_approvals", mock)
     return mock
 
 
@@ -961,6 +968,59 @@ class TestCancelExecutor:
         broadcast.assert_not_awaited()
 
 
+@pytest.mark.usefixtures("no_arq")
+class TestCancelEverythingIsTheConversationStop:
+    """cancel_executor([]) is the same stop as the Stop button: it reaches every kind of work."""
+
+    async def test_stop_everything_cancels_run_inbox_subagents_approvals_and_browser_job(
+        self,
+        fake_redis: AsyncRedisCommands,
+        broadcast: AsyncMock,
+        closed_approvals: AsyncMock,
+        closed_ledger_approvals: AsyncMock,
+    ) -> None:
+        await seed_live_work(CONVERSATION_ID)
+
+        response = await run_cancel_executor(config=config_for(), task_ids=[])
+
+        assert response == (
+            "Cancelled: running-task, 1 pending task(s), 1 running subagent(s). "
+            "Stopped the browser task."
+        )
+        assert await StreamManager.is_cancelled(EXECUTOR_STREAM)
+        assert await StreamManager.is_cancelled(SUBAGENT_STREAM)
+        assert await fake_redis.get(LOCK_KEY) is None
+        assert await job_cancel_requested(BROWSER_JOB)
+        closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
+        closed_ledger_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
+
+    async def test_the_models_stop_is_not_the_users_and_emits_no_event(
+        self,
+        fake_redis: AsyncRedisCommands,
+        broadcast: AsyncMock,
+        posthog_events: list[dict[str, object]],
+    ) -> None:
+        await seed_live_work(CONVERSATION_ID)
+
+        await run_cancel_executor(config=config_for(), task_ids=[])
+
+        assert posthog_events == []
+
+    async def test_stop_everything_closes_approvals_when_no_run_holds_the_lock(
+        self,
+        fake_redis: AsyncRedisCommands,
+        broadcast: AsyncMock,
+        closed_approvals: AsyncMock,
+    ) -> None:
+        """A parked approval outlives the busy lock; left open, Approve revives the stopped work."""
+        closed_approvals.return_value = ["approval-1"]
+
+        response = await run_cancel_executor(config=config_for(), task_ids=[])
+
+        assert response == "Cancelled: 1 pending approval(s)."
+        closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
+
+
 class TestCancelClosesHilApprovals:
     """A parked run's approval card is a live way back into the run.
 
@@ -1260,7 +1320,6 @@ class TestCancelBroadcast:
             {
                 "type": WS_EVENT_EXECUTOR_CANCELLED,
                 "conversation_id": CONVERSATION_ID,
-                "cancelled": ["running-task"],
             },
         )
 

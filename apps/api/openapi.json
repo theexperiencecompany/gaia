@@ -1911,6 +1911,46 @@
         "title": "BotChatRequest",
         "type": "object"
       },
+      "BotSessionRequest": {
+        "description": "Names one bot session: a platform user in a DM or in one channel.",
+        "properties": {
+          "channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Channel/group ID (None for DM)",
+            "title": "Channel Id"
+          },
+          "is_dm": {
+            "default": false,
+            "description": "Whether this conversation is a direct message. Discord and Slack DM channel ids differ from the user id, so the server cannot tell a DM from a channel without this.",
+            "title": "Is Dm",
+            "type": "boolean"
+          },
+          "platform": {
+            "description": "Platform name (discord, slack, etc.)",
+            "title": "Platform",
+            "type": "string"
+          },
+          "platform_user_id": {
+            "description": "User's ID on the platform",
+            "minLength": 1,
+            "title": "Platform User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "platform_user_id"
+        ],
+        "title": "BotSessionRequest",
+        "type": "object"
+      },
       "BotSettingsResponse": {
         "description": "Response model for user settings. When authenticated=False only that field is relevant.",
         "properties": {
@@ -2121,6 +2161,15 @@
           "cancelled"
         ],
         "title": "BrowserSessionStatus",
+        "type": "string"
+      },
+      "BrowserStopOutcome": {
+        "description": "What a stop came to, as the job's ending of record says.",
+        "enum": [
+          "stopped",
+          "already_ended"
+        ],
+        "title": "BrowserStopOutcome",
         "type": "string"
       },
       "BrowserTaskFrame": {
@@ -4015,6 +4064,41 @@
         ],
         "title": "ConversationSource",
         "type": "string"
+      },
+      "ConversationStopResponse": {
+        "description": "A conversation-level Stop: the live streams it cancelled and the work it stopped.",
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The conversation stopped; None when a bot chat had none yet.",
+            "title": "Conversation Id"
+          },
+          "stream_ids": {
+            "description": "Live streams cancelled.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Stream Ids",
+            "type": "array"
+          },
+          "work": {
+            "$ref": "#/components/schemas/WorkCancelled"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "stream_ids",
+          "work"
+        ],
+        "title": "ConversationStopResponse",
+        "type": "object"
       },
       "ConversationSummary": {
         "additionalProperties": true,
@@ -15798,46 +15882,6 @@
         "title": "ReplyToMessageData",
         "type": "object"
       },
-      "ResetSessionRequest": {
-        "description": "Request model for resetting a bot session (starting a new conversation).",
-        "properties": {
-          "channel_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Channel/group ID (None for DM)",
-            "title": "Channel Id"
-          },
-          "is_dm": {
-            "default": false,
-            "description": "Whether this conversation is a direct message. Discord and Slack DM channel ids differ from the user id, so the server cannot tell a DM from a channel without this.",
-            "title": "Is Dm",
-            "type": "boolean"
-          },
-          "platform": {
-            "description": "Platform name (discord, slack, etc.)",
-            "title": "Platform",
-            "type": "string"
-          },
-          "platform_user_id": {
-            "description": "User's ID on the platform",
-            "minLength": 1,
-            "title": "Platform User Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "platform",
-          "platform_user_id"
-        ],
-        "title": "ResetSessionRequest",
-        "type": "object"
-      },
       "ResetSessionResponse": {
         "description": "Response model for a bot session reset.",
         "properties": {
@@ -21572,6 +21616,85 @@
         "title": "WebSearchResult",
         "type": "object"
       },
+      "WorkCancelled": {
+        "description": "Everything one stop cancelled; all empty when the conversation was idle.",
+        "properties": {
+          "approval_ids": {
+            "description": "Pending approvals closed, barrier and ledger.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Approval Ids",
+            "type": "array"
+          },
+          "browser_jobs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BrowserStopOutcome"
+            },
+            "description": "Browser jobs reached, with what each stop came to.",
+            "title": "Browser Jobs",
+            "type": "object"
+          },
+          "executor_spared": {
+            "default": false,
+            "description": "An executor task kept running because the stop did not name it.",
+            "title": "Executor Spared",
+            "type": "boolean"
+          },
+          "executor_stopped": {
+            "default": false,
+            "description": "A running executor task was stopped.",
+            "title": "Executor Stopped",
+            "type": "boolean"
+          },
+          "executor_task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Task id of the stopped executor run; None for a lock without one.",
+            "title": "Executor Task Id"
+          },
+          "pending_task_ids": {
+            "description": "Queued executor requests dropped by id.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Pending Task Ids",
+            "type": "array"
+          },
+          "pending_tasks": {
+            "default": 0,
+            "description": "Queued executor requests dropped wholesale.",
+            "title": "Pending Tasks",
+            "type": "integer"
+          },
+          "subagent_ids": {
+            "description": "Running subagents stopped.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Subagent Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "executor_stopped",
+          "executor_task_id",
+          "executor_spared",
+          "pending_tasks",
+          "pending_task_ids",
+          "subagent_ids",
+          "approval_ids",
+          "browser_jobs"
+        ],
+        "title": "WorkCancelled",
+        "type": "object"
+      },
       "WorkflowCreator": {
         "description": "The public-facing creator card built by ``format_creator``.\n\nA ``TypedDict``, not a model: it rides inside the untyped card dicts of\n``PublicWorkflowsResponse.workflows`` as well as ``Workflow.creator``, so it\nhas to stay a plain dict on the wire for both.",
         "properties": {
@@ -23820,7 +23943,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ResetSessionRequest"
+                "$ref": "#/components/schemas/BotSessionRequest"
               }
             }
           },
@@ -23941,6 +24064,68 @@
           }
         },
         "summary": "Get User Settings",
+        "tags": [
+          "Bot"
+        ]
+      }
+    },
+    "/api/v1/bot/stop": {
+      "post": {
+        "description": "Stop everything the session's conversation is running, keeping the session.",
+        "operationId": "bot_stop_session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BotSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationStopResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Stop Bot Conversation",
         "tags": [
           "Bot"
         ]
@@ -26548,6 +26733,69 @@
           }
         },
         "summary": "Star Conversation Endpoint",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
+    "/api/v1/conversations/{conversation_id}/stop": {
+      "post": {
+        "description": "Stop everything running for a conversation: its live turn, executor, subagents, approvals and browser job.",
+        "operationId": "conversations_stop_conversation_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationStopResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Stop Conversation Endpoint",
         "tags": [
           "Conversations"
         ]

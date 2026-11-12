@@ -77,7 +77,6 @@ export class TurnSession {
 
   private conversationId: string | null;
   private botMessageId: string | null = null;
-  private streamId: string | null = null;
   private botCreatedAt: Date | null = null;
 
   private acc: TurnAccumulator = createTurnAccumulator();
@@ -216,7 +215,6 @@ export class TurnSession {
    * and the turn keeps streaming live from where the backend actually is.
    */
   private async attachToStream(streamId: string): Promise<void> {
-    this.streamId = streamId;
     await chatApi.subscribeToExecutorStream(
       streamId,
       (event) => {
@@ -276,12 +274,18 @@ export class TurnSession {
     }
 
     this.controller.abort();
-    if (this.streamId) {
-      cancelStreamOnBackend(this.streamId);
-    }
-    // Reconcile with the backend's cancel-save, which can land seconds later.
     if (this.conversationId) {
-      void syncConversationWithRetry(this.conversationId);
+      const conversationId = this.conversationId;
+      // The server stops the conversation's turn and every background run it started.
+      chatApi.stopConversation(conversationId).catch((error: unknown) => {
+        streamLogError("lifecycle", "stop-request-failed", {
+          turnKey: this.key,
+          conversationId,
+          detail: { error: String(error) },
+        });
+      });
+      // Reconcile with the backend's cancel-save, which can land seconds later.
+      void syncConversationWithRetry(conversationId);
     }
     this.end();
   }
@@ -453,7 +457,6 @@ export class TurnSession {
     // The backend replays the identity frame for late subscribers, so it can
     // arrive twice (replay + live copy) — bind exactly once.
     if (this.botMessageId) return;
-    if (event.stream_id) this.streamId = event.stream_id;
 
     // A resumed session's local userMessage is an empty stub — adopt the text
     // from the replayed frame so the record can be rebuilt from the log alone.
@@ -1016,23 +1019,6 @@ export class TurnSession {
       history.push({ role: "user", content: this.args.userMessage.response });
     }
     return history;
-  }
-}
-
-/** Notify the backend to stop generating. Fire-and-forget. */
-async function cancelStreamOnBackend(streamId: string): Promise<void> {
-  try {
-    await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL}cancel-stream/${streamId}`,
-      {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-      },
-    );
-  } catch (error) {
-    // The stream may already be done — nothing to recover.
-    console.debug("Cancel stream request failed:", error);
   }
 }
 

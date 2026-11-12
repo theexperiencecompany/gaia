@@ -27,6 +27,7 @@ __all__ = [
     "ChatToolsButtonClicked",
     "ChatTurnReacted",
     "ChatVoiceModeToggled",
+    "ChatWorkStopped",
     "ImageDescribed",
     "ImageGenerated",
     "SessionArtifactPinned",
@@ -95,6 +96,20 @@ class ChatMessageCancelled(_ChatTurnEnded):
 
     event: ClassVar[str] = "chat:message_cancelled"
     budget_per_user_day: ClassVar[int] = 10
+
+
+class ChatWorkStopped(ServerEvent):
+    """The user stopped a conversation: its live turn and the background work it had running."""
+
+    event: ClassVar[str] = "chat:work_stopped"
+    budget_per_user_day: ClassVar[int] = 20
+
+    streams: int
+    executor_stopped: bool
+    pending_tasks: int
+    subagents: int
+    approvals: int
+    browser_jobs: int
 
 
 class ChatBackgroundUpdateResolved(ServerEvent):
