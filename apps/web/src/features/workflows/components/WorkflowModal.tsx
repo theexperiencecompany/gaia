@@ -318,8 +318,8 @@ export default function WorkflowModal({
             <Modal.Dialog
               className={
                 isTwoColumn
-                  ? "h-[85vh] max-h-208 max-w-6xl bg-secondary-bg"
-                  : `${modalVariants({ size: "4xl" })} max-h-[90vh] bg-secondary-bg`
+                  ? "h-[85vh] max-h-208 max-w-6xl"
+                  : `${modalVariants({ size: "4xl" })} max-h-[90vh]`
               }
             >
               <Modal.Body className="flex min-h-0 flex-col gap-0 p-0">

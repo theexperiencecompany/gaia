@@ -1,4 +1,4 @@
-import { Button, Tooltip } from "@heroui/react";
+import { Tooltip } from "@heroui/react";
 import { CheckmarkCircle02Icon } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
@@ -87,11 +87,11 @@ export const NotificationItem = ({
                 action.disabled || isExecuted || isCurrentlyExecuting;
 
               return (
-                <Button
+                <GaiaButton
                   key={action.id}
-                  variant={action.style === "primary" ? "primary" : "tertiary"}
+                  variant="tertiary"
                   size="sm"
-                  className={`h-7 bg-zinc-800/50 text-xs text-zinc-200 hover:bg-zinc-800/70 ${isExecuted ? "cursor-not-allowed opacity-50" : ""}`}
+                  className={`h-7 text-xs ${isExecuted ? "cursor-not-allowed opacity-50" : ""}`}
                   isDisabled={isDisabled}
                   onPress={() => executeAction(notification.id, action)}
                 >
@@ -106,7 +106,7 @@ export const NotificationItem = ({
                       {isExecuted && <span className="ml-1">✓</span>}
                     </>
                   )}
-                </Button>
+                </GaiaButton>
               );
             })}
           </div>

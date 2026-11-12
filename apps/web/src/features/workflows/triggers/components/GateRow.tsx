@@ -36,7 +36,7 @@ export function GateRow({ saved, watchesMail, ...rule }: GateRowProps) {
         />
       </Button>
       <Popover.Content placement="bottom" offset={6}>
-        <Popover.Dialog className="w-80 rounded-2xl bg-zinc-900 p-0 shadow-xl">
+        <Popover.Dialog className="w-80 shadow-xl">
           <GateDetail
             {...rule}
             skips={skips}

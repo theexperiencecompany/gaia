@@ -133,7 +133,7 @@ export default function WorkflowCreatedCard({
             size="sm"
             variant="soft"
             color="success"
-            className="shrink-0 bg-success/15 text-xs font-medium"
+            className="shrink-0 text-xs font-medium"
           >
             <CheckmarkCircle02Icon className="size-3" />
             Created

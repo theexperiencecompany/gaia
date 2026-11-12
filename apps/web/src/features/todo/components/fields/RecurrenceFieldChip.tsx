@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { Cancel01Icon, RepeatIcon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 import BaseFieldChip from "./BaseFieldChip";
 
@@ -46,14 +46,13 @@ export default function RecurrenceFieldChip({
             const isOptionSelected =
               value === option.value || (!value && option.value === undefined);
             return (
-              <Button
+              <GaiaButton
                 key={option.value ?? "none"}
                 variant="ghost"
+                tone={isOptionSelected ? "default" : "faint"}
                 fullWidth
                 aria-pressed={isOptionSelected}
-                className={`justify-start gap-2 px-3 text-sm ${
-                  isOptionSelected ? "text-zinc-200" : "text-zinc-500"
-                }`}
+                className="justify-start gap-2 text-sm"
                 onPress={() => {
                   onChange(option.value);
                   onClose();
@@ -65,7 +64,7 @@ export default function RecurrenceFieldChip({
                   <RepeatIcon width={18} height={18} />
                 )}
                 {option.label}
-              </Button>
+              </GaiaButton>
             );
           })}
         </div>
