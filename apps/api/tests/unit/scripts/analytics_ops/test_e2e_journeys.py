@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import httpx
 import pytest
 from scripts.analytics_ops.e2e_journeys import (
     JourneyError,
-    _initialized_conversation,
     await_execution,
+    await_reply,
 )
 
-from app.models.stream_events import ConversationInitializedFrame
+from app.models.conversation_frame_models import EntryFrame
+from app.models.conversation_log_models import FailureReason, ReplyOutcome, ReplySettled
+from app.models.conversation_send_models import ConversationEvent
 
 WORKFLOW = "wf_1"
 EXECUTIONS_PATH = f"/api/v1/workflows/{WORKFLOW}/executions"
@@ -74,19 +77,36 @@ def test_a_workflow_executed_once_that_ran_twice_fails_the_journey() -> None:
         await_execution(_api(twice), WORKFLOW, timeout_s=5, poll_s=0)
 
 
-def test_the_chat_journey_stops_the_conversation_its_identity_frame_bound() -> None:
-    frame = ConversationInitializedFrame(
-        conversation_id="conv-1",
-        user_message_id="u1",
-        user_message_content="hi",
-        bot_message_id="b1",
-        stream_id="s1",
+def _settled(answers: tuple[str, ...], outcome: ReplyOutcome = ReplyOutcome.ANSWERED) -> str:
+    entry = ReplySettled(
+        id="r1:settled",
+        reply_id="r1",
+        outcome=outcome,
+        answers=answers,
+        through=1,
+        quote_target=None,
+        failure=FailureReason.MODEL_ERROR if outcome is ReplyOutcome.FAILED else None,
     )
-    lines = ['data: {"response": "hi"}', f"data: {frame.model_dump_json()}", "data: [DONE]"]
+    frame = EntryFrame(seq=2, at=datetime(2026, 11, 13, tzinfo=UTC), entry=entry)
+    return f"data: {ConversationEvent(stream_id=None, frame=frame).model_dump_json()}"
 
-    assert _initialized_conversation(lines) == "conv-1"
+
+def test_the_chat_journey_waits_for_the_reply_to_its_own_message() -> None:
+    lines = [": keepalive", _settled(("someone-else",)), _settled(("m1",))]
+
+    await_reply(iter(lines), "m1", deadline=float("inf"))
 
 
-def test_a_chat_stream_without_an_identity_frame_fails_the_journey() -> None:
-    with pytest.raises(JourneyError):
-        _initialized_conversation(['data: {"response": "hi"}', "data: [DONE]"])
+def test_a_reply_that_failed_fails_the_journey() -> None:
+    with pytest.raises(JourneyError, match="failed"):
+        await_reply(iter([_settled(("m1",), ReplyOutcome.FAILED)]), "m1", deadline=float("inf"))
+
+
+def test_a_stream_that_ends_before_the_reply_fails_the_journey() -> None:
+    with pytest.raises(JourneyError, match="ended"):
+        await_reply(iter([_settled(("someone-else",))]), "m1", deadline=float("inf"))
+
+
+def test_a_reply_past_the_deadline_fails_the_journey() -> None:
+    with pytest.raises(JourneyError, match="in time"):
+        await_reply(iter([": keepalive"]), "m1", deadline=0.0)

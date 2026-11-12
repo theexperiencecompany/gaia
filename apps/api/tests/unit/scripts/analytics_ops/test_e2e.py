@@ -72,7 +72,7 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
     ("onboarding:phase_completed", {**WEB, "phase": "paywall_reached"}),
     ("onboarding:phase_completed", {**WEB, "phase": "paid_reveal_seen"}),
     ("onboarding:phase_completed", {**WEB, "phase": "first_chat_opened"}),
-    ("paywall:blocked", {**WEB, "feature": "/api/v1/chat-stream"}),
+    ("paywall:blocked", {**WEB, "feature": "/api/v1/conversations/{conversation_id}/messages"}),
     (
         "subscription:activated",
         {

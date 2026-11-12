@@ -7,6 +7,7 @@ through gaia-sim, which runs the shared bot pipeline against the bot API route.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http import HTTPStatus
@@ -20,8 +21,13 @@ import httpx
 from standardwebhooks.webhooks import Webhook
 
 from app.constants.analytics import POSTHOG_SESSION_HEADER
-from app.models.message_models import MessageDict, MessageRequestWithHistory
-from app.models.stream_events import ConversationInitializedFrame
+from app.models.conversation_frame_models import EntryFrame
+from app.models.conversation_log_models import ReplyOutcome, ReplySettled
+from app.models.conversation_send_models import (
+    ConversationEvent,
+    MessageAccepted,
+    SendMessageRequest,
+)
 from app.models.user_models import (
     OnboardingAnswers,
     OnboardingNeed,
@@ -52,8 +58,9 @@ DEV_USER_HEADER = "X-Dev-User"
 BOT_PLATFORM = "telegram"
 WEBHOOK_SECRET_ENV = "DODO_WEBHOOK_PAYMENTS_SECRET"
 SSE_DATA_PREFIX = "data: "
-STREAM_DONE = f"{SSE_DATA_PREFIX}[DONE]"
 HTTP_TIMEOUT_S = 120.0
+# The sim reply settles in seconds; past this the step is stuck.
+REPLY_TIMEOUT_S = 120.0
 BOT_SIM_TIMEOUT_S = 300
 # A Pro price in cents; the webhook reports it, nothing is charged.
 PRO_PRICE_CENTS = 2000
@@ -156,20 +163,20 @@ def onboarding(stack: Stack) -> None:
         report(OnboardingStep.FIRST_CHAT_OPENED)
 
 
-def _chat_request() -> dict[str, object]:
-    message = MessageDict(role="user", content=SIM_REPLY)
-    return MessageRequestWithHistory(message=SIM_REPLY, messages=[message]).model_dump(
-        mode="json", exclude_none=True
+def _send(api: httpx.Client, stack: Stack, conversation_id: str) -> httpx.Response:
+    """Send the scripted message into the conversation the way the web app does."""
+    body = SendMessageRequest(message_id=str(uuid4()), text=SIM_REPLY)
+    return api.post(
+        f"/conversations/{conversation_id}/messages",
+        json=body.model_dump(mode="json", exclude_none=True),
+        headers=stack.browser(),
     )
 
 
 def paywall(stack: Stack) -> None:
-    """Send a chat turn as a free user, which the paywall refuses."""
+    """Send a chat message as a free user, which the paywall refuses."""
     with stack.client() as api:
-        _expect(
-            api.post("/chat-stream", json=_chat_request(), headers=stack.browser()),
-            HTTPStatus.PAYMENT_REQUIRED,
-        )
+        _expect(_send(api, stack, str(uuid4())), HTTPStatus.PAYMENT_REQUIRED)
 
 
 def _send_webhook(
@@ -247,34 +254,47 @@ def payment(stack: Stack) -> None:
 
 
 def chat(stack: Stack) -> None:
-    """Run one scripted chat turn through /chat-stream to its end, then press Stop on its conversation."""
+    """Send one scripted message, follow the conversation's events until its reply settles, then press Stop."""
+    conversation_id = str(uuid4())
     with stack.client() as api:
+        sent = _expect(_send(api, stack, conversation_id), HTTPStatus.ACCEPTED)
+        accepted = MessageAccepted.model_validate(sent.json())
         with api.stream(
-            "POST", "/chat-stream", json=_chat_request(), headers=stack.browser()
-        ) as reply:
-            if reply.status_code != HTTPStatus.OK:
-                reply.read()
-                _expect(reply, HTTPStatus.OK)
-            lines = [line.strip() for line in reply.iter_lines()]
-        if STREAM_DONE not in lines:
-            raise JourneyError("/chat-stream ended without its [DONE] frame")
-        conversation_id = _initialized_conversation(lines)
+            "GET",
+            f"/conversations/{conversation_id}/events",
+            params={"after": accepted.seq - 1},
+            headers=stack.browser(),
+        ) as events:
+            if events.status_code != HTTPStatus.OK:
+                events.read()
+                _expect(events, HTTPStatus.OK)
+            await_reply(
+                events.iter_lines(),
+                accepted.message_id,
+                deadline=time.monotonic() + REPLY_TIMEOUT_S,
+            )
         _expect(
             api.post(f"/conversations/{conversation_id}/stop", headers=stack.browser()),
             HTTPStatus.OK,
         )
 
 
-def _initialized_conversation(lines: list[str]) -> str:
-    """Return the conversation id the turn's identity frame bound."""
+def await_reply(lines: Iterable[str], message_id: str, *, deadline: float) -> None:
+    """Read the events stream until the reply answering message_id settles answered."""
     for line in lines:
-        payload = line.removeprefix(SSE_DATA_PREFIX)
-        if not payload.startswith("{") or "user_message_id" not in payload:
+        if time.monotonic() > deadline:
+            raise JourneyError(f"no reply to {message_id} settled in time")
+        if not line.startswith(SSE_DATA_PREFIX):
             continue
-        frame = ConversationInitializedFrame.model_validate_json(payload)
-        if frame.conversation_id:
-            return frame.conversation_id
-    raise JourneyError("/chat-stream sent no identity frame naming its conversation")
+        frame = ConversationEvent.model_validate_json(line.removeprefix(SSE_DATA_PREFIX)).frame
+        if not isinstance(frame, EntryFrame) or not isinstance(frame.entry, ReplySettled):
+            continue
+        if message_id not in frame.entry.answers:
+            continue
+        if frame.entry.outcome is not ReplyOutcome.ANSWERED:
+            raise JourneyError(f"the reply to {message_id} settled {frame.entry.outcome.value}")
+        return
+    raise JourneyError(f"the events stream ended before the reply to {message_id} settled")
 
 
 def workflow(stack: Stack) -> None:

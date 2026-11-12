@@ -158,14 +158,6 @@ class GaiaClient:
 
     # --- chat ----------------------------------------------------------------
 
-    def chat(self, message: str) -> httpx.Response:
-        return self.http.post(
-            f"{self.api}/chat-stream",
-            headers=self.headers,
-            json={"message": message, "messages": []},
-            timeout=180,
-        )
-
 
 def now() -> datetime:
     return datetime.now(UTC)
