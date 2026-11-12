@@ -3,7 +3,7 @@
 import { Radio, RadioGroup } from "@heroui/radio";
 import type { HilMode } from "@shared/chat";
 import type { IntegrationPermissions } from "@/features/integrations/hooks/useIntegrationPermissions";
-import { MODE_OPTIONS } from "@/features/integrations/utils/permissionCopy";
+import { APPROVAL_MODES } from "@/features/settings/config/approvalModes";
 import { cn } from "@/lib/utils";
 
 import { PermissionCard } from "./PermissionCard";
@@ -34,7 +34,7 @@ export const PermissionModeDecision = ({
       isDisabled={permissions.isSavingMode}
       onValueChange={(value) => permissions.changeMode(value as HilMode)}
     >
-      {MODE_OPTIONS.map((option) => (
+      {APPROVAL_MODES.map((option) => (
         <Radio
           key={option.mode}
           value={option.mode}
