@@ -1,4 +1,4 @@
-"""The stored shape of a conversation entry and its head: the one place their raw documents are read.
+"""The stored shape of a conversation entry and its head, and the expressions the append protocol commits with.
 
 An entry is one message as stored today, keyed by (user_id, conversation_id, seq)
 and (user_id, conversation_id, id); id is the message's message_id. The head is the
@@ -10,14 +10,19 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 from pymongo.errors import PyMongoError
 
 from app.constants.chat import CONVERSATION_ENTRIES_MIGRATION_SCRIPT
 from app.models.chat_models import MessageModel
-from app.models.conversation_models import ConversationEntry
+from app.models.conversation_models import (
+    ConversationEntry,
+    ConversationHead,
+    EntryKey,
+    StoredEntry,
+)
 from app.utils.errors import ConversationStoreError, UnmigratedConversationError
 
 LOG_HEAD_FIELD = "log_head"
@@ -35,7 +40,6 @@ HEAD_INTERNAL_FIELDS = (
     MIGRATED_LAST_ID_FIELD,
     _EMBEDDED_FIELD,
 )
-_ENTRY_KEY_FIELDS = ("_id", "conversation_id", "user_id", "seq", "id", "at", MIGRATION_HASH_FIELD)
 
 #: The last embedded message_id, as the migration records it; missing when the array holds none.
 EMBEDDED_LAST_ID: dict[str, object] = {
@@ -88,30 +92,37 @@ EMPTY_LOG: dict[str, object] = {
 }
 
 
-@dataclass
+@dataclass(frozen=True)
 class Head:
-    """A conversation head as the protocol reads it: its document fields, log_head and outbox."""
+    """A conversation head as the protocol reads it: the parsed log and the conversation document's own fields."""
 
-    raw: dict[str, object]
-    log_head: int
-    outbox: dict[int, dict[str, object]] = field(default_factory=dict)
-    existing: dict[str, int] = field(default_factory=dict)
+    document: ConversationHead
+    fields: dict[str, object]
 
     @property
     def conversation_id(self) -> str:
-        return str(self.raw["conversation_id"])
+        return self.document.conversation_id
 
     @property
     def user_id(self) -> str:
-        return str(self.raw["user_id"])
+        return self.document.user_id
+
+    @property
+    def log_head(self) -> int:
+        return self.document.log_head or 0
+
+    @property
+    def outbox(self) -> dict[int, StoredEntry]:
+        return self.document.outbox
 
     def known_seqs(self) -> dict[str, int]:
         """Every entry id this head's reads saw, outbox and collection both, by seq."""
-        return {**self.existing, **{str(e["id"]): seq for seq, e in self.outbox.items()}}
+        stored = {row.id: row.seq for row in self.document.existing}
+        return {**stored, **{entry.id: seq for seq, entry in self.outbox.items()}}
 
     def pending(self) -> list[ConversationEntry]:
         """Read the outbox's committed entries."""
-        return [entry_from_raw(entry) for entry in self.outbox.values()]
+        return [entry_of(entry) for entry in self.outbox.values()]
 
 
 @dataclass(frozen=True)
@@ -126,31 +137,13 @@ class StoredRow:
 
 def head_from_raw(raw: Mapping[str, object]) -> Head:
     """Parse a head read, refusing one whose messages still live only in the embedded array."""
-    data = dict(raw)
-    embedded = data.get(_EMBEDDED_FIELD)
-    if isinstance(embedded, Mapping) and embedded.get("count"):
-        migrated = LOG_HEAD_FIELD in data
-        if not migrated or data.get(MIGRATED_LAST_ID_FIELD) != embedded.get("last_id"):
-            raise unmigrated(f"conversation {data.get('conversation_id')}")
-    outbox_raw = data.get(OUTBOX_FIELD)
-    outbox = (
-        {int(seq): dict(entry) for seq, entry in outbox_raw.items()}
-        if isinstance(outbox_raw, Mapping)
-        else {}
-    )
-    existing_raw = data.get("existing")
-    existing = (
-        {str(row["id"]): int(row["seq"]) for row in existing_raw}
-        if isinstance(existing_raw, list)
-        else {}
-    )
-    log_head = data.get(LOG_HEAD_FIELD)
-    return Head(
-        raw=data,
-        log_head=log_head if isinstance(log_head, int) else 0,
-        outbox=outbox,
-        existing=existing,
-    )
+    document = ConversationHead.model_validate(raw)
+    embedded = document.embedded
+    if embedded is not None and embedded.count:
+        migrated = document.log_head is not None
+        if not migrated or document.migrated_last_id != embedded.last_id:
+            raise unmigrated(f"conversation {document.conversation_id}")
+    return Head(document=document, fields=head_fields(raw))
 
 
 def head_with_existing(
@@ -217,41 +210,36 @@ def stored_message(message: MessageModel) -> dict[str, object]:
     return data
 
 
-def entry_from_raw(raw: Mapping[str, object]) -> ConversationEntry:
+def entry_of(stored: StoredEntry) -> ConversationEntry:
     """Read a stored entry (from the collection or an outbox) back as a seq-tagged message."""
-    message = {k: v for k, v in raw.items() if k not in _ENTRY_KEY_FIELDS}
-    message["message_id"] = raw["id"]
-    return ConversationEntry.model_validate({"seq": raw["seq"], "message": message})
+    message = {**stored.message_fields(), "message_id": stored.id}
+    return ConversationEntry.model_validate({"seq": stored.seq, "message": message})
 
 
 def stored_row(raw: Mapping[str, object]) -> StoredRow:
     """Read a stored entry with its owner, conversation and commit time; one without a commit time is corrupt."""
-    at = raw.get("at")
-    if not isinstance(at, datetime):
+    stored = StoredEntry.model_validate(raw)
+    if stored.at is None:
         raise ConversationStoreError(
             message="a stored conversation entry has no commit time",
-            meta={"conversation_id": str(raw.get("conversation_id")), "seq": str(raw.get("seq"))},
+            meta={"conversation_id": stored.conversation_id, "seq": str(stored.seq)},
         )
     return StoredRow(
-        user_id=str(raw["user_id"]),
-        conversation_id=str(raw["conversation_id"]),
-        at=at,
-        entry=entry_from_raw(raw),
+        user_id=stored.user_id,
+        conversation_id=stored.conversation_id,
+        at=stored.at,
+        entry=entry_of(stored),
     )
 
 
-def at_its_seq(entry: Mapping[str, object]) -> dict[str, object]:
+def at_its_seq(entry: StoredEntry) -> dict[str, object]:
     """Match the stored entry holding this entry's seq in its conversation."""
-    return {
-        "user_id": entry["user_id"],
-        "conversation_id": entry["conversation_id"],
-        "seq": entry["seq"],
-    }
+    return {"user_id": entry.user_id, "conversation_id": entry.conversation_id, "seq": entry.seq}
 
 
-def is_same_entry(stored: Mapping[str, object] | None, entry: Mapping[str, object]) -> bool:
+def is_same_entry(stored: Mapping[str, object] | None, entry: StoredEntry) -> bool:
     """Whether stored is this entry (same id at its seq), so inserting it again found it flushed."""
-    return stored is not None and stored.get("id") == entry["id"]
+    return stored is not None and EntryKey.model_validate(stored).id == entry.id
 
 
 @contextmanager
@@ -282,16 +270,17 @@ class EntryWindow:
     newest_first: bool = False
     ids: Sequence[str] | None = None
 
+    def upper(self, log_head: int) -> int:
+        return log_head if self.before_seq is None else min(log_head, self.before_seq - 1)
+
     def seq_range(self, log_head: int) -> dict[str, int]:
-        upper = log_head if self.before_seq is None else min(log_head, self.before_seq - 1)
-        return {"$gt": self.after_seq, "$lte": upper}
+        return {"$gt": self.after_seq, "$lte": self.upper(log_head)}
 
     def id_clause(self) -> dict[str, object]:
         return {} if self.ids is None else {"id": {"$in": list(self.ids)}}
 
     def admits(self, entry: ConversationEntry, log_head: int) -> bool:
-        bounds = self.seq_range(log_head)
-        in_range = bounds["$gt"] < entry.seq <= bounds["$lte"]
+        in_range = self.after_seq < entry.seq <= self.upper(log_head)
         return in_range and (self.ids is None or entry.message.message_id in self.ids)
 
     def take(self, union: Mapping[int, ConversationEntry]) -> list[ConversationEntry]:

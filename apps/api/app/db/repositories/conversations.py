@@ -70,10 +70,12 @@ from app.models.conversation_models import (
     ConversationDescriptionHit,
     ConversationDocument,
     ConversationEntry,
+    ConversationHead,
     ConversationMessageHit,
     ConversationSearchResults,
     ConversationSummary,
     ConversationUpdate,
+    StoredEntry,
     _ConversationIdRow,
     _ConversationOwnerRow,
     _SourceRow,
@@ -89,6 +91,8 @@ from shared.py.wide_events import spawn_logged_task
 _JITTER = random.SystemRandom()
 _BOT_SOURCE_VALUES: list[str] = [s.value for s in BOT_CONVERSATION_SOURCES]
 _NEWEST_FIRST: list[tuple[str, int]] = [("seq", -1)]
+_OUTBOX_FIELDS: dict[str, object] = {"conversation_id": 1, "user_id": 1, OUTBOX_FIELD: 1}
+_ENTRY_KEY_FIELDS: dict[str, object] = {"_id": 0, "id": 1, "seq": 1}
 _SUMMARY_PROJECTION: dict[str, object] = {
     "_id": 0,
     "conversation_id": 1,
@@ -345,13 +349,13 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         # Reads only the outbox: what is committed is flushed whatever the embedded array holds.
         with store_errors("flush"):
             raw = await self._raw_collection().find_one(
-                {"conversation_id": conversation_id, "user_id": user_id}, {OUTBOX_FIELD: 1}
+                {"conversation_id": conversation_id, "user_id": user_id}, _OUTBOX_FIELDS
             )
-        outbox = head_from_raw({OUTBOX_FIELD: (raw or {}).get(OUTBOX_FIELD)}).outbox
+        outbox = ConversationHead.model_validate(raw).outbox if raw else {}
         if not outbox:
             return
         with store_errors("flush"):
-            await self._insert_entries([dict(entry) for entry in outbox.values()])
+            await self._insert_entries(list(outbox.values()))
             unset = await self._raw_collection().update_one(
                 {"conversation_id": conversation_id, "user_id": user_id},
                 {"$unset": {f"{OUTBOX_FIELD}.{seq}": "" for seq in outbox}},
@@ -920,14 +924,15 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             )
         return matched > 0
 
-    async def _insert_entries(self, entries: Sequence[Mapping[str, object]]) -> None:
+    async def _insert_entries(self, entries: Sequence[StoredEntry]) -> None:
         """Insert each outbox entry; one already stored at its seq was flushed before, any other conflict is a bug."""
         collection = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
         for entry in entries:
             try:
-                await collection.insert_one(dict(entry))
+                await collection.insert_one(entry.document())
             except DuplicateKeyError as exc:
-                if not is_same_entry(await collection.find_one(at_its_seq(entry)), entry):
+                stored = await collection.find_one(at_its_seq(entry), _ENTRY_KEY_FIELDS)
+                if not is_same_entry(stored, entry):
                     raise ConversationStoreError(
                         message="an outbox entry conflicts with a stored entry",
                         why=str(exc),
@@ -1073,7 +1078,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     def _with_messages(
         self, head: Head, entries: Sequence[ConversationEntry]
     ) -> ConversationDocument:
-        doc = self._to_model(head.raw)
+        doc = self._to_model(head.fields)
         doc.messages = [entry.message for entry in entries]
         return doc
 

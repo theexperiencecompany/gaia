@@ -314,14 +314,12 @@ def test_an_element_hashes_the_same_whatever_its_key_order_and_a_date_hashes_as_
 
 def test_an_entry_is_dated_by_its_element_and_a_naive_or_missing_date_reads_as_utc() -> None:
     ist = timezone(timedelta(hours=5, minutes=30))
-    assert entry_at({"date": "2026-01-02T03:04:05+05:30"}) == datetime(
-        2026, 1, 2, 3, 4, 5, tzinfo=ist
-    )
-    naive = entry_at({"date": "2026-01-02T03:04:05"})
+    assert entry_at("2026-01-02T03:04:05+05:30") == datetime(2026, 1, 2, 3, 4, 5, tzinfo=ist)
+    naive = entry_at("2026-01-02T03:04:05")
     assert naive.tzinfo is UTC
     assert naive == datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
     before = datetime.now(UTC)
-    for undated in ({}, {"date": "not a date"}, {"date": 5}):
+    for undated in (None, "not a date", 5):
         stamped = entry_at(undated)
         assert stamped.tzinfo is UTC
         assert before <= stamped <= datetime.now(UTC)
@@ -756,3 +754,17 @@ async def test_a_conversation_whose_elements_all_lack_ids_migrates_and_reads(
     assert await _read_ids(ref) == ["legacy-1", "legacy-2"]
     assert (await migration.verify(ref)).ok
     assert (await migration.migrate(ref, apply=True)).action is MigrationAction.UNCHANGED
+
+
+async def test_a_conversation_deleted_after_the_scan_is_skipped_and_never_verifies(
+    migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
+) -> None:
+    ref = await _legacy(raw_collection, [_message(1)])
+    await raw_collection.delete_one(_head(ref))
+
+    assert await migration.migrate(ref, apply=True) == MigrationOutcome(
+        ref.conversation_id, MigrationAction.UNCHANGED, reason="deleted since the scan"
+    )
+    assert await entries_collection.count_documents({}) == 0
+    assert (await migration.verify(ref)).mismatches == ["not migrated: no log_head"]
+    assert not await migration.drop_embedded(ref)

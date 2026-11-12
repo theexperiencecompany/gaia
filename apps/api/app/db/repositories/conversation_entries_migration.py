@@ -28,17 +28,26 @@ from app.db.repositories.conversation_entries import (
     store_errors,
 )
 from app.db.repositories.conversations import ConversationRepository
+from app.models.conversation_models import (
+    ConversationHead,
+    HeadRefRow,
+    LegacyMessage,
+    StoredEntry,
+)
 
 #: The id given to a legacy element stored without a message_id: stable, so every pass agrees.
 _LEGACY_ID_PREFIX = "legacy-"
 #: A scan reads only what a HeadRef holds, never the embedded array it is about to copy.
-_HEAD_REF_FIELDS: dict[str, object] = {"_id": 1, "conversation_id": 1, "user_id": 1}
-_BY_HEAD_ID: list[tuple[str, int]] = [("_id", 1)]
+_HEAD_REF_STAGE: dict[str, object] = {
+    "$project": {
+        "_id": 0,
+        "head_id": {"$toString": "$_id"},
+        "conversation_id": 1,
+        "user_id": 1,
+    }
+}
+_BY_HEAD_ID: dict[str, object] = {"$sort": {"_id": 1}}
 _BY_SEQ: list[tuple[str, int]] = [("seq", 1)]
-#: Fields an entry carries that the embedded element it came from did not.
-_ENTRY_ONLY_FIELDS = frozenset(
-    {"_id", "conversation_id", "user_id", "seq", "at", "id", MIGRATION_HASH_FIELD}
-)
 _UNSET_EMBEDDED: dict[str, object] = {"messages": "", MIGRATED_LAST_ID_FIELD: ""}
 _UNSET_LOG: dict[str, object] = {LOG_HEAD_FIELD: "", OUTBOX_FIELD: "", MIGRATED_LAST_ID_FIELD: ""}
 
@@ -93,42 +102,29 @@ def element_hash(element: Mapping[str, object]) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def identified(
-    elements: Sequence[Mapping[str, object]],
-) -> list[tuple[str, Mapping[str, object]]]:
+def identified(elements: Sequence[LegacyMessage]) -> list[tuple[str, LegacyMessage]]:
     """Pair each element with its entry id: its message_id, or a legacy id from its position."""
     return [
-        (
-            str(element["message_id"]) if element.get("message_id") else f"{_LEGACY_ID_PREFIX}{n}",
-            element,
-        )
+        (element.message_id or f"{_LEGACY_ID_PREFIX}{n}", element)
         for n, element in enumerate(elements, 1)
     ]
 
 
-def last_embedded_id(elements: Sequence[Mapping[str, object]]) -> object:
+def last_embedded_id(elements: Sequence[LegacyMessage]) -> str | None:
     """Return what EMBEDDED_LAST_ID computes server-side: the last element's message_id that is present."""
-    present = [element["message_id"] for element in elements if "message_id" in element]
+    present = [e.message_id for e in elements if "message_id" in e.model_fields_set]
     return present[-1] if present else None
 
 
-def entry_at(element: Mapping[str, object]) -> datetime:
+def entry_at(date: object) -> datetime:
     """Return when an embedded element was written: its ISO date (a naive one read as UTC), else now."""
-    raw = element.get("date")
-    if not isinstance(raw, str):
+    if not isinstance(date, str):
         return datetime.now(UTC)
     try:
-        parsed = datetime.fromisoformat(raw)
+        parsed = datetime.fromisoformat(date)
     except ValueError:
         return datetime.now(UTC)
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
-
-
-def _elements(head: Mapping[str, object]) -> list[dict[str, object]]:
-    embedded = head.get("messages")
-    return (
-        [dict(e) for e in embedded if isinstance(e, Mapping)] if isinstance(embedded, list) else []
-    )
 
 
 def _of(ref: HeadRef) -> dict[str, str]:
@@ -136,12 +132,11 @@ def _of(ref: HeadRef) -> dict[str, str]:
     return {"user_id": ref.user_id, "conversation_id": ref.conversation_id}
 
 
-def _embedded_element(entry: Mapping[str, object]) -> dict[str, object]:
-    """Turn an entry back into the embedded element it was: no entry fields, its id as message_id."""
-    element = {k: v for k, v in entry.items() if k not in _ENTRY_ONLY_FIELDS}
-    entry_id = str(entry["id"])
-    if not entry_id.startswith(_LEGACY_ID_PREFIX):
-        element["message_id"] = entry_id
+def _embedded_element(entry: StoredEntry) -> dict[str, object]:
+    """Turn an entry back into the embedded element it was: its message fields, its id as message_id."""
+    element = entry.message_fields()
+    if not entry.id.startswith(_LEGACY_ID_PREFIX):
+        element["message_id"] = entry.id
     return element
 
 
@@ -170,8 +165,11 @@ class ConversationEntriesMigration(ConversationRepository):
     async def migrate(self, ref: HeadRef, *, apply: bool) -> MigrationOutcome:
         """Copy or merge one conversation's embedded array into its entries (only report when not apply)."""
         head = await self._embedded_head(ref)
-        elements = _elements(head)
-        pairs = identified(elements)
+        if head is None:
+            return MigrationOutcome(
+                ref.conversation_id, MigrationAction.UNCHANGED, reason="deleted since the scan"
+            )
+        pairs = identified(head.messages)
         ids = [entry_id for entry_id, _ in pairs]
         duplicated = sorted({i for i in ids if ids.count(i) > 1})
         if duplicated:
@@ -180,26 +178,24 @@ class ConversationEntriesMigration(ConversationRepository):
                 MigrationAction.REFUSED,
                 reason=f"message ids repeat in the embedded array: {', '.join(duplicated)}",
             )
-        if LOG_HEAD_FIELD not in head:
+        if head.log_head is None:
             if apply and not await self._copy(ref, pairs):
                 return MigrationOutcome(ref.conversation_id, MigrationAction.RACED)
-            return MigrationOutcome(
-                ref.conversation_id, MigrationAction.COPIED, copied=len(elements)
-            )
+            return MigrationOutcome(ref.conversation_id, MigrationAction.COPIED, copied=len(pairs))
         return await self._merge(ref, head, pairs, apply=apply)
 
     async def verify(self, ref: HeadRef) -> VerifyReport:
         """Compare the embedded array with the entries: each element present, in order, unchanged since copied."""
         await self.flush_outbox(ref.conversation_id, user_id=ref.user_id)
         head = await self._embedded_head(ref)
-        elements = _elements(head)
+        elements = head.messages if head else []
         entries = await self._stored(ref)
-        by_id = {str(entry["id"]): entry for entry in entries}
+        by_id = {entry.id: entry for entry in entries}
         report = VerifyReport(ref.conversation_id, embedded=len(elements), entries=len(entries))
-        if LOG_HEAD_FIELD not in head:
+        if head is None or head.log_head is None:
             report.mismatches.append("not migrated: no log_head")
             return report
-        if head.get(MIGRATED_LAST_ID_FIELD) != last_embedded_id(elements):
+        if head.migrated_last_id != last_embedded_id(elements):
             report.mismatches.append("written by the old build since its last pass: run --since")
         seqs: list[int] = []
         for entry_id, element in identified(elements):
@@ -207,8 +203,8 @@ class ConversationEntriesMigration(ConversationRepository):
             if entry is None:
                 report.mismatches.append(f"{entry_id} has no entry")
                 continue
-            seqs.append(int(str(entry["seq"])))
-            if entry.get(MIGRATION_HASH_FIELD) != element_hash(element):
+            seqs.append(entry.seq)
+            if entry.migration_hash != element_hash(element.stored()):
                 report.mismatches.append(f"{entry_id} differs from its entry")
         if seqs != sorted(seqs):
             report.mismatches.append("the entries are not in the embedded array's order")
@@ -248,20 +244,22 @@ class ConversationEntriesMigration(ConversationRepository):
     ) -> list[HeadRef]:
         if after_head_id is not None:
             match["_id"] = {"$gt": ObjectId(after_head_id)}
-        with store_errors("migration scan"):  # pragma: no mutate — error label only
-            cursor = self._raw_collection().find(match, _HEAD_REF_FIELDS)
-            rows = await cursor.sort(_BY_HEAD_ID).limit(batch).to_list(None)
-        return [
-            HeadRef(str(row["_id"]), str(row["conversation_id"]), str(row["user_id"]))
-            for row in rows
+        pipeline: list[Mapping[str, object]] = [
+            {"$match": match},
+            _BY_HEAD_ID,
+            {"$limit": batch},
+            _HEAD_REF_STAGE,
         ]
+        with store_errors("migration scan"):  # pragma: no mutate — error label only
+            rows = await self._aggregate(pipeline, HeadRefRow)
+        return [HeadRef(row.head_id, row.conversation_id, row.user_id) for row in rows]
 
-    async def _embedded_head(self, ref: HeadRef) -> dict[str, object]:
+    async def _embedded_head(self, ref: HeadRef) -> ConversationHead | None:
         with store_errors("migration read"):  # pragma: no mutate — error label only
-            head = await self._raw_collection().find_one({"_id": ObjectId(ref.head_id)})
-        return dict(head or {})
+            raw = await self._raw_collection().find_one({"_id": ObjectId(ref.head_id)})
+        return None if raw is None else ConversationHead.model_validate(raw)
 
-    async def _stored(self, ref: HeadRef) -> list[dict[str, object]]:
+    async def _stored(self, ref: HeadRef) -> list[StoredEntry]:
         with store_errors("migration read"):  # pragma: no mutate — error label only
             rows = (
                 await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
@@ -269,22 +267,23 @@ class ConversationEntriesMigration(ConversationRepository):
                 .sort(_BY_SEQ)
                 .to_list(None)
             )
-        return [dict(row) for row in rows]
+        return [StoredEntry.model_validate(row) for row in rows]
 
     def _entry(
-        self, ref: HeadRef, element: Mapping[str, object], entry_id: str, seq: int
+        self, ref: HeadRef, element: LegacyMessage, entry_id: str, seq: int
     ) -> dict[str, object]:
-        payload = {k: v for k, v in element.items() if k != "message_id"}
+        stored = element.stored()
+        payload = {k: v for k, v in stored.items() if k != "message_id"}
         return {
             **payload,
             **_of(ref),
             "seq": seq,
             "id": entry_id,
-            "at": entry_at(element),
-            MIGRATION_HASH_FIELD: element_hash(element),
+            "at": entry_at(element.date),
+            MIGRATION_HASH_FIELD: element_hash(stored),
         }
 
-    async def _copy(self, ref: HeadRef, pairs: Sequence[tuple[str, Mapping[str, object]]]) -> bool:
+    async def _copy(self, ref: HeadRef, pairs: Sequence[tuple[str, LegacyMessage]]) -> bool:
         """First pass: entries at seq 1..n, then log_head, if the array is still the one copied.
 
         No append reaches an unmigrated head, so its entries can only be a pass that
@@ -315,22 +314,22 @@ class ConversationEntriesMigration(ConversationRepository):
     async def _merge(
         self,
         ref: HeadRef,
-        head: Mapping[str, object],
-        pairs: Sequence[tuple[str, Mapping[str, object]]],
+        head: ConversationHead,
+        pairs: Sequence[tuple[str, LegacyMessage]],
         *,
         apply: bool,
     ) -> MigrationOutcome:
         """Later pass: append elements the entries lack, rewrite ones the old build changed, then re-mark the head."""
         await self.flush_outbox(ref.conversation_id, user_id=ref.user_id)
-        by_id = {str(entry["id"]): entry for entry in await self._stored(ref)}
+        by_id = {entry.id: entry for entry in await self._stored(ref)}
         fresh = [(i, e) for i, e in pairs if i not in by_id]
         changed = [
             (i, e)
             for i, e in pairs
-            if i in by_id and by_id[i].get(MIGRATION_HASH_FIELD) != element_hash(e)
+            if i in by_id and by_id[i].migration_hash != element_hash(e.stored())
         ]
         last_id = last_embedded_id([element for _, element in pairs])
-        if not fresh and not changed and head.get(MIGRATED_LAST_ID_FIELD) == last_id:
+        if not fresh and not changed and head.migrated_last_id == last_id:
             return MigrationOutcome(ref.conversation_id, MigrationAction.UNCHANGED)
         outcome = MigrationOutcome(
             ref.conversation_id, MigrationAction.MERGED, copied=len(fresh), rewritten=len(changed)
@@ -339,12 +338,12 @@ class ConversationEntriesMigration(ConversationRepository):
             return outcome
         with store_errors("migration merge"):  # pragma: no mutate — error label only
             for entry_id, element in changed:
-                seq = int(str(by_id[entry_id]["seq"]))
+                seq = by_id[entry_id].seq
                 await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).replace_one(
                     {**_of(ref), "seq": seq}, self._entry(ref, element, entry_id, seq)
                 )
         if fresh:
-            log_head = int(str(head[LOG_HEAD_FIELD]))
+            log_head = head.log_head or 0
             seqs = {i: log_head + n for n, (i, _) in enumerate(fresh, 1)}
             appended = [(i, self._entry(ref, e, i, seqs[i])) for i, e in fresh]
             if not await self._commit(ref.conversation_id, ref.user_id, log_head, appended, seqs):
