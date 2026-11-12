@@ -15,6 +15,7 @@ import pytest
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.briefing import BriefingFrequency
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.models.briefing_models import BriefingSchedule, BriefingScheduleUpdate
 from app.models.notification.notification_models import (
     NotificationContent,
@@ -868,7 +869,9 @@ class TestBriefingScheduleEndpoints:
     def test_the_refusal_names_exactly_why_deliveries_were_refused(self) -> None:
         with pytest.raises(ValidationError) as refused:
             BriefingScheduleUpdate(
-                frequency=BriefingFrequency.DAILY, hour=7, workflow_deliveries={"wf-1": "now"}
+                frequency=BriefingFrequency.DAILY,
+                hour=7,
+                workflow_deliveries={"wf-1": WorkflowDelivery.NOW},
             )
 
         assert [error["msg"] for error in refused.value.errors()] == [
