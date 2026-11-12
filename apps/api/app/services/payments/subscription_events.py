@@ -29,7 +29,6 @@ from app.constants.payments import (
     SUBSCRIPTION_WORKFLOW_SYNC_TASK,
     SubscriptionWorkflowSync,
 )
-from app.constants.referrals import SETTLE_REWARDS_TASK
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
 from app.models.payment_models import (
@@ -43,6 +42,7 @@ from app.services.analytics_service import identify_user, track_subscription_eve
 from app.services.email import send_pro_subscription_email
 from app.services.payments.plan_cache import invalidate_plan_cache
 from app.services.payments.revenue_properties import subscription_revenue_properties
+from app.services.referrals.settlement_queue import queue_settlement
 from app.utils.money import to_major_units
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import as_utc
@@ -139,8 +139,19 @@ async def _queue_retry(task: str, *args: str, **context: str) -> None:
 
 
 async def _queue_banked_referral_months(user_id: str) -> None:
-    """Hand a newly active subscriber's banked referral months to the worker, which moves the billing date."""
-    await _queue_retry(SETTLE_REWARDS_TASK, user_id, user_id=user_id)
+    """Hand a newly active subscriber's banked referral months to the worker, which moves the billing date.
+
+    Never raises, for the same reason as reactivate_workflows_safely.
+    """
+    try:
+        await queue_settlement(user_id)
+    except Exception as e:
+        log.error(
+            f"{LogTag.PAYMENT} Banked referral months could not be queued",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
 
 async def _queue_workflow_sync(user_id: str, sync: SubscriptionWorkflowSync) -> None:
