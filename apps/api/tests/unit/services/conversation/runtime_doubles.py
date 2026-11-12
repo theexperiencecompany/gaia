@@ -367,6 +367,8 @@ class ScriptedRunner:
         self.runs: list[ScriptedRun] = []
         self.overlaps = 0
         self.swallow_first_cancel = False
+        # What a run plays once the scripts run out; the default hangs until cancelled.
+        self.unscripted: Sequence[ScriptItem] = ()
 
     def script(self, *scripts: Sequence[ScriptItem]) -> None:
         self._scripts.extend(scripts)
@@ -379,7 +381,7 @@ class ScriptedRunner:
         self.calls.append(
             Started(tuple(item.seq for item in batch.waking), tuple(item.seq for item in context))
         )
-        script = self._scripts.pop(0) if self._scripts else ()
+        script = self._scripts.pop(0) if self._scripts else self.unscripted
         run = ScriptedRun(
             script, self._ticks, self.calls, swallow_first_cancel=self.swallow_first_cancel
         )

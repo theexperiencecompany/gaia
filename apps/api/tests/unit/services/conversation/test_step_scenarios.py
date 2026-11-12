@@ -550,3 +550,28 @@ async def test_taking_over_a_dead_committed_holder_fails_its_reply_and_answers_a
     # The reply a dead holder appended is republished, since its frame may never have gone out.
     assert [frame.kind.value for frame in rt.frames.published[:3]] == ["entry", "entry", "entry"]
     await assert_quiet(rt)
+
+
+async def test_a_step_killed_mid_run_kills_its_run_and_leaves_its_reply_to_recovery() -> None:
+    rt = Runtime()
+    step: asyncio.Task[None] | None = None
+    hints: list[str] = []
+
+    async def die_at_the_second_hint(point: str) -> None:
+        if point == "hint" and asyncio.current_task() is step:
+            hints.append(point)
+            if len(hints) == 2:
+                raise asyncio.CancelledError
+
+    rt.log.pause = die_at_the_second_hint
+    rt.runner.script([text("half"), Finished(Replied("whole"))], [Finished(Replied("again"))])
+    await send(rt, user("u1"))
+    step = asyncio.create_task(run(rt))
+    await asyncio.gather(step, return_exceptions=True)
+    assert step.cancelled()
+    assert rt.runner.calls == [Started(batch=(1,), context=()), LOST]
+    assert kinds(rt) == ["user_message", "reply"]
+    rt.log.lapse(CONVERSATION)
+    await run(rt)
+    assert answered(rt) == [(ReplyOutcome.FAILED, ()), (ReplyOutcome.ANSWERED, ("u1",))]
+    await assert_quiet(rt)
