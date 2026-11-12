@@ -1,8 +1,7 @@
 "use client";
 
+import { ArrowRight01Icon } from "@icons";
 import { useLocale } from "next-intl";
-
-import { ChevronRight } from "@/components/shared/icons";
 
 import { getPathname } from "@/i18n/navigation";
 import { isTranslatedPath } from "@/i18n/translatedRoutes";
@@ -49,7 +48,7 @@ export function PageBreadcrumbs({
                 </span>
               )}
               {!isLast && (
-                <ChevronRight
+                <ArrowRight01Icon
                   aria-hidden="true"
                   className="mx-1.5 size-3 text-zinc-600"
                 />
