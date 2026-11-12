@@ -206,3 +206,36 @@ class TestASignalIsSpokenOfOnlyWhenIdentified:
             _DEPLOY,
             rollback,
         ]
+
+    def test_a_message_saying_only_a_shared_title_still_identifies_it(self) -> None:
+        rollback = Signal(
+            integration_id="linear",
+            app="Linear",
+            external_id="OPS-3",
+            kind="issue assigned to you",
+            title="Review API deployment rollback",
+        )
+
+        assert voiced_signals("Deployment review.", [_DEPLOY, rollback]) == [_DEPLOY]
+
+    def test_an_important_linked_signal_with_no_title_words_must_still_be_spoken_of(self) -> None:
+        terse = Signal(
+            integration_id="github",
+            app="GitHub",
+            external_id="9",
+            kind="pull request waiting on your review",
+            title="Fix it",
+            importance=SignalImportance.HIGH,
+            url="https://github.com/acme/api/pull/9",
+        )
+
+        problems = message_contradictions(
+            "Nothing from your apps today.",
+            _payload(),
+            _NOTHING_SHOWN,
+            context="",
+            require_coverage=True,
+            signals=[terse],
+        )
+
+        assert problems == ["the message never mentions 'Fix it' in GitHub, which is important"]
