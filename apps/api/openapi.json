@@ -4737,6 +4737,26 @@
         "title": "ConnectIntegrationResponse",
         "type": "object"
       },
+      "ContentTokenResponse": {
+        "description": "A short-lived URL that loads a link's content from the content origin.",
+        "properties": {
+          "content_url": {
+            "title": "Content Url",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content_url",
+          "expires_at"
+        ],
+        "title": "ContentTokenResponse",
+        "type": "object"
+      },
       "ConversationActionResponse": {
         "description": "Acknowledgement for a conversation-scoped action that reports back which\nconversation it applied to \u2014 delete, rename, mark read/unread.",
         "properties": {
@@ -10173,6 +10193,109 @@
         "title": "LinearIssueUpdatedConfig",
         "type": "object"
       },
+      "LinkAccess": {
+        "description": "Who a link opens for.",
+        "enum": [
+          "public",
+          "unlisted",
+          "people",
+          "owner"
+        ],
+        "title": "LinkAccess",
+        "type": "string"
+      },
+      "LinkContent": {
+        "description": "The bytes a link frames from the content origin; the page asks for a content token to load them.",
+        "properties": {
+          "content_id": {
+            "title": "Content Id",
+            "type": "string"
+          },
+          "mime": {
+            "title": "Mime",
+            "type": "string"
+          },
+          "render": {
+            "$ref": "#/components/schemas/RenderMode"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "content_id",
+          "mime",
+          "size_bytes",
+          "render"
+        ],
+        "title": "LinkContent",
+        "type": "object"
+      },
+      "LinkEnvelope": {
+        "description": "What opening a link returns: its access level, the target's public view and any framed content.",
+        "properties": {
+          "access": {
+            "$ref": "#/components/schemas/LinkAccess"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LinkContent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_owner": {
+            "title": "Is Owner",
+            "type": "boolean"
+          },
+          "target_type": {
+            "$ref": "#/components/schemas/ShortLinkTargetType"
+          },
+          "view": {
+            "discriminator": {
+              "mapping": {
+                "briefing": "#/components/schemas/PublicBriefing",
+                "openui_artifact": "#/components/schemas/PublicOpenUIArtifact",
+                "session_artifact": "#/components/schemas/PublicSessionArtifact",
+                "todo_deliverable": "#/components/schemas/PublicTodoDeliverable",
+                "workflow_run": "#/components/schemas/PublicWorkflowRun"
+              },
+              "propertyName": "target_type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PublicTodoDeliverable"
+              },
+              {
+                "$ref": "#/components/schemas/PublicBriefing"
+              },
+              {
+                "$ref": "#/components/schemas/PublicSessionArtifact"
+              },
+              {
+                "$ref": "#/components/schemas/PublicWorkflowRun"
+              },
+              {
+                "$ref": "#/components/schemas/PublicOpenUIArtifact"
+              }
+            ],
+            "title": "View"
+          }
+        },
+        "required": [
+          "access",
+          "target_type",
+          "view",
+          "content",
+          "is_owner"
+        ],
+        "title": "LinkEnvelope",
+        "type": "object"
+      },
       "LinkPlatformRequest": {
         "description": "Request model for linking a platform account via secure token.",
         "properties": {
@@ -10231,6 +10354,172 @@
           "platform"
         ],
         "title": "LinkPlatformResponse",
+        "type": "object"
+      },
+      "LinkPreviewMeta": {
+        "description": "What a chat preview or a page's metadata may show for a link, by its access level and state.\n\ntitle and description are real content only for a live public or unlisted\nlink; any other link carries the kind line or the dead-link line. image_url\nis None when the preview card is generated from these fields.",
+        "properties": {
+          "access": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LinkAccess"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "indexable": {
+            "title": "Indexable",
+            "type": "boolean"
+          },
+          "live": {
+            "title": "Live",
+            "type": "boolean"
+          },
+          "target_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShortLinkTargetType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "live",
+          "target_type",
+          "access",
+          "indexable",
+          "title",
+          "description",
+          "image_url"
+        ],
+        "title": "LinkPreviewMeta",
+        "type": "object"
+      },
+      "LinkReportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "$ref": "#/components/schemas/ReportReason"
+          },
+          "turnstile_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turnstile Token"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "LinkReportRequest",
+        "type": "object"
+      },
+      "LinkSettings": {
+        "additionalProperties": false,
+        "description": "Who a link opens for and until when.",
+        "properties": {
+          "access": {
+            "$ref": "#/components/schemas/LinkAccess",
+            "default": "unlisted"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "grantees": {
+            "items": {
+              "format": "email",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Grantees",
+            "type": "array"
+          }
+        },
+        "title": "LinkSettings",
+        "type": "object"
+      },
+      "LinkSettingsUpdate": {
+        "additionalProperties": false,
+        "description": "Owner changes to a live link; an omitted field keeps its value.",
+        "properties": {
+          "access": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LinkAccess"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "grantees": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "email",
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grantees"
+          }
+        },
+        "title": "LinkSettingsUpdate",
         "type": "object"
       },
       "LinkTokenInfoResponse": {
@@ -16280,19 +16569,8 @@
       },
       "PublicSessionArtifact": {
         "additionalProperties": false,
-        "description": "A file GAIA produced in a session's sandbox. ``content`` is the text of a\ntext file; binary files carry ``None`` and render as a metadata card.",
+        "description": "A file GAIA produced in a session's sandbox, as its link pinned it.\n\ntext is the file's text when it is shown as text (code, markdown, and HTML\nsource where the instance has no content origin); the page renders it\nitself. Every other file is framed from the content origin (LinkEnvelope.content)\nor offered as a download.",
         "properties": {
-          "content": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Content"
-          },
           "content_type": {
             "title": "Content Type",
             "type": "string"
@@ -16309,6 +16587,17 @@
             "const": "session_artifact",
             "title": "Target Type",
             "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
           }
         },
         "required": [
@@ -16316,7 +16605,7 @@
           "filename",
           "content_type",
           "size_bytes",
-          "content"
+          "text"
         ],
         "title": "PublicSessionArtifact",
         "type": "object"
@@ -17518,6 +17807,20 @@
         "title": "ReminderResponse",
         "type": "object"
       },
+      "RenderMode": {
+        "description": "How a snapshot's bytes are shown, which fixes the headers the content origin serves them with.",
+        "enum": [
+          "frame_active",
+          "image",
+          "image_svg",
+          "pdf",
+          "text",
+          "media",
+          "download"
+        ],
+        "title": "RenderMode",
+        "type": "string"
+      },
       "ReplyToMessageData": {
         "description": "Data for the message being replied to.",
         "properties": {
@@ -17545,6 +17848,17 @@
         ],
         "title": "ReplyToMessageData",
         "type": "object"
+      },
+      "ReportReason": {
+        "enum": [
+          "phishing",
+          "malware",
+          "harassment",
+          "illegal",
+          "other"
+        ],
+        "title": "ReportReason",
+        "type": "string"
       },
       "ResetSessionRequest": {
         "description": "Request model for resetting a bot session (starting a new conversation).",
@@ -18495,44 +18809,107 @@
         "title": "SetupWizardResponse",
         "type": "object"
       },
-      "ShortLinkResponse": {
-        "description": "A minted heygaia.link URL.",
+      "ShareLinkRequest": {
+        "additionalProperties": false,
+        "description": "Share one of the owner's artifacts: its live link, minted with settings when none is live.",
         "properties": {
-          "url": {
-            "title": "Url",
+          "settings": {
+            "$ref": "#/components/schemas/LinkSettings"
+          },
+          "target_id": {
+            "minLength": 1,
+            "title": "Target Id",
             "type": "string"
+          },
+          "target_type": {
+            "$ref": "#/components/schemas/ShortLinkTargetType"
           }
         },
         "required": [
-          "url"
+          "target_type",
+          "target_id"
         ],
-        "title": "ShortLinkResponse",
+        "title": "ShareLinkRequest",
         "type": "object"
       },
-      "ShortLinkShareState": {
-        "description": "Whether one of the owner's artifacts is shared: its live heygaia.link, or None.",
+      "ShortLinkResponse": {
+        "description": "One live heygaia.link and its settings.\n\ncontent_max_access is the widest level its file may be served at when the\nfile narrows it (a login form, an unsafe URL, an installer); None otherwise.",
         "properties": {
-          "url": {
+          "access": {
+            "$ref": "#/components/schemas/LinkAccess"
+          },
+          "content_max_access": {
             "anyOf": [
               {
+                "$ref": "#/components/schemas/LinkAccess"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Url"
+            "title": "Expires At"
+          },
+          "grantees": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Grantees",
+            "type": "array"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
           }
         },
         "required": [
-          "url"
+          "url",
+          "slug",
+          "access",
+          "grantees",
+          "expires_at",
+          "content_max_access"
+        ],
+        "title": "ShortLinkResponse",
+        "type": "object"
+      },
+      "ShortLinkShareState": {
+        "description": "Whether one of the owner's artifacts is shared: its live link, or None.",
+        "properties": {
+          "link": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShortLinkResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "link"
         ],
         "title": "ShortLinkShareState",
         "type": "object"
       },
       "ShortLinkTargetRequest": {
         "additionalProperties": false,
-        "description": "One of the owner's artifacts, to share (mint or fetch its link), read or stop sharing.",
+        "description": "One of the owner's artifacts, to read or stop sharing.",
         "properties": {
           "target_id": {
             "minLength": 1,
@@ -31978,13 +32355,13 @@
     },
     "/api/v1/l": {
       "post": {
-        "description": "Share an artifact the caller owns: return its heygaia.link, minting one.\n\nTurns sharing back on for a target its owner had stopped sharing.",
+        "description": "Share an artifact you own: its live link, minted with the given settings when none is live.\n\nTurns sharing back on for a target its owner had stopped sharing. The\ntarget's own read under your account is the ownership check.",
         "operationId": "short_links_create_short_link_route",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ShortLinkTargetRequest"
+                "$ref": "#/components/schemas/ShareLinkRequest"
               }
             }
           },
@@ -32000,6 +32377,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Target not found"
           },
           "422": {
             "content": {
@@ -32040,7 +32427,7 @@
     },
     "/api/v1/l/state": {
       "get": {
-        "description": "Say whether one of your artifacts is shared, with its live link. Never mints one.",
+        "description": "Say whether one of your artifacts is shared, with its live link and settings. Never mints one.",
         "operationId": "short_links_get_share_state_route",
         "parameters": [
           {
@@ -32174,7 +32561,7 @@
     },
     "/api/v1/l/{slug}": {
       "get": {
-        "description": "Resolve a capability slug to its target's public view. No auth.",
+        "description": "Open a link: its target's public view and any framed content, or the denial the viewer sees.",
         "operationId": "short_links_resolve_short_link_route",
         "parameters": [
           {
@@ -32192,38 +32579,51 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "discriminator": {
-                    "mapping": {
-                      "briefing": "#/components/schemas/PublicBriefing",
-                      "openui_artifact": "#/components/schemas/PublicOpenUIArtifact",
-                      "session_artifact": "#/components/schemas/PublicSessionArtifact",
-                      "todo_deliverable": "#/components/schemas/PublicTodoDeliverable",
-                      "workflow_run": "#/components/schemas/PublicWorkflowRun"
-                    },
-                    "propertyName": "target_type"
-                  },
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/PublicTodoDeliverable"
-                    },
-                    {
-                      "$ref": "#/components/schemas/PublicBriefing"
-                    },
-                    {
-                      "$ref": "#/components/schemas/PublicSessionArtifact"
-                    },
-                    {
-                      "$ref": "#/components/schemas/PublicWorkflowRun"
-                    },
-                    {
-                      "$ref": "#/components/schemas/PublicOpenUIArtifact"
-                    }
-                  ],
-                  "title": "Response Short Links Resolve Short Link Route"
+                  "$ref": "#/components/schemas/LinkEnvelope"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Sign in to open this."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "You don't have access to this."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This link doesn't exist."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The link is dead: revoked, expired, removed or its target deleted"
           },
           "422": {
             "content": {
@@ -32260,12 +32660,10 @@
         "tags": [
           "Short Links"
         ]
-      }
-    },
-    "/api/v1/l/{slug}/file": {
-      "get": {
-        "description": "Stream the file behind a slug: raster images inline, everything else a download. No auth.",
-        "operationId": "short_links_get_short_link_file_route",
+      },
+      "patch": {
+        "description": "Change who one of your live links opens for, or when it expires.",
+        "operationId": "short_links_update_link_settings_route",
         "parameters": [
           {
             "in": "path",
@@ -32277,8 +32675,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortLinkResponse"
+                }
+              }
+            },
             "description": "Successful Response"
           },
           "404": {
@@ -32289,7 +32704,7 @@
                 }
               }
             },
-            "description": "Short link not found"
+            "description": "Link not found"
           },
           "422": {
             "content": {
@@ -32311,7 +32726,7 @@
             },
             "description": "Client Error"
           },
-          "503": {
+          "5XX": {
             "content": {
               "application/json": {
                 "schema": {
@@ -32319,7 +32734,100 @@
                 }
               }
             },
-            "description": "Workspace storage offline"
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Link Settings Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/{slug}/content-token": {
+      "post": {
+        "description": "Sign a short-lived URL that loads the link's file from the content origin, after the link's access check.",
+        "operationId": "short_links_content_token_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Sign in to open this."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "You don't have access to this."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This link doesn't exist."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The link is dead: revoked, expired, removed or its target deleted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
           },
           "5XX": {
             "content": {
@@ -32332,7 +32840,169 @@
             "description": "Server Error"
           }
         },
-        "summary": "Get Short Link File Route",
+        "summary": "Content Token Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/{slug}/download": {
+      "get": {
+        "description": "Save the file behind a link: always an attachment, so it never renders on this origin.",
+        "operationId": "short_links_download_link_file_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {}
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Sign in to open this."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "You don't have access to this."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This link doesn't exist."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The link is dead: revoked, expired, removed or its target deleted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Download Link File Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/{slug}/meta": {
+      "get": {
+        "description": "What a chat preview or the page's metadata may show for a link, for anyone. No auth.",
+        "operationId": "short_links_link_preview_meta_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkPreviewMeta"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Link Preview Meta Route",
         "tags": [
           "Short Links"
         ]
@@ -32340,7 +33010,7 @@
     },
     "/api/v1/l/{slug}/opened": {
       "post": {
-        "description": "Count the link as opened, sent by the viewer's browser once the page shows.\n\nNot the resolve: the page resolves during SSR, where neither the viewer's\nsession nor their browser is visible, and unfurl bots resolve it too.",
+        "description": "Count the link as opened, sent by the viewer's browser once the page shows.\n\nNot the resolve: public pages resolve during SSR, where neither the viewer's\nsession nor their browser is visible, and unfurl bots resolve them too.",
         "operationId": "short_links_record_open_route",
         "parameters": [
           {
@@ -32357,6 +33027,26 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Sign in to open this."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "You don't have access to this."
+          },
           "404": {
             "content": {
               "application/json": {
@@ -32365,7 +33055,17 @@
                 }
               }
             },
-            "description": "Short link not found"
+            "description": "This link doesn't exist."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The link is dead: revoked, expired, removed or its target deleted"
           },
           "422": {
             "content": {
@@ -32406,7 +33106,7 @@
     },
     "/api/v1/l/{slug}/pdf": {
       "get": {
-        "description": "The artifact behind a slug as an A4 PDF. No auth, like the link itself.",
+        "description": "The artifact behind a link as an A4 PDF, for whoever the link opens for.",
         "operationId": "short_links_get_short_link_pdf_route",
         "parameters": [
           {
@@ -32426,6 +33126,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Sign in to open this."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "You don't have access to this."
+          },
           "404": {
             "content": {
               "application/json": {
@@ -32434,7 +33154,17 @@
                 }
               }
             },
-            "description": "Short link not found"
+            "description": "This link doesn't exist."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The link is dead: revoked, expired, removed or its target deleted"
           },
           "422": {
             "content": {
@@ -32468,6 +33198,185 @@
           }
         },
         "summary": "Get Short Link Pdf Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/{slug}/report": {
+      "post": {
+        "description": "Report a link that breaks GAIA's terms; enough distinct reporters suspend it.",
+        "operationId": "short_links_report_link_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Sign in to open this."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "You don't have access to this."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This link doesn't exist."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The link is dead: revoked, expired, removed or its target deleted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Report Link Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/{slug}/rotate": {
+      "post": {
+        "description": "Replace one of your live links with a new URL; the old one stops opening at once.",
+        "operationId": "short_links_rotate_link_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortLinkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Link not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Rotate Link Route",
         "tags": [
           "Short Links"
         ]

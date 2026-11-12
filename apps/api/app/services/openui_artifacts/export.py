@@ -16,11 +16,9 @@ from app.constants.openui_artifacts import (
 )
 from app.decorators.caching import Cacheable
 from app.models.openui_artifact_models import OpenUIArtifact
-from app.models.short_link_models import ShortLinkTargetType
 from app.services.analytics_service import capture
 from app.services.openui_artifacts.read import get_owned_artifact
 from app.services.render.pdf import render_url_to_pdf
-from app.services.short_link_service import live_link_for_slug
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.artifacts import ArtifactPdfExported
 from shared.py.wide_events import log
@@ -54,17 +52,8 @@ async def _pdf_for(artifact: OpenUIArtifact) -> bytes:
 
 
 async def owner_artifact_pdf(user_id: str, artifact_id: str) -> tuple[OpenUIArtifact, bytes]:
-    """Print the owner's artifact; sharing it or not makes no difference."""
+    """Print an artifact read under its owner: the owner's own export, or a link opener's after its access check."""
     artifact = await get_owned_artifact(user_id, artifact_id)
-    return artifact, await _pdf_for(artifact)
-
-
-async def public_artifact_pdf(slug: str) -> tuple[OpenUIArtifact, bytes] | None:
-    """Print the artifact behind a live link; None for any other slug."""
-    link = await live_link_for_slug(slug, ShortLinkTargetType.OPENUI_ARTIFACT)
-    if link is None:
-        return None
-    artifact = await get_owned_artifact(link.user_id, link.target_id)
     return artifact, await _pdf_for(artifact)
 
 

@@ -13,14 +13,28 @@ No CachePolicy: resolution is a public, low-volume read keyed by slug, not
 by the entity id an id-keyed cache would serve.
 """
 
+from datetime import UTC, datetime
+
+from pydantic import BaseModel
+
 from app.db.repositories.base import UserScopedRepository
-from app.models.short_link_models import ShortLink, ShortLinkTargetType, ShortLinkUpdate
+from app.models.short_link_models import (
+    RevokeReason,
+    ShortLink,
+    ShortLinkTargetType,
+    ShortLinkUpdate,
+)
 
 # Index names, shared with the index builder and the mint loop, which tells the
 # two unique-key violations apart by the index Mongo names in the error.
 SLUG_UNIQUE_INDEX = "slug_unique"
 LIVE_TARGET_UNIQUE_INDEX = "target_live_unique"
 TARGET_HISTORY_INDEX = "target_history"
+CONTENT_ID_INDEX = "snapshot_content_id"
+
+
+class _StoredBytes(BaseModel):
+    total: int
 
 
 class ShortLinksRepository(UserScopedRepository[ShortLink, ShortLinkUpdate]):
@@ -69,13 +83,49 @@ class ShortLinksRepository(UserScopedRepository[ShortLink, ShortLinkUpdate]):
             sort=[("created_at", -1)],
         )
 
-    async def revoke(self, user_id: str, slug: str) -> bool:
-        """Revoke a link its owner holds; the URL goes dead immediately.
+    async def revoke(self, user_id: str, slug: str, reason: RevokeReason) -> ShortLink | None:
+        """Revoke a live link its owner holds; the URL goes dead immediately.
 
-        False when the slug does not belong to this user.
+        None when the slug does not belong to this user or is already dead.
         """
-        updated = await self.update(slug, user_id=user_id, update=ShortLinkUpdate(revoked=True))
-        return updated is not None
+        return await self._apply_update(
+            slug,
+            user_id,
+            {"user_id": user_id, "revoked": False},
+            ShortLinkUpdate(revoked=True, revoked_at=datetime.now(UTC), revoked_reason=reason),
+        )
+
+    async def get_live_by_content_id(self, content_id: str) -> ShortLink | None:
+        """Return the live link serving a snapshot; global like get_by_slug, for the content origin."""
+        return await self._find_one({"snapshot.content_id": content_id, "revoked": False})
+
+    async def live_pins_content(self, content_id: str) -> bool:
+        """Whether any live link still pins content_id (a rotation hands it to the new link)."""
+        return await self._count({"snapshot.content_id": content_id, "revoked": False}) > 0
+
+    async def count_takedowns(self, user_id: str) -> int:
+        return await self._count({"user_id": user_id, "revoked_reason": RevokeReason.TAKEDOWN})
+
+    async def stored_snapshot_bytes(self, user_id: str) -> int:
+        """Bytes of the snapshots the owner's live links pin."""
+        rows = await self._aggregate(
+            [
+                {
+                    "$match": {
+                        "user_id": user_id,
+                        "revoked": False,
+                        "snapshot.content_id": {"$type": "string"},
+                    }
+                },
+                {"$group": {"_id": None, "total": {"$sum": "$snapshot.size_bytes"}}},
+            ],
+            _StoredBytes,
+        )
+        return rows[0].total if rows else 0
+
+    async def live_without_snapshot(self, target_type: ShortLinkTargetType) -> list[ShortLink]:
+        """Return every live link of target_type that never published a snapshot (the backfill's work)."""
+        return await self._find({"target_type": target_type, "revoked": False, "snapshot": None})
 
 
 short_link_repository = ShortLinksRepository()

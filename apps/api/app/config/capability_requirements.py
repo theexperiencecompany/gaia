@@ -71,6 +71,12 @@ CAPABILITY_REQUIREMENTS: tuple[CapabilityRequirement, ...] = (
         unused_otherwise=True,
     ),
     CapabilityRequirement(
+        capability="blob_store=cloudinary: shared-link files live in R2 beside it",
+        applies=lambda profile: profile.blob_store is BlobStoreKind.CLOUDINARY,
+        keys=("LINK_CONTENT_BUCKET", "R2_ACCOUNT_ID", "R2_ACCESS_KEY", "R2_SECRET_KEY"),
+        unused_otherwise=True,
+    ),
+    CapabilityRequirement(
         capability="blob_store=s3",
         applies=lambda profile: profile.blob_store is BlobStoreKind.S3,
         keys=("S3_ENDPOINT_URL", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"),

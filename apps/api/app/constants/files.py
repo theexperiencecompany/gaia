@@ -108,6 +108,8 @@ class BlobKind(StrEnum):
     CHAT_UPLOAD = "chat_upload"
     GENERATED_IMAGE = "generated_image"
     SUPPORT_ATTACHMENT = "support_attachment"
+    # A shared link's pinned file; recipients get it through the content origin, never the blob route.
+    LINK_SNAPSHOT = "link_snapshot"
 
 
 class BlobAudience(StrEnum):
@@ -126,5 +128,6 @@ BLOB_AUDIENCE: Mapping[BlobKind, BlobAudience] = MappingProxyType(
         BlobKind.CHAT_UPLOAD: BlobAudience.OWNER,
         BlobKind.GENERATED_IMAGE: BlobAudience.OWNER,
         BlobKind.SUPPORT_ATTACHMENT: BlobAudience.OWNER,
+        BlobKind.LINK_SNAPSHOT: BlobAudience.OWNER,
     }
 )

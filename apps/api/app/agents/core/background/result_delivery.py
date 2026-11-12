@@ -67,12 +67,12 @@ from app.services.analytics_service import capture
 from app.services.conversation_service import update_messages
 from app.services.hil.approvals_store import get_approval
 from app.services.latency_metrics import observe_delivery_narration, observe_delivery_persist
+from app.services.links.service import optional_short_link
 from app.services.platform_message_service import (
     deliver_message_to_platform,
     deliver_reaction_to_platform,
     is_bot_platform,
 )
-from app.services.short_link_service import optional_short_link
 from app.services.workflow.notifications import send_workflow_failure_notification
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId

@@ -18,9 +18,9 @@ from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_models import current_stream_writer, get_session_id, get_user_id
 from app.models.openui_artifact_models import ArtifactKind, ArtifactStatus
 from app.models.short_link_models import ShortLinkTargetType
+from app.services.links.service import optional_short_link
 from app.services.openui_artifacts.create import ArtifactCreationError, create_openui_artifact
 from app.services.openui_artifacts.generate import ArtifactRequest
-from app.services.short_link_service import optional_short_link
 from app.templates.docstrings.artifact_tool_docs import CREATE_ARTIFACT
 
 
