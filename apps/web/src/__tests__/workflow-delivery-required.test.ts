@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
- * A new workflow has no default delivery: the form refuses to validate and the
- * save button stays disabled until the user picks one.
+ * A new workflow has no default delivery: the form refuses to validate until
+ * the user picks one, while the save button stays enabled so submit explains why.
  */
 
 import { renderHook } from "@testing-library/react";
@@ -58,8 +58,7 @@ describe("workflow delivery on a new workflow", () => {
     },
   );
 
-  it("keeps save disabled until a delivery is chosen", () => {
-    expect(saveDisabled(filled(null))).toBe(true);
-    expect(saveDisabled(filled("now"))).toBe(false);
+  it("leaves save enabled so submitting can name the missing delivery", () => {
+    expect(saveDisabled(filled(null))).toBe(false);
   });
 });
