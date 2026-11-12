@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
-from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 
 from app.agents.tools.core import retrieval
@@ -21,6 +20,7 @@ from app.agents.tools.execute.schema_docs import render_tool_doc
 from app.agents.tools.execute.tool_info import contract_from
 from app.config.settings import Settings, settings
 from app.constants.execute import RETURNS_INLINE_MAX_CHARS
+from app.db.repositories.errors import RepositoryError
 from app.models import agent_models
 from app.models.chat_models import ConversationSource
 from tests.helpers import captured_wide_event
@@ -394,7 +394,7 @@ class TestRenderPreloadBlockContract:
             patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=resolved)),
             patch(
                 "app.db.repositories.tool_shapes.tool_shapes_repository.get_shape",
-                new=AsyncMock(side_effect=ServerSelectionTimeoutError("mongo down")),
+                new=AsyncMock(side_effect=RepositoryError("mongo down")),
             ),
         ):
             block = await retrieval.render_preload_block("u1", ["GMAIL_SEND_EMAIL"])
