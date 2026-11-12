@@ -143,7 +143,7 @@ function DemoTodoItem({
               <Chip
                 size="sm"
                 variant="soft"
-                className={priorityChipClassNames[todo.priority]}
+                className={`px-2 ${priorityChipClassNames[todo.priority]}`}
               >
                 <Flag02Icon width={15} height={15} className="mx-1" />
                 <Chip.Label>

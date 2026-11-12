@@ -53,6 +53,7 @@ export function IntegrationToolsHeading({
             size="sm"
             variant="ghost"
             tone="muted"
+            inset="tight"
             className="h-7 shrink-0 text-xs"
             onPress={onOpenPermissions}
           >

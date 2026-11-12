@@ -225,11 +225,11 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
           })}
         >
           <Tabs.List className={USAGE_TAB_CLASSES.list}>
-            <Tabs.Tab id="month" className={USAGE_TAB_CLASSES.tab}>
+            <Tabs.Tab id="month" className={cn(USAGE_TAB_CLASSES.tab, "px-3")}>
               Month
               <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
-            <Tabs.Tab id="day" className={USAGE_TAB_CLASSES.tab}>
+            <Tabs.Tab id="day" className={cn(USAGE_TAB_CLASSES.tab, "px-3")}>
               Today
               <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
@@ -737,11 +737,11 @@ function Tools({
           onSelectionChange={(k) => onPeriod(k as Period)}
         >
           <Tabs.List className={USAGE_TAB_CLASSES.list}>
-            <Tabs.Tab id="day" className={USAGE_TAB_CLASSES.tab}>
+            <Tabs.Tab id="day" className={cn(USAGE_TAB_CLASSES.tab, "px-3")}>
               Today
               <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
-            <Tabs.Tab id="month" className={USAGE_TAB_CLASSES.tab}>
+            <Tabs.Tab id="month" className={cn(USAGE_TAB_CLASSES.tab, "px-3")}>
               Month
               <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>

@@ -20,6 +20,9 @@ export function BrowserStatusChip({
         color={
           phase.working || meta.color === "primary" ? "accent" : meta.color
         }
+        className={
+          phase.working ? "!bg-[#00bbff]/15 !text-[#00bbff]" : undefined
+        }
       >
         {meta.label}
       </Chip>

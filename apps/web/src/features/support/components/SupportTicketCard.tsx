@@ -265,6 +265,7 @@ export default function SupportTicketCard({
               size="sm"
               variant="ghost"
               tone="faint"
+              hoverTone="foreground"
               onPress={handleEditClick}
               className="h-8 w-8"
             >

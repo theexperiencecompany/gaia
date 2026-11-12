@@ -45,7 +45,7 @@ export default function ComparisonTable({ columns, rows, ariaLabel }: Props) {
               {columns.map((col) => (
                 <Table.Cell
                   key={col.key}
-                  className={`text-sm ${col.cellClassName ?? ""}`}
+                  className={`px-4 py-4 text-sm ${col.cellClassName ?? ""}`}
                 >
                   {row[col.key] ?? ""}
                 </Table.Cell>

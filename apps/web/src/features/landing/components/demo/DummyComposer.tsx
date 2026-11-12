@@ -95,8 +95,8 @@ const DummyComposer: React.FC<{
           <GaiaButton
             variant="default-soft"
             shape="pill"
-            tone="dim"
-            className="searchbar absolute -top-4 z-0 flex h-fit text-xs"
+            hoverTone="muted"
+            className="searchbar absolute -top-4 z-0 flex h-fit bg-zinc-800/40 text-xs text-foreground-300 hover:bg-zinc-800/70"
             onPress={handleIntegrationsClick}
             aria-label="Connect your tools to GAIA"
           >

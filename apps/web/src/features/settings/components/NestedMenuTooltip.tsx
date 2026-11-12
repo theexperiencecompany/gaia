@@ -78,6 +78,7 @@ export function NestedMenuTooltip({
                     variant="ghost"
                     size="sm"
                     tone="muted"
+                    hoverTone="foreground"
                     className="justify-start text-sm transition"
                     onPress={() => {
                       item.action();

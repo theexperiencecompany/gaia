@@ -352,6 +352,7 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
           size="sm"
           variant="ghost"
           tone="muted"
+          hoverTone="foreground"
           className="shrink-0"
           aria-label="Share on X"
           onPress={() => void shareActivity(activity)}

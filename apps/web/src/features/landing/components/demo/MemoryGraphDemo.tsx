@@ -265,11 +265,8 @@ export default function MemoryGraphDemo() {
           className="pointer-events-none absolute z-10"
           style={{ left: tooltip.x, top: tooltip.y }}
         >
-          <Card
-            variant="secondary"
-            className="border border-zinc-600 shadow-lg"
-          >
-            <Card.Content>
+          <Card className="border border-zinc-600 bg-zinc-800 shadow-lg">
+            <Card.Content className="p-2">
               <div className="max-w-48 text-xs text-zinc-100">
                 {tooltip.content}
               </div>
@@ -282,7 +279,7 @@ export default function MemoryGraphDemo() {
       {selectedNode && (
         <div className="absolute bottom-2 left-2 z-10">
           <Card className="border border-zinc-600 bg-zinc-800/90 backdrop-blur-sm">
-            <Card.Content>
+            <Card.Content className="p-2">
               <div className="text-xs text-zinc-100">
                 <div className="font-semibold">{selectedNode.label}</div>
                 <div className="text-zinc-300">{selectedNode.description}</div>

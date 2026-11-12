@@ -187,14 +187,17 @@ export const IntegrationInstructionsModal = ({
                 onSelectionChange={(key) => setTab(String(key))}
                 variant="primary"
               >
-                <Tabs.List aria-label="Instructions editor">
+                <Tabs.List
+                  aria-label="Instructions editor"
+                  className="bg-zinc-800/60"
+                >
                   <Tabs.Tab id="write">
                     Write
-                    <Tabs.Indicator />
+                    <Tabs.Indicator className="bg-zinc-700" />
                   </Tabs.Tab>
                   <Tabs.Tab id="preview">
                     Preview
-                    <Tabs.Indicator />
+                    <Tabs.Indicator className="bg-zinc-700" />
                   </Tabs.Tab>
                 </Tabs.List>
 

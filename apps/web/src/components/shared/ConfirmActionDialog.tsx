@@ -103,6 +103,7 @@ export function ConfirmActionDialog({
               <GaiaButton
                 variant="tertiary"
                 tone="dim"
+                className="hover:bg-zinc-700"
                 onPress={() => handleOpenChange(false)}
               >
                 {config.cancelText}

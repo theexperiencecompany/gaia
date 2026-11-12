@@ -150,10 +150,12 @@ export function UpgradeModalOffer({
       )}
 
       <GaiaButton
-        variant="ghost"
+        variant="text"
         size="sm"
         tone="faint"
-        className="mx-auto mt-1 h-auto min-w-0 text-xs data-[hover=true]:underline"
+        hoverTone="dim"
+        inset="none"
+        className="mx-auto mt-1 text-xs data-[hover=true]:underline"
         onPress={() => onLogout()}
       >
         Log out

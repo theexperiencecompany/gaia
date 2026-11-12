@@ -145,7 +145,12 @@ export function IntegrationsStep({ status, catalog }: IntegrationsStepProps) {
                   </div>
                   <GaiaButton
                     size="sm"
-                    variant={state === "expired" ? "warning-soft" : "secondary"}
+                    variant={state === "expired" ? "tertiary" : "secondary"}
+                    className={
+                      state === "expired"
+                        ? "bg-warning/15 text-warning"
+                        : undefined
+                    }
                     onPress={() => {
                       void connectIntegration(integration.id);
                     }}

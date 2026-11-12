@@ -127,6 +127,8 @@ function SidebarSection({
             className="justify-start text-start text-sm"
             variant={activeItem === item.href ? "tertiary" : "ghost"}
             tone={activeItem === item.href ? "dim" : "faint"}
+            hoverTone={activeItem === item.href ? "none" : "dim"}
+            inset="tight"
             size="sm"
             onPress={() => onItemClick(item)}
           >

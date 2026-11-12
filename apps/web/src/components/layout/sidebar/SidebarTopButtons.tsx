@@ -81,6 +81,7 @@ export default function SidebarTopButtons() {
         size="sm"
         variant="ghost"
         tone="muted"
+        hoverTone="dim"
         className="w-full justify-start gap-2 text-sm"
       >
         <ChevronLeft className="size-4" />
@@ -128,6 +129,7 @@ export default function SidebarTopButtons() {
                   size="sm"
                   variant={isRouteActive(route) ? "secondary" : "ghost"}
                   tone={isRouteActive(route) ? "dim" : "muted"}
+                  hoverTone={isRouteActive(route) ? "none" : "dim"}
                   className="group-topbtns focus-visible:outline-none w-full justify-start text-sm"
                   onClick={() => {
                     track("navigation:sidebar_clicked", {
