@@ -84,7 +84,7 @@ export function MemoryRow({
               <Chip.Label
                 className={toneVariants({
                   tone: "muted",
-                  className: "text-xs",
+                  className: "px-1.5 text-xs",
                 })}
               >
                 {memory.category_path}
@@ -101,7 +101,7 @@ export function MemoryRow({
               <Chip.Label
                 className={toneVariants({
                   tone: "muted",
-                  className: "text-xs",
+                  className: "px-1.5 text-xs",
                 })}
               >
                 v{memory.version}

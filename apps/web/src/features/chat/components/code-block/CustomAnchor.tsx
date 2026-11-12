@@ -405,7 +405,7 @@ const CustomAnchor = memo(
         </Tooltip.Trigger>
         <Tooltip.Content
           showArrow
-          className="relative max-w-[280px] min-w-[280px] border-2 border-zinc-800 shadow-lg"
+          className="relative max-w-[280px] min-w-[280px] border-2 border-zinc-800 p-3 shadow-lg"
         >
           {tooltipContent}
         </Tooltip.Content>

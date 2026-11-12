@@ -69,10 +69,13 @@ export default function ChatBubble_Actions_Image({
       ) : null}
       <Tooltip>
         <GaiaButton
-          className={fullWidth ? "w-fit" : "w-fit h-fit"}
+          className={
+            fullWidth ? "h-fit w-fit rounded-lg px-3 py-2" : "h-fit w-fit"
+          }
           isIconOnly={!fullWidth}
           style={{ minWidth: "22px" }}
-          variant={fullWidth ? "primary" : "ghost"}
+          variant={fullWidth ? "primary" : "text"}
+          inset={fullWidth ? "default" : "none"}
           tone={fullWidth ? "default" : "faint"}
           onPress={downloadFromSrc}
         >

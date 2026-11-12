@@ -91,6 +91,7 @@ export function LivePreview({
             size="sm"
             variant="ghost"
             tone="muted"
+            inset="tight"
             className="h-7 text-xs"
             onPress={surface.openPanel}
           >
@@ -109,6 +110,7 @@ export function LivePreview({
             size="sm"
             variant="ghost"
             tone="muted"
+            inset="tight"
             className="h-7 text-xs"
           >
             <SquareArrowUpRight02Icon className="size-3.5" />

@@ -53,6 +53,7 @@ export default function SelectedWorkflowIndicator({
             variant="ghost"
             onPress={onRemove}
             tone="muted"
+            hoverTone="foreground"
           >
             <Cancel01Icon className="h-4 w-4" />
           </GaiaButton>

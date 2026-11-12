@@ -1,9 +1,7 @@
 import { Tabs } from "@heroui/react";
 import { Clock01Icon, Cursor02Icon, FlashIcon } from "@icons";
 import { PanelRowGroup } from "@/components/shared/PanelRowGroup";
-import { TABS_INDICATOR, TABS_LIST } from "@/lib/heroui/tabsParity";
 import { getUserHomeTimezone } from "@/lib/timezone";
-import { cn } from "@/lib/utils";
 import type { Workflow } from "../../api/workflowApi";
 import { MAIL_TRIGGER_NAMES } from "../../constants/gates";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
@@ -166,15 +164,18 @@ export default function WorkflowTriggerSection({
       >
         <Tabs.List
           aria-label="Trigger type"
-          className={cn(TABS_LIST, "w-full")}
+          className="w-full rounded-xl bg-zinc-800/60 p-1"
         >
           {visibleTabs.map((tab) => (
-            <Tabs.Tab key={tab.key} id={tab.key} className="h-9 font-medium">
+            <Tabs.Tab
+              key={tab.key}
+              id={tab.key}
+              className="h-9 font-medium text-zinc-400 data-[selected=true]:text-zinc-100"
+            >
               <span className="flex items-center gap-1.5">
                 <tab.icon className="h-4 w-4" />
                 {tab.label}
               </span>
-              <Tabs.Indicator className={TABS_INDICATOR} />
             </Tabs.Tab>
           ))}
         </Tabs.List>

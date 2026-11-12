@@ -110,6 +110,7 @@ function FailedResponse({
   const retryButton = onRetry && (
     <GaiaButton
       shape="pill"
+      inset="tight"
       className="h-7 min-w-0 shrink-0 text-xs"
       isDisabled={isRetrying}
       onPress={onRetry}

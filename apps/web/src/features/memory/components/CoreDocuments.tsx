@@ -122,11 +122,17 @@ export function CoreDocuments() {
           autoFocus
         />
         <div className="flex justify-end gap-2">
-          <GaiaButton size="sm" variant="ghost" onPress={() => setDraft(null)}>
+          <GaiaButton
+            size="sm"
+            variant="ghost"
+            className="rounded-xl"
+            onPress={() => setDraft(null)}
+          >
             Cancel
           </GaiaButton>
           <GaiaButton
             size="sm"
+            className="rounded-xl"
             onPress={handleSave}
             isPending={isSaving}
             variant="primary"
@@ -202,7 +208,7 @@ export function CoreDocuments() {
                 <GaiaButton
                   size="sm"
                   variant="default-soft"
-                  className="shrink-0"
+                  className="shrink-0 rounded-xl"
                   onPress={() => setDraft(document.content)}
                 >
                   <PencilEdit02Icon className="size-4" />

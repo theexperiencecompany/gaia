@@ -351,6 +351,7 @@ function EditEmailModal({
                 <GaiaButton
                   variant="ghost"
                   tone="dim"
+                  inset="tight"
                   size="sm"
                   onPress={onClose}
                   className="h-7 text-xs"

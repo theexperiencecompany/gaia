@@ -151,7 +151,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
         className="group cursor-pointer border border-zinc-700/80 bg-zinc-900/70 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
         onClick={handleOpen}
       >
-        <Card.Content>
+        <Card.Content className="p-3.5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 flex-1 items-center gap-2.5">
               <div className="flex-shrink-0">
@@ -197,6 +197,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
                 size="sm"
                 variant="ghost"
                 tone="dim"
+                className="group-hover:text-white"
                 onPress={handleDownload}
                 aria-label="Download artifact"
               >

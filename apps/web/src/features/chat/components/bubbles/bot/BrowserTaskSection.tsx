@@ -14,7 +14,6 @@ import { browserCardPhase, foldBrowserTask } from "@/features/browser/utils";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import {
   ACCORDION_INDICATOR,
-  ACCORDION_PANEL_COMPACT,
   ACCORDION_TRIGGER_COMPACT,
 } from "@/lib/heroui/accordionParity";
 import { useLayoutSidebar } from "@/stores/layoutStore";
@@ -120,7 +119,7 @@ function StepsAccordion({
                 <Chip.Label
                   className={toneVariants({
                     tone: "dim",
-                    className: "text-xs",
+                    className: "px-1.5 text-xs",
                   })}
                 >
                   {steps.length}
@@ -135,7 +134,7 @@ function StepsAccordion({
             <Accordion.Indicator className={ACCORDION_INDICATOR} />
           </Accordion.Trigger>
         </Accordion.Heading>
-        <Accordion.Panel className={`space-y-2 ${ACCORDION_PANEL_COMPACT}`}>
+        <Accordion.Panel className="space-y-2 pt-1 pb-2">
           {steps.map((step) => (
             <StepRow key={`browser-step-${step.index}`} step={step} />
           ))}

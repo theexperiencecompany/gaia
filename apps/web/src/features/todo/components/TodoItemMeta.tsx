@@ -55,7 +55,11 @@ function TodoPriorityChip({ priority }: { priority: Todo["priority"] }) {
   if (!priority || priority === Priority.NONE) return null;
   return (
     <div className="flex items-center gap-1">
-      <Chip size="sm" variant="soft" className={PRIORITY_CHIP_CLASS[priority]}>
+      <Chip
+        size="sm"
+        variant="soft"
+        className={`px-2 ${PRIORITY_CHIP_CLASS[priority]}`}
+      >
         <Flag02Icon width={15} height={15} className="mx-1" />
         <Chip.Label>{capitalize(priority)}</Chip.Label>
       </Chip>

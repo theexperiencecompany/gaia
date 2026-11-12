@@ -44,7 +44,7 @@ function renderTriggerSections(
     })
     .map(([integrationId, schemas]) => (
       <ListBox.Section key={integrationId} id={integrationId}>
-        <Header className={toneVariants({ tone: "faint" })}>
+        <Header className={toneVariants({ tone: "faint", className: "py-1" })}>
           {formatIntegrationName(integrationId)}
         </Header>
         {(schemas || []).map((schema) => (

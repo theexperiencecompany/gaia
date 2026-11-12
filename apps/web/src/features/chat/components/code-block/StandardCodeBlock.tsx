@@ -44,6 +44,7 @@ const StandardCodeBlock: React.FC<StandardCodeBlockProps> = ({
             <GaiaButton
               className="text-xs"
               tone="muted"
+              hoverTone="dim"
               size="sm"
               isIconOnly
               variant="ghost"

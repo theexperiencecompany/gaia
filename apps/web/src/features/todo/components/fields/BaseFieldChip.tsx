@@ -63,6 +63,7 @@ export default function BaseFieldChip({
       <GaiaButton
         variant="tertiary"
         tone={hasValue ? "default" : "faint"}
+        hoverTone={hasValue ? "none" : "muted"}
         size="sm"
         aria-label={`${label} selection. Current value: ${hasValue ? (typeof value === "string" ? value : "selected") : "none selected"}`}
         className={cn(

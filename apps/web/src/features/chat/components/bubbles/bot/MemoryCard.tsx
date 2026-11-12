@@ -284,9 +284,10 @@ function DocumentSection({
           <GaiaButton
             shape="pill"
             size="sm"
-            variant="ghost"
+            variant="text"
             onPress={() => setExpanded((v) => !v)}
             tone="faint"
+            hoverTone="dim"
             className="mt-2 min-w-0 text-xs"
           >
             {expanded ? "Show less" : "Show more"}

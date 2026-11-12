@@ -200,7 +200,7 @@ export function HandoffDecision({
       <GaiaButton
         variant="ghost"
         tone="faint"
-        className="shrink-0"
+        className="shrink-0 px-3"
         onPress={() => decide("cancel")}
       >
         Stop task

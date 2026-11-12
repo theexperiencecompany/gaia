@@ -4,7 +4,6 @@ import { InputGroup } from "@heroui/react";
 import { CalendarIcon } from "@icons";
 import { parseDate } from "chrono-node";
 import React, { useId } from "react";
-import { inputVariants } from "@/components/shared/controlVariants";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
@@ -120,17 +119,13 @@ export const NaturalLanguageDateInput: React.FC<
       </label>
       <Popover open={isPickerOpen} onOpenChange={setIsPickerOpen}>
         <div className="relative">
-          <InputGroup
-            className={inputVariants({
-              variant: "translucent",
-              className: "shadow-none",
-            })}
-          >
+          <InputGroup className="bg-zinc-800/30 hover:bg-zinc-800/50 shadow-none">
             <InputGroup.Input
               id={baseId}
               value={inputValue}
               onChange={(e) => handleInputChange(e.target.value)}
               placeholder={placeholder}
+              className="pr-10"
             />
             <InputGroup.Suffix>
               <PopoverTrigger asChild>
@@ -301,17 +296,13 @@ export const NaturalLanguageDateRangeInput: React.FC<
       </label>
       <Popover open={isPickerOpen} onOpenChange={setIsPickerOpen}>
         <div className="relative">
-          <InputGroup
-            className={inputVariants({
-              variant: "translucent",
-              className: "shadow-none",
-            })}
-          >
+          <InputGroup className="bg-zinc-800/30 hover:bg-zinc-800/50 shadow-none">
             <InputGroup.Input
               id={baseId}
               value={inputValue}
               onChange={(e) => handleInputChange(e.target.value)}
               placeholder={placeholder}
+              className="pr-10"
             />
             <InputGroup.Suffix>
               <PopoverTrigger asChild>

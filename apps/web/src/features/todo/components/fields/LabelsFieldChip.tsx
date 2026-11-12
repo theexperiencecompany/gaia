@@ -105,6 +105,7 @@ export default function LabelsFieldChip({
                     <GaiaButton
                       variant="ghost"
                       tone="muted"
+                      hoverTone="foreground"
                       size="sm"
                       isIconOnly
                       onPress={() => handleRemoveLabel(label)}

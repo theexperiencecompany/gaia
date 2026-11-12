@@ -268,7 +268,7 @@ export function GoogleSheetsSettings({
                         )?.label || group.group;
                       return (
                         <ListBox.Section key={group.group} id={group.group}>
-                          <Header className="font-semibold">
+                          <Header className="py-1 font-semibold">
                             {spreadsheetName}
                           </Header>
                           {group.options.map((option) => (

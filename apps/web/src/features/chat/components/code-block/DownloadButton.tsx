@@ -68,6 +68,7 @@ const DownloadButton: React.FC<DownloadButtonProps> = ({
     <GaiaButton
       className="text-xs"
       tone="muted"
+      hoverTone="dim"
       size="sm"
       isIconOnly
       variant="ghost"
