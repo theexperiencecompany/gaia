@@ -121,6 +121,7 @@ class Seams:
     activate: AsyncMock
     deactivate: AsyncMock
     is_paid: AsyncMock
+    capture: MagicMock
 
 
 @pytest.fixture
@@ -137,10 +138,12 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[Seams]:
         activate=AsyncMock(return_value=MagicMock()),
         deactivate=AsyncMock(return_value=MagicMock()),
         is_paid=AsyncMock(return_value=True),
+        capture=MagicMock(),
     )
     monkeypatch.setattr(WorkflowService, "activate_workflow", s.activate)
     monkeypatch.setattr(WorkflowService, "deactivate_workflow", s.deactivate)
     monkeypatch.setattr(schedule, "is_paid", s.is_paid)
+    monkeypatch.setattr(schedule, "capture", s.capture)
     monkeypatch.setattr(workflow_repository, "find_system_workflows", s.find)
     monkeypatch.setattr(WorkflowService, "update_workflow", s.update)
     monkeypatch.setattr(briefing_repository, "was_delivered", s.was_delivered)
@@ -384,7 +387,6 @@ class TestTurningBriefsOff:
             "get",
             AsyncMock(return_value=_user(DEFAULT_QUIET_HOURS, frequency=BriefingFrequency.OFF)),
         )
-        monkeypatch.setattr(schedule, "capture", MagicMock())
         on_brief = MagicMock(id="wf-digest", title="Digest")
         find = AsyncMock(return_value=[on_brief])
         monkeypatch.setattr(workflow_repository, "find_brief_delivery_for_user", find)
@@ -405,7 +407,7 @@ class TestTurningBriefsOff:
         assert call.args[0] == "wf-digest"
         assert call.args[1].delivery is WorkflowDelivery.SILENT
         assert call.args[2] == _USER
-        schedule.capture.assert_any_call(
+        seams.capture.assert_any_call(
             UserId(_USER),
             SettingsBriefsOffResolved(moved_to_now=0, moved_to_silent=1, via="agent"),
         )
@@ -419,7 +421,7 @@ class TestTurningBriefsOff:
             )
 
         seams.update.assert_not_awaited()
-        schedule.capture.assert_called_once_with(
+        seams.capture.assert_called_once_with(
             UserId(_USER), SettingsBriefsOffBlocked(workflow_count=1, via="settings")
         )
 
@@ -493,7 +495,7 @@ class TestTurningBriefsOff:
             },
         )
 
-        schedule.capture.assert_any_call(
+        seams.capture.assert_any_call(
             UserId(_USER),
             SettingsBriefsOffResolved(moved_to_now=2, moved_to_silent=1, via="settings"),
         )

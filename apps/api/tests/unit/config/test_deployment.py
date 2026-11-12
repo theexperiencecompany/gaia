@@ -200,7 +200,7 @@ def test_a_blob_store_named_by_its_string_value_gets_the_enum_member() -> None:
         DeploymentKind.SELFHOST,
         "local",
         **args,
-        blob_store="cloudinary",  # type: ignore[arg-type]  # why: an assigned setting skips pydantic validation
+        blob_store="cloudinary",
     )
     by_member = deployment_profile(
         DeploymentKind.SELFHOST, "local", **args, blob_store=BlobStoreKind.CLOUDINARY
@@ -217,7 +217,7 @@ def test_production_refuses_a_local_blob_store_named_by_its_string_value() -> No
             "workos",
             unlimited_usage=False,
             local_code_sandbox=False,
-            blob_store="local",  # type: ignore[arg-type]  # why: an assigned setting skips pydantic validation
+            blob_store="local",
         )
 
 
