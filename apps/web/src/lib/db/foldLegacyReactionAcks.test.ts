@@ -33,7 +33,19 @@ const ack = (
     ...overrides,
   });
 
-const CARD = { tool_name: "calendar_events", data: { events: [] } };
+const CARD: NonNullable<LegacyStoredMessage["tool_data"]>[number] = {
+  tool_name: "tool_calls_data",
+  tool_category: "calendar",
+  timestamp: "2026-01-01T00:00:00Z",
+  data: [
+    {
+      tool_name: "list_events",
+      tool_category: "calendar",
+      message: "Checked your calendar",
+      tool_call_id: "tc-1",
+    },
+  ],
+};
 
 describe("foldLegacyReactionAcks", () => {
   it("turns an ack without cards into the reaction on its message and removes it", () => {
@@ -55,7 +67,7 @@ describe("foldLegacyReactionAcks", () => {
     const { updated, removedIds } = foldLegacyReactionAcks([
       message({ id: "user-1" }),
       ack("ack-1", "user-1", {
-        tool_data: [CARD] as LegacyStoredMessage["tool_data"],
+        tool_data: [CARD],
       }),
     ]);
 

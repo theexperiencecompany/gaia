@@ -34,6 +34,7 @@ describe("syncing a conversation GAIA reacted in", () => {
           type: "user",
           response: "find my flight email",
           message_id: "user-1",
+          seq: 1,
           date: SYNCED_AT,
           reaction: { emoji: "🔎", by: "jev" },
         },
