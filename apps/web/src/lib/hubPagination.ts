@@ -4,7 +4,7 @@
  * into the RSC flight payload, so an unbounded list costs roughly twice its
  * markup.
  */
-export const HUB_PAGE_SIZE = 40;
+const HUB_PAGE_SIZE = 40;
 
 /** The path segment that holds a hub's later pages: /automate/page/2. */
 const PAGE_SEGMENT = "page";
