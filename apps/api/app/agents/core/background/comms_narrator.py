@@ -96,15 +96,6 @@ def _executor_report(result_text: str, msg_type: str, preamble: str = "") -> Hum
     )
 
 
-async def record_executor_report(conversation_id: str, result_text: str, msg_type: str) -> None:
-    """Append a background run's report to the comms thread, for a run comms never narrated.
-
-    A narrated report reaches the thread through narration; one nobody is told
-    of must still be known to the chat's next turn, which sees it on screen.
-    """
-    await _append_to_thread(conversation_id, [_executor_report(result_text, msg_type)])
-
-
 async def record_executor_cancellation(
     conversation_id: str,
     task_id: str | None,

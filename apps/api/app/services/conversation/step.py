@@ -64,6 +64,7 @@ from app.services.conversation.ports import (
     Streamed,
     Summarized,
 )
+from app.services.conversation.todo_wake import nothing_to_report
 from app.services.conversation.verdict import merge_group, quote_target, verdict
 from shared.py.wide_events import log
 
@@ -213,6 +214,11 @@ async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool
         seen=batch.end,
         work_cards=_work_cards(batch, reply_id),
     )
+    if await nothing_to_report(ports.log, conversation_id, claim.user_id, batch):
+        # The run said so itself, and its todo lets it: nothing is shown, its report stays on its WorkFinished.
+        unshown = _empty_reply(attempt).model_copy(update={"tool_data": ()})
+        await _conclude(ports, attempt, unshown, ReplyOutcome.SILENT)
+        return False
     # Everything since the last settled input that no batch carries: notes, stops, a dead attempt.
     context = [
         logged

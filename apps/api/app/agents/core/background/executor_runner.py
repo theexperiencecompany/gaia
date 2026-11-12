@@ -91,6 +91,7 @@ from app.services.analytics_service import agent_run_lifecycle
 from app.services.browser.job_stop import stop_browser_job
 from app.services.conversation.work_deltas import WorkDeltas
 from app.services.conversation.work_log import (
+    WorkReport,
     record_approval_requested,
     record_work_carried,
     record_work_finished,
@@ -762,15 +763,18 @@ async def _log_work_finished(
     """Log a step-dispatched run's end once its busy lock is free; the step narrates it in the task's reply."""
     if outcome is None or not run.task_id:
         return
-    note = outcome_delivery_note(outcome.review.declared, outcome.review.problem)
-    report = "\n\n".join(part for part in (outcome.result_text, note) if part)
+    review = outcome.review
     await record_work_finished(
         run.conversation_id,
         run.user.user_id,
         run.task_id,
         _work_outcome(outcome, stopped=stopped),
-        report,
-        outcome.tool_data or (),
+        WorkReport(
+            outcome.result_text,
+            outcome.tool_data or (),
+            note=outcome_delivery_note(review.declared, review.problem),
+            nothing_for_user=review.nothing_for_user,
+        ),
     )
 
 

@@ -6,7 +6,6 @@ record that lets a later turn remember what was delivered, and the guards
 build on.
 """
 
-from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
@@ -15,18 +14,14 @@ from fastapi import HTTPException
 from app.agents.core.background.result_delivery import (
     deliver_message_to_conversation,
     deliver_result,
-    record_todo_run_wake,
 )
-from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
+from app.agents.core.background.session import ExecutorRun, RunKind
 from app.agents.core.outcome_review import OutcomeReview
 from app.agents.prompts.comms_prompts import outcome_delivery_note
 from app.constants.agents import OutcomeState
-from app.constants.todos import TodoWakeKind
 from app.models.chat_models import ConversationSource, ToolDataEntry
 from app.models.conversation_models import UpdateMessagesResponse
-from app.models.todo_wake_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser
-from app.models.workflow_models import TriggerType
 
 MODULE = "app.agents.core.background.result_delivery"
 SEQ = 7
@@ -321,178 +316,6 @@ async def test_an_empty_card_feed_delivers_text_only() -> None:
 
 
 USER = AuthenticatedUser(user_id="507f1f77bcf86cd799439011")
-TODO_CHAT = "todo-chat-1"
-WAKE = TodoRunWake(kind=TodoWakeKind.TRIGGER, trigger_names=["github_push"], approval_summary=None)
-
-
-def _todo_run() -> ExecutorRun:
-    return ExecutorRun(
-        stream_id="stream-1",
-        conversation_id=TODO_CHAT,
-        user=USER,
-        kind=RunKind.QUEUED,
-        task_id="task-1",
-        user_message_id=None,
-        bot_message_id="placeholder-1",
-        todo_run=TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True),
-    )
-
-
-def _is_utc_iso(value: str | None) -> bool:
-    return value is not None and datetime.fromisoformat(value).utcoffset() == timedelta(0)
-
-
-class TestATrackedTodosRunReportIsKeptInItsChat:
-    """The executor's own report is the record of the run, saved and pushed under its placeholder."""
-
-    async def _deliver(
-        self, result_text: str, result_type: str, tool_data: list[ToolDataEntry] | None
-    ) -> tuple[AsyncMock, AsyncMock, AsyncMock]:
-        ws = MagicMock(broadcast_to_user=AsyncMock())
-        with (
-            patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq) as save,
-            patch(f"{MODULE}.websocket_manager", ws),
-            patch(f"{MODULE}.deliver_todo_run_result", new_callable=AsyncMock) as todo_delivery,
-        ):
-            assert await deliver_result(
-                _todo_run(), result_text, result_type, tool_data=tool_data
-            ) == (None, None)
-        return save, ws.broadcast_to_user, todo_delivery
-
-    async def test_the_report_and_its_cards_are_saved_and_pushed_to_the_open_chat(self) -> None:
-        save, broadcast, todo_delivery = await self._deliver("Deploy is green.", "final", CARDS)
-
-        request = save.await_args.args[0]
-        (saved,) = request.messages
-        assert request.conversation_id == TODO_CHAT
-        assert save.await_args.kwargs == {"user": USER}
-        assert (saved.type, saved.response, saved.error, saved.message_id, saved.tool_data) == (
-            "bot",
-            "Deploy is green.",
-            None,
-            "placeholder-1",
-            CARDS,
-        )
-        assert _is_utc_iso(saved.date)
-        broadcast.assert_awaited_once_with(
-            USER.user_id,
-            {
-                "type": "conversation.new_message",
-                "conversation_id": TODO_CHAT,
-                "message": {
-                    "type": "bot",
-                    "response": "Deploy is green.",
-                    "message_id": "placeholder-1",
-                    "seq": SEQ,
-                    "date": saved.date,
-                    "tool_data": CARDS,
-                    "task_id": "task-1",
-                },
-            },
-        )
-        todo_delivery.assert_awaited_once()
-
-    async def test_a_failed_run_is_kept_and_pushed_as_its_error_with_no_empty_cards(self) -> None:
-        save, broadcast, _ = await self._deliver("The calendar API was down.", "error", [])
-
-        (saved,) = save.await_args.args[0].messages
-        assert (saved.response, saved.error, saved.tool_data) == (
-            "",
-            "The calendar API was down.",
-            None,
-        )
-        message = broadcast.await_args.args[1]["message"]
-        assert (message["response"], message["error"]) == ("", "The calendar API was down.")
-        assert "tool_data" not in message
-
-    async def test_a_report_the_chat_could_not_keep_is_not_pushed(self) -> None:
-        ws = MagicMock(broadcast_to_user=AsyncMock())
-        with (
-            patch(
-                f"{MODULE}.update_messages",
-                new_callable=AsyncMock,
-                side_effect=HTTPException(status_code=404),
-            ),
-            patch(f"{MODULE}.websocket_manager", ws),
-            patch(f"{MODULE}.deliver_todo_run_result", new_callable=AsyncMock) as todo_delivery,
-        ):
-            await deliver_result(_todo_run(), "Deploy is green.", "final", tool_data=None)
-
-        ws.broadcast_to_user.assert_not_awaited()
-        # The record and the user's message are independent.
-        todo_delivery.assert_awaited_once()
-
-    async def test_what_the_run_declared_goes_to_todo_delivery_with_its_report(self) -> None:
-        run = _todo_run()
-        with (
-            patch(f"{MODULE}.update_messages", new_callable=AsyncMock),
-            patch(f"{MODULE}.websocket_manager", MagicMock(broadcast_to_user=AsyncMock())),
-            patch(f"{MODULE}.deliver_todo_run_result", new_callable=AsyncMock) as todo_delivery,
-        ):
-            declared = OutcomeReview(OutcomeState.SCHEDULE, None, nothing_for_user=True)
-            await deliver_result(run, "Nothing new.", "final", tool_data=None, review=declared)
-            await deliver_result(run, "Deploy is green.", "final", tool_data=None)
-
-        assert [call.args[2:] + (call.kwargs,) for call in todo_delivery.await_args_list] == [
-            ("Nothing new.", "final", {"nothing_for_user": True}),
-            ("Deploy is green.", "final", {"nothing_for_user": False}),
-        ]
-
-
-class TestARunsWakeLeadsItInItsChat:
-    """What woke a run is a user-side message, saved in the todo's chat and pushed to an open one."""
-
-    async def test_the_wake_is_saved_and_pushed_as_json(self) -> None:
-        ws = MagicMock(broadcast_to_user=AsyncMock())
-        with (
-            patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq) as save,
-            patch(f"{MODULE}.websocket_manager", ws),
-        ):
-            await record_todo_run_wake(TODO_CHAT, USER, WAKE)
-
-        request = save.await_args.args[0]
-        (saved,) = request.messages
-        assert request.conversation_id == TODO_CHAT
-        assert save.await_args.kwargs == {"user": USER}
-        assert (saved.type, saved.response, saved.todo_run_wake) == ("user", "", WAKE)
-        assert str(UUID(saved.message_id)) == saved.message_id
-        assert _is_utc_iso(saved.date)
-        ws.broadcast_to_user.assert_awaited_once_with(
-            USER.user_id,
-            {
-                "type": "conversation.new_message",
-                "conversation_id": TODO_CHAT,
-                "message": {
-                    "type": "user",
-                    "response": "",
-                    "message_id": saved.message_id,
-                    "seq": SEQ,
-                    "date": saved.date,
-                    "todo_run_wake": {
-                        "kind": "trigger",
-                        "trigger_names": ["github_push"],
-                        "approval_summary": None,
-                    },
-                },
-            },
-        )
-        # JSON-native, not the enum: the socket payload is serialized as is.
-        wake = ws.broadcast_to_user.await_args.args[1]["message"]["todo_run_wake"]
-        assert type(wake["kind"]) is str
-
-    async def test_a_wake_the_chat_could_not_keep_is_not_pushed(self) -> None:
-        ws = MagicMock(broadcast_to_user=AsyncMock())
-        with (
-            patch(
-                f"{MODULE}.update_messages",
-                new_callable=AsyncMock,
-                side_effect=HTTPException(status_code=404),
-            ),
-            patch(f"{MODULE}.websocket_manager", ws),
-        ):
-            await record_todo_run_wake(TODO_CHAT, USER, WAKE)
-
-        ws.broadcast_to_user.assert_not_awaited()
 
 
 class TestCommsNarratesARunsResultUnderItsOutcomeNote:

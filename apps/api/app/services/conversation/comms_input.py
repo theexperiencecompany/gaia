@@ -107,10 +107,10 @@ def _note_text(logged: LoggedEntry) -> str | None:
     """Return the note a non-message entry leaves the model, or None for one it never sees."""
     note: str | None = None
     match logged.entry:
-        case WorkFinished(outcome=WorkOutcome.DONE, report=report):
-            note = WORK_DONE_NOTE.format(report=report)
-        case WorkFinished(outcome=outcome, report=report) if outcome is not WorkOutcome.CANCELLED:
-            note = WORK_UNFINISHED_NOTE.format(outcome=outcome, report=report)
+        case WorkFinished(outcome=WorkOutcome.DONE) as finished:
+            note = WORK_DONE_NOTE.format(report=_reported(finished))
+        case WorkFinished(outcome=outcome) as finished if outcome is not WorkOutcome.CANCELLED:
+            note = WORK_UNFINISHED_NOTE.format(outcome=outcome, report=_reported(finished))
         case BargeIn(heard_text=heard):
             note = BARGE_IN_NOTE.format(heard=heard)
         case Notice(text=text):
@@ -121,6 +121,11 @@ def _note_text(logged: LoggedEntry) -> str | None:
         case ReplySettled(outcome=ReplyOutcome.FAILED, answers=()):
             note = SERVER_RESTART_NOTE
     return note
+
+
+def _reported(finished: WorkFinished) -> str:
+    """Return the work's report with what the review of its declared outcome adds."""
+    return "\n\n".join(part for part in (finished.report, finished.note) if part)
 
 
 def _message(logged: LoggedEntry, text: str, suffix: str = "") -> HumanMessage:

@@ -1,29 +1,22 @@
 """Terminal delivery for a tracked todo's own background run.
 
-The run executes in its todo's chat, which result_delivery has already given the
-executor's report. What reaches the user's chat app is decided here: a run that
-declared it found nothing for the user sends nothing, comms decides whether any other
-is worth a message at all, and the chat app gets it only if so.
-activity.md records what happened either way. A step the todo store fails is
-finished by a durable job, keyed by the run, never by running the todo again.
+The run's work is logged in its todo's chat, and the reply the conversation step
+writes for that work is its write-up, guided by write_up_note. What reaches the
+user's chat app is decided here from that reply: a silent or failed one sends
+nothing, a report its todo's guidance forms goes as written, and any other goes as
+the reply wrote it. activity.md records what happened either way. A step the todo
+store fails is finished by a durable job, keyed by the run, never by running the
+todo again.
 """
 
-import asyncio
 from typing import NamedTuple
 
 from pydantic import BaseModel, ConfigDict
 from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
 
-from app.agents.core.background.comms_narrator import (
-    narrate_executor_result,
-    record_executor_report,
-)
-from app.agents.core.background.session import ExecutorRun, TodoRun
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
-from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
-from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
 from app.constants.todos import (
     CANVAS_KEY_DETAILS_SECTION,
@@ -41,6 +34,7 @@ from app.constants.todos import (
 from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
 from app.db.repositories.todos import todo_repository
 from app.models.chat_models import ConversationSource
+from app.models.conversation_log_models import ReplyOutcome, TodoReportForm, TodoRun
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -74,7 +68,7 @@ _NOT_SENT_NOTES: dict[TodoRunDeliveryOutcome, str] = {
     TodoRunDeliveryOutcome.NOTIFY_OFF: "result not sent: delivery is off for this todo",
     TodoRunDeliveryOutcome.NOTHING_TO_REPORT: "result not sent: the run found nothing for the user",
     TodoRunDeliveryOutcome.NARRATION_FAILED: "result not sent: it could not be written up",
-    TodoRunDeliveryOutcome.INVALID_DIRECTIVE: "result not sent: the write-up was a reaction",
+    TodoRunDeliveryOutcome.SILENCED: "kept quiet: the write-up found it not worth a message",
 }
 
 
@@ -92,9 +86,9 @@ def _not_sent(outcome: TodoRunDeliveryOutcome) -> _Resolution:
 
 
 class FinishedTodoRun(BaseModel):
-    """A finished tracked-todo run's result, as much as delivering it needs once the run is gone.
+    """A finished tracked-todo run's report and write-up, as much as delivering them needs.
 
-    It is the durable job's payload, so it carries ids rather than the live run.
+    It is the durable job's payload, so it carries what the run's reply settled to, not the reply.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -105,45 +99,40 @@ class FinishedTodoRun(BaseModel):
     user_id: str
     conversation_id: str
     trigger_type: TriggerType
-    runs_once: bool
+    report_form: TodoReportForm
+    #: The run's own report: what an as-written todo sends, and the activity summary.
     result_text: str
+    #: The reply that reported the run, and how it settled.
+    write_up: str
+    reply: ReplyOutcome
     #: The run's own finish_task declaration: result_text is its record, not a message.
     nothing_for_user: bool = False
     #: Set once the message step is done; only the finish entry is left then.
     finish_entry: str | None = None
 
 
-async def deliver_todo_run_result(
-    run: ExecutorRun,
-    todo_run: TodoRun,
-    result_text: str,
-    result_type: str,
-    *,
-    nothing_for_user: bool = False,
-) -> None:
-    """Decide, deliver and record what a finished tracked-todo run tells the user.
+def report_form_of(todo: TodoDocument) -> TodoReportForm:
+    """Return the report a run of the todo owes: as written when its kind's guidance forms it, else a write-up."""
+    return TodoReportForm.AS_WRITTEN if todo.owns_report_form else TodoReportForm.WRITE_UP
 
-    An error result delivers nothing: the worker that awaits the run retries it
-    and records the failure itself. What the todo store leaves undone goes to a
-    durable job; the run stands, since running it again repeats its work.
+
+async def write_up_note(run: TodoRun) -> str:
+    """Return how the reply that reports a run of the todo writes it up: when to send, and in what form.
+
+    Read when the reply is written, so the todo's rules and its runs so far are current.
     """
-    log.set_ns("todo_delivery", todo_id=todo_run.todo_id, result_type=result_type)
-    if result_type == "error":
-        # Not narrated, but the chat shows it, so the chat's next turn must know it.
-        await record_executor_report(run.conversation_id, result_text, result_type)
-        return
-    finished = FinishedTodoRun(
-        run_id=run.stream_id,
-        todo_id=todo_run.todo_id,
-        user_id=run.user.user_id,
-        conversation_id=run.conversation_id,
-        trigger_type=todo_run.trigger_type,
-        runs_once=todo_run.runs_once,
-        result_text=result_text,
-        nothing_for_user=nothing_for_user,
+    async for attempt in TRANSIENT_MONGO_RETRY.copy():
+        with attempt:
+            todo = await todo_repository.get_by_id(run.todo_id)
+    return tracked_todo_delivery_note(
+        run.title,
+        _canvas_section(todo, CANVAS_STANDING_RULES_SECTION, STANDING_RULES_MAX_CHARS),
+        _canvas_section(todo, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
+        runs_once=run.runs_once,
+        run_history=recent_run_outcomes(
+            todo.activity_content if todo else None, DELIVERY_RUN_HISTORY_LINES
+        ),
     )
-    if (undone := await finish_todo_run(finished, run.user)) is not None:
-        await hand_unfinished_run_to_job(undone)
 
 
 async def finish_todo_run(
@@ -154,6 +143,7 @@ async def finish_todo_run(
     The message goes first because the entry records what became of it. None
     when nothing is left, including for a run an earlier attempt already finished.
     """
+    log.set_ns("todo_delivery", todo_id=finished.todo_id, reply=finished.reply.value)
     entry = finished.finish_entry
     try:
         if entry is None:
@@ -227,11 +217,8 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
     if todo.activity_content and run_finished_marker(finished.run_id) in todo.activity_content:
         return None
 
-    if (held_back := _held_back(finished, todo)) is None:
-        resolution = await _narrate_and_send(finished, user, todo)
-    else:
-        await record_executor_report(finished.conversation_id, finished.result_text, "result")
-        resolution = _not_sent(held_back)
+    held_back = _held_back(finished, todo)
+    resolution = await _send(finished, user, todo) if held_back is None else _not_sent(held_back)
     log.set_ns("todo_delivery", outcome=resolution.outcome.value)
     # A worker has no request context: the explicit user id keeps the event off
     # an anonymous profile.
@@ -251,18 +238,24 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
 
 
 def _held_back(finished: FinishedTodoRun, todo: TodoDocument) -> TodoRunDeliveryOutcome | None:
-    """Name why a run's report goes to neither comms nor the user, or None when comms decides."""
+    """Name why a run's result goes nowhere, or None when it is sent."""
     # Read now, not when the run started: the run itself may have turned it off.
     if not todo.notify_on_run:
         return TodoRunDeliveryOutcome.NOTIFY_OFF
     # Only a kind whose run guidance defines the declaration may silence itself with it.
-    if finished.nothing_for_user and todo.owns_report_form:
+    if finished.nothing_for_user and finished.report_form is TodoReportForm.AS_WRITTEN:
         return TodoRunDeliveryOutcome.NOTHING_TO_REPORT
+    if finished.reply is ReplyOutcome.FAILED:
+        return TodoRunDeliveryOutcome.NARRATION_FAILED
+    if finished.reply is not ReplyOutcome.ANSWERED:
+        return TodoRunDeliveryOutcome.SILENCED
     return None
 
 
-def _canvas_section(todo: TodoDocument, heading: str, max_chars: int) -> str | None:
-    """Return one canvas section's body, bounded, or None when it is missing or empty."""
+def _canvas_section(todo: TodoDocument | None, heading: str, max_chars: int) -> str | None:
+    """Return one canvas section's body, bounded, or None when it, or the todo, is missing or empty."""
+    if todo is None:
+        return None
     body = section_body(todo.canvas_content, heading)
     return body[:max_chars] if body else None
 
@@ -305,49 +298,14 @@ async def _lookup_target(todo: TodoDocument) -> ProactiveTarget | None:
         return None
 
 
-async def _narrate_and_send(
+async def _send(
     finished: FinishedTodoRun, user: AuthenticatedUser, todo: TodoDocument
 ) -> _Resolution:
-    """Have comms write the result up (or decline to), then send it to the chat app.
-
-    A report whose form its todo's guidance sets is sent as written: comms decides only whether.
-    """
-    # Where it goes is looked up while comms writes it up: neither waits on the other.
-    text, target = await asyncio.gather(
-        narrate_executor_result(
-            finished.result_text,
-            "result",
-            finished.conversation_id,
-            user,
-            preamble=tracked_todo_delivery_note(
-                todo.title,
-                _canvas_section(todo, CANVAS_STANDING_RULES_SECTION, STANDING_RULES_MAX_CHARS),
-                _canvas_section(todo, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
-                runs_once=finished.runs_once,
-                run_history=recent_run_outcomes(todo.activity_content, DELIVERY_RUN_HISTORY_LINES),
-            ),
-        ),
-        _lookup_target(todo),
-    )
-    if not text:
-        log.error(f"{LogTag.AGENT} todo run result narration failed", todo_id=todo.id)
-        return _not_sent(TodoRunDeliveryOutcome.NARRATION_FAILED)
-
-    directive = interpret_comms_output(text)
-    if directive.kind is CommsDirectiveKind.SILENCE:
-        log.set_ns("todo_delivery", silence_reason=directive.payload)
-        return _Resolution(TodoRunDeliveryOutcome.SILENCED, f"kept quiet: {directive.payload}")
-    if directive.kind is CommsDirectiveKind.REACT:
-        # There is no user message to react to; a lone emoji would arrive as noise.
-        log.error(
-            f"{LogTag.AGENT} todo run result narrated as a reaction; not sent",
-            todo_id=todo.id,
-            emoji=directive.payload,
-        )
-        return _not_sent(TodoRunDeliveryOutcome.INVALID_DIRECTIVE)
-
-    # comms' retelling dropped the headings a report-form owner's guidance requires.
-    message = finished.result_text if todo.owns_report_form else directive.payload
+    """Send the write-up to the chat app, or the report itself when the todo's guidance forms it."""
+    target = await _lookup_target(todo)
+    # A retelling drops the headings an as-written todo's guidance requires.
+    as_written = finished.report_form is TodoReportForm.AS_WRITTEN
+    message = finished.result_text if as_written else finished.write_up
     platform = (
         await deliver_result_to_platforms(
             user=user,

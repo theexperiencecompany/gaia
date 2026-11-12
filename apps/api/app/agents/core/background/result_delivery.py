@@ -29,7 +29,6 @@ from app.agents.core.background.comms_narrator import (
     record_platform_delivery,
 )
 from app.agents.core.background.session import ExecutorRun
-from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
 from app.agents.core.background.workflow_platform_delivery import (
     deliver_workflow_result,
 )
@@ -64,7 +63,6 @@ from app.models.chat_models import (
 from app.models.conversation_models import ConversationEntry
 from app.models.hil_models import HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
-from app.models.todo_wake_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.conversation.reaction import reaction_frame
@@ -122,22 +120,11 @@ async def deliver_result(
 ) -> tuple[str | None, str | None]:
     """Narrate a finished executor run through comms, persist it, and deliver it.
 
-    Returns (narrated_text, message_id); (None, None) on failure or for a tracked
-    todo's own run, whose report stays in its todo's chat and whose message goes
-    through todo delivery. A REACT gives (None, message_id). The message routes over
-    EXACTLY ONE transport chosen by the conversation's source.
+    Returns (narrated_text, message_id); (None, None) on failure. A REACT gives
+    (None, message_id). The message routes over EXACTLY ONE transport chosen by
+    the conversation's source.
     """
     try:
-        if run.todo_run is not None:
-            await _record_todo_run_report(run, result_text, result_type, tool_data)
-            await deliver_todo_run_result(
-                run,
-                run.todo_run,
-                result_text,
-                result_type,
-                nothing_for_user=review.nothing_for_user,
-            )
-            return None, None
         return await _narrate_and_deliver(
             run,
             result_text + outcome_delivery_note(review.declared, review.problem),
@@ -148,73 +135,6 @@ async def deliver_result(
     except Exception as e:  # delivery is best-effort, never propagates
         log.error(f"{LogTag.AGENT} Background notification delivery failed", error=str(e))
         return None, None
-
-
-async def _record_todo_run_report(
-    run: ExecutorRun,
-    result_text: str,
-    result_type: str,
-    tool_data: list[ToolDataEntry] | None,
-) -> None:
-    """Save the executor's own report and cards in the todo's chat, under the placeholder its stream rendered.
-
-    A failed save leaves delivery to go ahead: the user's message does not depend on the record."""
-    failed = result_type == "error"
-    bot_message = MessageModel(
-        type="bot",
-        response="" if failed else result_text,
-        error=result_text if failed else None,
-        date=datetime.now(UTC).isoformat(),
-        message_id=run.render_message_id,
-        tool_data=tool_data or None,
-    )
-    saved = await _save_message(run.conversation_id, run.user, bot_message)
-    if saved is None:
-        return
-    await _broadcast_bot_message(
-        target=_DeliveryTarget(
-            user_id=run.user.user_id,
-            conversation_id=run.conversation_id,
-            task_id=run.task_id,
-            emit_task_id=True,
-        ),
-        bot_message=saved,
-        notification_text=saved.response,
-        tool_data=saved.tool_data,
-    )
-
-
-async def record_todo_run_wake(
-    conversation_id: str, user: AuthenticatedUser, wake: TodoRunWake
-) -> None:
-    """Lead a tracked todo's run with what woke it, on the user's side of its chat.
-
-    Pushed as conversation.new_message so an open chat shows it live; a failed save lets the run go ahead."""
-    message = MessageModel(
-        type="user",
-        response="",
-        date=datetime.now(UTC).isoformat(),
-        message_id=str(uuid4()),
-        todo_run_wake=wake,
-    )
-    saved = await _save_message(conversation_id, user, message)
-    if saved is None:
-        return
-    await _broadcast_message(
-        user.user_id,
-        {
-            "type": "conversation.new_message",
-            "conversation_id": conversation_id,
-            "message": {
-                "type": "user",
-                "response": "",
-                "message_id": message.message_id,
-                "seq": saved.seq,
-                "date": message.date,
-                "todo_run_wake": wake.model_dump(mode="json"),
-            },
-        },
-    )
 
 
 async def persist_cancelled_run(run: ExecutorRun, tool_data: list[ToolDataEntry]) -> None:

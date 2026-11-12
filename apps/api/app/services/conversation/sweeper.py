@@ -12,7 +12,7 @@ from app.constants.conversation import SWEEP_BATCH, WORK_LOST_REPORT
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.models.conversation_log_models import WorkOutcome
 from app.services.conversation.runtime import runtime_ports
-from app.services.conversation.work_log import record_work_finished
+from app.services.conversation.work_log import WorkReport, record_work_finished
 from shared.py.wide_events import log
 
 
@@ -39,7 +39,11 @@ async def sweep_conversations() -> SweepReport:
             if work.pending_approvals or not await run_is_lost(conversation_id, work.task_id):
                 continue
             await record_work_finished(
-                conversation_id, user_id, work.task_id, WorkOutcome.LOST, WORK_LOST_REPORT
+                conversation_id,
+                user_id,
+                work.task_id,
+                WorkOutcome.LOST,
+                WorkReport(WORK_LOST_REPORT),
             )
             lost += 1
         if head.state.unsettled_waking:

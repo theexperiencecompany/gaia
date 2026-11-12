@@ -48,7 +48,6 @@ COMMS_ENTRY_FUNCTIONS = frozenset(
         "build_comms_agent",
         # app/agents/core/background/comms_narrator.py: the thread writers.
         "narrate_executor_result",
-        "record_executor_report",
         "record_executor_cancellation",
         "record_platform_delivery",
         "record_exchange_in_thread",
@@ -88,8 +87,6 @@ LEGACY_CALLERS: frozenset[str] = frozenset(
         "agents/core/background/comms_narrator.py",
         # Narrates a finished executor result and records a platform delivery; removed when the step takes this over (plan PR 8).
         "agents/core/background/result_delivery.py",
-        # Records and narrates a todo run's result; removed when the step takes this over (plan PR 8).
-        "agents/core/background/todo_run_delivery.py",
         # Records a cancelled executor run in the thread; removed when the step takes this over (plan PR 8).
         "agents/core/background/executor_runner.py",
         # Records a workflow message posted to a platform; removed when the step takes this over (plan PR 8).

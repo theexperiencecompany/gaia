@@ -5,6 +5,7 @@ from typing import Literal, cast
 from langchain_core.messages import AnyMessage, HumanMessage
 from langgraph.constants import CONF
 
+from app.agents.core.background.todo_run_delivery import write_up_note
 from app.agents.core.messages import MessageScope, build_turn_context
 from app.agents.llm.lane import AgentRole
 from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
@@ -30,6 +31,8 @@ from app.models.conversation_log_models import (
     WorkflowRun,
 )
 from app.services.conversation.comms_runner import CommsTurn
+from app.services.conversation.runtime import runtime_ports
+from app.services.conversation.todo_wake import todo_runs_reported
 from app.services.delivery.presence import read_presence
 from app.utils.auth_utils import require_owner
 from app.utils.user_preferences_utils import onboarding_preferences
@@ -119,9 +122,14 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
 
 
 async def _delivery_note(claim: StepClaim, batch: Batch) -> list[AnyMessage]:
-    """Tell a reply that reports a workflow's work that it is read as plain text, with no cards."""
+    """Tell a reply that reports a todo's run how to write it up, and one that reports a workflow's work that it is read as plain text."""
     if not any(isinstance(logged.entry, WorkFinished) for logged in batch.waking):
         return []
+    reported = await todo_runs_reported(
+        runtime_ports().log, claim.conversation_id, claim.user_id, batch
+    )
+    if reported:
+        return [HumanMessage(content=await write_up_note(run)) for _work, run in reported]
     if not await conversation_repository.is_workflow_execution(claim.conversation_id):
         return []
     return [HumanMessage(content=PLATFORM_DELIVERY_NOTE)]

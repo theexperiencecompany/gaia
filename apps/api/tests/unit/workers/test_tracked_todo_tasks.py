@@ -36,7 +36,6 @@ from redis.exceptions import ConnectionError as RedisConnectionError, RedisError
 import respx
 import time_machine
 
-from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import (
     ExecutorBusyError,
     TodoRunCancelledError,
@@ -91,6 +90,7 @@ from app.constants.todos import (
 from app.constants.trigger_gates import GateAuthor, SystemGatePreset
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.repositories.todos import todo_repository
+from app.models.conversation_log_models import TodoReportForm
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
@@ -3491,10 +3491,14 @@ class TestExecuteOnExecutor:
 
         request = self._request()
         assert request.user is user
-        assert request.todo_run == TodoRun(
-            todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True
+        run = request.todo_run
+        assert (run.todo_id, run.trigger_type, run.runs_once, run.title) == (
+            "todo-1",
+            TriggerType.SCHEDULED_TODO,
+            True,
+            "Check the deploy",
         )
-        assert request.todo_title == "Check the deploy"
+        assert run.report_form is TodoReportForm.WRITE_UP
         assert "Execute the following scheduled task: Check the deploy" in request.task
         assert "Details: verify staging" in request.task
         assert "Canvas (canvas.md):\n## Current State\nall good" in request.task
@@ -3538,7 +3542,7 @@ class TestExecuteOnExecutor:
     async def test_a_scheduled_run_says_its_schedule_woke_it(self):
         await self._execute()
 
-        assert self._request().wake == TodoRunWake(
+        assert self._request().todo_run.wake == TodoRunWake(
             kind=TodoWakeKind.SCHEDULE,
             trigger_names=[],
             approval_summary=None,
@@ -3560,7 +3564,7 @@ class TestExecuteOnExecutor:
                 coalesced=also,
             )
 
-        assert self._request().wake == TodoRunWake(
+        assert self._request().todo_run.wake == TodoRunWake(
             kind=TodoWakeKind.TRIGGER,
             trigger_names=["gmail_email_sent", "gmail_new_message"],
             approval_summary=None,
@@ -4067,15 +4071,19 @@ class TestResumeTrackedTodo:
         # Its own thread too: a reset would drop the very thread it continues.
         assert request.fresh_thread is False
         assert request.user is run.user
-        assert request.todo_run == TodoRun(
-            todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True
+        run = request.todo_run
+        assert (run.todo_id, run.trigger_type, run.runs_once, run.title) == (
+            "todo-1",
+            TriggerType.SCHEDULED_TODO,
+            True,
+            "Check the deploy",
         )
-        assert request.todo_title == "Check the deploy"
+        assert run.report_form is TodoReportForm.WRITE_UP
 
     async def test_a_resume_says_the_approval_woke_it(self) -> None:
         run = await self._resume(_ResumeJob("conv-parked", "Send briefing"))
 
-        assert run.agent.await_args.args[0].wake == TodoRunWake(
+        assert run.agent.await_args.args[0].todo_run.wake == TodoRunWake(
             kind=TodoWakeKind.APPROVAL,
             trigger_names=[],
             approval_summary="Send briefing",

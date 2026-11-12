@@ -19861,6 +19861,15 @@
         "title": "TodoProgressEvent",
         "type": "object"
       },
+      "TodoReportForm": {
+        "description": "What a tracked todo's run owes the user: a write-up, or its report as the todo's guidance formed it.",
+        "enum": [
+          "write_up",
+          "as_written"
+        ],
+        "title": "TodoReportForm",
+        "type": "string"
+      },
       "TodoResponse": {
         "description": "Complete todo response with all fields",
         "properties": {
@@ -20143,6 +20152,54 @@
           "sub_todo_count"
         ],
         "title": "TodoResponse",
+        "type": "object"
+      },
+      "TodoRun": {
+        "additionalProperties": false,
+        "description": "One run of a tracked todo: the todo, the run, what woke it and the report it owes.",
+        "properties": {
+          "attribution": {
+            "$ref": "#/components/schemas/Attribution"
+          },
+          "report_form": {
+            "$ref": "#/components/schemas/TodoReportForm"
+          },
+          "run_id": {
+            "minLength": 1,
+            "title": "Run Id",
+            "type": "string"
+          },
+          "runs_once": {
+            "title": "Runs Once",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "todo_id": {
+            "minLength": 1,
+            "title": "Todo Id",
+            "type": "string"
+          },
+          "trigger_type": {
+            "$ref": "#/components/schemas/TriggerType"
+          },
+          "wake": {
+            "$ref": "#/components/schemas/TodoRunWake"
+          }
+        },
+        "required": [
+          "todo_id",
+          "run_id",
+          "title",
+          "trigger_type",
+          "runs_once",
+          "wake",
+          "report_form",
+          "attribution"
+        ],
+        "title": "TodoRun",
         "type": "object"
       },
       "TodoRunWake": {
@@ -20432,7 +20489,7 @@
       },
       "TodoWoke": {
         "additionalProperties": false,
-        "description": "A tracked todo's run woke.",
+        "description": "A tracked todo's run woke; the work it starts answers it, and so does the reply that reports that work.",
         "properties": {
           "id": {
             "description": "Producer-minted idempotency key",
@@ -20446,18 +20503,13 @@
             "title": "Kind",
             "type": "string"
           },
-          "todo_id": {
-            "title": "Todo Id",
-            "type": "string"
-          },
-          "wake": {
-            "$ref": "#/components/schemas/TodoRunWake"
+          "run": {
+            "$ref": "#/components/schemas/TodoRun"
           }
         },
         "required": [
           "id",
-          "todo_id",
-          "wake"
+          "run"
         ],
         "title": "TodoWoke",
         "type": "object"
@@ -23264,6 +23316,16 @@
             "default": "work_finished",
             "title": "Kind",
             "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "nothing_for_user": {
+            "default": false,
+            "title": "Nothing For User",
+            "type": "boolean"
           },
           "outcome": {
             "$ref": "#/components/schemas/WorkOutcome"

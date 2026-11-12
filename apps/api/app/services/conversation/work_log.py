@@ -1,6 +1,7 @@
 """Background work as conversation log entries: started (fenced on the step's claim), approvals, finished."""
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 
 from app.agents.core.background.executor_queue import get_lock_holder, parse_lock_value
@@ -10,6 +11,7 @@ from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
     CancelWork,
+    LoggedEntry,
     RejectReason,
     StepClaim,
     StopBy,
@@ -68,21 +70,28 @@ async def record_work_started(
     return True
 
 
+@dataclass(frozen=True)
+class WorkReport:
+    """What finished work hands its reply: the report, the cards it showed, the review's note and its own declaration."""
+
+    text: str
+    tool_data: Sequence[ToolDataEntry] = ()
+    note: str = ""
+    nothing_for_user: bool = False
+
+
 async def record_work_finished(
-    conversation_id: str,
-    user_id: str,
-    task_id: str,
-    outcome: WorkOutcome,
-    report: str,
-    tool_data: Sequence[ToolDataEntry] = (),
+    conversation_id: str, user_id: str, task_id: str, outcome: WorkOutcome, report: WorkReport
 ) -> None:
     """Append WorkFinished; its kick wakes the step, which narrates the result and its cards in the task's own reply."""
     entry = WorkFinished(
         id=f"work:{task_id}:finished",
         task_id=task_id,
         outcome=outcome,
-        report=report,
-        tool_data=tuple(tool_data),
+        report=report.text,
+        tool_data=tuple(report.tool_data),
+        note=report.note,
+        nothing_for_user=report.nothing_for_user,
     )
     await accept(runtime_ports(), conversation_id, user_id, entry)
 
@@ -127,14 +136,24 @@ async def record_approval_decided(
     await accept(runtime_ports(), conversation_id, user_id, entry)
 
 
-async def record_work_carried(conversation_id: str, user_id: str, task_id: str) -> bool:
-    """Append WorkStarted for work started outside a step, caused by everything logged so far.
+async def record_work_carried(
+    conversation_id: str, user_id: str, task_id: str, cause: LoggedEntry | None = None
+) -> bool:
+    """Append WorkStarted for work started outside a step, answering cause, else caused by everything logged so far.
 
     False when a Stop since refuses it, so nothing dispatches; the step narrates its WorkFinished.
     """
     ports = runtime_ports()
-    state = await ports.log.state(conversation_id, user_id)
-    entry = WorkStarted(id=f"work:{task_id}", task_id=task_id, cause_through=state.head)
+    if cause is None:
+        state = await ports.log.state(conversation_id, user_id)
+        entry = WorkStarted(id=f"work:{task_id}", task_id=task_id, cause_through=state.head)
+    else:
+        entry = WorkStarted(
+            id=f"work:{task_id}",
+            task_id=task_id,
+            cause_through=cause.seq,
+            answers=(cause.entry.id,),
+        )
     try:
         await accept(ports, conversation_id, user_id, entry)
     except EntryRejected as refused:

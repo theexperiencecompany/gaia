@@ -16,6 +16,7 @@ from app.models.message_models import (
 )
 from app.models.todo_wake_models import TodoRunWake
 from app.models.tool_data_models import ToolDataEntry
+from app.models.workflow_models import TriggerType
 from app.models.workflow_trigger_models import WorkflowTriggerContext
 from shared.py.analytics.catalog.attribution import Attribution
 from shared.py.analytics.catalog.properties import Identifier
@@ -162,12 +163,36 @@ class WorkflowFired(_Entry):
     run: WorkflowRun
 
 
+class TodoReportForm(StrEnum):
+    """What a tracked todo's run owes the user: a write-up, or its report as the todo's guidance formed it."""
+
+    WRITE_UP = "write_up"
+    # The reply only decides whether the report goes; the report goes as written.
+    AS_WRITTEN = "as_written"
+
+
+class TodoRun(BaseModel):
+    """One run of a tracked todo: the todo, the run, what woke it and the report it owes."""
+
+    model_config = _FROZEN
+
+    todo_id: str = Field(min_length=1)
+    # The run's own id: its finish entry and its durable finish job are keyed by it.
+    run_id: str = Field(min_length=1)
+    title: str
+    trigger_type: TriggerType
+    # Read when the run starts: a run that completes its todo tears its watches down.
+    runs_once: bool
+    wake: TodoRunWake
+    report_form: TodoReportForm
+    attribution: Attribution
+
+
 class TodoWoke(_Entry):
-    """A tracked todo's run woke."""
+    """A tracked todo's run woke; the work it starts answers it, and so does the reply that reports that work."""
 
     kind: Literal[EntryKind.TODO_WOKE] = EntryKind.TODO_WOKE
-    todo_id: str
-    wake: TodoRunWake
+    run: TodoRun
 
 
 class Notice(_Entry):
@@ -217,6 +242,10 @@ class WorkFinished(_Entry):
     report: str
     # The cards the work showed; the reply that narrates it (reply_id = task_id) carries them.
     tool_data: tuple[ToolDataEntry, ...] = ()
+    # What the review of the run's declared outcome adds for the reply; not part of the report.
+    note: str = ""
+    # The run's own word that its report holds nothing for the user.
+    nothing_for_user: bool = False
 
 
 class IntegrationNeeded(_Entry):

@@ -15401,6 +15401,12 @@ export interface components {
             type: "todo_progress";
         };
         /**
+         * TodoReportForm
+         * @description What a tracked todo's run owes the user: a write-up, or its report as the todo's guidance formed it.
+         * @enum {string}
+         */
+        TodoReportForm: "write_up" | "as_written";
+        /**
          * TodoResponse
          * @description Complete todo response with all fields
          */
@@ -15545,6 +15551,24 @@ export interface components {
             workflow_id: string | null;
         };
         /**
+         * TodoRun
+         * @description One run of a tracked todo: the todo, the run, what woke it and the report it owes.
+         */
+        TodoRun: {
+            attribution: components["schemas"]["Attribution"];
+            report_form: components["schemas"]["TodoReportForm"];
+            /** Run Id */
+            run_id: string;
+            /** Runs Once */
+            runs_once: boolean;
+            /** Title */
+            title: string;
+            /** Todo Id */
+            todo_id: string;
+            trigger_type: components["schemas"]["TriggerType"];
+            wake: components["schemas"]["TodoRunWake"];
+        };
+        /**
          * TodoRunWake
          * @description What woke one run of a tracked todo, shown on the user's side of its chat.
          */
@@ -15636,7 +15660,7 @@ export interface components {
         TodoWakeKind: "schedule" | "trigger" | "approval";
         /**
          * TodoWoke
-         * @description A tracked todo's run woke.
+         * @description A tracked todo's run woke; the work it starts answers it, and so does the reply that reports that work.
          */
         TodoWoke: {
             /**
@@ -15649,9 +15673,7 @@ export interface components {
              * @enum {string}
              */
             kind: "todo_woke";
-            /** Todo Id */
-            todo_id: string;
-            wake: components["schemas"]["TodoRunWake"];
+            run: components["schemas"]["TodoRun"];
         };
         /**
          * TodoWorkflowGenerationResponse
@@ -16885,6 +16907,16 @@ export interface components {
              * @enum {string}
              */
             kind: "work_finished";
+            /**
+             * Note
+             * @default
+             */
+            note?: string;
+            /**
+             * Nothing For User
+             * @default false
+             */
+            nothing_for_user?: boolean;
             outcome: components["schemas"]["WorkOutcome"];
             /** Report */
             report: string;
@@ -18055,7 +18087,9 @@ export type TodoLabelCount = components['schemas']['TodoLabelCount'];
 export type TodoListResponse = components['schemas']['TodoListResponse'];
 export type TodoModel = components['schemas']['TodoModel'];
 export type TodoProgressEvent = components['schemas']['TodoProgressEvent'];
+export type TodoReportForm = components['schemas']['TodoReportForm'];
 export type TodoResponse = components['schemas']['TodoResponse'];
+export type TodoRun = components['schemas']['TodoRun'];
 export type TodoRunWake = components['schemas']['TodoRunWake'];
 export type TodoStats = components['schemas']['TodoStats'];
 export type TodoUpdateRequest = components['schemas']['TodoUpdateRequest'];

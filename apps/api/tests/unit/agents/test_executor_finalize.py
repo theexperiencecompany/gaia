@@ -456,7 +456,7 @@ async def test_a_step_dispatched_live_run_logs_its_cards_on_work_finished(bounda
         await er._finalize_executor_run(run, TASK, "the digest", "final")
     logged = finished.await_args
     assert logged is not None
-    assert [card["tool_name"] for card in logged.args[5]] == ["tool_calls_data"]
+    assert [card["tool_name"] for card in logged.args[4].tool_data] == ["tool_calls_data"]
     boundaries.deliver.assert_not_awaited()
 
 

@@ -20,7 +20,6 @@ from app.models.agent_config import work_is_logged
 from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
-from app.models.workflow_models import TriggerType
 from shared.py.analytics import Dedupe
 from shared.py.wide_events import current_workflow_execution_id, log
 
@@ -68,17 +67,6 @@ class StreamSession:
     # tool_call_id -> the subagent_id of the run that ANNOUNCED it (None for
     # the executor's own calls) — the one fact that survives the echo above.
     tool_output_owners: dict[str, str | None] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class TodoRun:
-    """The tracked todo a background executor run is executing, and what woke it."""
-
-    todo_id: str
-    trigger_type: TriggerType
-    #: Read when the run starts: a run that completes its todo tears its watches
-    #: down, so the todo read at delivery would look like one that runs once.
-    runs_once: bool
 
 
 @dataclass(frozen=True)
@@ -153,9 +141,6 @@ class ExecutorRun:
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
     active_todo_id: str | None = None
-    #: Set only on a tracked todo's own scheduled/triggered run: it executes in its
-    #: todo's chat, which keeps its report, and its result goes through todo delivery.
-    todo_run: TodoRun | None = None
     #: Where the turn that spawned this run came from. Defaults to background
     #: work, matching ``build_agent_config``: the only callers that leave the
     #: source unset are the silent background paths.
@@ -233,12 +218,8 @@ class ExecutorRun:
 
     @property
     def owns_stream(self) -> bool:
-        """Whether this run streams into a message of its own instead of a comms turn's.
-
-        A detached run does, and so does a tracked todo's run, which streams into
-        its todo's chat with no comms turn in front of it.
-        """
-        return self.is_queued or self.todo_run is not None
+        """Whether this run streams into a message of its own instead of a comms turn's: a detached run does."""
+        return self.is_queued
 
     @property
     def render_message_id(self) -> str | None:
