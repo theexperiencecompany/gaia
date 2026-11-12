@@ -1,6 +1,6 @@
-import { Button } from "@heroui/react";
 import { PuzzleIcon } from "@icons";
 import { useRouter } from "next/navigation";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { ConnectOptionsData } from "@/features/integrations/types";
 
@@ -23,10 +23,10 @@ export default function ConnectOptions({
   return (
     <div className="flex flex-wrap gap-2">
       {connect_options.options.map((option) => (
-        <Button
+        <GaiaButton
           key={option.href}
           size="sm"
-          variant="tertiary"
+          variant="default-soft"
           onPress={() => router.push(option.href)}
         >
           {option.integration_id ? (
@@ -40,7 +40,7 @@ export default function ConnectOptions({
             <PuzzleIcon className="size-4 shrink-0" />
           )}
           {option.label}
-        </Button>
+        </GaiaButton>
       ))}
     </div>
   );

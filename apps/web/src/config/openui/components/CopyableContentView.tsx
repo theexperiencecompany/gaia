@@ -2,6 +2,7 @@ import { Button } from "@heroui/react";
 import { CheckmarkCircle02Icon, Copy01Icon } from "@icons";
 import React from "react";
 import type { z } from "zod";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { copyWithFeedback } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 import { ToolCard } from "../primitives/ToolCard";
@@ -32,9 +33,9 @@ export function CopyableContentView(
 
   if (inline) {
     return (
-      <Button
+      <GaiaButton
         size="sm"
-        variant="tertiary"
+        variant="default-soft"
         onPress={copy}
         aria-label={copied ? "Copied" : "Copy content"}
         className="inline-flex items-center gap-1.5 rounded-full bg-zinc-800 hover:bg-zinc-700 transition-colors px-3 py-1.5 min-w-0 h-auto"
@@ -47,7 +48,7 @@ export function CopyableContentView(
         ) : (
           <Copy01Icon className="w-3 h-3 shrink-0 text-zinc-500" />
         )}
-      </Button>
+      </GaiaButton>
     );
   }
 

@@ -1,12 +1,7 @@
-import {
-  Accordion,
-  AccordionItem,
-  Button,
-  Chip,
-  ScrollShadow,
-} from "@heroui/react";
+import { Accordion, AccordionItem, Chip, ScrollShadow } from "@heroui/react";
 import { NotificationIcon } from "@icons";
 import { useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { NotificationItem } from "@/features/notification/components/NotificationItem";
 import {
   ACCORDION_INDICATOR,
@@ -177,15 +172,15 @@ export default function NotificationListSection({
               {/* Mark All Read Button */}
               {unreadNotifications.length > 0 && (
                 <div className="flex justify-end">
-                  <Button
+                  <GaiaButton
                     size="sm"
-                    variant="tertiary"
+                    variant="default-soft"
                     onPress={handleMarkAllAsRead}
                     isPending={isMarkingAllRead}
                     className="text-zinc-300"
                   >
                     Mark all read
-                  </Button>
+                  </GaiaButton>
                 </div>
               )}
 

@@ -9,6 +9,7 @@ import type {
 import { formatApprovalAge, RECONFIRM_AGE_SECONDS } from "@shared/chat";
 import { flattenArgsPreview, statusAfterDecision } from "@shared/utils";
 import { useMemo, useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ShieldAlertIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useMarkApprovalDecided } from "@/features/chat/hooks/useMarkApprovalDecided";
@@ -151,9 +152,13 @@ export default function ApprovalRequestSection({
           >
             Yes, still approve
           </Button>
-          <Button variant="tertiary" size="sm" onPress={() => setPhase("idle")}>
+          <GaiaButton
+            variant="default-soft"
+            size="sm"
+            onPress={() => setPhase("idle")}
+          >
             Back
-          </Button>
+          </GaiaButton>
         </div>
       </div>
     );
@@ -205,14 +210,14 @@ export default function ApprovalRequestSection({
         >
           Approve
         </Button>
-        <Button
-          variant="tertiary"
+        <GaiaButton
+          variant="default-soft"
           size="sm"
           isDisabled={locked}
           onPress={() => submit("deny")}
         >
           Deny
-        </Button>
+        </GaiaButton>
         {!data.always_asks && (
           <Dropdown>
             <Button

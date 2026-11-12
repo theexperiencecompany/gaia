@@ -213,7 +213,7 @@ function VoiceCell({
             shape="pill"
             isIconOnly
             size="sm"
-            variant="tertiary"
+            variant="default-soft"
             aria-label={
               voice.isPlaying
                 ? `Pause ${voice.name} preview`

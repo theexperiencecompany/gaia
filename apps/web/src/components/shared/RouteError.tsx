@@ -4,6 +4,7 @@ import { Button, Spinner } from "@heroui/react";
 import { Home01Icon } from "@icons";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { track } from "@/lib/analytics";
 import {
   isChunkLoadError,
@@ -120,10 +121,13 @@ export default function RouteError({ error, reset }: RouteErrorProps) {
         >
           Try again
         </Button>
-        <Button variant="tertiary" onPress={() => window.location.assign("/")}>
+        <GaiaButton
+          variant="default-soft"
+          onPress={() => window.location.assign("/")}
+        >
           <Home01Icon width={18} />
           Home
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );

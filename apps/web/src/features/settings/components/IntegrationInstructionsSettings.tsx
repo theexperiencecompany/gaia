@@ -1,9 +1,10 @@
 "use client";
 
-import { Button, Skeleton } from "@heroui/react";
+import { Skeleton } from "@heroui/react";
 import { useQueries } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight } from "@/components/shared/icons";
 import {
   instructionsQueryOptions,
@@ -106,14 +107,14 @@ export function IntegrationInstructionsSettings() {
             label="No connected apps"
             description="Connect an app to start adding custom instructions."
           >
-            <Button
+            <GaiaButton
               size="sm"
-              variant="tertiary"
+              variant="default-soft"
               className="rounded-xl"
               onPress={() => router.push("/integrations")}
             >
               Browse integrations
-            </Button>
+            </GaiaButton>
           </SettingsRow>
         ) : (
           connected.map((integration, index) => {

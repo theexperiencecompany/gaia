@@ -2,6 +2,7 @@
 
 import { Button, FieldError, Input, Modal, TextField } from "@heroui/react";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
 import CopyButton from "@/components/ui/CopyButton";
 
@@ -71,9 +72,9 @@ function PhoneNumberForm({
         </TextField>
       </Modal.Body>
       <Modal.Footer>
-        <Button variant="tertiary" size="sm" onPress={onClose}>
+        <GaiaButton variant="default-soft" size="sm" onPress={onClose}>
           Cancel
-        </Button>
+        </GaiaButton>
         <Button
           size="sm"
           isPending={isSubmitting}
@@ -123,7 +124,7 @@ export function PhoneLinkModal({
                         href={target.actionLink}
                         target="_blank"
                         rel="noopener noreferrer"
-                        variant="tertiary"
+                        variant="default-soft"
                         size="sm"
                       >
                         Open in Messages

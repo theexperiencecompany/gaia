@@ -114,7 +114,7 @@ function FailedResponse({
       isDisabled={isRetrying}
       onPress={onRetry}
       size="sm"
-      variant="tertiary"
+      variant="default-soft"
     >
       <div className={isRetrying ? "animate-spin" : ""}>
         <RedoIcon height={13} width={13} />

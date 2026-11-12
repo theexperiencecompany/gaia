@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import type { DesktopPermissionStatus } from "@shared/desktop-tools";
 import { useCallback, useEffect, useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -144,16 +144,16 @@ export function DesktopPermissions() {
             <div className="flex items-center gap-2">
               {statusChip(granted, known)}
               {!granted && (
-                <Button
+                <GaiaButton
                   size="sm"
-                  variant="tertiary"
+                  variant="default-soft"
                   className="rounded-xl"
                   onPress={() => {
                     handleRequest(row);
                   }}
                 >
                   {row.promptable ? "Allow" : "Open Settings"}
-                </Button>
+                </GaiaButton>
               )}
               {needsRestart && (
                 <GaiaButton

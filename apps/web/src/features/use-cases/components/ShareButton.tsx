@@ -1,8 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { Copy01Icon, Tick02Icon } from "@icons";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { copyText } from "@/lib/clipboard";
 import { siteConfig } from "@/lib/seo";
 import { toast } from "@/lib/toast";
@@ -33,8 +33,8 @@ export default function ShareButton({
   };
 
   return (
-    <Button
-      variant="tertiary"
+    <GaiaButton
+      variant="default-soft"
       className="font-light text-zinc-400"
       onPress={handleCopyLink}
     >
@@ -44,6 +44,6 @@ export default function ShareButton({
         <Copy01Icon width={18} height={18} />
       )}
       {copied ? "Copied link" : "Share"}
-    </Button>
+    </GaiaButton>
   );
 }

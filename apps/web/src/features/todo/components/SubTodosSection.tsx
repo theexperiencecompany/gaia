@@ -1,10 +1,10 @@
 "use client";
 
-import { Button, Chip, Spinner } from "@heroui/react";
+import { Chip, Spinner } from "@heroui/react";
 import { Clock01Icon, Tag01Icon } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
-
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useSubTodos } from "@/features/todo/hooks/useSubTodos";
 
 interface SubTodosSectionProps {
@@ -75,14 +75,14 @@ export function SubTodosSection({
         ))}
       </ul>
       {hasNextPage && (
-        <Button
+        <GaiaButton
           size="sm"
-          variant="tertiary"
+          variant="default-soft"
           isPending={isFetchingNextPage}
           onPress={() => fetchNextPage()}
         >
           Load more
-        </Button>
+        </GaiaButton>
       )}
     </section>
   );

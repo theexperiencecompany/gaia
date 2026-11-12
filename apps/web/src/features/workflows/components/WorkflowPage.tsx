@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, useOverlayState } from "@heroui/react";
+import { useOverlayState } from "@heroui/react";
 import { type IconProps, RedoIcon } from "@icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, {
@@ -14,6 +14,7 @@ import React, {
   useState,
 } from "react";
 import WorkflowsHeader from "@/components/layout/headers/WorkflowsHeader";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 import { useHeader } from "@/hooks/layout/useHeader";
@@ -75,10 +76,10 @@ function renderGrid<T extends { id: string }>(
     return (
       <div className="flex flex-col items-center justify-center space-y-4 py-1">
         <p className="text-foreground-400">{error}</p>
-        <Button size="sm" variant="tertiary" onPress={onRefetch}>
+        <GaiaButton size="sm" variant="default-soft" onPress={onRefetch}>
           <RedoIcon className="h-4 w-4" />
           Try Again
-        </Button>
+        </GaiaButton>
       </div>
     );
   }

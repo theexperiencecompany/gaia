@@ -8,10 +8,14 @@ import { type Shape, shapeVariants } from "./shape";
 /** HeroUI's button variants plus GAIA's, closed: a misspelt or v2 variant is a type error. */
 export type GaiaButtonVariant = NonNullable<ButtonVariants["variant"]>;
 
-type GaiaOnlyVariant = "default-solid" | "accent-soft";
+type GaiaOnlyVariant = "default-solid" | "default-soft" | "accent-soft";
 
 function isGaiaVariant(variant: GaiaButtonVariant): variant is GaiaOnlyVariant {
-  return variant === "default-solid" || variant === "accent-soft";
+  return (
+    variant === "default-solid" ||
+    variant === "default-soft" ||
+    variant === "accent-soft"
+  );
 }
 
 type GaiaButtonProps = Omit<ButtonProps, "variant" | "className"> & {

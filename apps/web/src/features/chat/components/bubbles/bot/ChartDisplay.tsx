@@ -1,4 +1,4 @@
-import { Button, Spinner, Tabs } from "@heroui/react";
+import { Spinner, Tabs } from "@heroui/react";
 import {
   Cancel01Icon,
   ChartIcon,
@@ -9,6 +9,7 @@ import {
 import Image from "next/image";
 import type React from "react";
 import { useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   type ChartConfig,
   ChartContainer,
@@ -103,13 +104,13 @@ const InteractiveChart: React.FC<{ chart: ChartData }> = ({ chart }) => {
       return (
         <div className="flex h-64 w-full flex-col items-center justify-center gap-2 rounded-lg bg-zinc-900">
           <p className="text-xs text-zinc-500">Chart failed to load.</p>
-          <Button
+          <GaiaButton
             size="sm"
-            variant="tertiary"
+            variant="default-soft"
             onPress={() => setLoadAttempt((attempt) => attempt + 1)}
           >
             Retry
-          </Button>
+          </GaiaButton>
         </div>
       );
     }

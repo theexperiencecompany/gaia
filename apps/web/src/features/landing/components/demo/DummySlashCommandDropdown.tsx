@@ -569,7 +569,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
                 onPress={onClose}
                 isIconOnly
                 size="sm"
-                variant="tertiary"
+                variant="default-soft"
                 aria-label="Close button dummy composer"
               >
                 <Cancel01Icon size={14} />

@@ -1,6 +1,6 @@
 "use client";
 
-import { Accordion, Button, Skeleton } from "@heroui/react";
+import { Accordion, Skeleton } from "@heroui/react";
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
@@ -10,6 +10,7 @@ import {
 import type { MemoryEpisode } from "@shared/api/generated";
 import { addDays, format, isToday, parseISO, subDays } from "date-fns";
 import { type ReactNode, useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
 import { JOURNAL_RANGE_DAYS } from "@/features/memory/constants";
@@ -136,20 +137,20 @@ export function MemoryTimeline() {
           {format(rangeStart, "MMM d")} to {format(rangeEnd, "MMM d, yyyy")}
         </p>
         <div className="flex gap-1">
-          <Button
+          <GaiaButton
             isIconOnly
             size="sm"
-            variant="tertiary"
+            variant="default-soft"
             className="rounded-xl"
             aria-label="Previous two weeks"
             onPress={() => setRangeEnd(subDays(rangeEnd, JOURNAL_RANGE_DAYS))}
           >
             <ArrowLeft01Icon className="size-4" />
-          </Button>
-          <Button
+          </GaiaButton>
+          <GaiaButton
             isIconOnly
             size="sm"
-            variant="tertiary"
+            variant="default-soft"
             className="rounded-xl"
             aria-label="Next two weeks"
             isDisabled={atToday}
@@ -159,7 +160,7 @@ export function MemoryTimeline() {
             }}
           >
             <ArrowRight01Icon className="size-4" />
-          </Button>
+          </GaiaButton>
         </div>
       </div>
 

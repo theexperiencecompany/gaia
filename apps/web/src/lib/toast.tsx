@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { InformationCircleIcon } from "@icons";
 import type {
   ButtonHTMLAttributes,
@@ -9,6 +8,7 @@ import type {
   ReactNode,
 } from "react";
 import { type SileoOptions, type SileoPosition, sileo } from "sileo";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 // Mutable holder for a toast's id. sileo returns the id only after the toast is
 // created, but dismiss controls (rendered inside the toast) need it on click,
@@ -88,28 +88,28 @@ function ToastControls({
   return (
     <div className={twoUp ? "mt-2 grid grid-cols-2 gap-2" : "mt-2"}>
       {action ? (
-        <Button
+        <GaiaButton
           render={renderAsDiv}
           size="sm"
-          variant="tertiary"
+          variant="default-soft"
           fullWidth
           className={`${BTN_BASE} ${ACTION_CLS[state]}`}
           onPress={action.onClick}
         >
           {action.label}
-        </Button>
+        </GaiaButton>
       ) : null}
       {showDismiss ? (
-        <Button
+        <GaiaButton
           render={renderAsDiv}
           size="sm"
-          variant="tertiary"
+          variant="default-soft"
           fullWidth
           className={`${BTN_BASE} ${DISMISS_CLS}`}
           onPress={() => sileo.dismiss(idRef.id)}
         >
           {DISMISS_LABEL}
-        </Button>
+        </GaiaButton>
       ) : null}
     </div>
   );
