@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from app.constants.hil import (
@@ -22,7 +23,8 @@ from app.constants.hil import (
     JevChoice,
 )
 from app.constants.providers import CredentialProviderName
-from app.services.hil.intent import AutoHistory, IntentDecision, JudgedCall
+from app.services.hil.intent import AutoHistory, IntentDecision, JudgedCall, ungrounded_targets
+from app.services.hil.jev_client import jev_http_client
 from app.services.hil.jev_judge import (
     JevCase,
     JevIntentJudge,
@@ -35,7 +37,6 @@ from app.services.hil.jev_judge import (
     map_jev_choice,
     needs_forbid_check,
     settle_forbid,
-    ungrounded_targets,
 )
 from app.services.hil.prompts import JEV_FORBID_QUESTION
 from app.services.hil.utils import PriorCall
@@ -75,11 +76,10 @@ def _answer(
 
 
 def _client(answer: dict[str, Any] | Exception) -> AsyncMock:
-    """Fake httpx.AsyncClient serving one Decisions answer (or raising)."""
+    """Fake JEV HTTP client serving one Decisions answer (or raising)."""
     response = MagicMock()
     response.json.return_value = answer
     client = AsyncMock()
-    client.__aenter__.return_value = client
     if isinstance(answer, Exception):
         client.post.side_effect = answer
     else:
@@ -100,7 +100,7 @@ async def _decide(
             **{"decide.return_value": None},
         ),
     )
-    with patch(f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=_client(answer)):
+    with patch(f"{CLIENT_MODULE}.jev_http_client", _client(answer)):
         with _openrouter_key("or-key"):
             return await judge.decide(
                 user_id="u",
@@ -435,7 +435,7 @@ class TestWire:
     async def test_state_names_its_evidence_fields(self) -> None:
         """The criteria reference these names; a renamed field blinds the judge."""
         client = _client(_answer("unclear", 0.5))
-        with patch(f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=client):
+        with patch(f"{CLIENT_MODULE}.jev_http_client", client):
             with _openrouter_key("or-key"):
                 await ask_jev(
                     user_messages=["send it"],
@@ -443,7 +443,7 @@ class TestWire:
                     prior_calls=[],
                     history=AutoHistory(),
                 )
-        posted = client.__aenter__.return_value.post.await_args.kwargs["json"]
+        posted = client.post.await_args.kwargs["json"]
         assert set(posted["state"]) == {
             "user_messages",
             "pending_action",
@@ -462,7 +462,7 @@ class TestWire:
     async def test_enrichment_rides_only_when_it_exists(self) -> None:
         """Empty evidence reads as missing evidence and costs confidence, so an old-shape call posts the old-shape state — and a rich call carries it all."""
         client = _client(_answer("unclear", 0.5))
-        with patch(f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=client):
+        with patch(f"{CLIENT_MODULE}.jev_http_client", client):
             with _openrouter_key("or-key"):
                 await ask_jev(
                     user_messages=["send it"],
@@ -470,7 +470,7 @@ class TestWire:
                     prior_calls=[PriorCall(name="FIND", args={})],
                     history=AutoHistory(),
                 )
-        posted = client.__aenter__.return_value.post.await_args.kwargs["json"]
+        posted = client.post.await_args.kwargs["json"]
         assert set(posted["state"]["pending_action"]) == {
             "tool",
             "description",
@@ -481,7 +481,7 @@ class TestWire:
         assert "assistant_turns" not in posted["state"]
 
         client = _client(_answer("unclear", 0.5))
-        with patch(f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=client):
+        with patch(f"{CLIENT_MODULE}.jev_http_client", client):
             with _openrouter_key("or-key"):
                 await ask_jev(
                     user_messages=["send it"],
@@ -493,7 +493,7 @@ class TestWire:
                     history=AutoHistory(),
                     assistant_turns=["your draft is ready"],
                 )
-        posted = client.__aenter__.return_value.post.await_args.kwargs["json"]
+        posted = client.post.await_args.kwargs["json"]
         assert posted["state"]["pending_action"]["tool_schema"] == {
             "properties": {"draft_id": {"type": "string"}}
         }
@@ -503,9 +503,7 @@ class TestWire:
         assert posted["state"]["assistant_turns"] == ["your draft is ready"]
 
     async def test_usage_is_reported(self) -> None:
-        with patch(
-            f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=_client(_answer("unclear", 0.5))
-        ):
+        with patch(f"{CLIENT_MODULE}.jev_http_client", _client(_answer("unclear", 0.5))):
             with _openrouter_key("or-key"):
                 choice, conf, probs, tokens_in, tokens_out = await ask_jev(
                     user_messages=["send it"],
@@ -546,7 +544,7 @@ def _forbid_answer(
 
 
 def _sequence_client(*answers: dict[str, Any] | Exception) -> AsyncMock:
-    """Fake httpx.AsyncClient serving one answer per post, in order."""
+    """Fake JEV HTTP client serving one answer per post, in order."""
     effects: list[Any] = []
     for answer in answers:
         if isinstance(answer, Exception):
@@ -556,19 +554,15 @@ def _sequence_client(*answers: dict[str, Any] | Exception) -> AsyncMock:
             response.json.return_value = answer
             effects.append(response)
     client = AsyncMock()
-    client.__aenter__.return_value = client
     client.post.side_effect = effects
     return client
 
 
 @contextmanager
-def _jev(client: AsyncMock, key: str | None = "or-key") -> Iterator[MagicMock]:
-    """Serve client as the Decisions API with key configured; yields the AsyncClient factory."""
-    with (
-        patch(f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=client) as factory,
-        _openrouter_key(key),
-    ):
-        yield factory
+def _jev(client: AsyncMock, key: str | None = "or-key") -> Iterator[None]:
+    """Serve client as the Decisions API with key configured."""
+    with patch(f"{CLIENT_MODULE}.jev_http_client", client), _openrouter_key(key):
+        yield
 
 
 def _openrouter_key(key: str | None) -> AbstractContextManager[AsyncMock]:
@@ -608,14 +602,16 @@ class TestTheTripwireReadsEachLaterTurn:
 
 
 class TestTheDecisionsWire:
+    async def test_every_request_is_bounded_by_the_jev_timeout(self) -> None:
+        assert jev_http_client.timeout == httpx.Timeout(HIL_JEV_TIMEOUT_SECONDS)
+
     async def test_the_request_is_bounded_authenticated_and_names_its_model(self) -> None:
         client = _sequence_client(_answer("unclear", 0.5))
-        with _jev(client) as factory:
+        with _jev(client):
             await ask_jev(
                 user_messages=["send it"], call=_call(), prior_calls=[], history=AutoHistory()
             )
 
-        factory.assert_called_once_with(timeout=HIL_JEV_TIMEOUT_SECONDS)
         post = client.post.await_args
         assert post.args == (HIL_JEV_URL,)
         assert post.kwargs["headers"] == {"Authorization": "Bearer or-key"}
@@ -669,11 +665,10 @@ class TestTheForbidWire:
     async def test_the_focused_question_sees_earlier_and_latest_turns_apart(self) -> None:
         turns = ["never email bob", "hold on", "email bob the deck"]
         client = _sequence_client(_forbid_answer("forbidden", 0.8, {"input_tokens": 9}))
-        with _jev(client) as factory:
+        with _jev(client):
             result = await ask_jev_forbid(user_messages=turns, call=_call())
 
         assert result == ("forbidden", 0.8, 9, 0)
-        factory.assert_called_once_with(timeout=HIL_JEV_TIMEOUT_SECONDS)
         post = client.post.await_args
         assert post.args == (HIL_JEV_URL,)
         assert post.kwargs["headers"] == {"Authorization": "Bearer or-key"}

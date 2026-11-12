@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { foldReactionAcks } from "@/features/chat/utils/reactionUtils";
 import type { IMessage } from "@/lib/db/chatDb";
 import type { OptimisticMessage } from "@/stores/chatStore";
 import { useChatStore } from "@/stores/chatStore";
@@ -40,10 +39,8 @@ export const mapStoredMessageToConversationMessage = (
     isConvoSystemGenerated: message.isConvoSystemGenerated ?? undefined,
     error: message.error ?? undefined,
     replyToMessage: message.replyToMessageData ?? undefined,
-    kind: message.kind ?? undefined,
-    reacts_to_message_id: message.reacts_to_message_id ?? undefined,
     stopped: message.stopped ?? undefined,
-    reactions: message.reactions ?? undefined,
+    reaction: message.reaction ?? undefined,
   } as MessageType;
 
   conversionCache.set(message, mapped);
@@ -91,11 +88,7 @@ export const useConversation = () => {
       : [];
 
     // Convert IndexedDB messages to MessageType (cached per stored message ref).
-    // Reaction acks fold onto their targets first, so an emoji-ack renders as
-    // a badge on the answered message instead of a stray bubble.
-    const messages = foldReactionAcks(dbMessages).map(
-      mapStoredMessageToConversationMessage,
-    );
+    const messages = dbMessages.map(mapStoredMessageToConversationMessage);
 
     // Only add optimistic message for NEW conversations (no activeConversationId)
     // For existing conversations, messages are already in IndexedDB with optimistic flag

@@ -42,11 +42,11 @@ from app.constants.chat import (
 from app.constants.comms import CommsDirectiveKind
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
 from app.constants.log_tags import LogTag
+from app.constants.reactions import REACTION_SETTLE_SECONDS
 from app.core.stream_manager import stream_manager
 from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import (
     ConversationSource,
-    MessageKind,
     SourceCategory,
     ToolDataEntry,
 )
@@ -55,8 +55,6 @@ from app.models.presence_models import PresenceSnapshot
 from app.models.stream_events import (
     ConversationDescriptionFrame,
     ConversationInitializedFrame,
-    EmojiAckFrame,
-    EmojiAckPayload,
     ErrorFrame,
     MainResponseCompleteFrame,
     ReplyPlacedFrame,
@@ -85,6 +83,12 @@ from app.services.chat.state import (
     recover_stream_state,
 )
 from app.services.chat.workspace import schedule_last_active_touch
+from app.services.conversation.reaction import (
+    InstantReactionInput,
+    ReactionTarget,
+    react_as_chat_model,
+    react_instantly,
+)
 from app.services.delivery.presence import record_turn_presence
 from app.services.files import FileService
 from app.services.hil.conversational import resolve_pending_from_message
@@ -242,10 +246,9 @@ class _StreamState:
         "e2e_full_ms",
         "error",
         "follow_up_actions",
+        "instant_reaction",
         "is_cancelled",
-        "message_kind",
         "queued",
-        "reacts_to_message_id",
         "reply_opened",
         "saved",
         "t0_perf",
@@ -288,11 +291,8 @@ class _StreamState:
         # to reconcile after a reload. Bots get a server-minted id instead.
         self.user_message_id: str = turn_id or str(uuid4())
         self.bot_message_id: str = str(uuid4())
-        # When comms resolved the turn to an ``<EMOJI>…</EMOJI>`` ack (see
-        # resolve_turn_emoji_ack), the stamp that renders the saved reply as a reaction
-        # badge. Unmutated: _persist_turn overwrites both before anything reads them.
-        self.message_kind: MessageKind = MessageKind.TEXT  # pragma: no mutate
-        self.reacts_to_message_id: str | None = None  # pragma: no mutate
+        # The instant reaction placed beside the pre-model work; its result is the emoji placed.
+        self.instant_reaction: asyncio.Task[str | None] | None = None
         # Monotonic stamps (never logged raw) and their ms derivations. A None
         # ms means the span never happened — never zero-filled.
         self.t0_perf: float | None = None
@@ -345,6 +345,10 @@ async def _run_chat_stream(
             body, user, conversation_id, stream_id, state, source
         ):
             return
+        # Runs beside the pre-model work below; the model reads it only if it is already placed.
+        state.instant_reaction = _start_instant_reaction(
+            body, user_id, conversation_id, stream_id, state
+        )
 
         forwarder_subscribed = asyncio.Event()
         if user_id:
@@ -398,15 +402,13 @@ async def _run_chat_stream(
 
         # Saved before the executor wait: a reload during the wait shows the comms ack.
         await _persist_turn(stream_id, body, user, conversation_id, state)
-        # Before the executor wait: a reaction acknowledging a hand-off lands now,
-        # not beside the result the work produces minutes later.
-        await _publish_emoji_ack(stream_id, state)
         await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
         # A stop pressed during the executor wait arrives after the consume
         # loop's check: re-read it here or the turn closes as completed.
         await _note_cancellation(stream_id, state)
 
         await _finalize_description(description_task, stream_id)
+        await _await_instant_reaction(state)
         await stream_manager.publish_chunk(
             stream_id,
             format_sse_data(
@@ -737,6 +739,7 @@ async def _consume_agent_stream(
             source=turn.source,
             presence=turn.presence,
             active_todo_id=turn.todo_id,
+            instant_reaction=state.instant_reaction,
         ),
         ids=StreamMessageIds(
             stream_id=stream_id,
@@ -979,43 +982,82 @@ async def _handle_stream_error(
     return user_error
 
 
-async def _publish_emoji_ack(stream_id: str, state: _StreamState) -> None:
-    """Attach the turn's emoji ack as a reaction badge; the frame is all the client learns of it."""
-    # Unmutated: resolve_turn_emoji_ack sets kind and target together, so and/or agree.
-    if (
-        state.message_kind is not MessageKind.EMOJI_ACK  # pragma: no mutate
-        or not state.reacts_to_message_id
-    ):
-        return
-    await stream_manager.publish_chunk(
-        stream_id,
-        format_sse_data(
-            EmojiAckFrame(
-                emoji_ack=EmojiAckPayload(
-                    emoji=state.complete_message,
-                    reacts_to_message_id=state.reacts_to_message_id,
-                )
-            ).model_dump()
-        ),
+def _start_instant_reaction(
+    body: MessageRequestWithHistory,
+    user_id: str | None,
+    conversation_id: str,
+    stream_id: str,
+    state: _StreamState,
+) -> asyncio.Task[str | None] | None:
+    """Start the instant reaction to a message the user typed; None for voice, a workflow run or no words."""
+    text = user_message_content_from(body).strip()
+    if not user_id or not text or body.voice_mode or body.selectedWorkflow is not None:
+        return None
+    return asyncio.create_task(
+        react_instantly(
+            ReactionTarget(
+                stream_id=stream_id,
+                conversation_id=conversation_id,
+                user_id=user_id,
+                message_id=state.user_message_id,
+            ),
+            InstantReactionInput(
+                message_text=text, previous_assistant_text=_previous_assistant_text(body.messages)
+            ),
+        )
     )
 
 
-def resolve_turn_emoji_ack(
-    complete_message: str, user_message_id: str
-) -> tuple[str, MessageKind, str | None]:
-    """Reduce comms' final message to the stamp the saved turn should carry.
+def _previous_assistant_text(messages: list[MessageDict]) -> str:
+    """Return GAIA's last message before this turn, or "" when the turn opens the conversation."""
+    previous = ""
+    for turn in messages:
+        if turn["role"] == "assistant":
+            previous = turn["content"]
+    return previous
 
-    A whole-reply emoji directive becomes a one-emoji acknowledgment stamped
-    emoji_ack with the user message as target. A silence was never streamed, so
-    it resolves to an empty reply, which the empty-completion fallback answers:
-    a live turn must not vanish. A reply keeps its text without directive bubbles.
+
+async def _await_instant_reaction(state: _StreamState) -> None:
+    """Let the instant reaction land before the turn closes, giving up on it past the settle bound."""
+    if state.instant_reaction is None:
+        return
+    # wait, not await: the reaction's own failure or cancellation must not end this turn.
+    await asyncio.wait([state.instant_reaction], timeout=REACTION_SETTLE_SECONDS)
+    await _cancel_instant_reaction(state)
+
+
+async def _cancel_instant_reaction(state: _StreamState) -> None:
+    """Stop an instant reaction still deciding, so it can never land after the chat model's."""
+    if state.instant_reaction is None:
+        return
+    state.instant_reaction.cancel()
+    await asyncio.wait([state.instant_reaction])
+
+
+def resolve_turn_reaction(complete_message: str) -> tuple[str, str | None]:
+    """Reduce comms' final message to the reply text it saves and the emoji it reacts with, if any.
+
+    A whole-reply emoji directive is a reaction with no text. A silence was never
+    streamed, so it resolves to an empty reply, which the empty-completion fallback
+    answers. A reply keeps its text without directive bubbles.
     """
     directive = interpret_comms_output(complete_message)
     if directive.kind is CommsDirectiveKind.REACT:
-        return directive.payload, MessageKind.EMOJI_ACK, user_message_id
+        return "", directive.payload
     if directive.kind is CommsDirectiveKind.SILENCE:
-        return "", MessageKind.TEXT, None
-    return directive.payload, MessageKind.TEXT, None
+        return "", None
+    return directive.payload, None
+
+
+def _has_tool_cards(state: _StreamState) -> bool:
+    """Whether the turn produced a real tool card; thinking alone is not one."""
+    entries = _PersistedToolData.model_validate(state.tool_data).tool_data
+    return any(entry.tool_category != REASONING_STEP for entry in entries)
+
+
+def _turn_did_work(stream_id: str, state: _StreamState) -> bool:
+    """Whether the turn produced a tool card or handed work to the executor, whose cards land on its message."""
+    return _has_tool_cards(state) or _executor_delegation(stream_id)[0]
 
 
 async def _substitute_empty_completion(stream_id: str, state: _StreamState) -> None:
@@ -1029,8 +1071,7 @@ async def _substitute_empty_completion(stream_id: str, state: _StreamState) -> N
     if state.complete_message.strip() or state.error or state.is_cancelled:
         return
     # Thinking alone is not an answer: only a real tool card stands in for the reply.
-    entries = _PersistedToolData.model_validate(state.tool_data).tool_data
-    if any(entry.tool_category != REASONING_STEP for entry in entries):
+    if _has_tool_cards(state):
         return
 
     _, output_tokens, _ = aggregate_usage_metadata(state.usage_metadata)
@@ -1106,17 +1147,18 @@ async def _save_reply(
     state.complete_message, state.tool_data = await recover_stream_state(
         stream_id, state.complete_message, state.tool_data
     )
-    # A comms REACT directive resolves this turn to a one-emoji ack of the
-    # user's message; stamp the saved message so reload/sync fold it into a
-    # reaction badge (the live client learns the same from the emoji_ack frame).
-    state.complete_message, state.message_kind, state.reacts_to_message_id = resolve_turn_emoji_ack(
-        state.complete_message, state.user_message_id
-    )
+    state.complete_message, reaction = resolve_turn_reaction(state.complete_message)
     merge_tool_outputs(state.tool_data, state.tool_outputs)
     inject_todo_progress(state.tool_data, state.todo_progress_accumulated)
     reconstruct_subagent_groups(state.tool_data)
-    await _substitute_empty_completion(stream_id, state)
-    seq = await save_bot_reply(
+    if reaction is not None:
+        await _react_as_chat_model(stream_id, user, conversation_id, state, reaction)
+        # The reaction is the whole answer; only a reply already shown, or the turn's cards, need a message.
+        if not state.reply_opened and not _turn_did_work(stream_id, state):
+            return None
+    else:
+        await _substitute_empty_completion(stream_id, state)
+    return await save_bot_reply(
         body=body,
         user=user,
         conversation_id=conversation_id,
@@ -1127,15 +1169,31 @@ async def _save_reply(
             metadata=state.usage_metadata,
             error=state.error or None,
             follow_up_actions=state.follow_up_actions or None,
-            kind=state.message_kind,
-            reacts_to_message_id=state.reacts_to_message_id,
             stopped=state.is_cancelled,
             opened=state.reply_opened,
         ),
     )
-    if state.message_kind is MessageKind.EMOJI_ACK:
-        capture(UserId(user.user_id), ChatTurnReacted(emoji=state.complete_message))
-    return seq
+
+
+async def _react_as_chat_model(
+    stream_id: str,
+    user: AuthenticatedUser,
+    conversation_id: str,
+    state: _StreamState,
+    emoji: str,
+) -> None:
+    """Put the chat model's emoji on the user's message in place of any instant one, and count it."""
+    await _cancel_instant_reaction(state)
+    await react_as_chat_model(
+        ReactionTarget(
+            stream_id=stream_id,
+            conversation_id=conversation_id,
+            user_id=user.user_id,
+            message_id=state.user_message_id,
+        ),
+        emoji,
+    )
+    capture(UserId(user.user_id), ChatTurnReacted(emoji=emoji))
 
 
 async def _attach_executor_tool_data(
@@ -1195,6 +1253,9 @@ async def _finalize_stream(
     artifact_task: asyncio.Task[None] | None,
 ) -> None:
     """Always-run cleanup: cancel forwarder, persist, teardown, and log the final event."""
+    if state.instant_reaction is not None:
+        # A turn that failed before settling it gets no reaction after its stream closes.
+        state.instant_reaction.cancel()
     if artifact_task is not None:
         artifact_task.cancel()
         with contextlib.suppress(BaseException):

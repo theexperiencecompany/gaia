@@ -22,7 +22,7 @@ import re
 
 from app.constants.chat import ARTIFACT_REF_RE, USER_MESSAGE_TYPE, WORKSPACE_ARTIFACT_RE
 from app.db.repositories.conversations import conversation_repository
-from app.models.chat_models import MessageKind, MessageModel, UpdateMessagesRequest
+from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import update_messages
@@ -148,9 +148,6 @@ class BotReply:
     metadata: dict[str, object] = field(default_factory=dict)
     error: str | None = None
     follow_up_actions: list[str] | None = None
-    #: A REACT turn: a one-emoji acknowledgment of reacts_to_message_id.
-    kind: MessageKind = MessageKind.TEXT
-    reacts_to_message_id: str | None = None
     #: The user cut this turn off with Stop.
     stopped: bool = False
     #: Its entry was opened (open_bot_reply), so it is filled in place rather than appended.
@@ -180,8 +177,6 @@ async def save_bot_reply(
         # of the turn the user saw, so a reload, a sync, or a second device must
         # rebuild them from the saved message alone.
         follow_up_actions=reply.follow_up_actions,
-        kind=reply.kind,
-        reacts_to_message_id=reply.reacts_to_message_id,
         stopped=reply.stopped or None,
     )
     bot_message.message_id = reply.bot_message_id

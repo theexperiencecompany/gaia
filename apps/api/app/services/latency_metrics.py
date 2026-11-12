@@ -280,6 +280,18 @@ _TRIGGER_GATE_DECISION_TOTAL = _register_once(
     ),
 )
 
+_REACTION_ACK_DECISION_TOTAL = _register_once(
+    "reaction_ack_decision_total",
+    lambda: Counter(
+        name="reaction_ack_decision_total",
+        documentation=(
+            "Lifetime instant reaction decisions; jev_error, jev_timeout and jev_malformed over every "
+            "reason that asked JEV is the instant reaction's JEV error rate"
+        ),
+        labelnames=("outcome", "reason"),
+    ),
+)
+
 _HIL_PAUSE_TOTAL = _register_once(
     "hil_pause_total",
     lambda: Counter(
@@ -321,6 +333,7 @@ ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _EXECUTOR_RUN_TOTAL,
     _TOOL_CALL_TOTAL,
     _TRIGGER_GATE_DECISION_TOTAL,
+    _REACTION_ACK_DECISION_TOTAL,
     _HIL_PAUSE_TOTAL,
 )
 
@@ -472,6 +485,11 @@ def observe_trigger_gate_decision(*, owner: str, outcome: str, reason: str) -> N
     _inc(_TRIGGER_GATE_DECISION_TOTAL, owner=owner, outcome=outcome, reason=reason)
 
 
+def observe_reaction_ack_decision(*, outcome: str, reason: str) -> None:
+    """Count one instant reaction decision."""
+    _inc(_REACTION_ACK_DECISION_TOTAL, outcome=outcome, reason=reason)
+
+
 def observe_hil_pause() -> None:
     """Increment the lifetime HIL-pause counter."""
     _inc(_HIL_PAUSE_TOTAL)
@@ -538,6 +556,7 @@ __all__ = [
     "observe_hil_user_wait",
     "observe_llm_call",
     "observe_llm_ttft",
+    "observe_reaction_ack_decision",
     "observe_sse_delivery",
     "observe_subagent_run",
     "observe_tool_call",

@@ -265,6 +265,17 @@ class StepHolder(BaseModel):
     alive_key: str
 
 
+class RetiredAckFields(BaseModel):
+    """What the entries migration reads of a message stored as a retired emoji_ack, to fold it into a reaction."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    kind: str | None = None
+    response: str = ""
+    reacts_to_message_id: str | None = None
+    tool_data: list[object] | None = None
+
+
 class ConversationHead(BaseModel):
     """A conversations document as the entry log reads it: identity, log_head, outbox, migration and log state."""
 
@@ -275,6 +286,7 @@ class ConversationHead(BaseModel):
     log_head: int | None = None
     outbox: dict[int, StoredEntry] = Field(default_factory=dict)
     migrated_last_id: str | None = None
+    migration_folded_acks: list[str] = Field(default_factory=list)
     embedded: EmbeddedState | None = Field(default=None, alias="_embedded")
     existing: list[EntryKey] = Field(default_factory=list)
     messages: list[LegacyMessage] = Field(default_factory=list)

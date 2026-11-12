@@ -76,7 +76,6 @@ apps/web/src/types/api/aboutApiTypes.ts:AboutData
 apps/web/src/types/api/aboutApiTypes.ts:Author
 apps/web/src/types/api/calendarApiTypes.ts:CalendarEventsResult
 apps/web/src/types/api/calendarApiTypes.ts:CalendarItem
-apps/web/src/types/api/mailApiTypes.ts:EmailActionResponse
 libs/shared/ts/src/bots/api/chat-stream.ts:SseFrame
 libs/shared/ts/src/bots/api/chat-stream.types.ts:ApprovalUpdateHandler
 libs/shared/ts/src/bots/api/chat-stream.types.ts:ChatStreamClient
@@ -92,7 +91,6 @@ libs/shared/ts/src/chat/approvals.types.ts:ApprovalScope
 libs/shared/ts/src/chat/approvals.types.ts:ApprovalStatus
 libs/shared/ts/src/chat/approvals.types.ts:BatchApprovalDecisionPayload
 libs/shared/ts/src/chat/approvals.types.ts:HilMode
-libs/shared/ts/src/chat/approvals.types.ts:HilPreferences
 libs/shared/ts/src/chat/fixtures.ts:ToolFixture
 libs/shared/ts/src/chat/streaming.ts:ChatStreamEvent
 libs/shared/ts/src/chat/streaming.ts:JsonObject
@@ -194,7 +192,6 @@ libs/shared/ts/src/types/notification.ts:InAppNotificationContent
 libs/shared/ts/src/types/notification.ts:NotificationActionConfig
 libs/shared/ts/src/types/notification.ts:PlatformLink
 libs/shared/ts/src/types/notification.ts:PlatformLinksResponse
-libs/shared/ts/src/types/notification.ts:QuietHours
 libs/shared/ts/src/types/reminders.ts:CronValidationResult
 libs/shared/ts/src/types/reminders.ts:Reminder
 libs/shared/ts/src/types/reminders.ts:ReminderCreate

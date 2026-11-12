@@ -14,8 +14,8 @@ interface TailDot {
   top: number;
 }
 
-/** Tail of a one-glyph badge: a 30-unit lobe fused to the circle, plus a 16-unit dot. */
-export const SINGLE_TAIL: readonly TailDot[] = [
+/** The badge's tail: a 30-unit lobe fused to the circle, plus a 16-unit dot. */
+export const REACTION_TAIL: readonly TailDot[] = [
   {
     size: 30 * FIGMA_TO_PX,
     edge: -1.5 * FIGMA_TO_PX,
@@ -25,23 +25,6 @@ export const SINGLE_TAIL: readonly TailDot[] = [
     size: 16 * FIGMA_TO_PX,
     edge: -14.5 * FIGMA_TO_PX,
     top: 98.5 * FIGMA_TO_PX,
-  },
-];
-
-const FIGMA_CAPSULE_HEIGHT = 156;
-const CAPSULE_TO_PX = REACTION_BADGE_HEIGHT_PX / FIGMA_CAPSULE_HEIGHT;
-
-/** Tail of a wide capsule: two free dots below it (43 and 24 units). */
-export const CAPSULE_TAIL: readonly TailDot[] = [
-  {
-    size: 43 * CAPSULE_TO_PX,
-    edge: 124 * CAPSULE_TO_PX,
-    top: 140 * CAPSULE_TO_PX,
-  },
-  {
-    size: 24 * CAPSULE_TO_PX,
-    edge: 158 * CAPSULE_TO_PX,
-    top: 190 * CAPSULE_TO_PX,
   },
 ];
 
@@ -56,7 +39,6 @@ export const REACTION_EMOJI_PX = Math.round(46 * FIGMA_TO_PX);
 
 /** Neutral zinc, so the badge separates from the cyan user bubble it sits on. */
 export const REACTION_FILL_CLASS = "bg-zinc-700";
-export const REACTION_COUNT_CLASS = "text-zinc-300";
 
 /**
  * How far the badge hangs above and past the bubble's corner. Chosen so the

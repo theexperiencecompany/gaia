@@ -16,8 +16,6 @@ from email.utils import parseaddr
 import time
 from typing import Final
 
-import httpx
-
 from app.constants.desk_buckets import DESK_BUCKET_SKIP_REASONS
 from app.constants.integrations import EVENT_ACCOUNT_ID_KEY
 from app.constants.trigger_gates import (
@@ -54,7 +52,7 @@ from app.models.trigger_gate_models import (
 )
 from app.services.analytics_service import capture
 from app.services.feature_flags import is_trigger_gates_enforced
-from app.services.hil.jev_client import JevUnconfiguredError, post_decisions
+from app.services.hil.jev_client import jev_failure, post_decisions
 from app.services.latency_metrics import observe_trigger_gate_decision
 from app.services.mail.email_verdict import (
     EmailVerdict,
@@ -74,22 +72,6 @@ from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.catalog.triggers import TriggerGateDecided
 from shared.py.analytics.context import analytics_context, worker_context
 from shared.py.wide_events import log
-
-# Why JEV gave no usable answer, first match wins; anything else is an error, so it is alerted on.
-_FAILURE_REASONS: tuple[tuple[type[Exception] | tuple[type[Exception], ...], GateReason], ...] = (
-    (JevUnconfiguredError, GateReason.JEV_UNCONFIGURED),
-    ((TimeoutError, httpx.TimeoutException), GateReason.JEV_TIMEOUT),
-    # A body that is not JSON, fails validation, or names a label or probability the gate never offered.
-    (ValueError, GateReason.JEV_MALFORMED),
-)
-
-
-def jev_failure_reason(error: Exception) -> GateReason:
-    """Name why a JEV call gave no usable answer; anything unforeseen is JEV_ERROR."""
-    return next(
-        (reason for kinds, reason in _FAILURE_REASONS if isinstance(error, kinds)),
-        GateReason.JEV_ERROR,
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -418,7 +400,7 @@ async def _ask_jev(
             decision = await _ask_authored(gate, event, job.automation, hold=hold)
     except Exception as e:
         # The one degradation a gate has: run as if it were not there, or wait for the morning.
-        reason = jev_failure_reason(e)
+        reason = GateReason(jev_failure(e))
         if reason is not GateReason.JEV_UNCONFIGURED:
             log.warning(
                 "trigger_gate.jev_failed",

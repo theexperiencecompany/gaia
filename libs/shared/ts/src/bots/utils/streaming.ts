@@ -173,8 +173,6 @@ async function _handleStream(
   let bubbleProvisional = false;
   /** True once the stream's own error handler has told the user about a failure. */
   let failureReported = false;
-  /** True once the turn's emoji ack attached natively, which is a reply of its own. */
-  let reacted = false;
 
   // Serialization queue to prevent concurrent Telegram API calls
   // which cause out-of-order message updates
@@ -379,17 +377,16 @@ async function _handleStream(
     });
   };
 
-  /**
-   * Hands the turn's emoji ack to the adapter to attach natively, once any edit still in
-   * flight has landed — the adapter may be about to delete the bubble that edit targets.
-   */
-  const reactToTurn = async (emoji: string): Promise<ReactionOutcome> => {
+  /** Hands a reaction to the adapter to attach natively, once any edit still in flight has landed. */
+  const reactToTurn = async (
+    emoji: string,
+    replaces: string | null,
+  ): Promise<ReactionOutcome> => {
     if (!onReaction) return REACTION_OUTCOME.NO_TARGET;
     // Overwritten by the queued call; enqueue rejects if it throws.
     let outcome: ReactionOutcome = REACTION_OUTCOME.NO_TARGET;
     await enqueue(async () => {
-      outcome = await onReaction(emoji);
-      reacted = outcome === REACTION_OUTCOME.ATTACHED;
+      outcome = await onReaction(emoji, replaces);
     });
     return outcome;
   };
@@ -451,9 +448,9 @@ async function _handleStream(
           logger.info("bubble_preamble_kept", { chars: shownText.length });
         }
 
-        // A hand-off says nothing: the work's result arrives as its own message, so
-        // whatever the adapter put up while waiting must not outlive the turn.
-        if (!shownText && !reacted && onNoReply) {
+        // A hand-off or a reaction says nothing: whatever the adapter put up while
+        // waiting must not outlive the turn.
+        if (!shownText && onNoReply) {
           await onNoReply();
         }
       },
@@ -683,8 +680,8 @@ async function runStreamingChat(
         notices += 1;
         await deliverOutOfBand(text);
       },
-      async (emoji: string) => {
-        const outcome = await reactToTurn(emoji);
+      async (emoji: string, replaces: string | null) => {
+        const outcome = await reactToTurn(emoji, replaces);
         reactionDelivered = reactionDeliveredProperties(
           outcome,
           REACTION_SURFACE.LIVE,

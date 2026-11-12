@@ -7576,8 +7576,6 @@ export interface components {
             image_data?: components["schemas"]["ImageData"] | null;
             /** In Progress */
             in_progress?: boolean | null;
-            /** @default text */
-            kind?: components["schemas"]["MessageKind"];
             /** Message Id */
             message_id?: string | null;
             /** Metadata */
@@ -7588,8 +7586,7 @@ export interface components {
             pinned?: boolean | null;
             /** Platform Message Id */
             platform_message_id?: string | null;
-            /** Reacts To Message Id */
-            reacts_to_message_id?: string | null;
+            reaction?: components["schemas"]["MessageReaction"] | null;
             replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
             /** Response */
             response: string;
@@ -10975,14 +10972,6 @@ export interface components {
             trace_id?: string | null;
         };
         /**
-         * MessageKind
-         * @description What a bot message IS beyond its text, set when comms' intent is known at
-         *     creation and would otherwise be unrecoverable from the body alone (a deliberate
-         *     one-emoji acknowledgement reads identically to a coincidental one-emoji reply).
-         * @enum {string}
-         */
-        MessageKind: "text" | "emoji_ack";
-        /**
          * MessageModel
          * @description A single chat message with its content, attachments and tool data.
          */
@@ -11016,8 +11005,6 @@ export interface components {
             image_data?: components["schemas"]["ImageData"] | null;
             /** In Progress */
             in_progress?: boolean | null;
-            /** @default text */
-            kind?: components["schemas"]["MessageKind"];
             /** Message Id */
             message_id?: string | null;
             /** Metadata */
@@ -11028,8 +11015,7 @@ export interface components {
             pinned?: boolean | null;
             /** Platform Message Id */
             platform_message_id?: string | null;
-            /** Reacts To Message Id */
-            reacts_to_message_id?: string | null;
+            reaction?: components["schemas"]["MessageReaction"] | null;
             replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
             /** Response */
             response: string;
@@ -11047,6 +11033,15 @@ export interface components {
             toolCategory?: string | null;
             /** Type */
             type: string;
+        };
+        /**
+         * MessageReaction
+         * @description GAIA's one emoji reaction on a user message.
+         */
+        MessageReaction: {
+            by: components["schemas"]["ReactionBy"];
+            /** Emoji */
+            emoji: string;
         };
         /**
          * MessageRequest
@@ -12820,6 +12815,12 @@ export interface components {
             /** Start Hour */
             start_hour: number;
         };
+        /**
+         * ReactionBy
+         * @description Which mind put a reaction on a message: the instant classifier or the chat model.
+         * @enum {string}
+         */
+        ReactionBy: "jev" | "chat_model";
         /**
          * ReadinessResponse
          * @description ``GET /health/ready``: whether every backing service answered a real request.
@@ -16725,8 +16726,8 @@ export type MemoryTreeResponse = components['schemas']['MemoryTreeResponse'];
 export type MessageDict = components['schemas']['MessageDict'];
 export type MessageFeedbackRequest = components['schemas']['MessageFeedbackRequest'];
 export type MessageFeedbackResponse = components['schemas']['MessageFeedbackResponse'];
-export type MessageKind = components['schemas']['MessageKind'];
 export type MessageModel = components['schemas']['MessageModel'];
+export type MessageReaction = components['schemas']['MessageReaction'];
 export type MessageRequest = components['schemas']['MessageRequest'];
 export type MessageRequestWithHistory = components['schemas']['MessageRequestWithHistory'];
 export type MessageSearchResult = components['schemas']['MessageSearchResult'];
@@ -16815,6 +16816,7 @@ export type PublishWorkflowResponse = components['schemas']['PublishWorkflowResp
 export type PushTokenRequest = components['schemas']['PushTokenRequest'];
 export type PushTokenResponse = components['schemas']['PushTokenResponse'];
 export type QuietHours = components['schemas']['QuietHours'];
+export type ReactionBy = components['schemas']['ReactionBy'];
 export type ReadinessResponse = components['schemas']['ReadinessResponse'];
 export type RecordedCall = components['schemas']['RecordedCall'];
 export type RecurrenceData = components['schemas']['RecurrenceData'];

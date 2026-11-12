@@ -116,9 +116,8 @@ const mapApiMessagesToStored = (
       todoRunWake: message.todo_run_wake ?? null,
       replyToMessageId: message.replyToMessage?.id ?? null,
       replyToMessageData: message.replyToMessage ?? null,
-      kind: message.kind ?? null,
-      reacts_to_message_id: message.reacts_to_message_id ?? null,
       stopped: message.stopped ?? null,
+      reaction: message.reaction ?? null,
     } satisfies IMessage;
   });
 

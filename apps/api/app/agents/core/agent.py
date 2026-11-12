@@ -115,6 +115,8 @@ class AgentRunOptions:
     #: The tracked todo whose own chat an interactive turn is in, so the turn knows
     #: which todo "this" is; a background run names its todo in trigger_context.
     active_todo_id: str | None = None
+    #: The instant reaction running beside this turn's setup; its result is the emoji placed.
+    instant_reaction: asyncio.Task[str | None] | None = None
 
 
 @dataclass(frozen=True)
@@ -180,6 +182,7 @@ async def _core_agent_logic(
                 execution_mode=execution_mode,
                 presence=presence,
                 opens_thread=opens_thread(request.messages, request.message),
+                instant_reaction=options.instant_reaction,
             ),
             attachments=MessageAttachments(
                 selected_tool=request.selectedTool,

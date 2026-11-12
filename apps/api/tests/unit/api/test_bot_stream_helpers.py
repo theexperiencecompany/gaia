@@ -253,21 +253,18 @@ class TestBotStreamPayloadFrame:
         assert payload == {"text": "hello there"}
         assert stop is False
 
-    async def test_emoji_ack_is_forwarded_so_bots_take_back_the_directive(self):
-        # Regression: the parse-at-boundary refactor moved translation onto
-        # BotWebStreamPayload, which had no emoji_ack field, so the ack was dropped
-        # (extra="ignore") and bots showed the raw REACT: <emoji> text.
-        data = {"emoji_ack": {"emoji": "😎", "reacts_to_message_id": "umsg-1"}}
+    async def test_a_reaction_is_forwarded_so_bots_set_it_on_the_inbound_message(self):
+        reaction = {"message_id": "umsg-1", "emoji": "😎", "by": "chat_model"}
         frame, stop = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate(data), "user-1"
+            BotWebStreamPayload.model_validate({"reaction": reaction}), "user-1"
         )
         payload = json.loads(frame[len("data: ") : -2])
-        assert payload == {"emoji_ack": {"emoji": "😎", "reacts_to_message_id": "umsg-1"}}
+        assert payload == {"reaction": reaction}
         assert stop is False
 
-    async def test_an_explicit_null_emoji_ack_still_delivers_the_response_text(self):
+    async def test_an_explicit_null_reaction_still_delivers_the_response_text(self):
         frame, stop = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate({"emoji_ack": None, "response": "hi"}), "user-1"
+            BotWebStreamPayload.model_validate({"reaction": None, "response": "hi"}), "user-1"
         )
         payload = json.loads(frame[len("data: ") : -2])
         assert payload == {"text": "hi"}

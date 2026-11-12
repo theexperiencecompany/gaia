@@ -1,16 +1,17 @@
-import { foldReactionAcks as foldSharedReactionAcks } from "@shared/utils";
-import type { IMessage } from "@/lib/db/chatDb";
+import type { MessageReaction } from "@shared/api/generated";
+import { db } from "@/lib/db/chatDb";
+import { useChatStore } from "@/stores/chatStore";
 
-/**
- * Fold comms REACT acks onto their target messages for render.
- *
- * Thin wrapper over the shared implementation (`@shared/utils`) so web and
- * mobile converge on one fold. See `foldReactionAcks` there for the contract.
- */
-export function foldReactionAcks(messages: IMessage[]): IMessage[] {
-  return foldSharedReactionAcks(
-    messages,
-    (message) => message.content,
-    (ack) => (ack.tool_data?.length ? { ...ack, content: "" } : null),
+/** Set GAIA's reaction on a message in place of any earlier one: painted now, kept in IndexedDB for reload. */
+export async function applyMessageReaction(
+  conversationId: string,
+  messageId: string,
+  reaction: MessageReaction,
+): Promise<void> {
+  const store = useChatStore.getState();
+  const shown = store.messagesByConversation[conversationId]?.find(
+    (message) => message.id === messageId,
   );
+  if (shown) store.updateMessageInPlace({ ...shown, reaction });
+  await db.updateMessage(messageId, { reaction });
 }

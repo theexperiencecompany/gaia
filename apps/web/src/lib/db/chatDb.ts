@@ -1,7 +1,6 @@
-import type { TodoRunWake } from "@shared/api/generated";
+import type { MessageReaction, TodoRunWake } from "@shared/api/generated";
 import Dexie, { type IndexableType, type Table } from "dexie";
 import { EventEmitter } from "events";
-import type { MessageReaction } from "@/config/registries/baseMessageRegistry";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import type { SystemPurpose } from "@/features/chat/api/chatApi";
 import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
@@ -13,6 +12,10 @@ import type {
 } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
+import {
+  foldLegacyReactionAcks,
+  type LegacyStoredMessage,
+} from "./foldLegacyReactionAcks";
 import { compareMessageOrder } from "./messageOrder";
 
 export interface IConversation {
@@ -86,14 +89,10 @@ export interface IMessage {
     role: "user" | "assistant";
   } | null;
 
-  // Backend message kind ("text" | "emoji_ack").
-  kind?: string | null;
-  // GAIA id of the message an emoji_ack reacts to.
-  reacts_to_message_id?: string | null;
   // The user stopped this turn with Stop (server's stopped).
   stopped?: boolean | null;
-  // Reactions folded onto this message for render (see foldReactionAcks).
-  reactions?: MessageReaction[] | null;
+  // GAIA's one reaction on a user message (server's reaction).
+  reaction?: MessageReaction | null;
 }
 
 class MessageQueue {
@@ -176,6 +175,17 @@ class ChatDexie extends Dexie {
     this.version(2).stores({
       messages: "id, conversationId, createdAt, [conversationId+seq]",
     });
+    // v3: a reaction is a field on the user message; cached emoji_ack messages fold into it.
+    this.version(3)
+      .stores({})
+      .upgrade(async (tx) => {
+        const messages = tx.table<LegacyStoredMessage, string>("messages");
+        const { updated, removedIds } = foldLegacyReactionAcks(
+          await messages.toArray(),
+        );
+        await messages.bulkPut(updated);
+        await messages.bulkDelete(removedIds);
+      });
 
     this.conversations = this.table("conversations");
     this.messages = this.table("messages");

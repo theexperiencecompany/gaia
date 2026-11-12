@@ -5,6 +5,11 @@ records the last copied message_id on the head. A later pass merges, by message 
 what the old build wrote since: new elements are appended through the one seq
 allocator, changed ones (their migration_hash differs) are rewritten. Each entry keeps
 the hash of the element it was copied from, which is what verify compares.
+
+Every pass then folds each stored emoji_ack message into a reaction on the user
+message it answered: kept with empty text when it carries cards, removed when it
+does not (its id recorded on the head so later passes do not copy it again), kept
+as plain text when its target is gone.
 """
 
 from __future__ import annotations
@@ -18,7 +23,7 @@ import json
 
 from bson import ObjectId
 
-from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
+from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION, USER_MESSAGE_TYPE
 from app.db.repositories.conversation_entries import (
     EMBEDDED_LAST_ID,
     LOG_HEAD_FIELD,
@@ -29,15 +34,22 @@ from app.db.repositories.conversation_entries import (
     store_errors,
 )
 from app.db.repositories.conversations import ConversationRepository
+from app.models.chat_models import MessageReaction, ReactionBy
 from app.models.conversation_models import (
     ConversationHead,
     HeadRefRow,
     LegacyMessage,
+    RetiredAckFields,
     StoredEntry,
 )
 
 #: The id given to a legacy element stored without a message_id: stable, so every pass agrees.
 _LEGACY_ID_PREFIX = "legacy-"
+#: The retired kind of a bot message that was a one-emoji reaction, and the field naming its target.
+_EMOJI_ACK_KIND = "emoji_ack"
+_ACK_TARGET_FIELD = "reacts_to_message_id"
+#: On a head: the ids of the ack messages folded away, which the embedded array still holds.
+FOLDED_ACKS_FIELD = "migration_folded_acks"
 #: A scan reads only what a HeadRef holds, never the embedded array it is about to copy.
 _HEAD_REF_STAGE: dict[str, object] = {
     "$project": {
@@ -49,7 +61,12 @@ _HEAD_REF_STAGE: dict[str, object] = {
 }
 _BY_HEAD_ID: dict[str, object] = {"$sort": {"_id": 1}}
 _BY_SEQ: list[tuple[str, int]] = [("seq", 1)]
-_UNSET_EMBEDDED: dict[str, object] = {"messages": "", MIGRATED_LAST_ID_FIELD: ""}
+_UNSET_EMBEDDED: dict[str, object] = {
+    "messages": "",
+    MIGRATED_LAST_ID_FIELD: "",
+    FOLDED_ACKS_FIELD: "",
+}
+_RETIRED_ACK: dict[str, object] = {"kind": "", _ACK_TARGET_FIELD: ""}
 _UNSET_LOG: dict[str, object] = {LOG_HEAD_FIELD: "", OUTBOX_FIELD: "", MIGRATED_LAST_ID_FIELD: ""}
 
 
@@ -71,6 +88,7 @@ class MigrationOutcome:
     action: MigrationAction
     copied: int = 0
     rewritten: int = 0
+    folded: int = 0
     reason: str = ""
 
 
@@ -128,6 +146,11 @@ def entry_at(date: object) -> datetime:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
+def _is_ack(message: LegacyMessage | StoredEntry) -> bool:
+    fields = message.stored() if isinstance(message, LegacyMessage) else message.message_fields()
+    return RetiredAckFields.model_validate(fields).kind == _EMOJI_ACK_KIND
+
+
 def _of(ref: HeadRef) -> dict[str, str]:
     """Match the entries of ref's conversation."""
     return {"user_id": ref.user_id, "conversation_id": ref.conversation_id}
@@ -180,10 +203,61 @@ class ConversationEntriesMigration(ConversationRepository):
                 reason=f"message ids repeat in the embedded array: {', '.join(duplicated)}",
             )
         if head.log_head is None:
-            if apply and not await self._copy(ref, pairs):
+            if not apply:
+                return MigrationOutcome(
+                    ref.conversation_id,
+                    MigrationAction.COPIED,
+                    copied=len(pairs),
+                    folded=sum(_is_ack(element) for _, element in pairs),
+                )
+            if not await self._copy(ref, pairs):
                 return MigrationOutcome(ref.conversation_id, MigrationAction.RACED)
-            return MigrationOutcome(ref.conversation_id, MigrationAction.COPIED, copied=len(pairs))
-        return await self._merge(ref, head, pairs, apply=apply)
+            outcome = MigrationOutcome(
+                ref.conversation_id, MigrationAction.COPIED, copied=len(pairs)
+            )
+        else:
+            outcome = await self._merge(ref, head, pairs, apply=apply)
+        if outcome.action is MigrationAction.RACED:
+            return outcome
+        outcome.folded = await self.fold_reaction_acks(ref, apply=apply)
+        return outcome
+
+    async def fold_reaction_acks(self, ref: HeadRef, *, apply: bool) -> int:
+        """Fold each stored emoji_ack message into its target's reaction; return how many there were.
+
+        Acks are only ever copied from the embedded array, never appended, so none waits in the outbox.
+        """
+        acks = [entry for entry in await self._stored(ref) if _is_ack(entry)]
+        if apply:
+            for ack in acks:
+                await self._fold_ack(ref, ack)
+        return len(acks)
+
+    async def _fold_ack(self, ref: HeadRef, ack: StoredEntry) -> None:
+        fields = RetiredAckFields.model_validate(ack.message_fields())
+        emoji = fields.response.strip()
+        at_seq = {**_of(ref), "seq": ack.seq}
+        entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
+        with store_errors("fold reactions"):  # pragma: no mutate — error label only
+            reacted = False
+            if emoji:
+                reaction = MessageReaction(emoji=emoji, by=ReactionBy.CHAT_MODEL)
+                target = await entries.update_one(
+                    {**_of(ref), "id": fields.reacts_to_message_id, "type": USER_MESSAGE_TYPE},
+                    {"$set": {"reaction": reaction.model_dump()}},
+                )
+                reacted = target.matched_count > 0
+            if not reacted:
+                # Nothing to react to: the ack stays, as the plain message it reads as.
+                await entries.update_one(at_seq, {"$unset": _RETIRED_ACK})
+            elif fields.tool_data:
+                await entries.update_one(at_seq, {"$set": {"response": ""}, "$unset": _RETIRED_ACK})
+            else:
+                # Recorded before the delete, so a crash between leaves an ack the next pass folds again.
+                await self._raw_collection().update_one(
+                    {"_id": ObjectId(ref.head_id)}, {"$addToSet": {FOLDED_ACKS_FIELD: ack.id}}
+                )
+                await entries.delete_one(at_seq)
 
     async def verify(self, ref: HeadRef) -> VerifyReport:
         """Compare the embedded array with the entries: each element present, in order, unchanged since copied."""
@@ -198,11 +272,18 @@ class ConversationEntriesMigration(ConversationRepository):
             return report
         if head.migrated_last_id != last_embedded_id(elements):
             report.mismatches.append("written by the old build since its last pass: run --since")
+        report.mismatches.extend(
+            f"entry {entry.id} is still an emoji_ack message: run the migration with --apply"
+            for entry in entries
+            if _is_ack(entry)
+        )
+        folded = set(head.migration_folded_acks)
         seqs: list[int] = []
         for entry_id, element in identified(elements):
             entry = by_id.get(entry_id)
             if entry is None:
-                report.mismatches.append(f"{entry_id} has no entry")
+                if entry_id not in folded:
+                    report.mismatches.append(f"{entry_id} has no entry")
                 continue
             seqs.append(entry.seq)
             if entry.migration_hash != element_hash(element.stored()):
@@ -321,7 +402,8 @@ class ConversationEntriesMigration(ConversationRepository):
         """Later pass: append elements the entries lack, rewrite ones the old build changed, then re-mark the head."""
         await self.flush_outbox(ref.conversation_id, user_id=ref.user_id)
         by_id = {entry.id: entry for entry in await self._stored(ref)}
-        fresh = [(i, e) for i, e in pairs if i not in by_id]
+        folded = set(head.migration_folded_acks)
+        fresh = [(i, e) for i, e in pairs if i not in by_id and i not in folded]
         changed = [
             (i, e)
             for i, e in pairs

@@ -24,7 +24,7 @@ import pytest
 from app.constants.chat import EMPTY_RESPONSE_FALLBACK
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
-from app.models.chat_models import MessageKind, MessageModel
+from app.models.chat_models import MessageModel
 from app.models.conversation_models import UpdateMessagesResponse
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
@@ -101,6 +101,11 @@ async def persist(
     request = update.await_args.args[0]
     bot = next(m for m in request.messages if m.type == "bot")
     return bot, [c for c in published if c != PLACED_FRAME]
+
+
+def _reply_text_frames(published: list[str]) -> list[str]:
+    """Keep the frames that put text in front of the user; the reply's seq frame is not one."""
+    return [chunk for chunk in published if '"response"' in chunk]
 
 
 async def persist_with_log(state: _StreamState) -> tuple[MessageModel, list[Any], Any]:
@@ -356,7 +361,7 @@ class TestAnEmptyCompletionIsNeverSaved:
 
         assert bot.response == ""
         assert bot.error == state.error
-        assert published == []
+        assert _reply_text_frames(published) == []
 
     async def test_a_cancelled_turn_is_not_answered_with_say_it_again(self):
         """The user stopped this turn on purpose; nothing failed to come through."""
@@ -367,7 +372,7 @@ class TestAnEmptyCompletionIsNeverSaved:
         bot, published = await persist(state)
 
         assert bot.response == ""
-        assert published == []
+        assert _reply_text_frames(published) == []
 
     async def test_a_turn_whose_content_is_tool_cards_is_left_alone(self):
         """An image or a card with no prose is a real answer, not silence."""
@@ -380,7 +385,7 @@ class TestAnEmptyCompletionIsNeverSaved:
         bot, published = await persist(state)
 
         assert bot.response == ""
-        assert published == []
+        assert _reply_text_frames(published) == []
 
 
 class TestTheSubstitutionIsRecordedExactly:
@@ -392,7 +397,8 @@ class TestTheSubstitutionIsRecordedExactly:
 
         _, published, _ = await persist_with_log(state)
 
-        assert published == [("s1", format_sse_response(EMPTY_RESPONSE_FALLBACK))]
+        texts = [(sid, chunk) for sid, chunk in published if '"response"' in chunk]
+        assert texts == [("s1", format_sse_response(EMPTY_RESPONSE_FALLBACK))]
 
     async def test_a_model_that_spent_tokens_on_no_text_is_recorded_as_such(self):
         state = _StreamState()
@@ -433,20 +439,48 @@ class TestAReactionTheCatalogCannotCarryIsDeliveredAsText:
 
         bot, _ = await persist(state, FAKE_USER)
 
-        assert (bot.kind, bot.response, bot.reacts_to_message_id) == (
-            MessageKind.TEXT,
-            "<EMOJI>ok</EMOJI>",
-            None,
-        )
+        assert bot.response == "<EMOJI>ok</EMOJI>"
         assert state.saved
 
-    async def test_a_real_emoji_still_saves_an_emoji_ack(self):
+    async def test_a_reaction_after_its_reply_was_opened_fills_that_entry_in(self):
+        """The opened entry is in progress; leaving it unsaved would hand the sweeper a reply to fail."""
+        state = _StreamState()
+        state.complete_message = "<EMOJI>👍</EMOJI>"
+        state.reply_opened = True
+
+        with (
+            patch.object(
+                chat_stream,
+                "recover_stream_state",
+                new=AsyncMock(side_effect=lambda _sid, msg, td: (msg, td)),
+            ),
+            patch.object(chat_stream, "react_as_chat_model", new=AsyncMock()),
+            patch.object(chat_stream, "save_bot_reply", new=AsyncMock(return_value=None)) as save,
+            patch.object(chat_stream, "capture"),
+        ):
+            await _persist_turn("s1", _body(), FAKE_USER, CONV, state)
+
+        reply = save.await_args.kwargs["reply"]
+        assert (reply.opened, reply.complete_message) == (True, "")
+
+    async def test_a_real_emoji_is_a_reaction_and_saves_no_bot_message(self):
         state = _StreamState()
         state.complete_message = "<EMOJI>👍</EMOJI>"
 
-        bot, _ = await persist(state, FAKE_USER)
+        with (
+            patch.object(
+                chat_stream,
+                "recover_stream_state",
+                new=AsyncMock(side_effect=lambda _sid, msg, td: (msg, td)),
+            ),
+            patch.object(chat_stream, "react_as_chat_model", new=AsyncMock()) as react,
+            patch("app.services.chat.persistence.update_messages", new=AsyncMock()) as update,
+            patch.object(chat_stream, "capture"),
+        ):
+            await _persist_turn("s1", _body(), FAKE_USER, CONV, state)
 
-        assert (bot.kind, bot.response) == (MessageKind.EMOJI_ACK, "👍")
+        assert react.await_args.args[1] == "👍"
+        update.assert_not_awaited()
         assert state.saved
 
 

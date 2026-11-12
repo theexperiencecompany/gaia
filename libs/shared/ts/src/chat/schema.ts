@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ToolDataEntry } from "../api/generated";
+import type { MessageReaction, ToolDataEntry } from "../api/generated";
 
 /**
  * Zod mirror of the chat SSE event vocabulary; the source of truth is the backend at
@@ -74,6 +74,15 @@ const EmojiAckFrameSchema = z.object({
     emoji: z.string(),
     reacts_to_message_id: z.string(),
   }),
+});
+const ReactionFrameSchema = z.object({
+  reaction: z
+    .object({
+      message_id: z.string(),
+      emoji: z.string(),
+      by: z.enum(["jev", "chat_model"]),
+    })
+    .loose() satisfies z.ZodType<MessageReaction & { message_id: string }>,
 });
 const ModelFallbackFrameSchema = z.object({
   model_fallback: z.object({ model: z.string().optional() }).loose(),
@@ -195,6 +204,7 @@ export const ChatStreamFrameSchema = z.union([
   ResponseFrameSchema,
   ErrorFrameSchema,
   EmojiAckFrameSchema,
+  ReactionFrameSchema,
   ModelFallbackFrameSchema,
   KeepaliveFrameSchema,
   MainResponseCompleteFrameSchema,

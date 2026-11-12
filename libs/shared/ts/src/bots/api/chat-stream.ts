@@ -9,6 +9,7 @@
  * @module
  */
 import type { Readable } from "node:stream";
+import type { ReactionBy } from "../../api/generated";
 import type { ApprovalRequestData } from "../../chat";
 import { NEW_MESSAGE_BREAK_TOKEN } from "../../utils/messageBreakUtils";
 import type { ChatRequest } from "../types";
@@ -134,7 +135,7 @@ interface SseFrame {
   notice?: { text: string };
   text?: string;
   message_boundary?: MessageBoundary;
-  emoji_ack?: { emoji: string; reacts_to_message_id?: string };
+  reaction?: { message_id: string; emoji: string; by: ReactionBy };
   done?: boolean;
   conversation_id?: string;
 }
@@ -176,6 +177,8 @@ async function streamChatOnce(
   let streamError: Error | null = null;
   // A natively attached reaction is the whole reply, so the turn has content with no text.
   let reacted = false;
+  // The emoji now on the user's message, which the next reaction replaces.
+  let placedEmoji: string | null = null;
   const turnHasContent = (): boolean => reacted || fullText !== "";
 
   const keepPendingText = (): void => {
@@ -191,15 +194,21 @@ async function streamChatOnce(
     await onChunk(text);
   };
 
-  // The `<EMOJI>…</EMOJI>` ack: the backend sends it only when the whole reply is the
-  // directive, and never streams the directive's text. Attached as a reaction, the turn
-  // delivers no text; otherwise the emoji is its one chunk, or streaming platforms show nothing.
-  const applyEmojiAck = async (emoji: string): Promise<void> => {
-    if ((await onReaction?.(emoji)) === REACTION_OUTCOME.ATTACHED) {
+  // GAIA reacted to the user's message. The chat model reacts only when that is its whole
+  // reply, so a chat-model emoji the platform cannot attach becomes the turn's one chunk;
+  // an instant one it cannot attach is dropped, since the turn's own reply still follows.
+  const applyReaction = async ({
+    emoji,
+    by,
+  }: NonNullable<SseFrame["reaction"]>): Promise<void> => {
+    if (
+      (await onReaction?.(emoji, placedEmoji)) === REACTION_OUTCOME.ATTACHED
+    ) {
       reacted = true;
-      fullText = "";
+      placedEmoji = emoji;
       return;
     }
+    if (by !== "chat_model") return;
     fullText = emoji;
     await onChunk(emoji);
   };
@@ -301,7 +310,7 @@ async function streamChatOnce(
           await onNotice?.(frame.notice.text);
         }
         if (frame.text) await applyText(frame.text);
-        if (frame.emoji_ack) await applyEmojiAck(frame.emoji_ack.emoji);
+        if (frame.reaction) await applyReaction(frame.reaction);
         if (frame.message_boundary) {
           await applyMessageBoundary(frame.message_boundary.discarded);
         }
