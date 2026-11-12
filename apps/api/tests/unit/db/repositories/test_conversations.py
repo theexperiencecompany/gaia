@@ -198,7 +198,11 @@ class TestSetMessageApprovalStatus:
         )
 
         _filter, update, kwargs = _update_call(collection)
-        assert update == {"$set": {"messages.$[msg].tool_data.$[entry].data.status": "approved"}}
+        # A decided card cannot expire, so settling also drops the pending card's expiry.
+        assert update == {
+            "$set": {"messages.$[msg].tool_data.$[entry].data.status": "approved"},
+            "$unset": {"messages.$[msg].tool_data.$[entry].data.expires_at": ""},
+        }
         # Both levels are filtered: ``messages.$[]`` would demand tool_data on
         # every message and Mongo rejects the whole update.
         assert kwargs["array_filters"] == [
@@ -214,7 +218,7 @@ class TestSetMessageApprovalStatus:
         )
 
         _filter, update, _kwargs = _update_call(collection)
-        assert set(update) == {"$set"}
+        assert set(update) == {"$set", "$unset"}
         assert set(update["$set"]) == {"messages.$[msg].tool_data.$[entry].data.status"}
 
     async def test_reports_true_when_the_frame_was_there_to_settle(

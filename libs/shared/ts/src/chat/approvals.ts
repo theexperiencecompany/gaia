@@ -1,4 +1,5 @@
 import type {
+  ApprovalDescription,
   ApprovalRequestData,
   ApprovalStatus,
   HilMode,
@@ -9,6 +10,8 @@ import type { StreamToolDataEntry } from "./streaming";
 export type {
   ApprovalDecision,
   ApprovalDecisionPayload,
+  ApprovalDescription,
+  ApprovalDetail,
   ApprovalRequestData,
   ApprovalScope,
   ApprovalStatus,
@@ -19,6 +22,8 @@ export type {
   HilMode,
   HilPreferences,
   HilPreferencesUpdate,
+  PendingApprovalCardData,
+  SettledApprovalCardData,
 } from "./approvals.types";
 
 export const APPROVAL_REQUEST_TOOL_NAME = "approval_request";
@@ -28,15 +33,61 @@ export const DEFAULT_HIL_MODE: HilMode = "always_allow";
 /** Approve taps on cards older than this re-confirm in place first. */
 export const RECONFIRM_AGE_SECONDS = 86400;
 
-/** Compact card age: "asked just now" / "asked 1h ago" / "asked 2d ago". */
-export function formatApprovalAge(
-  ageSeconds: number | null | undefined,
-): string {
-  if (ageSeconds == null || ageSeconds < 60) return "asked just now";
+/** Closing verb for a card saved before the server described it. */
+const LEGACY_CONFIRM = "go ahead";
+
+/**
+ * Seconds since the card was asked, computed now — never a stored snapshot,
+ * which goes stale the moment it is written. Null when the card predates
+ * `asked_at` or carries an unreadable one.
+ */
+export function approvalAgeSeconds(
+  data: Pick<ApprovalRequestData, "asked_at">,
+  now: number = Date.now(),
+): number | null {
+  if (!data.asked_at) return null;
+  const asked = Date.parse(data.asked_at);
+  if (Number.isNaN(asked)) return null;
+  return Math.max(0, Math.floor((now - asked) / 1000));
+}
+
+/** How long ago, in words: "just now" / "5m ago" / "1h ago" / "2d ago". */
+export function formatApprovalAge(ageSeconds: number): string {
+  if (ageSeconds < 60) return "just now";
   const hours = Math.floor(ageSeconds / 3600);
-  if (hours < 1) return `asked ${Math.floor(ageSeconds / 60)}m ago`;
-  if (hours < 24) return `asked ${hours}h ago`;
-  return `asked ${Math.floor(hours / 24)}d ago`;
+  if (hours < 1) return `${Math.floor(ageSeconds / 60)}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+/** The card's plain-language description; a card saved before descriptions reads as its summary. */
+export function cardDescription(
+  data: Pick<ApprovalRequestData, "description" | "summary">,
+): ApprovalDescription {
+  return (
+    data.description ?? {
+      action: data.summary,
+      headline: data.summary,
+      confirm: LEGACY_CONFIRM,
+      details: [],
+    }
+  );
+}
+
+/** The card's expiry, only while it is pending and only when it really expires. */
+export function approvalExpiresAt(data: ApprovalRequestData): string | null {
+  return data.status === "pending" ? (data.expires_at ?? null) : null;
+}
+
+/** The card settled to `status`; a decision drops any expiry, since a decided card cannot expire. */
+export function settleCard(
+  data: ApprovalRequestData,
+  status: Exclude<ApprovalStatus, "pending">,
+  feedback: string | null,
+): ApprovalRequestData {
+  if (data.status !== "pending") return { ...data, status, feedback };
+  const { expires_at: _expiry, ...rest } = data;
+  return { ...rest, status, feedback };
 }
 
 /** A decided approval — no longer actionable, kept as a receipt. */
@@ -67,22 +118,31 @@ export function toolOverrideValue(
   return ask === destructive ? null : ask;
 }
 
-/** One line explaining how a settled approval was decided. */
+/** One sentence saying what happened to a settled approval, in the user's terms. */
 export function approvalOutcomeLabel(data: ApprovalRequestData): string {
   switch (data.status) {
     case "auto_approved":
-      return data.auto_reason?.trim() || "Matched what you asked for";
+      return (
+        data.auto_reason?.trim() || "GAIA ran this because you asked for it"
+      );
     case "approved":
       return "You approved this";
+    case "executed":
+      return "You approved this, and it's done";
+    case "failed":
+      return "You approved this, but it didn't go through";
+    case "unknown":
+      return "You approved this, but GAIA couldn't confirm it went through";
     case "denied":
-      return data.feedback?.trim() || "You declined this";
+      return "You declined this";
     case "timeout":
-      return "Expired without a response";
+      return "This expired before you answered, so nothing was done";
     case "abandoned":
-      return "Dropped when you moved on";
+    case "cancelled":
+      return "You stopped GAIA before answering, so nothing was done";
     case "revoked":
-      return "Agent withdrew this";
-    default:
+      return "GAIA withdrew this request, so nothing was done";
+    case "pending":
       return "";
   }
 }

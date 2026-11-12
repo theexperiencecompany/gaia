@@ -1326,3 +1326,54 @@
     score:
       gates:
       - reply_outcome
+- id: b-numbered-pick
+  ticket: 'Reply resolves batch: picks by the prompt''s numbers'
+  tags:
+  - batch
+  - approve
+  prompt: yes 1 and 3
+  setup:
+    reply: yes 1 and 3
+    actions:
+    - *id001
+    - *id006
+    - *id001
+    history: *id009
+  expected:
+    outcome: approve,leave,approve
+    category: approve
+    score:
+      gates:
+      - reply_outcome
+- id: b-all
+  ticket: 'Reply resolves batch: all'
+  tags:
+  - batch
+  - approve
+  prompt: all
+  setup:
+    reply: all
+    actions: *id008
+    history: *id009
+  expected:
+    outcome: approve,approve
+    category: approve
+    score:
+      gates:
+      - reply_outcome
+- id: b-none
+  ticket: 'Reply resolves batch: none'
+  tags:
+  - batch
+  - deny
+  prompt: none
+  setup:
+    reply: none
+    actions: *id008
+    history: *id009
+  expected:
+    outcome: deny,deny
+    category: deny
+    score:
+      gates:
+      - reply_outcome

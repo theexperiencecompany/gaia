@@ -14,11 +14,15 @@ export type {
 } from "./approvals";
 export {
   APPROVAL_REQUEST_TOOL_NAME,
+  approvalAgeSeconds,
+  approvalExpiresAt,
   approvalOutcomeLabel,
+  cardDescription,
   DEFAULT_HIL_MODE,
   formatApprovalAge,
   isSettled,
   RECONFIRM_AGE_SECONDS,
+  settleCard,
   toolAsks,
   toolOverrideValue,
   upsertApprovalToolData,

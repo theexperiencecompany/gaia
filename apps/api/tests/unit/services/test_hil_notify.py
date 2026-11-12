@@ -1,7 +1,7 @@
 """Unit tests for hil/notify (approval-pending wake channels).
 
-Both channels are best-effort by contract: a failure inside any channel must
-never propagate into the HIL gate. Expo pushes batch at 100 and deactivate
+The push is best-effort by contract: a failure inside it must never
+propagate into the HIL gate. Expo pushes batch at 100 and deactivate
 tokens Expo reports as DeviceNotRegistered.
 """
 
@@ -29,12 +29,8 @@ def mock_channels():
         get_active_tokens=AsyncMock(return_value=[]),
         deactivate_tokens=AsyncMock(),
     )
-    with (
-        patch(f"{_MOD}.websocket_manager") as m_ws,
-        patch(f"{_MOD}.get_device_token_service", return_value=device_service) as m_dts,
-    ):
-        m_ws.broadcast_to_user = AsyncMock()
-        yield SimpleNamespace(ws=m_ws, dts=m_dts, device=device_service)
+    with patch(f"{_MOD}.get_device_token_service", return_value=device_service) as m_dts:
+        yield SimpleNamespace(dts=m_dts, device=device_service)
 
 
 @pytest.fixture
@@ -50,30 +46,13 @@ def mock_expo():
 
 
 class TestNotifyApprovalPending:
-    async def test_fires_both_channels(self, mock_channels, mock_expo):
+    async def test_pushes_to_devices_and_sends_no_in_app_ping(self, mock_channels, mock_expo):
+        # No client listened for the in-app hil_approval_pending ping; the card is the surface.
         mock_channels.device.get_active_tokens.return_value = ["token-1"]
 
         await notify_approval_pending(USER_ID, CONVERSATION_ID, APPROVAL_ID, SUMMARY)
 
-        mock_channels.ws.broadcast_to_user.assert_awaited_once_with(
-            user_id=USER_ID,
-            message={
-                "type": "hil_approval_pending",
-                "data": {
-                    "conversation_id": CONVERSATION_ID,
-                    "approval_id": APPROVAL_ID,
-                    "summary": SUMMARY,
-                },
-            },
-        )
         mock_expo.post.assert_awaited_once()
-
-
-class TestBroadcastInApp:
-    async def test_broadcast_failure_is_swallowed(self, mock_channels, mock_expo):
-        mock_channels.ws.broadcast_to_user.side_effect = RuntimeError("ws down")
-
-        await notify_approval_pending(USER_ID, CONVERSATION_ID, APPROVAL_ID, SUMMARY)
 
 
 class TestPushToDevices:

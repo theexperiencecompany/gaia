@@ -29,7 +29,6 @@ from app.services.hil.resolution import (
     _observe_hil_dispatch_lag,
     _observe_hil_user_wait,
     _resolve_or_close,
-    abandon_conversation_approvals,
     cancel_conversation_approvals,
     resolve_approval,
     resolve_approvals_batch,
@@ -133,11 +132,9 @@ class TestAlwaysToolScope:
         assert decided.await_args.kwargs["scope"] == "once"
         assert resume.runner.call_args.kwargs["resume"].resume["scope"] == "once"
 
-    async def test_an_abandoned_approval_is_recorded_for_this_call_only(self, resume: Any) -> None:
+    async def test_a_closed_approval_is_recorded_for_this_call_only(self, resume: Any) -> None:
         with patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided:
-            await _resolve_or_close(
-                make_record(), user_id=USER_ID, kind="abandon", feedback="moved on"
-            )
+            await _resolve_or_close(make_record(), user_id=USER_ID, kind="deny", feedback="no")
         assert decided.await_args.kwargs["scope"] == "once"
 
     async def test_an_ordinary_call_accepts_the_always_scope(self, resume: Any) -> None:
@@ -358,22 +355,6 @@ class TestDecisionSemantics:
         assert decided.await_args.kwargs["decided_by"] == USER_ID
         assert decided.await_args.args[1] == "denied"
 
-    async def test_an_abandoned_approval_is_audited_as_abandoned_but_resumes_as_a_denial(
-        self, resume: Any
-    ) -> None:
-        # The user moved on. The audit trail must say "abandoned", but the agent must be
-        # told "denied" — if it resumed as anything else it would perform the action the
-        # user walked away from.
-        record = make_record()
-        with (
-            patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
-            patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided,
-        ):
-            await resolve_approval(approval_id="appr-1", user_id=USER_ID, kind="abandon")
-
-        assert decided.await_args.args[1] == "abandoned"
-        assert resume.runner.call_args.kwargs["resume"].resume["status"] == "denied"
-
     async def test_the_returned_record_carries_the_full_decision_forward(self, resume: Any) -> None:
         # The caller and resume dispatch must see the decided image, not the pending
         # snapshot; every copied field is load-bearing. approve+feedback is a
@@ -462,54 +443,27 @@ class TestBatchDecisions:
         assert resume.prepare.await_count == 1  # the item after the failure still dispatched
 
 
-class TestAbandonConversation:
-    async def test_one_undecidable_record_does_not_strand_the_others(self, resume: Any) -> None:
-        # The whole point of abandoning is to release the conversation's executor lock.
-        # If a single already-decided record aborted the loop, the lock would stay held.
-        records = [
-            make_record(approval_id="a1"),
-            make_record(approval_id="a2"),  # this one loses the transition race
-            make_record(approval_id="a3"),
-        ]
-
-        async def decided(approval_id: str, *_: Any, **__: Any) -> bool:
-            return approval_id != "a2"
-
-        with (
-            patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=records)),
-            patch(f"{MODULE}.mark_decided", side_effect=decided),
-        ):
-            abandoned = await abandon_conversation_approvals("conv-1", USER_ID, "moved on")
-
-        assert abandoned == ["a1", "a3"]
-
+class TestResolveOrClose:
     async def test_a_record_with_no_resume_context_is_closed_rather_than_left_pending(
         self, resume: Any
     ) -> None:
         # A record left pending goes on hijacking every later message in the conversation
         # via the conversational resolver. It must be closed even though nothing can resume.
         record = make_record(approval_id="a1", resume_item=None)
-        with (
-            patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=[record])),
-            patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided,
-        ):
-            abandoned = await abandon_conversation_approvals("conv-1", USER_ID, "moved on")
+        with patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided:
+            await _resolve_or_close(record, user_id=USER_ID, kind="timeout", feedback=None)
 
-        assert abandoned == ["a1"]
-        assert decided.await_args.args[1] == "abandoned"
+        assert decided.await_args.args[1] == "timeout"
         assert resume.prepare.await_count == 0
 
-    async def test_foreign_records_are_skipped_not_closed(self, resume: Any) -> None:
-        # The resume-less close path must authorize like every other decision
-        # path: another user's record is skipped, never decided.
+    async def test_a_foreign_record_is_refused_not_closed(self, resume: Any) -> None:
         record = make_record(approval_id="a1", resume_item=None, user_id="someone-else")
         with (
-            patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=[record])),
             patch(f"{MODULE}.mark_decided", new=AsyncMock()) as decided,
+            pytest.raises(ApprovalRequestForbiddenError),
         ):
-            abandoned = await abandon_conversation_approvals("conv-1", USER_ID, "moved on")
+            await _resolve_or_close(record, user_id=USER_ID, kind="timeout", feedback=None)
 
-        assert abandoned == []
         decided.assert_not_awaited()
 
 

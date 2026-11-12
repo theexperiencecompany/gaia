@@ -98,10 +98,17 @@ function streamingGaia(
             gated_tool_name: "delete_everything",
             integration_name: null,
             summary: "Delete the production database",
+            description: {
+              action: "Delete the production database",
+              headline: "Delete the production database",
+              confirm: "delete it",
+              details: [],
+            },
             args_preview: {},
             status: "pending",
             feedback: null,
-            timeout_seconds: 3600,
+            auto_reason: null,
+            asked_at: new Date().toISOString(),
             ...approval,
           } as ApprovalRequestData);
         }
@@ -337,35 +344,35 @@ describe("handleStreamingChat delivery", () => {
     });
   });
 
-  it("does not overwrite an out-of-band approval prompt", async () => {
-    // The approval prompt posts via the adapter's `sendNewMessage`, moving that
-    // adapter's live-edit cursor onto the prompt on editing platforms; if the
-    // streamer kept editing "the current message" it'd overwrite the question.
+  it("asks one approval question after the reply, never inside it", async () => {
+    // The prompt posts via the adapter's `sendNewMessage` once the turn is done, so it
+    // can never be overwritten by a later edit or split the reply it belongs to.
     const { bubbles } = await deliver(
       "telegram",
       ["Checking that first. ", "Now the rest of the answer."],
       { approvalAfter: 0 },
     );
 
-    const prompt = bubbles.find((b) => b.includes("Approval needed"));
-    expect(prompt).toBeDefined();
-    expect(prompt).toContain("Delete the production database");
-    // Whatever streamed after the prompt must land in its own message.
-    expect(bubbles.at(-1)).toContain("Now the rest of the answer");
-    expect(bubbles.at(-1)).not.toContain("Approval needed");
+    const prompts = bubbles.filter((b) => b.includes("GAIA wants to"));
+    expect(prompts).toHaveLength(1);
+    expect(bubbles.at(-1)).toContain(
+      "GAIA wants to delete the production database",
+    );
+    expect(bubbles.at(-1)).toContain(
+      "Reply yes to delete it, or no to cancel.",
+    );
+    expect(bubbles.at(-2)).toContain("Now the rest of the answer");
   });
 
-  it("shows how long ago the approval was asked", async () => {
-    // Ledger-backed approvals carry age_seconds; the prompt should surface it
-    // so a user answering hours later knows the request is stale.
+  it("shows how long ago a stale approval was asked, and no expiry it does not have", async () => {
     const { bubbles } = await deliver("telegram", ["Checking that first. "], {
       approvalAfter: 0,
-      approval: { age_seconds: 3700 },
+      approval: { asked_at: new Date(Date.now() - 3700_000).toISOString() },
     });
 
-    const prompt = bubbles.find((b) => b.includes("Approval needed"));
-    expect(prompt).toBeDefined();
-    expect(prompt).toContain("asked 1h ago");
+    const prompt = bubbles.find((b) => b.includes("GAIA wants to"));
+    expect(prompt).toContain("Asked 1h ago.");
+    expect(prompt).not.toMatch(/expire/i);
   });
 
   it("never shows a break token, whole or partially received", async () => {

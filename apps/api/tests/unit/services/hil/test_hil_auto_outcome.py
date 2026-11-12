@@ -25,7 +25,7 @@ from app.services.hil.intent import (
 )
 from app.services.hil.utils import PriorCall, unpack_tool_call
 
-from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_request, make_tool
+from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_request, make_tool, registered_row
 
 MODULE = "app.services.hil.intent"
 
@@ -196,7 +196,7 @@ def _auto_ledger() -> MagicMock:
     ledger = MagicMock()
     ledger.find_live = AsyncMock(return_value=None)
     ledger.find_latest_denied = AsyncMock(return_value=None)
-    ledger.register = AsyncMock(return_value="ap_abc1234567")
+    ledger.register = AsyncMock(return_value=registered_row())
     return ledger
 
 

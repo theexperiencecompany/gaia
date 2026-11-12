@@ -41,7 +41,13 @@ from app.constants.chat import (
     TURN_REPLY_NOT_SAVED,
 )
 from app.constants.comms import CommsDirectiveKind
-from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
+from app.constants.hil import (
+    HIL_ACK_APPROVED,
+    HIL_ACK_APPROVED_ONE,
+    HIL_ACK_DENIED,
+    HIL_ACK_DENIED_ONE,
+    HIL_CLASSIFIER_HISTORY_TURNS,
+)
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.repositories.conversations import conversation_repository
@@ -81,7 +87,7 @@ from app.services.chat.state import (
 from app.services.chat.workspace import schedule_last_active_touch
 from app.services.delivery.presence import record_turn_presence
 from app.services.files import FileService
-from app.services.hil.conversational import resolve_pending_from_message
+from app.services.hil.conversational import ReplyOutcome, resolve_pending_from_message
 from app.services.latency_metrics import (
     observe_chat_e2e_ack,
     observe_chat_e2e_full,
@@ -522,11 +528,11 @@ async def _resolve_pending_approval_turn(
 
     try:
         history = _recent_history(body.messages)
-        action = await resolve_pending_from_message(conversation_id, user_id, message, history)
+        outcome = await resolve_pending_from_message(conversation_id, user_id, message, history)
     except Exception as e:  # chat must survive this
         # Critical path for every message but an optional feature; on failure the
-        # safe degradation is a normal turn (approval stays pending till the sweep
-        # expires it) — the gate executes actions, not this classifier.
+        # safe degradation is a normal turn (the approval stays pending) — the
+        # gate executes actions, not this classifier.
         log.error(
             f"{LogTag.HIL} Pending-approval check failed; running a normal turn",
             error=str(e),
@@ -535,10 +541,10 @@ async def _resolve_pending_approval_turn(
         )
         return False
 
-    if action not in ("approve", "deny"):
+    if outcome is None or outcome.action == "unrelated":
         return False
 
-    ack = HIL_ACK_APPROVED if action == "approve" else HIL_ACK_DENIED
+    ack = _approval_ack(outcome)
     state.complete_message = ack
     state.turn_completed_at = datetime.now(UTC)
     state.ack_perf = time.perf_counter()
@@ -556,6 +562,16 @@ async def _resolve_pending_approval_turn(
     await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
     await stream_manager.complete_stream(stream_id)
     return True
+
+
+def _approval_ack(outcome: ReplyOutcome) -> str:
+    """Acknowledge the reply's decision, naming the action when it decided exactly one."""
+    approved = outcome.action == "approve"
+    if len(outcome.decided) != 1:
+        return HIL_ACK_APPROVED if approved else HIL_ACK_DENIED
+    action = outcome.decided[0].action
+    template = HIL_ACK_APPROVED_ONE if approved else HIL_ACK_DENIED_ONE
+    return template.format(action=action[:1].lower() + action[1:])
 
 
 def _set_stream_log_context(

@@ -103,10 +103,6 @@ HIL_RESUMABLE_STATUSES: frozenset[str] = frozenset({"approved", "denied", "timeo
 # never paused, so it has no run to resume.
 HIL_UNRESUMED_SWEEP_STATUSES: tuple[str, ...] = ("approved", "denied", "timeout", "abandoned")
 
-# How much of a call's arguments the deterministic one-line summary shows.
-HIL_SUMMARY_MAX_ARGS = 2
-HIL_SUMMARY_MAX_ARG_CHARS = 60
-
 # The classifier reading a chat reply to a pending approval gets richer context
 # than the card summary: recent turns + the full (bounded) args. TOTAL budget
 # is the real ceiling; the per-value clip only stops one pathological arg from eating it all.
@@ -203,6 +199,6 @@ APPROVAL_TOOL_CATEGORY = "hil"
 # starting a new turn.
 HIL_ACK_APPROVED = "Got it, going ahead."
 HIL_ACK_DENIED = "Understood, I will not do that."
-
-# Auto-deny reason when a bot user moves on without answering a pending approval.
-UNRELATED_FEEDBACK = "The user moved on to a different request; do not perform the action."
+# The same acks when the reply decided exactly one action, named in plain words.
+HIL_ACK_APPROVED_ONE = "Got it, I'll {action}."
+HIL_ACK_DENIED_ONE = "Understood, I won't {action}."

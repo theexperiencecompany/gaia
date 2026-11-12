@@ -49,11 +49,12 @@ in exactly one helper, so the frame and the persisted record can never
 disagree.
 """
 
-from typing import Any
+from datetime import datetime
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from app.models.hil_models import HILApprovalStatus
+from app.models.hil_models import ApprovalDescription
 
 # ---------------------------------------------------------------------------
 # Structured payloads (wrapped in a one-word envelope key at the emit site)
@@ -89,28 +90,61 @@ class ToolCallsDataEntry(BaseModel):
     mcp_server_url: str | None
 
 
-class ApprovalRequestEntryData(BaseModel):
-    """Inner ``data`` object of a HIL ``approval_request`` entry."""
+# Every status a decided card can show; settled ledger cards carry the ledger's own
+# states (executed, revoked, cancelled...), interrupt-path ones the barrier's.
+SettledApprovalStatus = Literal[
+    "approved",
+    "denied",
+    "timeout",
+    "abandoned",
+    "auto_approved",
+    "revoked",
+    "cancelled",
+    "executed",
+    "failed",
+    "unknown",
+]
+
+
+class _ApprovalCardData(BaseModel):
+    """What every ``approval_request`` card carries, whatever its status."""
 
     approval_id: str
     tool_call_id: str
     gated_tool_name: str
     integration_name: str | None
+    # description.headline, the one line clients without the structured form read.
     summary: str
+    description: ApprovalDescription
     # The gated call's own arguments — arbitrary LLM-authored JSON, no fixed schema.
     args_preview: dict[str, Any]
-    status: HILApprovalStatus
     feedback: str | None
     auto_reason: str | None
-    timeout_seconds: int
-    # Ledger-backed approvals (executor-free HIL): the agent's one-line why, age in
-    # seconds, and the row version the client saw (echoed back on decide; stale v
-    # never overwrites). All optional — old-path cards omit them.
-    rationale: str | None = None
-    age_seconds: int | None = None
+    # When the user was asked; clients compute the age at render time.
+    asked_at: datetime
+    # Row version the client saw (echoed back on decide; stale v never overwrites).
     ledger_version: int | None = None
     # The call asks in every mode, so clients must not offer "always allow" on it.
     always_asks: bool = False
+
+
+class PendingApprovalCardData(_ApprovalCardData):
+    """A card waiting on the user."""
+
+    status: Literal["pending"]
+    # Only interrupt-path approvals time out; a ledger approval never expires, so None.
+    expires_at: datetime | None = None
+
+
+class SettledApprovalCardData(_ApprovalCardData):
+    """A decided card: no expiry, since a decision cannot expire."""
+
+    status: SettledApprovalStatus
+
+
+ApprovalRequestEntryData = Annotated[
+    PendingApprovalCardData | SettledApprovalCardData, Field(discriminator="status")
+]
 
 
 class ApprovalRequestEntry(BaseModel):

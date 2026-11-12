@@ -53,6 +53,7 @@ from app.services.hil.bridge import (
     settle_session_approval_frame,
     sync_conversation_approval_flag,
 )
+from app.services.hil.describe import describe_call
 from app.services.hil.policy import asks_every_time, resolved_tool_key
 from app.services.hil.preferences import set_tool_override
 from app.services.hil.resolution import (
@@ -189,9 +190,6 @@ async def _commit_decision(
     # Server-owned funnel event: exactly once per committed decision (stale-v
     # and lost-CAS returns above emit nothing). Explicit user_id: the decide
     # path resolves its user from the row, not a session.
-    card_age_seconds: float | None = None
-    if row.created_at is not None:
-        card_age_seconds = (datetime.now(UTC) - row.created_at).total_seconds()
     capture(
         UserId(user_id),
         HilDecisionSubmitted(
@@ -199,7 +197,7 @@ async def _commit_decision(
             decision="approved" if target is LedgerState.APPROVED else "denied",
             tool_name=row.tool_name,
             via=via,
-            card_age_seconds=card_age_seconds,
+            card_age_seconds=(datetime.now(UTC) - row.created_at).total_seconds(),
             # The transition $incs v: the committed version is row.v + 1.
             ledger_version=row.v + 1,
         ),
@@ -305,11 +303,9 @@ async def decide_ledger_batch(
 
 def _ticket_task(row: ApprovalLedgerDocument) -> str:
     """Build the wake that turns an approval into a redeem: id, age, and the execute call that honors it."""
-    age = "unknown age"
-    if row.created_at is not None:
-        elapsed_minutes = int((datetime.now(UTC) - row.created_at).total_seconds()) // 60
-        hours, minutes = divmod(elapsed_minutes, 60)
-        age = f"{hours}h{minutes}m old"
+    elapsed_minutes = int((datetime.now(UTC) - row.created_at).total_seconds()) // 60
+    hours, minutes = divmod(elapsed_minutes, 60)
+    age = f"{hours}h{minutes}m old"
     return (
         f"APPROVAL_READY {row.approval_id}: the user approved {row.summary} "
         f'({age}). Run it now with execute(tool_name="approve", '
@@ -534,7 +530,7 @@ async def revoke_ticket(
         return f"Cannot revoke '{approval_id}': already {state}."
     revoked_row = await approval_ledger_repository.get_by_approval_id(approval_id)
     if revoked_row is not None:
-        await publish_ledger_revocation(revoked_row)
+        await publish_ledger_revocation(revoked_row, LedgerState.REVOKED)
     await sync_conversation_approval_flag(row.conversation_id, row.user_id)
     capture(
         UserId(user_id),
@@ -556,12 +552,12 @@ async def cancel_ledger_approvals(conversation_id: str, user_id: str) -> list[st
         if row.state is not LedgerState.PENDING or row.user_id != user_id:
             continue
         if not await approval_ledger_repository.transition(
-            row.approval_id, LedgerState.PENDING, LedgerState.REVOKED
+            row.approval_id, LedgerState.PENDING, LedgerState.CANCELLED
         ):
             continue
         current = await approval_ledger_repository.get_by_approval_id(row.approval_id)
         if current is not None:
-            await publish_ledger_revocation(current)
+            await publish_ledger_revocation(current, LedgerState.CANCELLED)
         capture(
             UserId(user_id),
             HilRevoked(
@@ -625,11 +621,14 @@ async def publish_ledger_decision(
     card = SettledApprovalCard(
         approval_id=row.approval_id,
         tool_call=GatedCall(name=row.tool_name, id="", args=row.args),
-        summary=row.summary,
+        description=describe_call(row.tool_name, row.args, None, row.account),
         integration_name=None,
     )
     entry = _approval_entry(
-        card, mapped, feedback=feedback if feedback is not None else row.feedback
+        card,
+        mapped,
+        asked_at=row.created_at,
+        feedback=feedback if feedback is not None else row.feedback,
     )
     if row.proposing_run_id:
         try:
@@ -653,22 +652,24 @@ async def publish_ledger_decision(
     await _broadcast_decision(row, mapped.value, feedback if feedback is not None else row.feedback)
 
 
-async def publish_ledger_revocation(row: ApprovalLedgerDocument) -> None:
-    """Surface an agent-side revoke: tombstone, not a silent row change.
+async def publish_ledger_revocation(
+    row: ApprovalLedgerDocument, state: Literal[LedgerState.REVOKED, LedgerState.CANCELLED]
+) -> None:
+    """Settle a withdrawn card: REVOKED when the agent withdrew it, CANCELLED when the user stopped the run.
 
-    Without this, a revoked card stays actionable in every open client
-    forever — the tombstone UI would be unreachable. Best-effort like every
-    other delivery here: the row is the truth, frames are hints.
+    Without this, a withdrawn card stays actionable in every open client
+    forever. Best-effort like every other delivery here: the row is the truth,
+    frames are hints.
     """
     if row.proposing_run_id:
         # A revoke before the run ends drops the unshown frame (a held card
         # never went live, so there is nothing to explain); a frame already
         # live still flips to the tombstone.
         settle_session_approval_frame(
-            row.proposing_run_id, row.approval_id, "revoked", drop_if_unpublished=True
+            row.proposing_run_id, row.approval_id, state.value, drop_if_unpublished=True
         )
-    await _persist_decision_status(row, "revoked")
-    await _broadcast_decision(row, "revoked", None)
+    await _persist_decision_status(row, state.value)
+    await _broadcast_decision(row, state.value, None)
 
 
 async def _persist_decision_status(row: ApprovalLedgerDocument, status: str) -> None:

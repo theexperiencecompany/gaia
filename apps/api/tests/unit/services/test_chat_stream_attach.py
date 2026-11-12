@@ -35,6 +35,9 @@ from app.services.chat.stream import (
     _StreamState,
     _TurnContext,
 )
+from app.services.hil.conversational import ReplyOutcome
+from app.services.hil.describe import describe_call
+from app.utils.agent_utils import format_sse_response
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -262,7 +265,14 @@ class TestResolvePendingApprovalTurnApproves:
             ],
             conversation_id="conv-1",
         )
-        classifier = AsyncMock(return_value="approve")
+        classifier = AsyncMock(
+            return_value=ReplyOutcome(
+                action="approve",
+                decided=(
+                    describe_call("GMAIL_SEND_EMAIL", {"recipient_email": "bob@x.com"}, None),
+                ),
+            )
+        )
         with (
             patch.object(chat_stream, "stream_manager") as sm,
             patch.object(chat_stream, "_persist_turn", new_callable=AsyncMock),
@@ -283,6 +293,37 @@ class TestResolvePendingApprovalTurnApproves:
         classifier.assert_awaited_once_with(
             "conv-1", USER_ID, "yes", [{"role": "assistant", "content": "Send the email?"}]
         )
+        # One decided action is acknowledged by name, not with a generic "going ahead".
+        assert sm.publish_chunk.await_args_list[0].args[1] == format_sse_response(
+            "Got it, I'll send an email."
+        )
+
+    async def test_an_unrelated_reply_runs_a_normal_turn_and_decides_nothing(self) -> None:
+        body = MessageRequestWithHistory(
+            message="what's the weather",
+            messages=[{"role": "user", "content": "what's the weather"}],
+            conversation_id="conv-1",
+        )
+        with (
+            patch.object(chat_stream, "stream_manager") as sm,
+            patch.object(
+                chat_stream,
+                "resolve_pending_from_message",
+                new=AsyncMock(return_value=ReplyOutcome(action="unrelated")),
+            ),
+        ):
+            sm.publish_chunk = AsyncMock()
+            result = await _resolve_pending_approval_turn(
+                body,
+                AuthenticatedUser(user_id=USER_ID),
+                "conv-1",
+                "stream-1",
+                _StreamState(),
+                "whatsapp",
+            )
+
+        assert result is False
+        sm.publish_chunk.assert_not_awaited()
 
 
 class TestResolvePendingApprovalTurnDegradesOnFailure:

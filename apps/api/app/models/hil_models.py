@@ -207,9 +207,30 @@ class LedgerState(StrEnum):
     EXECUTED = "executed"
     FAILED = "failed"
     UNKNOWN = "unknown"
+    # The user pressed Stop before deciding; REVOKED is the agent withdrawing it.
+    CANCELLED = "cancelled"
 
 
 LIVE_LEDGER_STATES = frozenset({LedgerState.PENDING, LedgerState.APPROVED})
+
+
+class ApprovalDetail(BaseModel):
+    """One labelled fact about a gated call, e.g. To: bob@x.com."""
+
+    label: str
+    value: str
+
+
+class ApprovalDescription(BaseModel):
+    """A gated call in plain words, rendered the same by web cards and bot prompts."""
+
+    # Verb + object, e.g. "Send an email".
+    action: str
+    # The action with its target, for lists and the model: Send an email to bob@x.com: "Q3".
+    headline: str
+    # Closing verb for a single-action prompt, e.g. "send it".
+    confirm: str
+    details: list[ApprovalDetail] = Field(default_factory=list)
 
 
 class ApprovalProposal(BaseModel):
@@ -255,7 +276,7 @@ class ApprovalLedgerDocument(MongoDocument, ApprovalProposal):
     decided_by: str | None = None
     decided_at: datetime | None = None
     v: int = 0
-    created_at: datetime | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     # When this row entered EXECUTING. The lazy reconciler treats EXECUTING
     # older than the cutoff as crashed (UNKNOWN) — never blind-retried.
     executing_started_at: datetime | None = None

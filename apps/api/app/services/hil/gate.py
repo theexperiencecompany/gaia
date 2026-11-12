@@ -51,7 +51,6 @@ from app.services.hil.approvals_store import approval_id_for, get_approval
 from app.services.hil.bridge import (
     ApprovalOutcome,
     GatedApproval,
-    build_summary,
     publish_approval_request,
     publish_auto_approval,
     publish_decision,
@@ -59,6 +58,7 @@ from app.services.hil.bridge import (
     recall_declined_call,
     remember_declined_call,
 )
+from app.services.hil.describe import describe_call
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import (
     AutoContext,
@@ -266,7 +266,8 @@ async def _decide_ledger(
         deny_note = _prior_denial_note(denied)
 
         integration_name = await _integration_name_for(request, context.user_id, call.name)
-        summary = build_summary(call.name, call.args, integration_name, call.account)
+        description = describe_call(call.name, call.args, integration_name, call.account)
+        summary = description.headline
         # Owner is the worker thread, stable across runs: subagent threads read
         # "<integration>_<conversation>", the executor "executor_<...>", so a
         # later turn of the same worker can revoke what it proposed.
@@ -275,7 +276,7 @@ async def _decide_ledger(
         # blocked_by arrives with ordering chains (Phase 3): the chain joins the
         # fingerprint there, so identical calls on different chains never share
         # an envelope.
-        ap_id = await approval_ledger_repository.register(
+        row = await approval_ledger_repository.register(
             ApprovalProposal(
                 conversation_id=context.conversation_id,
                 user_id=context.user_id,
@@ -292,6 +293,7 @@ async def _decide_ledger(
                 owner_id=context.owner_id,
             )
         )
+        ap_id = row.approval_id
         log.info(
             f"{LogTag.HIL} Ledger registered gated call",
             approval_id=ap_id,
@@ -304,9 +306,10 @@ async def _decide_ledger(
                 user_id=context.user_id,
                 conversation_id=context.conversation_id,
                 tool_call=call,
-                summary=summary,
+                description=description,
                 integration_name=integration_name,
             ),
+            asked_at=row.created_at,
             auto_reason=auto_note.strip() or None,
             owner_run_type=context.owner_run_type,
             owner_id=context.owner_id,
@@ -424,7 +427,8 @@ async def _decide(
             return invalid
 
         integration_name = await _integration_name_for(request, context.user_id, call.name)
-        summary = build_summary(call.name, call.args, integration_name, call.account)
+        description = describe_call(call.name, call.args, integration_name, call.account)
+        summary = description.headline
 
         decision: IntentDecision | None = None
         if policy == "auto":
@@ -436,7 +440,7 @@ async def _decide(
             user_id=context.user_id,
             conversation_id=context.conversation_id,
             tool_call=call,
-            summary=summary,
+            description=description,
             integration_name=integration_name,
         )
         if decision is not None and decision.outcome == "accept":
@@ -675,7 +679,7 @@ async def _auto_ledger_verdict(
     if policy != "auto":
         return _AutoVerdict()
     integration_name = await _integration_name_for(request, context.user_id, call.name)
-    summary = build_summary(call.name, call.args, integration_name, call.account)
+    summary = describe_call(call.name, call.args, integration_name, call.account).headline
     decision = await _judge(request, context, call, None, summary)
     if decision is None:
         return _AutoVerdict()
@@ -794,20 +798,21 @@ class ApprovalDestination(StrEnum):
     """Where a pending approval surfaces for the user, independent of its prose."""
 
     CHAT = "chat"
-    APPROVALS_TAB = "approvals_tab"
+    CONVERSATION = "conversation"
 
 
 _DESTINATION_WORDING: dict[ApprovalDestination, str] = {
     ApprovalDestination.CHAT: "their chat when this run ends",
-    ApprovalDestination.APPROVALS_TAB: (
-        "the Approvals tab (this run has no watcher; nothing here will wake it)"
+    ApprovalDestination.CONVERSATION: (
+        "this conversation, which shows in their chat list while it waits "
+        "(this run has no watcher; nothing here will wake it)"
     ),
 }
 
 
 def _approval_destination(*, background: bool) -> ApprovalDestination:
     """Return the destination contract a pending approval is rendered from."""
-    return ApprovalDestination.APPROVALS_TAB if background else ApprovalDestination.CHAT
+    return ApprovalDestination.CONVERSATION if background else ApprovalDestination.CHAT
 
 
 def _pending_guidance(approval_id: str, *, background: bool = False) -> str:
@@ -816,7 +821,7 @@ def _pending_guidance(approval_id: str, *, background: bool = False) -> str:
     Shared by the fresh-register and live-dedup branches so the two never
     drift: the approval's lifecycle is identical whichever branch produced it.
     Background runs get the park wording: nobody is watching this stream, so
-    the approval lives in the Approvals tab and durable work resumes off it.
+    the approval waits in its conversation and durable work resumes off it.
     """
     where = _DESTINATION_WORDING[_approval_destination(background=background)]
     return (

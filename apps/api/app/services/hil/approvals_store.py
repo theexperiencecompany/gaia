@@ -45,12 +45,11 @@ async def upsert_pending_approval(
     integration_name: str | None,
     subagent_thread_id: str | None = None,
     subagent_resume: SubagentResumeItem | None = None,
-) -> bool:
-    """Create the pending record if absent. Returns True only when newly created.
+) -> HILApprovalRecord | None:
+    """Create the pending record if absent; the new record, or None when it already existed.
 
     A resume replay never resurrects a decided record (the duplicate insert is a
-    no-op). The return value is what the caller uses to publish the approval
-    card exactly once (a replay must not re-publish it).
+    no-op). The caller publishes the card only on a new record, exactly once.
     """
     now = datetime.now(UTC)
     record = HILApprovalRecord(
@@ -68,7 +67,7 @@ async def upsert_pending_approval(
         subagent_thread_id=subagent_thread_id,
         subagent_resume=dict(subagent_resume) if subagent_resume is not None else None,
     )
-    return await hil_approval_repository.create_if_absent(record)
+    return record if await hil_approval_repository.create_if_absent(record) else None
 
 
 async def record_auto_approval(

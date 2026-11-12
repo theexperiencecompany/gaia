@@ -559,7 +559,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
         Returns whether the frame was there to settle. Does not advance updatedAt.
         """
-        update: dict[str, object] = {"messages.$[msg].tool_data.$[entry].data.status": status}
+        entry_data = "messages.$[msg].tool_data.$[entry].data"
         matched = await self._apply_raw_update_unfetched(
             # The approval must also be in the match: array filters alone pick which
             # element to write but don't narrow `matched`, so matching on the
@@ -568,7 +568,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 "conversation_id": conversation_id,
                 "messages.tool_data.data.approval_id": approval_id,
             },
-            {"$set": update},
+            # A decided card cannot expire, so the pending card's expiry goes with it.
+            {"$set": {f"{entry_data}.status": status}, "$unset": {f"{entry_data}.expires_at": ""}},
             scope=user_id,
             doc_id=conversation_id,
             extra_filter={"user_id": user_id},

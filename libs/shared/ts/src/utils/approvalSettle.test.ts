@@ -49,7 +49,15 @@ describe("parseApprovalDecidedEvent", () => {
 
   it("treats every ledger-terminal state as terminal", () => {
     expect([...TERMINAL_APPROVAL_STATUSES].sort()).toEqual(
-      ["approved", "denied", "executed", "failed", "revoked", "unknown"].sort(),
+      [
+        "approved",
+        "cancelled",
+        "denied",
+        "executed",
+        "failed",
+        "revoked",
+        "unknown",
+      ].sort(),
     );
   });
 

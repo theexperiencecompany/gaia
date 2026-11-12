@@ -20,6 +20,7 @@ from app.models.hil_models import (
 )
 from app.services.hil import gate
 from app.services.hil.bridge import ApprovalOutcome, GatedApproval
+from app.services.hil.describe import describe_call
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import AutoContext, IntentDecision, JudgedCall, summarize_history
 from app.services.hil.jev_judge import JevIntentJudge
@@ -40,6 +41,7 @@ from .conftest import (
     account_gated_request,
     gated_request,
     make_request,
+    registered_row,
 )
 
 MODULE = "app.services.hil.gate"
@@ -57,7 +59,7 @@ def _ledger(
     ledger = MagicMock()
     ledger.find_live = AsyncMock(return_value=live)
     ledger.find_latest_denied = AsyncMock(return_value=denied)
-    ledger.register = AsyncMock(return_value=registered_id)
+    ledger.register = AsyncMock(return_value=registered_row(registered_id))
     return ledger
 
 
@@ -98,8 +100,8 @@ class TestLedgerBranch:
         assert "approve ticket" in str(result.content)
         assert result.additional_kwargs[HIL_STATUS_KWARG] == "pending"
 
-    async def test_background_pending_points_at_the_approvals_tab(self) -> None:
-        """A background run has no watcher: the approval lives in the Approvals tab, so the guidance must say so instead of "when this run ends"."""
+    async def test_background_pending_points_at_its_conversation(self) -> None:
+        """A background run has no watcher: the approval waits in its conversation, never a page that does not exist."""
         ledger = _ledger()
         request = _gated_request(execution_mode="background")
         with (
@@ -114,7 +116,8 @@ class TestLedgerBranch:
 
         intr.assert_not_called()
         assert result is not None
-        assert "Approvals tab" in str(result.content)
+        assert "Approvals tab" not in str(result.content)
+        assert "shows in their chat list" in str(result.content)
         assert "when this run ends" not in str(result.content)
 
     async def test_background_workflow_run_tags_the_ledger_owner(self) -> None:
@@ -462,9 +465,10 @@ class TestLedgerRegistration:
                 user_id=USER_ID,
                 conversation_id=CONVERSATION_ID,
                 tool_call=GatedCall(name=GATED_TOOL, id="call-1", args=GATED_ARGS),
-                summary=GATED_SUMMARY,
+                description=describe_call(GATED_TOOL, GATED_ARGS, "Gmail"),
                 integration_name="Gmail",
             ),
+            asked_at=registered_row().created_at,
             auto_reason=None,
             owner_run_type="",
             owner_id="",
@@ -590,7 +594,7 @@ class TestLedgerCollapsesIntoExistingRows:
         result = await gate.decide_tool_call(gated_request(**extra))
 
         expected_destination = (
-            gate.ApprovalDestination.APPROVALS_TAB if background else gate.ApprovalDestination.CHAT
+            gate.ApprovalDestination.CONVERSATION if background else gate.ApprovalDestination.CHAT
         )
         assert gate._approval_destination(background=background) is expected_destination
         _assert_pending(result)

@@ -6043,6 +6043,49 @@ export interface components {
             success: boolean;
         };
         /**
+         * ApprovalDescription
+         * @description A gated call in plain words, rendered the same by web cards and bot prompts.
+         */
+        ApprovalDescription: {
+            /** Action */
+            action: string;
+            /** Confirm */
+            confirm: string;
+            /** Details */
+            details?: components["schemas"]["ApprovalDetail"][];
+            /** Headline */
+            headline: string;
+        };
+        /**
+         * ApprovalDetail
+         * @description One labelled fact about a gated call, e.g. To: bob@x.com.
+         */
+        ApprovalDetail: {
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
+        /**
+         * ApprovalRequestEntry
+         * @description The ``approval_request`` tool_data entry built by ``hil.bridge``.
+         *
+         *     Emitted (wrapped in a ``tool_data`` envelope) when a gated call asks for the
+         *     user's decision, and re-emitted in its resolved status once decided —
+         *     ``stream_utils._append_or_upsert_tool_data`` replaces the earlier frame in
+         *     the persisted turn so only the final status survives.
+         */
+        ApprovalRequestEntry: {
+            /** Data */
+            data: components["schemas"]["PendingApprovalCardData"] | components["schemas"]["SettledApprovalCardData"];
+            /** Timestamp */
+            timestamp: string;
+            /** Tool Category */
+            tool_category: string;
+            /** Tool Name */
+            tool_name: string;
+        };
+        /**
          * ApprovePairingRequest
          * @description The signed-in browser approves a pairing by its short user_code.
          */
@@ -11913,6 +11956,56 @@ export interface components {
             subscription_id?: string | null;
         };
         /**
+         * PendingApprovalCardData
+         * @description A card waiting on the user.
+         */
+        PendingApprovalCardData: {
+            /**
+             * Always Asks
+             * @default false
+             */
+            always_asks?: boolean;
+            /** Approval Id */
+            approval_id: string;
+            /** Args Preview */
+            args_preview: {
+                [key: string]: unknown;
+            };
+            /**
+             * Asked At
+             * Format: date-time
+             */
+            asked_at: string;
+            /** Auto Reason */
+            auto_reason: string | null;
+            description: components["schemas"]["ApprovalDescription"];
+            /**
+             * Expires At
+             * @default null
+             */
+            expires_at?: string | null;
+            /** Feedback */
+            feedback: string | null;
+            /** Gated Tool Name */
+            gated_tool_name: string;
+            /** Integration Name */
+            integration_name: string | null;
+            /**
+             * Ledger Version
+             * @default null
+             */
+            ledger_version?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            status: "pending";
+            /** Summary */
+            summary: string;
+            /** Tool Call Id */
+            tool_call_id: string;
+        };
+        /**
          * PendingApprovalRef
          * @description A live approval parked against this todo — the UI's jump link to the
          *     conversation holding the card. Oldest live row wins; terminal rows never
@@ -13517,6 +13610,51 @@ export interface components {
             message_id: string | null;
             /** Status */
             status: string;
+        };
+        /**
+         * SettledApprovalCardData
+         * @description A decided card: no expiry, since a decision cannot expire.
+         */
+        SettledApprovalCardData: {
+            /**
+             * Always Asks
+             * @default false
+             */
+            always_asks?: boolean;
+            /** Approval Id */
+            approval_id: string;
+            /** Args Preview */
+            args_preview: {
+                [key: string]: unknown;
+            };
+            /**
+             * Asked At
+             * Format: date-time
+             */
+            asked_at: string;
+            /** Auto Reason */
+            auto_reason: string | null;
+            description: components["schemas"]["ApprovalDescription"];
+            /** Feedback */
+            feedback: string | null;
+            /** Gated Tool Name */
+            gated_tool_name: string;
+            /** Integration Name */
+            integration_name: string | null;
+            /**
+             * Ledger Version
+             * @default null
+             */
+            ledger_version?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            status: "abandoned" | "approved" | "auto_approved" | "cancelled" | "denied" | "executed" | "failed" | "revoked" | "timeout" | "unknown";
+            /** Summary */
+            summary: string;
+            /** Tool Call Id */
+            tool_call_id: string;
         };
         /**
          * SetToolOverrideRequest
@@ -16435,6 +16573,9 @@ export type AgentType = components['schemas']['AgentType'];
 export type ApiCallConfig = components['schemas']['ApiCallConfig'];
 export type ApprovalDecisionRequest = components['schemas']['ApprovalDecisionRequest'];
 export type ApprovalDecisionResponse = components['schemas']['ApprovalDecisionResponse'];
+export type ApprovalDescription = components['schemas']['ApprovalDescription'];
+export type ApprovalDetail = components['schemas']['ApprovalDetail'];
+export type ApprovalRequestEntry = components['schemas']['ApprovalRequestEntry'];
 export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest'];
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];
@@ -16764,6 +16905,7 @@ export type OnboardingStep = components['schemas']['OnboardingStep'];
 export type PaginatedNotificationsResponse = components['schemas']['PaginatedNotificationsResponse'];
 export type PaginationMeta = components['schemas']['PaginationMeta'];
 export type PaymentVerificationResponse = components['schemas']['PaymentVerificationResponse'];
+export type PendingApprovalCardData = components['schemas']['PendingApprovalCardData'];
 export type PendingApprovalRef = components['schemas']['PendingApprovalRef'];
 export type PersistedTriageSummary = components['schemas']['PersistedTriageSummary'];
 export type PersonalizationResponse = components['schemas']['PersonalizationResponse'];
@@ -16848,6 +16990,7 @@ export type SelfPairResponse = components['schemas']['SelfPairResponse'];
 export type SendDraftResponse = components['schemas']['SendDraftResponse'];
 export type SendEmailForm = components['schemas']['SendEmailForm'];
 export type SendEmailWithAttachmentsResponse = components['schemas']['SendEmailWithAttachmentsResponse'];
+export type SettledApprovalCardData = components['schemas']['SettledApprovalCardData'];
 export type SetToolOverrideRequest = components['schemas']['SetToolOverrideRequest'];
 export type SetupStatusResponse = components['schemas']['SetupStatusResponse'];
 export type SetupWizardResponse = components['schemas']['SetupWizardResponse'];

@@ -55,6 +55,7 @@ from app.services.chat.stream import (
     _StreamState,
     run_chat_stream_background,
 )
+from app.services.hil.conversational import ReplyOutcome
 from app.utils.stream_publishers import ExtractedToolData
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
@@ -1644,7 +1645,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.resolve_pending_from_message",
-                new=AsyncMock(return_value="approve"),
+                new=AsyncMock(return_value=ReplyOutcome(action="approve")),
             ),
             patch("app.services.chat.stream._persist_turn", new=AsyncMock()),
             patch("app.services.chat.stream.time.perf_counter", return_value=52.0),

@@ -24,6 +24,7 @@ from app.models.hil_models import ApprovalLedgerDocument, LedgerState
 from app.models.user_models import AuthenticatedUser
 from app.schemas.hil_schemas import ApprovalDecisionRequest, BatchDecisionItem, BatchDecisionOutcome
 from app.services.hil import ledger_decide, resolution
+from app.services.hil.describe import describe_call
 from app.services.hil.ledger_decide import (
     STALLED_EXECUTING_MINUTES,
     LedgerDecision,
@@ -1211,7 +1212,7 @@ class TestCancelLedgerApprovals:
 
         assert cancelled == ["ap_mine"]
         repo.transition.assert_awaited_once_with(
-            "ap_mine", LedgerState.PENDING, LedgerState.REVOKED
+            "ap_mine", LedgerState.PENDING, LedgerState.CANCELLED
         )
         tombstone.assert_awaited_once()
 
@@ -1244,21 +1245,26 @@ class TestRevokeSettlesSessionFrame:
             get_session,
             teardown_session,
         )
-        from app.models.hil_models import HILApprovalStatus
         from app.services.hil import ledger_decide
-        from app.services.hil.bridge import GatedApproval, _approval_entry, _publish_entry
+        from app.services.hil.bridge import GatedApproval, _pending_entry, _publish_entry
         from app.services.hil.utils import GatedCall
 
         stream_id = "stream-settle-test"
         create_session(stream_id, RunKind.LIVE)
         try:
-            with patch(
-                "app.services.hil.bridge.stream_manager.publish_chunk",
-                new=AsyncMock(),
+            with (
+                patch(
+                    "app.services.hil.bridge.stream_manager.publish_chunk",
+                    new=AsyncMock(),
+                ),
+                patch(
+                    "app.services.hil.bridge.asks_every_time",
+                    new=AsyncMock(return_value=False),
+                ),
             ):
                 await _publish_entry(
                     stream_id,
-                    _approval_entry(
+                    await _pending_entry(
                         GatedApproval(
                             approval_id="ap_abc",
                             stream_id=stream_id,
@@ -1267,10 +1273,12 @@ class TestRevokeSettlesSessionFrame:
                             tool_call=GatedCall(
                                 name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}
                             ),
-                            summary="Send it",
+                            description=describe_call("GMAIL_SEND_EMAIL", {"to": "b@x"}, None),
                             integration_name=None,
                         ),
-                        HILApprovalStatus.PENDING,
+                        auto_reason=None,
+                        asked_at=datetime.now(UTC),
+                        expires_at=datetime.now(UTC),
                     ),
                 )
             row = _row(proposing_run_id=stream_id, state=LedgerState.REVOKED)
@@ -1278,10 +1286,12 @@ class TestRevokeSettlesSessionFrame:
                 patch.object(ledger_decide, "_persist_decision_status", new=AsyncMock()),
                 patch.object(ledger_decide, "_broadcast_decision", new=AsyncMock()),
             ):
-                await ledger_decide.publish_ledger_revocation(row)
+                await ledger_decide.publish_ledger_revocation(row, LedgerState.REVOKED)
             frames = get_session(stream_id).tool_events
             assert len(frames) == 1
             assert frames[0]["tool_data"]["data"]["status"] == "revoked"
+            # A settled card cannot carry the pending card's expiry.
+            assert "expires_at" not in frames[0]["tool_data"]["data"]
         finally:
             teardown_session(stream_id)
 
@@ -1530,7 +1540,7 @@ class TestDecideLedgerOutcomes:
         )
 
     async def test_a_committed_approve_is_one_exact_decision(self, seams: LedgerSeams) -> None:
-        seams.rows["ap_1"] = _doc(created_at=None)
+        seams.rows["ap_1"] = _doc(created_at=datetime.now(UTC) - timedelta(seconds=30))
 
         outcome = await decide_ledger("ap_1", user_id=USER_ID, kind="approve", via="card")
 
@@ -1544,7 +1554,7 @@ class TestDecideLedgerOutcomes:
         seams.log.set.assert_any_call(
             hil={"approval_id": "ap_1", "decision": "approve", "tool": "GMAIL_SEND_EMAIL"}
         )
-        assert seams.capture.call_args.args[1].card_age_seconds is None
+        assert 30 <= seams.capture.call_args.args[1].card_age_seconds < 60
         seams.settle_frame.assert_called_once_with("stream-1", "ap_1", "approved", None)
         stalled_cutoff, conversation = seams.repo.list_stalled_executing.await_args.args
         assert conversation == "conv-1"
@@ -1563,13 +1573,6 @@ class TestDecideLedgerOutcomes:
             'execute(tool_name="approve", data={"id": "ap_1"}) and continue with its result. '
             "If it is no longer needed, say so instead of running it.",
         )
-
-    async def test_a_ticket_with_no_birth_time_says_so(self, seams: LedgerSeams) -> None:
-        seams.rows["ap_1"] = _doc(created_at=None)
-
-        await decide_ledger("ap_1", user_id=USER_ID, kind="approve", via="card")
-
-        assert "Send it (unknown age)." in seams.deliver.await_args.args[2]
 
     async def test_a_failed_ticket_delivery_is_reported_and_wakes_the_inbox(
         self, seams: LedgerSeams
@@ -1685,7 +1688,8 @@ class TestPublishLedgerDecision:
         assert entry.data.tool_call_id == ""
         assert entry.data.args_preview == {"to": "b@x"}
         assert entry.data.status == status
-        assert entry.data.summary == "Send it"
+        assert entry.data.summary == "Send an email"
+        assert entry.data.asked_at == row.created_at
         assert entry.data.integration_name is None
         assert entry.data.feedback == "stored words"
         seams.settle_frame.assert_called_once_with("stream-1", "ap_1", status, "stored words")
@@ -1756,7 +1760,7 @@ class TestPublishLedgerDecision:
         }
 
     async def test_a_revocation_tombstones_everywhere(self, seams: LedgerSeams) -> None:
-        await publish_ledger_revocation(_doc())
+        await publish_ledger_revocation(_doc(), LedgerState.REVOKED)
 
         seams.settle_frame.assert_called_once_with(
             "stream-1", "ap_1", "revoked", drop_if_unpublished=True
@@ -2075,16 +2079,21 @@ class TestCancelLedgerApprovalsSweep:
             _doc(approval_id="ap_1", v=7),
         ]
         seams.repo.list_open.return_value = rows
-        seams.rows["ap_1"] = _doc(v=8, state=LedgerState.REVOKED, proposing_run_id="stream-2")
+        seams.rows["ap_1"] = _doc(v=8, state=LedgerState.CANCELLED, proposing_run_id="stream-2")
         seams.repo.transition.side_effect = lambda approval_id, *_: approval_id == "ap_1"
 
         cancelled = await cancel_ledger_approvals("conv-1", USER_ID)
 
         assert cancelled == ["ap_1"]
         seams.repo.list_open.assert_awaited_once_with("conv-1")
+        # Stop is the user's act, so every client must say "you stopped", never "the agent withdrew".
         seams.settle_frame.assert_called_once_with(
-            "stream-2", "ap_1", "revoked", drop_if_unpublished=True
+            "stream-2", "ap_1", "cancelled", drop_if_unpublished=True
         )
+        seams.persist.assert_awaited_once_with(
+            "conv-1", user_id=USER_ID, approval_id="ap_1", status="cancelled"
+        )
+        assert seams.broadcast.await_args.kwargs["message"]["data"]["status"] == "cancelled"
         seams.capture.assert_called_once_with(
             UserId(USER_ID),
             HilRevoked(approval_id="ap_1", ledger_version=8, revoker="cancelled-run"),

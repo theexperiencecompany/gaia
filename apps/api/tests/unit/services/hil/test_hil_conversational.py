@@ -25,7 +25,6 @@ from app.agents.llm.client import StructuredCallOptions, silent_metered_config
 from app.constants.hil import (
     HIL_JEV_REPLY_APPROVE_LINE,
     HIL_LLM_TIMEOUT_SECONDS,
-    UNRELATED_FEEDBACK,
 )
 from app.models.hil_models import (
     ApprovalLedgerDocument,
@@ -70,13 +69,12 @@ def resolver():
     """
     with (
         patch(f"{MODULE}.resolve_approval", new=AsyncMock()) as resolve,
-        patch(f"{MODULE}.abandon_conversation_approvals", new=AsyncMock()) as abandon,
         patch(f"{MODULE}.ainvoke_structured", new=AsyncMock()) as llm,
         patch(f"{MODULE}.approval_ledger_repository") as ledger,
         patch(f"{MODULE}.is_jev_reply_enabled", new=AsyncMock(return_value=False)) as jev_flag,
     ):
         ledger.list_open = AsyncMock(return_value=[])
-        yield {"resolve": resolve, "abandon": abandon, "llm": llm, "jev_flag": jev_flag}
+        yield {"resolve": resolve, "llm": llm, "jev_flag": jev_flag}
 
 
 def pending(*summaries: str) -> Any:
@@ -86,6 +84,14 @@ def pending(*summaries: str) -> Any:
         for i, summary in enumerate(summaries, start=1)
     ]
     return patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=records))
+
+
+async def resolved_action(
+    conversation_id: str, user_id: str, message: str, history: list[MessageDict] | None = None
+) -> str | None:
+    """Return the classified action a reply produced, or None when it addressed nothing."""
+    outcome = await resolve_pending_from_message(conversation_id, user_id, message, history)
+    return outcome.action if outcome is not None else None
 
 
 def resolved_ids(resolve: AsyncMock) -> list[str]:
@@ -106,7 +112,7 @@ class TestNothingPending:
         # before checking whether anything was pending, every user would pay an LLM call
         # per message for a feature most of them have switched off.
         with patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=[])):
-            assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "hey") is None
+            assert await resolved_action(CONVERSATION_ID, USER_ID, "hey") is None
         resolver["llm"].assert_not_awaited()
         resolver["resolve"].assert_not_awaited()
 
@@ -115,7 +121,7 @@ class TestSingleApproval:
     async def test_yes_approves_the_pending_action(self, resolver: dict) -> None:
         resolver["llm"].return_value = DecisionResult(action="approve")
         with pending("Send email — to: bob@example.com"):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes go ahead")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "yes go ahead")
 
         assert action == "approve"
         assert resolved_ids(resolver["resolve"]) == ["appr-1"]
@@ -128,28 +134,22 @@ class TestSingleApproval:
             action="deny", feedback="wrong recipient, use alice@example.com"
         )
         with pending("Send email — to: bob@example.com"):
-            action = await resolve_pending_from_message(
-                CONVERSATION_ID, USER_ID, "no, wrong person"
-            )
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "no, wrong person")
 
         assert action == "deny"
         call = resolver["resolve"].await_args
         assert call.kwargs["kind"] == "deny"
         assert call.kwargs["feedback"] == "wrong recipient, use alice@example.com"
 
-    async def test_moving_on_abandons_the_paused_run_rather_than_leaving_it_stuck(
-        self, resolver: dict
-    ) -> None:
+    async def test_moving_on_leaves_the_approval_pending_as_on_web(self, resolver: dict) -> None:
         # An unresolved approval hijacks every later message in the conversation and holds
         # the executor's claim on the thread. Moving on must free both.
         resolver["llm"].return_value = DecisionResult(action="unrelated")
         with pending("Send email — to: bob@example.com"):
-            action = await resolve_pending_from_message(
-                CONVERSATION_ID, USER_ID, "what's the weather"
-            )
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "what's the weather")
 
         assert action == "unrelated"
-        resolver["abandon"].assert_awaited_once_with(CONVERSATION_ID, USER_ID, UNRELATED_FEEDBACK)
+        resolver["resolve"].assert_not_awaited()
         resolver["resolve"].assert_not_awaited()
 
     async def test_the_classifier_is_shown_what_it_is_deciding_about(self, resolver: dict) -> None:
@@ -157,7 +157,7 @@ class TestSingleApproval:
         # action in the prompt the model cannot tell an answer from a new request.
         resolver["llm"].return_value = DecisionResult(action="approve")
         with pending("Delete 400 emails older than 2019"):
-            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+            await resolved_action(CONVERSATION_ID, USER_ID, "yes")
 
         text = prompt_of(resolver["llm"])
         assert "Delete 400 emails older than 2019" in text
@@ -178,9 +178,7 @@ class TestAnApprovalCannotCarryAnEdit:
     ) -> None:
         resolver["llm"].return_value = DecisionResult(action="approve", feedback="cc finance")
         with pending("Send email — to: bob@example.com"):
-            action = await resolve_pending_from_message(
-                CONVERSATION_ID, USER_ID, "yes but cc finance"
-            )
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "yes but cc finance")
 
         assert action == "deny"
         call = resolver["resolve"].await_args
@@ -198,7 +196,7 @@ class TestAnApprovalCannotCarryAnEdit:
         # unapprovable and the feature would never run anything.
         resolver["llm"].return_value = DecisionResult(action="approve", feedback=feedback)
         with pending("Send email — to: bob@example.com"):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "yes")
 
         assert action == "approve"
         assert resolver["resolve"].await_args.kwargs["kind"] == "approve"
@@ -216,7 +214,7 @@ class TestAnApprovalCannotCarryAnEdit:
             ],
         )
         with pending("Send email — to: bob@example.com", "Create event — title: standup"):
-            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes, but move the 2nd")
+            await resolved_action(CONVERSATION_ID, USER_ID, "yes, but move the 2nd")
 
         assert resolved_ids(resolver["resolve"]) == ["appr-1", "appr-2"]
         assert resolved_kinds(resolver["resolve"]) == ["approve", "deny"]
@@ -239,9 +237,7 @@ class TestBatch:
             ],
         )
         with pending("Send email", "Post to Slack", "Create calendar event"):
-            action = await resolve_pending_from_message(
-                CONVERSATION_ID, USER_ID, "yes, all of them"
-            )
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "yes, all of them")
 
         assert action == "approve"
         assert resolved_ids(resolver["resolve"]) == ["appr-1", "appr-2", "appr-3"]
@@ -255,7 +251,7 @@ class TestBatch:
             ],
         )
         with pending("Send email", "Post to Slack"):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "no, don't")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "no, don't")
 
         assert action == "deny"
         assert resolved_kinds(resolver["resolve"]) == ["deny", "deny"]
@@ -275,9 +271,7 @@ class TestBatch:
             ],
         )
         with pending("Send email", "Post to Slack", "Create calendar event"):
-            action = await resolve_pending_from_message(
-                CONVERSATION_ID, USER_ID, "approve the email one"
-            )
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "approve the email one")
 
         assert action == "approve"
         assert resolved_ids(resolver["resolve"]) == ["appr-1"]
@@ -292,13 +286,10 @@ class TestBatch:
             ],
         )
         with pending("Send email", "Post to Slack"):
-            action = await resolve_pending_from_message(
-                CONVERSATION_ID, USER_ID, "who is bob@example.com?"
-            )
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "who is bob@example.com?")
 
         assert action is None
         resolver["resolve"].assert_not_awaited()
-        resolver["abandon"].assert_not_awaited()
 
     async def test_a_mixed_answer_reports_approve_because_something_was_approved(
         self, resolver: dict
@@ -313,22 +304,22 @@ class TestBatch:
             ],
         )
         with pending("Send email", "Post to Slack"):
-            action = await resolve_pending_from_message(
+            action = await resolved_action(
                 CONVERSATION_ID, USER_ID, "skip the email, do the slack one"
             )
 
         assert action == "approve"
         assert resolved_kinds(resolver["resolve"]) == ["deny", "approve"]
 
-    async def test_moving_on_abandons_the_whole_batch(self, resolver: dict) -> None:
+    async def test_moving_on_leaves_the_whole_batch_pending(self, resolver: dict) -> None:
         resolver["llm"].return_value = BatchDecisionResult(unrelated=True)
         with pending("Send email", "Post to Slack"):
-            action = await resolve_pending_from_message(
+            action = await resolved_action(
                 CONVERSATION_ID, USER_ID, "actually, book me a flight to Tokyo"
             )
 
         assert action == "unrelated"
-        resolver["abandon"].assert_awaited_once()
+        resolver["resolve"].assert_not_awaited()
         resolver["resolve"].assert_not_awaited()
 
     async def test_the_numbered_list_starts_at_one_to_match_the_index_contract(
@@ -339,7 +330,7 @@ class TestBatch:
         # "approve the email" would post to Slack instead.
         resolver["llm"].return_value = BatchDecisionResult(unrelated=False)
         with pending("Send email", "Post to Slack"):
-            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "hmm")
+            await resolved_action(CONVERSATION_ID, USER_ID, "hmm")
 
         text = prompt_of(resolver["llm"])
         assert "1. Send email" in text
@@ -359,7 +350,7 @@ class TestInventedIndexes:
             unrelated=False, decisions=[BatchItemDecision(index=index, action="approve")]
         )
         with pending("Send email", "Post to Slack"):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "yes")
 
         assert action is None
         resolver["resolve"].assert_not_awaited()
@@ -373,7 +364,7 @@ class TestInventedIndexes:
             ],
         )
         with pending("Send email", "Post to Slack"):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "the slack one")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "the slack one")
 
         assert action == "approve"
         assert resolved_ids(resolver["resolve"]) == ["appr-2"]
@@ -395,11 +386,10 @@ class TestClassifierFailure:
         # transient hiccup). Matches the batch path.
         resolver["llm"].side_effect = ConnectionError("provider down")
         with pending("Send email — to: bob@example.com"):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "yes")
 
         assert action is None
         resolver["resolve"].assert_not_awaited()
-        resolver["abandon"].assert_not_awaited()
 
     async def test_a_batch_is_left_pending_rather_than_abandoned(self, resolver: dict) -> None:
         # A batch is a burst of parallel work the user is mid-review on. Abandoning it on a
@@ -407,11 +397,10 @@ class TestClassifierFailure:
         # other way: everything stays pending for the buttons or the sweep.
         resolver["llm"].side_effect = ConnectionError("provider down")
         with pending("Send email", "Post to Slack"):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "yes")
 
         assert action is None
         resolver["resolve"].assert_not_awaited()
-        resolver["abandon"].assert_not_awaited()
 
 
 class TestRacingDecisions:
@@ -432,7 +421,7 @@ class TestRacingDecisions:
         )
         resolver["resolve"].side_effect = [ApprovalRequestNotFoundError(), None]
         with pending("Send email", "Post to Slack"):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "yes")
 
         assert action == "approve"
         assert resolved_ids(resolver["resolve"]) == ["appr-1", "appr-2"]
@@ -441,7 +430,7 @@ class TestRacingDecisions:
         resolver["llm"].return_value = DecisionResult(action="approve")
         resolver["resolve"].side_effect = ApprovalRequestNotFoundError()
         with pending("Send email"):
-            assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes") == "approve"
+            assert await resolved_action(CONVERSATION_ID, USER_ID, "yes") == "approve"
 
     async def test_a_forbidden_approval_is_swallowed_the_same_way(self, resolver: dict) -> None:
         """A forbidden decision (wrong owner) is swallowed like an already-resolved one."""
@@ -450,7 +439,7 @@ class TestRacingDecisions:
         resolver["llm"].return_value = DecisionResult(action="approve")
         resolver["resolve"].side_effect = ApprovalRequestForbiddenError()
         with pending("Send email"):
-            assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes") == "approve"
+            assert await resolved_action(CONVERSATION_ID, USER_ID, "yes") == "approve"
 
 
 class TestTheClassifierCall:
@@ -566,9 +555,13 @@ class TestTheBatchPromptStatesItsRules:
 
     def test_a_selective_answer_decides_each_action_it_names(self) -> None:
         assert (
-            "every action. A selective answer names some actions: mark each named one "
-            "approve or deny."
+            "A selective answer names some actions, by description or by number "
+            "('yes 1 and 3'): mark each named one approve or deny."
         ) in self._text()
+
+    def test_all_and_none_are_blanket_answers(self) -> None:
+        # The bot prompt invites "yes to all, no to all": the classifier must read them the same way.
+        assert ("'all' approves every action and 'none' declines every action.") in self._text()
 
     def test_an_exclusive_answer_denies_every_action_it_did_not_name(self) -> None:
         assert (
@@ -596,9 +589,7 @@ class TestTheClassifierSeesTheReplyAndItsContext:
     ) -> None:
         resolver["llm"].return_value = DecisionResult(action="approve")
         with pending("Send email"):
-            await resolve_pending_from_message(
-                CONVERSATION_ID, USER_ID, "sure thing", history=HISTORY
-            )
+            await resolved_action(CONVERSATION_ID, USER_ID, "sure thing", history=HISTORY)
 
         text = prompt_of(resolver["llm"])
         assert "'sure thing'" in text
@@ -616,9 +607,7 @@ class TestTheClassifierSeesTheReplyAndItsContext:
             ],
         )
         with pending("Send email", "Post to Slack"):
-            await resolve_pending_from_message(
-                CONVERSATION_ID, USER_ID, "first yes second no", history=HISTORY
-            )
+            await resolved_action(CONVERSATION_ID, USER_ID, "first yes second no", history=HISTORY)
 
         text = prompt_of(resolver["llm"])
         assert "'first yes second no'" in text
@@ -633,9 +622,9 @@ class TestTheClassifierSeesTheReplyAndItsContext:
     ) -> None:
         resolver["llm"].return_value = BatchDecisionResult(unrelated=True)
         with pending("Send email", "Post to Slack"):
-            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "book a flight")
+            await resolved_action(CONVERSATION_ID, USER_ID, "book a flight")
 
-        resolver["abandon"].assert_awaited_once_with(CONVERSATION_ID, USER_ID, UNRELATED_FEEDBACK)
+        resolver["resolve"].assert_not_awaited()
 
 
 def _ledger_row(
@@ -661,15 +650,6 @@ def _committed(approval_id: str, state: LedgerState) -> LedgerDecision:
 def decided(decide: AsyncMock) -> list[tuple[str, str, str | None]]:
     """Each ledger decision as (approval_id, kind, feedback)."""
     return [(c.args[0], c.kwargs["kind"], c.kwargs["feedback"]) for c in decide.await_args_list]
-
-
-def assert_abandoned_as_the_user(ledger: dict[str, AsyncMock]) -> None:
-    """Moved-on denials read this conversation's rows, carry no row version and count as chat decisions."""
-    assert {c.args for c in ledger["list_open"].await_args_list} == {(CONVERSATION_ID,)}
-    assert {
-        (c.kwargs["user_id"], c.kwargs["v"], c.kwargs["via"])
-        for c in ledger["decide"].await_args_list
-    } == {(USER_ID, None, "chat")}
 
 
 class TestLedgerRows:
@@ -698,9 +678,7 @@ class TestLedgerRows:
         ]
         ledger["llm"].return_value = DecisionResult(action="approve")
 
-        action = await resolve_pending_from_message(
-            CONVERSATION_ID, USER_ID, "yes send it", history=HISTORY
-        )
+        action = await resolved_action(CONVERSATION_ID, USER_ID, "yes send it", history=HISTORY)
 
         assert action == "approve"
         ledger["list_open"].assert_awaited_once_with(CONVERSATION_ID)
@@ -719,12 +697,12 @@ class TestLedgerRows:
         ledger["list_open"].return_value = [_ledger_row("ap_1")]
         ledger["llm"].return_value = DecisionResult(action="approve", feedback="cc finance")
 
-        action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes but cc finance")
+        action = await resolved_action(CONVERSATION_ID, USER_ID, "yes but cc finance")
 
         assert action == "deny"
         assert decided(ledger["decide"]) == [("ap_1", "deny", "cc finance")]
 
-    async def test_moving_on_denies_every_pending_row_and_skips_queued_ones(
+    async def test_moving_on_leaves_every_pending_row_pending(
         self, ledger: dict[str, AsyncMock]
     ) -> None:
         ledger["list_open"].return_value = [
@@ -733,12 +711,10 @@ class TestLedgerRows:
         ]
         ledger["llm"].return_value = DecisionResult(action="unrelated")
 
-        action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "what's the weather")
+        action = await resolved_action(CONVERSATION_ID, USER_ID, "what's the weather")
 
         assert action == "unrelated"
-        assert decided(ledger["decide"]) == [("ap_1", "deny", UNRELATED_FEEDBACK)]
-        assert_abandoned_as_the_user(ledger)
-        ledger["abandon"].assert_not_awaited()
+        assert decided(ledger["decide"]) == []
 
     async def test_a_batch_of_rows_is_decided_per_item(self, ledger: dict[str, AsyncMock]) -> None:
         ledger["list_open"].return_value = [_ledger_row("ap_1"), _ledger_row("ap_2")]
@@ -750,7 +726,7 @@ class TestLedgerRows:
             ],
         )
 
-        action = await resolve_pending_from_message(
+        action = await resolved_action(
             CONVERSATION_ID, USER_ID, "first yes, second no", history=HISTORY
         )
 
@@ -765,49 +741,24 @@ class TestLedgerRows:
         assert "'first yes, second no'" in text
         assert "draft the quarterly deck email" in text
 
-    async def test_moving_on_from_a_batch_of_rows_denies_them_all(
+    async def test_moving_on_from_a_batch_of_rows_leaves_them_all_pending(
         self, ledger: dict[str, AsyncMock]
     ) -> None:
         ledger["list_open"].return_value = [_ledger_row("ap_1"), _ledger_row("ap_2")]
         ledger["llm"].return_value = BatchDecisionResult(unrelated=True)
 
-        action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "book a flight")
+        action = await resolved_action(CONVERSATION_ID, USER_ID, "book a flight")
 
         assert action == "unrelated"
-        assert decided(ledger["decide"]) == [
-            ("ap_1", "deny", UNRELATED_FEEDBACK),
-            ("ap_2", "deny", UNRELATED_FEEDBACK),
-        ]
-        assert_abandoned_as_the_user(ledger)
-        ledger["abandon"].assert_not_awaited()
+        assert decided(ledger["decide"]) == []
 
     async def test_nothing_pending_in_the_ledger_costs_no_llm_call(
         self, ledger: dict[str, AsyncMock]
     ) -> None:
         ledger["list_open"].return_value = [_ledger_row("ap_q", LedgerState.APPROVED)]
 
-        assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "hey") is None
+        assert await resolved_action(CONVERSATION_ID, USER_ID, "hey") is None
         ledger["llm"].assert_not_awaited()
-
-    @pytest.mark.parametrize(
-        "error",
-        [ApprovalRequestNotFoundError(), ApprovalRequestForbiddenError()],
-        ids=["gone", "foreign"],
-    )
-    async def test_an_undecidable_row_does_not_stop_the_rest_being_abandoned(
-        self, ledger: dict[str, AsyncMock], error: Exception
-    ) -> None:
-        ledger["list_open"].return_value = [_ledger_row("ap_1"), _ledger_row("ap_2")]
-        ledger["llm"].return_value = BatchDecisionResult(unrelated=True)
-        ledger["decide"].side_effect = [
-            error,
-            _committed("ap_2", LedgerState.DENIED),
-        ]
-
-        assert (
-            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "new topic") == "unrelated"
-        )
-        assert [c.args[0] for c in ledger["decide"].await_args_list] == ["ap_1", "ap_2"]
 
     @pytest.mark.parametrize(
         "error",
@@ -821,7 +772,7 @@ class TestLedgerRows:
         ledger["llm"].return_value = DecisionResult(action="approve")
         ledger["decide"].side_effect = error
 
-        assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes") == "approve"
+        assert await resolved_action(CONVERSATION_ID, USER_ID, "yes") == "approve"
 
     async def test_a_lost_race_is_reported_with_the_rows_real_outcome(
         self, ledger: dict[str, AsyncMock]
@@ -837,7 +788,7 @@ class TestLedgerRows:
         )
 
         with patch(f"{MODULE}.log") as log:
-            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+            await resolved_action(CONVERSATION_ID, USER_ID, "yes")
 
         log.warning.assert_called_once()
         assert "lost the race" in log.warning.call_args.args[0]
@@ -852,7 +803,7 @@ class TestLedgerRows:
         ledger["llm"].return_value = DecisionResult(action="approve")
 
         with patch(f"{MODULE}.log") as log:
-            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+            await resolved_action(CONVERSATION_ID, USER_ID, "yes")
 
         log.warning.assert_not_called()
 
@@ -873,7 +824,7 @@ class TestNoHistory:
     ) -> None:
         resolver["llm"].return_value = DecisionResult(action="approve")
         with pending("Send email"):
-            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+            await resolved_action(CONVERSATION_ID, USER_ID, "yes")
 
         text = prompt_of(resolver["llm"])
         assert "RECENT CONVERSATION" not in text
@@ -909,7 +860,7 @@ class TestJevClassifiesTheReply:
             pending("Send email — to: bob@example.com"),
             serve_jev(jev_reply_body(("approve", 0.99))),
         ):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes send it")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "yes send it")
 
         assert action == "approve"
         assert resolved_kinds(resolver["resolve"]) == ["approve"]
@@ -920,7 +871,7 @@ class TestJevClassifiesTheReply:
         # JEV returns no text, so the user's own words are the correction: dropping them
         # would turn "send it to Alice instead" into a dead-end refusal.
         with pending("Send email — to: bob@example.com"), serve_jev(jev_reply_body(("deny", 0.97))):
-            action = await resolve_pending_from_message(
+            action = await resolved_action(
                 CONVERSATION_ID, USER_ID, "no, send it to alice@example.com instead"
             )
 
@@ -934,19 +885,16 @@ class TestJevClassifiesTheReply:
         # it must leave the approval for the user to answer again, not run it.
         below = round(HIL_JEV_REPLY_APPROVE_LINE - 0.01, 2)
         with pending("Send email"), serve_jev(jev_reply_body(("approve", below))):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "sure i guess")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "sure i guess")
 
         assert action is None
         resolver["resolve"].assert_not_awaited()
-        resolver["abandon"].assert_not_awaited()
 
     async def test_the_decisions_call_carries_the_reply_and_recent_turns(
         self, resolver: dict
     ) -> None:
         with pending("Send email"), serve_jev(jev_reply_body(("approve", 0.99))) as client:
-            await resolve_pending_from_message(
-                CONVERSATION_ID, USER_ID, "sure thing", history=HISTORY
-            )
+            await resolved_action(CONVERSATION_ID, USER_ID, "sure thing", history=HISTORY)
 
         state = client.post.await_args.kwargs["json"]["state"]
         assert state["reply"] == "sure thing"
@@ -962,7 +910,7 @@ class TestJevClassifiesTheReply:
     ) -> None:
         body = jev_reply_body(("approve", 0.99), ("approve", 0.99))
         with pending("Send email", "Post to Slack"), serve_jev(body) as client:
-            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "both", history=HISTORY)
+            await resolved_action(CONVERSATION_ID, USER_ID, "both", history=HISTORY)
 
         state = client.post.await_args.kwargs["json"]["state"]
         assert state["reply"] == "both"
@@ -978,22 +926,21 @@ class TestJevClassifiesTheReply:
             pending("Send email"),
             serve_jev(jev_reply_body(("approve", HIL_JEV_REPLY_APPROVE_LINE))),
         ):
-            assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "ok") == "approve"
+            assert await resolved_action(CONVERSATION_ID, USER_ID, "ok") == "approve"
 
     async def test_a_question_leaves_the_approval_pending(self, resolver: dict) -> None:
         with pending("Send email"), serve_jev(jev_reply_body(("leave", 0.98))):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "who is bob?")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "who is bob?")
 
         assert action is None
         resolver["resolve"].assert_not_awaited()
-        resolver["abandon"].assert_not_awaited()
 
     async def test_moving_on_abandons_the_paused_run(self, resolver: dict) -> None:
         with pending("Send email"), serve_jev(jev_reply_body(("unrelated", 0.99))):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "tell me a joke")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "tell me a joke")
 
         assert action == "unrelated"
-        resolver["abandon"].assert_awaited_once_with(CONVERSATION_ID, USER_ID, UNRELATED_FEEDBACK)
+        resolver["resolve"].assert_not_awaited()
         resolver["resolve"].assert_not_awaited()
 
     async def test_an_exclusive_answer_approves_one_and_declines_the_rest(
@@ -1001,7 +948,7 @@ class TestJevClassifiesTheReply:
     ) -> None:
         body = jev_reply_body(("approve", 0.95), ("deny", 0.99))
         with pending("Send email", "Post to Slack"), serve_jev(body):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "just the email")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "just the email")
 
         assert action == "approve"
         assert resolved_ids(resolver["resolve"]) == ["appr-1", "appr-2"]
@@ -1015,9 +962,7 @@ class TestJevClassifiesTheReply:
         # named. Only the confidently approved action may run.
         body = jev_reply_body(("approve", 0.99), ("approve", 0.30))
         with pending("Send email", "Post to Slack"), serve_jev(body):
-            action = await resolve_pending_from_message(
-                CONVERSATION_ID, USER_ID, "approve the email"
-            )
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "approve the email")
 
         assert action == "approve"
         assert resolved_ids(resolver["resolve"]) == ["appr-1"]
@@ -1027,21 +972,20 @@ class TestJevClassifiesTheReply:
     ) -> None:
         body = jev_reply_body(("unrelated", 0.6), ("approve", 0.95))
         with pending("Send email", "Post to Slack"), serve_jev(body):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "the slack one")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "the slack one")
 
         assert action == "approve"
         assert resolved_ids(resolver["resolve"]) == ["appr-2"]
-        resolver["abandon"].assert_not_awaited()
 
     async def test_a_batch_every_action_reads_as_unrelated_is_abandoned(
         self, resolver: dict
     ) -> None:
         body = jev_reply_body(("unrelated", 0.99), ("unrelated", 0.97))
         with pending("Send email", "Post to Slack"), serve_jev(body):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "book a flight")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "book a flight")
 
         assert action == "unrelated"
-        resolver["abandon"].assert_awaited_once_with(CONVERSATION_ID, USER_ID, UNRELATED_FEEDBACK)
+        resolver["resolve"].assert_not_awaited()
 
     @pytest.mark.parametrize(
         ("failure", "error_type", "error"),
@@ -1065,7 +1009,7 @@ class TestJevClassifiesTheReply:
     ) -> None:
         resolver["llm"].return_value = DecisionResult(action="approve")
         with pending("Send email"), serve_jev(failure), patch(f"{MODULE}.log") as log:
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "yes")
 
         assert action == "approve"
         assert resolved_kinds(resolver["resolve"]) == ["approve"]
@@ -1081,7 +1025,7 @@ class TestJevClassifiesTheReply:
             serve_jev(httpx.ReadTimeout("slow")),
             patch(f"{MODULE}.log") as log,
         ):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "not slack")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "not slack")
 
         assert action == "deny"
         assert resolved_ids(resolver["resolve"]) == ["appr-2"]
@@ -1092,7 +1036,7 @@ class TestJevClassifiesTheReply:
         resolver["jev_flag"].return_value = False
         resolver["llm"].return_value = DecisionResult(action="approve")
         with pending("Send email"), serve_jev(jev_reply_body(("deny", 1.0))) as client:
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "yes")
 
         assert action == "approve"
         client.post.assert_not_awaited()
@@ -1107,7 +1051,7 @@ class TestJevClassifiesTheReply:
         ):
             repo.list_open = AsyncMock(return_value=[_ledger_row("ap_1")])
             decide.return_value = _committed("ap_1", LedgerState.DENIED)
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "not now")
+            action = await resolved_action(CONVERSATION_ID, USER_ID, "not now")
 
         assert action == "deny"
         assert decided(decide) == [("ap_1", "deny", "not now")]
