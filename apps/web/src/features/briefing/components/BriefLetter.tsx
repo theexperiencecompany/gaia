@@ -126,17 +126,20 @@ export function BriefLetter({
   const faceRef = useRef<HTMLSpanElement>(null);
   const isNear = useInView(rootRef, { once: true, margin: PREPARE_MARGIN });
   const [edition, setEdition] = useState<PreparedEdition | null>(null);
+  const [isFailed, setIsFailed] = useState(false);
 
   useEffect(() => {
     if (!isNear || !imageUrl) return;
     let isCurrent = true;
+    setIsFailed(false);
     prepareEdition(imageUrl, layout)
       .then((prepared) => {
         if (isCurrent) setEdition(prepared);
       })
-      .catch((error: unknown) =>
-        console.error("Preparing the briefing letter failed", error),
-      );
+      .catch((error: unknown) => {
+        console.error("Preparing the briefing letter failed", error);
+        if (isCurrent) setIsFailed(true);
+      });
     return () => {
       isCurrent = false;
     };
@@ -219,6 +222,19 @@ export function BriefLetter({
             <Crease edition={edition} />
             <FoldedPanels edition={edition} />
           </span>
+        </Button>
+      ) : !imageUrl || isFailed ? (
+        <Button
+          variant="flat"
+          radius="sm"
+          className="h-auto w-full justify-start px-4 py-3 text-left text-sm"
+          aria-busy={isBusy}
+          onPress={() => {
+            if (rootRef.current)
+              onOpen(rootRef.current.getBoundingClientRect());
+          }}
+        >
+          {headline}
         </Button>
       ) : (
         <Skeleton

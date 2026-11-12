@@ -226,4 +226,44 @@ describe("brief item links", () => {
     ).toBeTruthy();
     expect(screen.getByText("Fill eight roles: 5 of 8 done")).toBeTruthy();
   });
+
+  it("lists the items the edition's three rows cut off, the weekly lead it could not draw and the events past three", () => {
+    const item = (text: string) => ({ text, kind: "you" as const });
+    render(
+      <BriefingEdition
+        imageUrl="https://cdn.example/edition.png"
+        payload={{
+          ...payload(item("unused")),
+          sections: [
+            {
+              numeral: "I",
+              title: "Lead",
+              items: [item("Weekly lead request")],
+            },
+            {
+              numeral: "II",
+              title: "Needs you",
+              items: ["One", "Two", "Three", "Fourth row", "Fifth row"].map(
+                item,
+              ),
+            },
+          ],
+          blocks: [{ kind: "items", section: 1 }],
+          undrawn: [{ kind: "lead", section: 0 }],
+          calendar: ["A", "B", "C", "Late call"].map((title, at) => ({
+            date: "2026-10-14",
+            title,
+            start: `0${at + 8}:00`,
+          })),
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Weekly lead request")).toBeTruthy();
+    expect(screen.getByText("Fourth row")).toBeTruthy();
+    expect(screen.getByText("Fifth row")).toBeTruthy();
+    expect(screen.getByText(/Late call/)).toBeTruthy();
+    expect(screen.queryByText("Three")).toBeNull();
+    expect(screen.queryByText("B")).toBeNull();
+  });
 });
