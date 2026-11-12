@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from unittest.mock import AsyncMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, StateGraph
@@ -19,9 +19,7 @@ from langgraph.graph.state import CompiledStateGraph
 import pytest
 
 from app.agents.core.background.comms_narrator import (
-    record_exchange_in_thread,
     record_executor_cancellation,
-    record_platform_delivery,
 )
 from app.agents.core.interruption import record_interruption
 from app.override.langgraph_bigtool.utils import State
@@ -89,12 +87,3 @@ class TestOutOfBandThreadWritesCarryIds:
 
         ids = await _ids(thread_graph)
         assert len(ids) == 2 and None not in ids
-
-    async def test_platform_delivery_and_exchange(self, thread_graph: CompiledStateGraph) -> None:
-        await _seed(thread_graph, HumanMessage("start"), AIMessage("ok"))
-
-        await record_platform_delivery(THREAD, "your report is ready")
-        await record_exchange_in_thread(THREAD, "approve", "approved")
-
-        ids = await _ids(thread_graph)
-        assert len(ids) == 5 and None not in ids

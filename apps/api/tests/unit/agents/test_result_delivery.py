@@ -6,10 +6,12 @@ record that lets a later turn remember what was delivered, and the guards
 build on.
 """
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 from fastapi import HTTPException
+import pytest
 
 from app.agents.core.background.result_delivery import (
     deliver_message_to_conversation,
@@ -20,10 +22,20 @@ from app.agents.core.outcome_review import OutcomeReview
 from app.agents.prompts.comms_prompts import outcome_delivery_note
 from app.constants.agents import OutcomeState
 from app.models.chat_models import ConversationSource, ToolDataEntry
+from app.models.conversation_log_models import Notice
 from app.models.conversation_models import UpdateMessagesResponse
 from app.models.user_models import AuthenticatedUser
 
 MODULE = "app.agents.core.background.result_delivery"
+
+
+@pytest.fixture(autouse=True)
+def _installed_runtime() -> Iterator[None]:
+    """Stand in for the runtime ports startup installs; each test records the log write itself."""
+    with patch(f"{MODULE}.runtime_ports", MagicMock()):
+        yield
+
+
 SEQ = 7
 
 
@@ -47,7 +59,7 @@ async def test_web_source_broadcasts_over_websocket_and_records() -> None:
     with (
         patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq),
         patch(f"{MODULE}.deliver_message_to_platform", new_callable=AsyncMock) as to_platform,
-        patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock) as record,
+        patch(f"{MODULE}.accept", new_callable=AsyncMock) as record,
         patch(f"{MODULE}.conversation_repository", convo_repo),
         patch(f"{MODULE}.websocket_manager", ws),
     ):
@@ -66,10 +78,12 @@ async def test_web_source_broadcasts_over_websocket_and_records() -> None:
     assert event["conversation_id"] == "conv-1"
     assert event["message"]["response"] == "time to drink water"
     assert event["message"]["seq"] == SEQ
-    # No narration ran, so the checkpoint is recorded explicitly, framed with origin.
+    # No narration ran, so the delivery is logged as a Notice naming its origin.
     record.assert_awaited_once()
-    assert record.await_args.args[0] == "conv-1"
-    assert "reminder (id r1)" in record.await_args.args[1]
+    _ports, conversation_id, _user, notice = record.await_args.args
+    assert conversation_id == "conv-1"
+    assert isinstance(notice, Notice)
+    assert "reminder (id r1)" in notice.origin
 
 
 async def test_bot_source_delivers_to_platform_and_records() -> None:
@@ -82,7 +96,7 @@ async def test_bot_source_delivers_to_platform_and_records() -> None:
         patch(
             f"{MODULE}.deliver_message_to_platform", new_callable=AsyncMock, return_value=True
         ) as to_platform,
-        patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock) as record,
+        patch(f"{MODULE}.accept", new_callable=AsyncMock) as record,
         patch(f"{MODULE}.conversation_repository", convo_repo),
         patch(f"{MODULE}.websocket_manager", ws),
     ):
@@ -104,7 +118,7 @@ async def test_bot_source_delivers_to_platform_and_records() -> None:
 async def test_blank_text_delivers_nothing() -> None:
     with (
         patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq) as save,
-        patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock) as record,
+        patch(f"{MODULE}.accept", new_callable=AsyncMock) as record,
     ):
         source = await deliver_message_to_conversation(
             conversation_id="c", user=AuthenticatedUser(user_id="u"), text="   ", origin="x"
@@ -124,7 +138,7 @@ async def test_deleted_conversation_returns_none_and_skips_record() -> None:
             new_callable=AsyncMock,
             side_effect=HTTPException(status_code=404),
         ),
-        patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock) as record,
+        patch(f"{MODULE}.accept", new_callable=AsyncMock) as record,
         patch(f"{MODULE}.deliver_message_to_platform", new_callable=AsyncMock) as to_platform,
     ):
         source = await deliver_message_to_conversation(
@@ -145,7 +159,7 @@ async def test_websocket_path_builds_exact_target_message_and_verdict() -> None:
         patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq) as save,
         patch(f"{MODULE}._broadcast_bot_message", new_callable=AsyncMock) as broadcast,
         patch(f"{MODULE}._log_delivery_verdict") as verdict,
-        patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock),
+        patch(f"{MODULE}.accept", new_callable=AsyncMock),
         patch(f"{MODULE}.deliver_message_to_platform", new_callable=AsyncMock) as to_platform,
         patch(f"{MODULE}.conversation_repository", convo_repo),
     ):
@@ -201,7 +215,7 @@ async def test_platform_path_logs_platform_transport_and_delivery() -> None:
             f"{MODULE}.deliver_message_to_platform", new_callable=AsyncMock, return_value=True
         ) as to_platform,
         patch(f"{MODULE}._log_delivery_verdict") as verdict,
-        patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock),
+        patch(f"{MODULE}.accept", new_callable=AsyncMock),
         patch(f"{MODULE}.conversation_repository", convo_repo),
     ):
         source = await deliver_message_to_conversation(
@@ -230,7 +244,7 @@ async def test_missing_user_id_defaults_to_empty_string() -> None:
         patch(
             f"{MODULE}.deliver_message_to_platform", new_callable=AsyncMock, return_value=True
         ) as to_platform,
-        patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock),
+        patch(f"{MODULE}.accept", new_callable=AsyncMock),
         patch(f"{MODULE}.conversation_repository", convo_repo),
     ):
         await deliver_message_to_conversation(
@@ -256,7 +270,7 @@ async def test_delivered_cards_are_saved_on_the_message() -> None:
     with (
         patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq) as save,
         patch(f"{MODULE}._broadcast_bot_message", new_callable=AsyncMock),
-        patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock),
+        patch(f"{MODULE}.accept", new_callable=AsyncMock),
         patch(f"{MODULE}.conversation_repository", convo_repo),
     ):
         await deliver_message_to_conversation(
@@ -278,7 +292,7 @@ async def test_delivered_cards_reach_the_live_client_too() -> None:
     with (
         patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq),
         patch(f"{MODULE}._broadcast_bot_message", new_callable=AsyncMock) as broadcast,
-        patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock),
+        patch(f"{MODULE}.accept", new_callable=AsyncMock),
         patch(f"{MODULE}.conversation_repository", convo_repo),
     ):
         await deliver_message_to_conversation(
@@ -300,7 +314,7 @@ async def test_an_empty_card_feed_delivers_text_only() -> None:
     with (
         patch(f"{MODULE}.update_messages", new_callable=_saved_at_seq) as save,
         patch(f"{MODULE}._broadcast_bot_message", new_callable=AsyncMock) as broadcast,
-        patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock),
+        patch(f"{MODULE}.accept", new_callable=AsyncMock),
         patch(f"{MODULE}.conversation_repository", convo_repo),
     ):
         await deliver_message_to_conversation(

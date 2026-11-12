@@ -27,8 +27,6 @@ from tests.helpers import captured_wide_event
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.api.v1.endpoints import browser as browser_ep, browser_live_view as live_view_ep
 from app.constants.browser import (
-    BROWSER_HANDOFF_ACK_CANCEL,
-    BROWSER_HANDOFF_ACK_CONTINUE,
     BROWSER_HANDOFF_GONE_DETAIL,
     BROWSER_HANDOFF_NOT_OWNED_DETAIL,
     BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL,
@@ -36,6 +34,8 @@ from app.constants.browser import (
     HandoffDecision,
     HandoffStatus,
 )
+from app.constants.chat import ConversationSource
+from app.models.conversation_send_models import SendMessageRequest
 from app.schemas.browser import (
     BrowserLoginResponse,
     BrowserTaskResponse,
@@ -148,13 +148,21 @@ def _record(status: HandoffStatus = HandoffStatus.PENDING, user_id: str = USER_I
 async def button_world(
     fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
 ) -> list[tuple[str, str, str]]:
-    """Open a pending login handoff in c1 over fakeredis; return what reaches the agent's thread."""
+    """Open a pending login handoff in c1 over fakeredis; return what is sent to its conversation."""
     recorded: list[tuple[str, str, str]] = []
 
-    async def _record(conversation_id: str, user_message: str, reply: str) -> None:
-        recorded.append((conversation_id, user_message, reply))
+    async def _send(
+        conversation_id: str,
+        _user: object,
+        body: SendMessageRequest,
+        surface: ConversationSource,
+    ) -> None:
+        recorded.append((conversation_id, body.text, surface))
 
-    monkeypatch.setattr(handoff_buttons, "record_exchange_in_thread", _record)
+    monkeypatch.setattr(handoff_buttons, "send_message", _send)
+    monkeypatch.setattr(
+        handoff_buttons.conversation_repository, "get_source", AsyncMock(return_value=None)
+    )
     # A cancel is a real stop, which reads ARQ's keys: its pool is the same fake Redis.
     monkeypatch.setattr(job_stop.RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
     await create_pending_handoff(
@@ -190,7 +198,7 @@ class TestDecideBrowserHandoff:
             (
                 "c1",
                 "[From the browser handoff card] continue: skip it",
-                BROWSER_HANDOFF_ACK_CONTINUE,
+                ConversationSource.WEB,
             )
         ]
 
@@ -254,7 +262,7 @@ class TestDecideBrowserHandoff:
         assert record is not None
         assert record.message is None
         assert button_world == [
-            ("c1", "[From the browser handoff card] cancel", BROWSER_HANDOFF_ACK_CANCEL)
+            ("c1", "[From the browser handoff card] cancel", ConversationSource.WEB)
         ]
         # Settled, the link no longer opens anything.
         with pytest.raises(HTTPException) as exc:
@@ -278,7 +286,7 @@ class TestDecideBrowserHandoff:
             (
                 "c1",
                 "[From the browser handoff card] cancel: wrong account",
-                BROWSER_HANDOFF_ACK_CANCEL,
+                ConversationSource.WEB,
             )
         ]
 

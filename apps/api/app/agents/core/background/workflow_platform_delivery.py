@@ -3,8 +3,8 @@
 A result GAIA produces with no user watching — a finished workflow run, a fired
 reminder — is pushed by :func:deliver_result_to_platforms into the user's real
 Telegram/WhatsApp/Discord/Slack chats as natural GAIA messages (GAIA's voice, no
-notification chrome) so the thread can be continued there, AND recorded into that
-conversation's langgraph thread so a later turn remembers it. This is deliberately
+notification chrome) so the thread can be continued there, AND logged in that
+conversation as a Notice, so its next reply knows what was already sent. This is deliberately
 separate from the in-app badge each producer also raises: the badge is a web
 heads-up, this is the actual conversational delivery, and they target different
 surfaces.
@@ -13,20 +13,16 @@ Everything here is best-effort: a single platform failing never blocks the other
 or propagates to the caller — the result is already persisted to the conversation.
 """
 
-from datetime import UTC, datetime
 from uuid import uuid4
 
-from app.agents.core.background.comms_narrator import record_platform_delivery
 from app.constants.log_tags import LogTag
-from app.models.chat_models import (
-    ConversationSource,
-    MessageModel,
-    UpdateMessagesRequest,
-)
+from app.models.chat_models import ConversationSource
+from app.models.conversation_log_models import Notice
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.bot_service import BotService
-from app.services.conversation_service import update_messages
+from app.services.conversation.log import accept
+from app.services.conversation.runtime import runtime_ports
 from app.services.delivery.chat_channel import (
     ChatChannel,
     InApp,
@@ -125,8 +121,8 @@ async def _post_workflow_message(
 ) -> ConversationSource | None:
     """Persist the result into the platform's session conversation and deliver it.
 
-    Sent as ordered bubbles, then recorded in that conversation's langgraph
-    thread. Best-effort: logs and swallows a failure. Returns the platform that
+    Sent as ordered bubbles, then logged in that conversation as a Notice.
+    Best-effort: logs and swallows a failure. Returns the platform that
     received the message, or None when it was skipped or failed.
     """
     source, platform_user_id = channel.source, channel.platform_user_id
@@ -145,16 +141,7 @@ async def _post_workflow_message(
             user=user,
             is_dm=True,
         )
-        bot_message = MessageModel(
-            type="bot",
-            response=response,
-            date=datetime.now(UTC).isoformat(),
-        )
-        bot_message.message_id = str(uuid4())
-        await update_messages(
-            UpdateMessagesRequest(conversation_id=conversation_id, messages=[bot_message]),
-            user=user,
-        )
+        notice_id = f"notice:{uuid4()}"
         # The channel already carries the account id; a second read of the user
         # document to recompute it is what destination_override exists to skip.
         result = await publish_outbound_message(
@@ -165,24 +152,21 @@ async def _post_workflow_message(
                 f"{LogTag.AGENT} workflow platform publish failed",
                 platform=source.value,
                 conversation_id=conversation_id,
-                message_id=bot_message.message_id,
+                notice_id=notice_id,
                 bubbles=len(bubbles),
             )
             return None
         if result is OutboundResult.PUBLISHED:
-            # The Mongo save above never reaches the langgraph thread; record
-            # the nonblank bubbles (outbound path strips sentinel/blanks)
-            # rather than the raw response, which still has control tokens.
+            # The nonblank bubbles as sent (the outbound path strips sentinels and
+            # blanks), not the raw response, which still has control tokens.
             delivered_text = "\n\n".join(b.strip() for b in bubbles if b.strip())
-            await record_platform_delivery(
-                conversation_id,
-                f"[Delivered to the user on {source.display_name} (result of {origin})]: {delivered_text}",
-            )
+            notice = Notice(id=notice_id, text=delivered_text, origin=origin)
+            await accept(runtime_ports(), conversation_id, user_id, notice)
         log.info(
             f"{LogTag.AGENT} workflow result delivered to platform",
             platform=source.value,
             conversation_id=conversation_id,
-            message_id=bot_message.message_id,
+            notice_id=notice_id,
             bubbles=len(bubbles),
             result=result.value,
         )

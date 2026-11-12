@@ -33,6 +33,7 @@ from app.agents.core.background.todo_run_delivery import report_form_of
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.graph_manager import GraphManager
 from app.agents.tools.run_record import append_call
+from app.constants.browser import HandoffDecision, HandoffStatus
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
 from app.constants.graphs import GraphName
@@ -72,7 +73,10 @@ from app.models.tool_data_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
+from app.schemas.browser import NewHandoff
 from app.services import analytics_service
+from app.services.browser.handoff import create_pending_handoff
+from app.services.browser.handoff_buttons import decide_handoff_by_button
 from app.services.conversation.bot_followers import list_active_bot_conversations
 from app.services.conversation.comms_runner import (
     CommsGraphRunner,
@@ -839,6 +843,36 @@ async def test_a_comms_run_on_the_step_emits_run_started_once_attributed_to_the_
     ]
 
 
+@pytest.mark.service
+async def test_a_handoff_decided_by_its_button_continues_the_conversation(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("Signing in now", "Continuing, and skipping the upvote")
+    rig = await rig_for(model)
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "log in and upvote the post")
+    await rig.settle()
+    await create_pending_handoff(
+        "h1",
+        NewHandoff(
+            job_id="job-1",
+            user_id=rig.user_id,
+            conversation_id=rig.conversation_id,
+            reason="Sign in",
+            reply_to=rig.conversation_id,
+        ),
+    )
+    decided = await decide_handoff_by_button(
+        "h1", HandoffDecision.CONTINUE, rig.user_id, "skip the upvote"
+    )
+    await rig.settle()
+    assert decided is HandoffStatus.COMPLETED
+    said = [m.text for m in await rig.of(UserMessage)]
+    assert said[-1] == "[From the browser handoff card] continue: skip the upvote"
+    assert [r.text for r in await rig.of(Reply)][-1] == "Continuing, and skipping the upvote"
+    assert humans(model.prompts[1]).count(said[-1]) == 1
+
+
 # ---- work started outside a step ----
 
 
@@ -898,6 +932,14 @@ async def test_an_approval_decided_after_its_turn_ended_runs_its_work_under_the_
     assert [(r.reply_id, r.text) for r in replies][-1] == (task_id, "Sent the invoice to Acme")
     assert [r.reply_id for r in replies].count(task_id) == 1
     assert any("invoice sent" in text for text in humans(model.prompts[1]))
+    # What a client (web or a bot) follows: the task's reply is entered once, never twice.
+    frames = await read_frames(rig.conversation_id, "0", block_ms=1)
+    opened = [
+        f.frame.entry.reply_id
+        for f in frames
+        if isinstance(f.frame, EntryFrame) and isinstance(f.frame.entry, Reply)
+    ]
+    assert opened.count(task_id) == 1
 
 
 @pytest.mark.service

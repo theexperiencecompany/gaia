@@ -46,12 +46,9 @@ COMMS_ENTRY_FUNCTIONS = frozenset(
         # app/agents/core/graph_builder/build_graph.py: the graph constructors.
         "build_comms_graph",
         "build_comms_agent",
-        # app/agents/core/background/comms_narrator.py: the thread writers.
+        # app/agents/core/background/comms_narrator.py: the narration and the cancellation record.
         "narrate_executor_result",
         "record_executor_cancellation",
-        "record_platform_delivery",
-        "record_exchange_in_thread",
-        "_append_to_thread",
     }
 )
 
@@ -77,22 +74,15 @@ _FIX = f"run or write the conversation through app/{OWNER}, driven by the conver
 # ever removed; a new caller goes through the owner.
 LEGACY_CALLERS: frozenset[str] = frozenset(
     {
-        # Fetches the comms graph and runs it for call_agent and call_agent_silent;
-        # removed when the step takes this over (plan PR 7 for call_agent, PR 9 deletes call_agent_silent).
+        # Fetches the comms graph and runs it for call_agent; removed with /chat-stream.
         "agents/core/agent.py",
-        # Runs the interactive chat turn through call_agent; removed when the step takes this over (plan PR 7).
+        # Runs the interactive /chat-stream turn through call_agent; removed with it.
         "services/chat/stream.py",
-        # Narrates executor results with a silent comms run and appends reports, cancellations,
-        # platform deliveries and browser exchanges to the thread; removed when the step takes this over (plan PR 8).
+        # Narrates and records the end of a /chat-stream turn's executor run, the one run
+        # whose work is not on the conversation log; removed with /chat-stream.
         "agents/core/background/comms_narrator.py",
-        # Narrates a finished executor result and records a platform delivery; removed when the step takes this over (plan PR 8).
         "agents/core/background/result_delivery.py",
-        # Records a cancelled executor run in the thread; removed when the step takes this over (plan PR 8).
         "agents/core/background/executor_runner.py",
-        # Records a workflow message posted to a platform; removed when the step takes this over (plan PR 8).
-        "agents/core/background/workflow_platform_delivery.py",
-        # Records a browser handoff button exchange; removed when the step takes this over (plan PR 8).
-        "services/browser/handoff_buttons.py",
     }
 )
 

@@ -26,7 +26,6 @@ from pydantic import BaseModel, ConfigDict
 
 from app.agents.core.background.comms_narrator import (
     narrate_executor_result,
-    record_platform_delivery,
 )
 from app.agents.core.background.session import ExecutorRun
 from app.agents.core.background.workflow_platform_delivery import (
@@ -60,12 +59,15 @@ from app.models.chat_models import (
     ToolDataEntry,
     UpdateMessagesRequest,
 )
+from app.models.conversation_log_models import Notice
 from app.models.conversation_models import ConversationEntry
 from app.models.hil_models import HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
+from app.services.conversation.log import accept
 from app.services.conversation.reaction import reaction_frame
+from app.services.conversation.runtime import runtime_ports
 from app.services.conversation_service import update_messages
 from app.services.hil.approvals_store import get_approval
 from app.services.latency_metrics import observe_delivery_narration, observe_delivery_persist
@@ -204,7 +206,7 @@ async def deliver_message_to_conversation(
     """Deliver an already-voiced proactive message into one existing conversation.
 
     Routes over the conversation's own transport (bot platform or WebSocket), then
-    appends to the checkpoint so a later turn remembers it. Takes no run and does
+    logs it as a Notice so the conversation's next reply knows it was sent. Takes no run and does
     not narrate: text is the user-facing message already, and tool_data the cards
     of work that ran outside any turn. Never raises; returns the source, or None.
     """
@@ -245,12 +247,10 @@ async def deliver_message_to_conversation(
         delivered = True
         transport = "websocket"
 
-    # No narration ran, so nothing wrote this into the comms checkpoint. Record it
-    # (only once actually delivered) so the next turn here remembers it.
+    # Logged only once actually delivered, so the conversation's next reply knows it was sent.
     if delivered:
-        await record_platform_delivery(
-            conversation_id, f"[Delivered to the user ({origin})]: {text}"
-        )
+        notice = Notice(id=f"notice:{bot_message.message_id}", text=text, origin=origin)
+        await accept(runtime_ports(), conversation_id, user_id, notice)
 
     _log_delivery_verdict(
         target=target,

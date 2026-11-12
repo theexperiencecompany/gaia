@@ -8,6 +8,7 @@ target in the GAIA app sends nothing to a chat app; and every failure path
 stays best-effort (logs, never raises).
 """
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -27,6 +28,14 @@ from shared.py.analytics.catalog.workflows import WorkflowResultDelivered
 from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.core.background.workflow_platform_delivery"
+
+
+@pytest.fixture(autouse=True)
+def _installed_runtime() -> Iterator[None]:
+    """Stand in for the runtime ports startup installs; each test records the log write itself."""
+    with patch(f"{MODULE}.runtime_ports", MagicMock()):
+        yield
+
 
 USER: dict = {"user_id": "user-1", "email": "u@gaia.local"}
 USER_ID = "user-1"
@@ -178,7 +187,7 @@ class TestDeliverWorkflowResultToPlatforms:
             patch(
                 f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")
             ) as session,
-            patch(f"{MODULE}.update_messages", AsyncMock()) as update,
+            patch(f"{MODULE}.accept", AsyncMock()) as logged,
             patch(
                 f"{MODULE}.publish_outbound_message",
                 AsyncMock(return_value=OutboundResult.PUBLISHED),
@@ -201,11 +210,11 @@ class TestDeliverWorkflowResultToPlatforms:
         # A proactive delivery is a DM; on Discord and Slack a channel-keyed
         # session would be a different conversation than the user's DM thread.
         assert session.await_args.kwargs["is_dm"] is True
-        # The full text is persisted as the bot message, split into ordered bubbles.
-        update.assert_awaited_once()
-        request = update.await_args.args[0]
-        assert request.messages[0].response == TEXT
-        assert request.messages[0].message_id
+        # What was sent is logged in the session conversation, its bubbles joined.
+        _ports, conversation_id, user_id, notice = logged.await_args.args
+        assert (conversation_id, user_id) == ("tg-conv", USER_ID)
+        assert notice.text == "Report is ready.\n\nIt has 3 pages."
+        assert notice.origin == self.ORIGIN
         publish.assert_awaited_once()
         assert publish.await_args.args == (
             ConversationSource.TELEGRAM,
@@ -220,12 +229,11 @@ class TestDeliverWorkflowResultToPlatforms:
         """A wrong verdict makes a skipped delivery look delivered in the metrics."""
         with (
             patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(
                 f"{MODULE}.publish_outbound_message",
                 AsyncMock(return_value=OutboundResult.PUBLISHED),
             ),
-            patch(f"{MODULE}.record_platform_delivery", AsyncMock()),
+            patch(f"{MODULE}.accept", AsyncMock()),
         ):
             delivered = await deliver_result_to_platforms(
                 user=USER,
@@ -240,7 +248,6 @@ class TestDeliverWorkflowResultToPlatforms:
     async def test_a_skipped_publish_reports_nobody_was_reached(self) -> None:
         with (
             patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(
                 f"{MODULE}.publish_outbound_message",
                 AsyncMock(return_value=OutboundResult.SKIPPED),
@@ -259,7 +266,6 @@ class TestDeliverWorkflowResultToPlatforms:
     async def test_a_failed_publish_reports_nobody_was_reached(self) -> None:
         with (
             patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(
                 f"{MODULE}.publish_outbound_message",
                 AsyncMock(return_value=OutboundResult.FAILED),
@@ -291,7 +297,6 @@ class TestDeliverWorkflowResultToPlatforms:
         """A failed publish is swallowed but observable: log.error lands in the wide event's errors[]."""
         with (
             patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(
                 f"{MODULE}.publish_outbound_message",
                 AsyncMock(return_value=OutboundResult.FAILED),
@@ -336,7 +341,6 @@ class TestDeliverWorkflowResultToPlatforms:
     ) -> None:
         with (
             patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(
                 f"{MODULE}.publish_outbound_message",
                 AsyncMock(return_value=OutboundResult.PUBLISHED),
@@ -386,9 +390,8 @@ class TestDeliveredResultsReachTheSessionThread:
         recorder = AsyncMock()
         with (
             patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(f"{MODULE}.publish_outbound_message", AsyncMock(return_value=publish_result)),
-            patch(f"{MODULE}.record_platform_delivery", recorder),
+            patch(f"{MODULE}.accept", recorder),
         ):
             await deliver_result_to_platforms(
                 user=USER,
@@ -399,70 +402,15 @@ class TestDeliveredResultsReachTheSessionThread:
             )
         return recorder
 
-    async def test_published_result_is_recorded_in_the_session_thread(self) -> None:
+    async def test_published_result_is_logged_in_the_session_conversation(self) -> None:
         record = await self._deliver(OutboundResult.PUBLISHED)
 
-        # The checkpoint stores what the user actually saw — the outbound
-        # bubbles joined with blank control tokens removed, not the raw
-        # response containing <NEW_MESSAGE_BREAK>.
-        delivered = "Report is ready.\n\nIt has 3 pages."
-        record.assert_awaited_once_with(
-            "tg-conv",
-            f"[Delivered to the user on Telegram (result of {self.ORIGIN})]: {delivered}",
-        )
-
-    async def test_recorded_text_excludes_break_sentinel(self) -> None:
-        """The sentinel is stripped before the checkpoint write."""
-        record = await self._deliver(OutboundResult.PUBLISHED)
-        for _, text in record.await_args_list:
-            assert NEW_MESSAGE_BREAKER not in text
-            assert "<NEW" not in text
-
-    async def test_whatsapp_display_name_preserves_casing(self) -> None:
-        """WhatsApp's display name is WhatsApp, not Whatsapp — a .capitalize() fallback would show here."""
-        recorder = AsyncMock()
-        with (
-            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="wa-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
-            patch(
-                f"{MODULE}.publish_outbound_message",
-                AsyncMock(return_value=OutboundResult.PUBLISHED),
-            ),
-            patch(f"{MODULE}.record_platform_delivery", recorder),
-        ):
-            await deliver_result_to_platforms(
-                user=USER,
-                user_id=USER_ID,
-                notification_text="hello",
-                origin=self.ORIGIN,
-                target=WHATSAPP,
-            )
-        assert recorder.await_args.args[1].startswith(
-            "[Delivered to the user on WhatsApp (result of"
-        )
-
-    async def test_imessage_is_spelled_the_way_apple_spells_it(self) -> None:
-        """IMessage is the one platform whose display name is not a plain capitalization."""
-        recorder = AsyncMock()
-        with (
-            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="im-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
-            patch(
-                f"{MODULE}.publish_outbound_message",
-                AsyncMock(return_value=OutboundResult.PUBLISHED),
-            ),
-            patch(f"{MODULE}.record_platform_delivery", recorder),
-        ):
-            await deliver_result_to_platforms(
-                user=USER,
-                user_id=USER_ID,
-                notification_text="hello",
-                origin=self.ORIGIN,
-                target=IMESSAGE,
-            )
-        assert recorder.await_args.args[1].startswith(
-            "[Delivered to the user on iMessage (result of"
-        )
+        # The notice holds what the user actually saw: the outbound bubbles joined,
+        # not the raw response containing <NEW_MESSAGE_BREAK>.
+        _ports, conversation_id, _user, notice = record.await_args.args
+        assert conversation_id == "tg-conv"
+        assert notice.text == "Report is ready.\n\nIt has 3 pages."
+        assert NEW_MESSAGE_BREAKER not in notice.text
 
     async def test_a_result_that_was_not_delivered_is_not_recorded(self) -> None:
         record = await self._deliver(OutboundResult.FAILED)
@@ -478,7 +426,6 @@ class TestVariantBreakTokens:
 
         with (
             patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(
                 f"{MODULE}.publish_outbound_message",
                 AsyncMock(return_value=OutboundResult.PUBLISHED),

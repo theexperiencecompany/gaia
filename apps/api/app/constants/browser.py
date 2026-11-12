@@ -236,10 +236,6 @@ BROWSER_IMPORT_TOKEN_ENTROPY_BYTES = 32
 BROWSER_PROFILE_TTL_DAYS = 90
 BROWSER_PROFILE_TTL_SECONDS = BROWSER_PROFILE_TTL_DAYS * 24 * 3600
 
-# Recorded in the thread when the handoff card's buttons decide a handoff: no turn runs for a tap.
-BROWSER_HANDOFF_ACK_CONTINUE = "Got it, continuing the browser task."
-BROWSER_HANDOFF_ACK_CANCEL = "Okay, I've stopped the browser task."
-
 # Why a button's decision on a handoff was refused: the web card's, or the bot live-view page's.
 BROWSER_HANDOFF_NOT_OWNED_DETAIL = "Not authorized to resolve this handoff"
 BROWSER_HANDOFF_GONE_DETAIL = "Handoff not found or expired"
@@ -586,8 +582,8 @@ BROWSER_ENGINE_PROBE_TIMEOUT_SECONDS = 5.0
 # since a stopped run's card reads the stop.
 BROWSER_ENGINE_UNRESPONSIVE_SUMMARY = "The browser stopped responding."
 
-# How a decision taken on the handoff card is written into the agent's thread,
-# so the reply it later voices knows the user changed course.
+# How a decision taken on the handoff card reads as the user's message in the
+# conversation, so the reply it later voices knows the user changed course.
 BROWSER_HANDOFF_CARD_DECISION = "[From the browser handoff card] {decision}"
 
 # ---------------------------------------------------------------------------
