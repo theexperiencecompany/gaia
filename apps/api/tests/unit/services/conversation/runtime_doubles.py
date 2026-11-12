@@ -94,10 +94,12 @@ class InMemoryConversationLog:
         conversation = self._holding(claim)
         index = next(i for i, item in enumerate(conversation.entries) if item.entry.id == entry.id)
         old = conversation.entries[index]
-        assert type(old.entry) is type(entry), (
-            f"amend cannot turn {old.entry.kind} into {entry.kind}"
+        stored = old.entry
+        assert isinstance(stored, Reply | UserMessage) and type(stored) is type(entry), (
+            f"amend cannot turn {stored.kind} into {entry.kind}"
         )
-        conversation.entries[index] = amended = old.model_copy(update={"entry": entry})
+        revised = entry.model_copy(update={"revision": stored.revision + 1})
+        conversation.entries[index] = amended = old.model_copy(update={"entry": revised})
         await self.pause("amend:done")
         return amended
 
@@ -286,6 +288,7 @@ class ScriptedRun:
         self._wanted: asyncio.Queue[None] = asyncio.Queue()
         self._out: asyncio.Queue[RunEvent | Exception] = asyncio.Queue()
         self._held = False
+        self._swallowed = asyncio.Event()
         self.cancel_attempts = 0
         self.task = asyncio.create_task(self._play())
 
@@ -307,9 +310,25 @@ class ScriptedRun:
         while not self.task.done():
             self.cancel_attempts += 1
             self.task.cancel()
-            await asyncio.wait((self.task,))
+            swallowed = asyncio.ensure_future(self._swallowed.wait())
+            await asyncio.wait((self.task, swallowed), return_when=asyncio.FIRST_COMPLETED)
+            swallowed.cancel()
+            self._swallowed.clear()
 
     async def _play(self) -> None:
+        try:
+            if not await self._perform():
+                await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            if not self._swallow:
+                raise
+            # The first cancel is swallowed wherever it lands; only a second one ends the run.
+            self._swallow = False
+            self._swallowed.set()
+            await asyncio.Event().wait()
+
+    async def _perform(self) -> bool:
+        """Play the script; True when it emitted its final event, False when the run should hang."""
         for item in self._script:
             await self._demand()
             match item:
@@ -321,12 +340,12 @@ class ScriptedRun:
                         await self._ticks.release()
                 case Fail(error=error):
                     self._emit(error)
-                    return
+                    return True
                 case _:
                     self._emit(item)
                     if isinstance(item, Finished):
-                        return
-        await self._hang()
+                        return True
+        return False
 
     async def _demand(self) -> None:
         if not self._held:
@@ -336,15 +355,6 @@ class ScriptedRun:
     def _emit(self, item: RunEvent | Exception) -> None:
         self._held = False
         self._out.put_nowait(item)
-
-    async def _hang(self) -> None:
-        while True:
-            try:
-                await asyncio.Event().wait()
-            except asyncio.CancelledError:
-                if not self._swallow:
-                    raise
-                self._swallow = False
 
 
 class ScriptedRunner:

@@ -118,7 +118,8 @@ class ConversationLogContract:
         await subject.log.append_fenced(claim, reply)
         amended = await subject.log.amend(claim, reply.model_copy(update={"text": "hello"}))
         stored = await subject.log.read_after(CID, 1)
-        assert (amended.seq, stored[0].entry) == (2, reply.model_copy(update={"text": "hello"}))
+        filled = reply.model_copy(update={"text": "hello", "revision": 1})
+        assert (amended.seq, amended.entry, stored[0].entry) == (2, filled, filled)
         assert (await subject.log.state(CID)).head == 2
 
     async def test_the_hint_names_a_barged_reply_only_while_it_is_open(

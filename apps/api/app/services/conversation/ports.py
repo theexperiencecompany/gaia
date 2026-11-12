@@ -59,7 +59,7 @@ class ConversationLog(Protocol):
         ...
 
     async def amend(self, claim: StepClaim, entry: Reply | UserMessage) -> LoggedEntry:
-        """Replace the stored entry with entry's id in place, fenced; content only, never state."""
+        """Replace the stored entry with entry's id in place with the next revision, fenced; never a state change."""
         ...
 
     async def read_after(self, conversation_id: str, seq: int) -> Sequence[LoggedEntry]:
