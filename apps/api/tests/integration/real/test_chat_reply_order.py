@@ -22,12 +22,14 @@ from app.constants.chat import (
     TURN_REPLY_NOT_SAVED,
 )
 from app.core.stream_manager import stream_manager
+from app.db.repositories import conversations as conversations_module
 from app.db.repositories.conversations import conversation_repository
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.persistence import open_bot_reply, save_user_message
 from app.services.chat.stream import run_chat_stream_background
 from app.workers.tasks.reply_sweep_tasks import sweep_unfinished_replies
 from tests.conftest import FAKE_USER
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.service
 
@@ -275,6 +277,31 @@ async def test_a_crashed_turn_leaves_no_reply_in_progress_after_the_sweep(
     assert reply["seq"] == 2
     assert reply["error"] == TURN_INTERRUPTED
     assert reply.get("in_progress") is None
+
+
+async def test_a_turn_killed_before_its_flush_is_swept_from_the_outbox(
+    client: AsyncClient, real_redis, mongo_db, make_conversation, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conversation_id = await make_conversation(FAKE_USER.user_id)
+    # The process dies right after the reply's commit: no flush it spawned ever runs.
+    monkeypatch.setattr(
+        conversations_module, "spawn_logged_task", lambda _name, coro, **_: coro.close()
+    )
+    await save_user_message(_body(conversation_id, "A"), FAKE_USER, conversation_id, "msg-a")
+    await open_bot_reply(_body(conversation_id, "A"), FAKE_USER, conversation_id, "msg-reply")
+    hour_ago = datetime.now(UTC) - timedelta(hours=1)
+    await mongo_db["conversations"].update_one(
+        {"conversation_id": conversation_id},
+        {"$set": {"outbox.1.at": hour_ago, "outbox.2.at": hour_ago}},
+    )
+    assert await _entries(mongo_db, conversation_id) == []
+
+    async with captured_wide_event() as event:
+        assert await sweep_unfinished_replies({}) == "failed=1"
+
+    assert (event["unfinished_reply_conversations"], event["failed_reply_count"]) == (1, 1)
+    [_, reply] = await _read(client, conversation_id)
+    assert (reply["error"], reply.get("in_progress")) == (TURN_INTERRUPTED, None)
 
 
 async def test_a_second_sweep_changes_nothing(real_redis, mongo_db, make_conversation) -> None:
