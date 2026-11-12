@@ -154,6 +154,7 @@ class Verdict(TypedDict, total=False):
     advice: list[str]
     artifact: str
     run_id: int
+    created_at: str | None
 
 
 class Shard(TypedDict):
@@ -329,8 +330,8 @@ def fetch_statuses(repo: Repo, head_sha: str) -> tuple[list[dict], bool]:
     return statuses, True
 
 
-def fetch_superseded_run_ids(repo: Repo, head_sha: str) -> set[int]:
-    """Return the cancelled workflow runs on head_sha that another run of the same workflow replaced."""
+def fetch_superseded_run_ids(repo: Repo, head_sha: str) -> tuple[set[int], set[int]]:
+    """Return the cancelled runs on head_sha a newer run of their workflow replaced, and those replacements still in flight."""
     rc, out, err = gh(
         ["api", f"{repo.api('actions/runs')}?head_sha={head_sha}&per_page=100"], repo.timeout_s
     )
@@ -341,11 +342,16 @@ def fetch_superseded_run_ids(repo: Repo, head_sha: str) -> set[int]:
     for run in json.loads(out).get("workflow_runs", []):
         by_workflow.setdefault(run["workflow_id"], []).append(run)
     superseded: set[int] = set()
+    in_flight: set[int] = set()
     for runs in by_workflow.values():
-        cancelled = {r["id"] for r in runs if r.get("conclusion") == "cancelled"}
-        if len(cancelled) < len(runs):
-            superseded |= cancelled
-    return superseded
+        newest = max(runs, key=lambda r: r["id"])
+        replaced = {
+            r["id"] for r in runs if r.get("conclusion") == "cancelled" and r["id"] < newest["id"]
+        }
+        superseded |= replaced
+        if replaced and newest.get("status") != "completed":
+            in_flight.add(newest["id"])
+    return superseded, in_flight
 
 
 def status_checks(statuses: list[dict]) -> list[dict]:
@@ -450,10 +456,10 @@ def is_current_attempt(verdict: Verdict, checks: list[Check]) -> bool:
     older than it belongs to an earlier attempt. A verdict no check owns, or
     one with a missing timestamp, cannot be proven stale and is kept.
     """
-    owners = [
-        c
-        for c in checks
-        if c["run_id"] == verdict.get("run_id") and verdict_matches(verdict, c["name"])
+    same_run = [c for c in checks if c["run_id"] == verdict.get("run_id")]
+    # A shard's artifact index names its one owner; a lane prefix can also claim a sibling shard.
+    owners = [c for c in same_run if matches_by_matrix_index(verdict, c["name"])] or [
+        c for c in same_run if verdict_matches(verdict, c["name"])
     ]
     uploaded = verdict.get("created_at")
     if not owners or not uploaded:
@@ -1372,10 +1378,12 @@ def snapshot_once(repo: Repo, pr_number: int, branch: str, with_stack: bool) -> 
     pr_meta = fetch_pr_state(repo, pr_number)
     runs, runs_truncated = fetch_check_runs(repo, pr_meta["headRefOid"])
     statuses, statuses_truncated = fetch_statuses(repo, pr_meta["headRefOid"])
-    superseded = fetch_superseded_run_ids(repo, pr_meta["headRefOid"])
+    superseded, in_flight = fetch_superseded_run_ids(repo, pr_meta["headRefOid"])
     checks = [c for c in normalize(runs + status_checks(statuses)) if c["run_id"] not in superseded]
     truncated = runs_truncated or statuses_truncated
     counts = {k: sum(1 for c in checks if c["status"] == k) for k in COUNT_KEYS}
+    # A replacement GitHub has queued but given no jobs yet is pending, not absent.
+    counts["pending"] += len(in_flight - {c["run_id"] for c in checks})
     verdicts, shards, tails, sources = diagnose(repo, checks)
 
     stack_payload = fetch_stack(repo) if with_stack else None

@@ -1605,6 +1605,38 @@ def test_a_verdict_uploaded_by_the_current_attempt_still_reds_a_running_job(
     assert "FAIL  lint-python  [still running" in capsys.readouterr().out
 
 
+def test_a_rerun_shard_ignores_its_stale_rollup_when_a_passed_sibling_shares_the_lane(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: shard 2's lane prefix kept shard 3's attempt-1 rollup alive after a rerun."""
+    rerun = dict(
+        SHARD_3_CHECK, status="in_progress", conclusion=None, started_at="2026-11-12T16:31:09Z"
+    )
+    sibling = dict(
+        SHARD_3_CHECK,
+        name="mutation (shard 2/6 (20 modules))",
+        conclusion="success",
+        html_url="https://github.com/o/r/actions/runs/99/job/1233",
+        started_at="2026-11-12T16:00:00Z",
+    )
+    wire(
+        FakeGh(
+            checks=[rerun, sibling],
+            artifacts=[
+                {
+                    "id": 77,
+                    "name": "verdict-test-mutation-2",
+                    "expired": False,
+                    "created_at": "2026-11-12T16:22:00Z",
+                }
+            ],
+            zip_blobs={77: verdict_zip(SHARD_2_ROLLUP)},
+        )
+    )
+    assert run_cli(monkeypatch, []) == 0
+    assert "[still running" not in capsys.readouterr().out
+
+
 def test_a_running_job_with_no_failing_verdict_is_only_pending(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1674,3 +1706,29 @@ def test_a_cancelled_run_with_no_replacement_still_shows_its_failures(
     run_cli(monkeypatch, ["7"])
 
     assert "FAIL  quality-gate" in capsys.readouterr().out
+
+
+def test_a_cancelled_run_newer_than_its_passed_twin_still_shows_its_failures(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = wire(FakeGh(checks=[_gate(98, "success"), _gate(99, "failure")]))
+    fake.workflow_runs = [
+        {"id": 98, "workflow_id": 1, "status": "completed", "conclusion": "success"},
+        {"id": 99, "workflow_id": 1, "status": "completed", "conclusion": "cancelled"},
+    ]
+
+    assert run_cli(monkeypatch, ["7"]) == 1
+    assert "FAIL  quality-gate" in capsys.readouterr().out
+
+
+def test_a_replacement_run_with_no_checks_yet_keeps_the_snapshot_pending(wire) -> None:
+    fake = wire(FakeGh(checks=[_gate(98, "failure"), PASSED_CHECK]))
+    fake.workflow_runs = [
+        {"id": 98, "workflow_id": 1, "status": "completed", "conclusion": "cancelled"},
+        {"id": 100, "workflow_id": 1, "status": "queued", "conclusion": None},
+    ]
+    repo = ci_remote.Repo("o", "r", 10)
+
+    report, _ = ci_remote.snapshot_once(repo, 7, "feat/thing", with_stack=False)
+
+    assert report["counts"]["pending"] == 1
