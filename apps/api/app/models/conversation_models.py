@@ -35,6 +35,7 @@ from app.models.chat_models import (
     SystemPurpose,
     ToolDataEntry,
 )
+from app.models.conversation_log_models import ConversationState
 from app.schemas.common import ResponseModel
 from app.utils.tool_data_utils import convert_legacy_tool_data
 
@@ -200,6 +201,96 @@ class _ConversationOwnerRow(_ConversationIdRow):
 
     model_config = ConfigDict(extra="forbid")
 
+    user_id: str
+
+
+class StoredEntry(BaseModel):
+    """One conversation_entries document, or one value of a head's outbox: its keys, then the message as stored."""
+
+    model_config = ConfigDict(extra="allow")
+
+    conversation_id: str
+    user_id: str
+    seq: int
+    id: str
+    at: datetime | None = None
+    migration_hash: str | None = None
+    # Set only on an amendable log entry (a reply, a user message): each amend bumps it.
+    revision: int | None = None
+
+    def message_fields(self) -> dict[str, object]:
+        """Return the stored message's own fields: everything but the entry's keys and Mongo's _id."""
+        return {key: value for key, value in (self.model_extra or {}).items() if key != "_id"}
+
+    def document(self) -> dict[str, object]:
+        """Return the entry exactly as it was read, to write it elsewhere unchanged."""
+        return {
+            key: value for key, value in self.model_dump(exclude_unset=True).items() if key != "_id"
+        }
+
+
+class EntryKey(BaseModel):
+    """Which entry holds a seq: the id and seq of a stored entry, projected."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    seq: int
+
+
+class EmbeddedState(BaseModel):
+    """What a head read reports of the embedded messages array without shipping it."""
+
+    count: int = 0
+    last_id: str | None = None
+
+
+class LegacyMessage(BaseModel):
+    """One element of the embedded messages array the entries migration copies, in whatever shape the old build wrote."""
+
+    model_config = ConfigDict(extra="allow")
+
+    message_id: str | None = None
+    date: object = None
+
+    def stored(self) -> dict[str, object]:
+        """Return the element exactly as it is stored in the array."""
+        return self.model_dump(exclude_unset=True)
+
+
+class StepHolder(BaseModel):
+    """Who holds a conversation's step: its epoch, and the Redis key that proves it alive."""
+
+    epoch: int
+    alive_key: str
+
+
+class ConversationHead(BaseModel):
+    """A conversations document as the entry log reads it: identity, log_head, outbox, migration and log state."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    conversation_id: str
+    user_id: str
+    log_head: int | None = None
+    outbox: dict[int, StoredEntry] = Field(default_factory=dict)
+    migrated_last_id: str | None = None
+    embedded: EmbeddedState | None = Field(default=None, alias="_embedded")
+    existing: list[EntryKey] = Field(default_factory=list)
+    messages: list[LegacyMessage] = Field(default_factory=list)
+    # The conversation log's fold, absent until its first entry; the step holder; the last epoch handed out.
+    state: ConversationState | None = None
+    runner: StepHolder | None = None
+    runner_epoch: int = 0
+
+
+class HeadRefRow(BaseModel):
+    """A head as a migration scan lists it: its _id as text, and identity."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    head_id: str
+    conversation_id: str
     user_id: str
 
 

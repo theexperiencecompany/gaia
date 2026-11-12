@@ -130,9 +130,11 @@ class HeldFlushes:
 
     def __init__(self) -> None:
         self.held: list[Coroutine[Any, Any, Any]] = []
+        self.spawned: list[tuple[str, dict[str, object]]] = []
 
-    def __call__(self, operation: str, coro: Coroutine[Any, Any, Any], **_: object) -> None:
+    def __call__(self, operation: str, coro: Coroutine[Any, Any, Any], **context: object) -> None:
         self.held.append(coro)
+        self.spawned.append((operation, context))
 
     async def run_all(self) -> None:
         held, self.held = self.held, []

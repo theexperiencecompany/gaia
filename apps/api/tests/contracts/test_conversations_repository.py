@@ -95,6 +95,15 @@ class TestConversationCrud:
         assert fetched.createdAt == doc.createdAt
         assert fetched.id == ""
 
+    async def test_create_with_messages_raises_and_writes_nothing(self, repo):
+        doc = _doc(messages=[{"type": "user", "response": "hi", "seq": 1}])
+        with pytest.raises(ValueError) as refused:
+            await repo.create(doc)
+        assert str(refused.value) == (
+            "create() writes only the head; append the messages with append_messages()"
+        )
+        assert await repo.get(doc.conversation_id, user_id=doc.user_id) is None
+
     async def test_get_missing_returns_none(self, repo):
         assert await repo.get(_cid(), user_id=_uid()) is None
 

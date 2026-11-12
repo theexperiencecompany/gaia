@@ -11,9 +11,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, TypeAdapter
+from pydantic import TypeAdapter
 from pymongo import ReturnDocument
 
 from app.db.repositories.conversation_entries import (
@@ -25,6 +24,7 @@ from app.db.repositories.conversation_entries import (
     EntryWindow,
     Head,
     at_log_head,
+    committed_at,
     store_errors,
 )
 from app.db.repositories.conversations import ConversationRepository
@@ -34,9 +34,11 @@ from app.models.conversation_log_models import (
     Entry,
     LoggedEntry,
 )
+from app.models.conversation_models import ConversationHead, StoredEntry
 
 _ENTRY: TypeAdapter[Entry] = TypeAdapter(Entry)
-_DOCUMENT_KEYS = ("_id", "conversation_id", "user_id")
+#: A stored entry's keys beside the log entry's own fields; id is both, so it stays.
+_POSITION_KEYS = ("conversation_id", "user_id", "seq", "at", "migration_hash")
 _EMPTY_STATE: dict[str, object] = ConversationState.empty().model_dump(mode="json")
 
 
@@ -111,8 +113,8 @@ class ConversationLogRepository(ConversationRepository):
             return None
         before = None if through_seq is None else through_seq + 1
         window = EntryWindow(after_seq=after_seq, before_seq=before, ids=ids, log=True)
-        [(_, rows)] = await self._union_for(heads, window)
-        return [_logged(row) for row in rows]
+        [(_, entries)] = await self._union_for(heads, window)
+        return [_logged(entry) for entry in entries]
 
     async def stage_log_amend(
         self, conversation_id: str, *, user_id: str, epoch: int, amended: LoggedEntry
@@ -201,51 +203,28 @@ def _comms_as_read(comms: CommsPhase | None) -> dict[str, object]:
     return {f"{STATE_FIELD}.comms": comms.value}
 
 
-class _StoredRunner(BaseModel):
-    epoch: int
-    alive_key: str
-
-
-class _StoredLog(BaseModel):
-    """The log's own fields on a head document."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    log_head: int = 0
-    state: ConversationState | None = None
-    runner: _StoredRunner | None = None
-    runner_epoch: int = 0
-
-    def current(self) -> ConversationState:
-        """Return the stored fold at log_head: a seq holding a message folds as an entry that changes nothing."""
-        return (self.state or ConversationState.empty()).model_copy(update={"head": self.log_head})
+def _current(head: ConversationHead) -> ConversationState:
+    """Return the stored fold at log_head: a seq holding a message folds as an entry that changes nothing."""
+    stored = head.state or ConversationState.empty()
+    return stored.model_copy(update={"head": head.log_head or 0})
 
 
 def _state(raw: Mapping[str, object]) -> ConversationState:
-    return _StoredLog.model_validate(raw).current()
+    return _current(ConversationHead.model_validate(raw))
 
 
 def _log_head(head: Head) -> LogHead:
-    stored = _StoredLog.model_validate(head.raw)
+    document = head.document
     return LogHead(
         conversation_id=head.conversation_id,
         user_id=head.user_id,
         log_head=head.log_head,
-        state=stored.current(),
-        stored_comms=None if stored.state is None else stored.state.comms,
-        holder=None if stored.runner is None else stored.runner.epoch,
-        runner_epoch=stored.runner_epoch,
+        state=_current(document),
+        stored_comms=None if document.state is None else document.state.comms,
+        holder=None if document.runner is None else document.runner.epoch,
+        runner_epoch=document.runner_epoch,
         known=head.known_seqs(),
     )
-
-
-class _StoredEntry(BaseModel):
-    """A log entry document: its position, and the entry's own fields beside it."""
-
-    model_config = ConfigDict(extra="allow")
-
-    seq: int
-    at: datetime
 
 
 def _document(conversation_id: str, user_id: str, logged: LoggedEntry) -> dict[str, object]:
@@ -258,10 +237,11 @@ def _document(conversation_id: str, user_id: str, logged: LoggedEntry) -> dict[s
     }
 
 
-def _logged(raw: Mapping[str, object]) -> LoggedEntry:
-    stored = _StoredEntry.model_validate(raw)
-    fields = {k: v for k, v in (stored.model_extra or {}).items() if k not in _DOCUMENT_KEYS}
-    return LoggedEntry(seq=stored.seq, at=stored.at, entry=_ENTRY.validate_python(fields))
+def _logged(stored: StoredEntry) -> LoggedEntry:
+    fields = {k: v for k, v in stored.document().items() if k not in _POSITION_KEYS}
+    return LoggedEntry(
+        seq=stored.seq, at=committed_at(stored), entry=_ENTRY.validate_python(fields)
+    )
 
 
 conversation_log_repository = ConversationLogRepository()
