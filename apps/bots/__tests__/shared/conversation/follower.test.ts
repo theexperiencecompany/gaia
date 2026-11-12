@@ -248,6 +248,43 @@ describe.each([
     expect(follower.finished).toBe(true);
   });
 
+  it("keeps typing while work a later message joined runs, and stops when it ends", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(0, options, surface);
+    follower.expect(1);
+    await feed(follower, [
+      entryFrame(1, inbound("u1", "11")),
+      stateFrame(1, "thinking"),
+      ...answer(2, "r1", "On it.", ["u1"], 1),
+      entryFrame(4, workStarted("t1", 1)),
+      stateFrame(4, "working", [liveTask("t1")]),
+    ]);
+    follower.expect(5);
+    await feed(follower, [
+      entryFrame(5, inbound("u2", "12")),
+      stateFrame(5, "thinking", [liveTask("t1")]),
+      entryFrame(6, workStarted("t2", 5, "t1")),
+      ...answer(7, "r2", "Added that to the task.", ["u2"], 5),
+      stateFrame(8, "working", [liveTask("t1")]),
+    ]);
+    const typingWhileJoined = calls.filter((call) => call.op === "typing");
+    await feed(follower, [
+      entryFrame(9, workFinished("t1")),
+      stateFrame(9, "thinking"),
+      entryFrame(10, replyEntry("t1", "a-t1", "Both done.", 1)),
+      entryFrame(11, replySettled("t1", ["u1", "u2"], 9)),
+      stateFrame(11, "idle"),
+    ]);
+
+    expect(typingWhileJoined).toEqual([{ op: "typing", state: "start" }]);
+    expect(calls.filter((call) => call.op === "typing")).toEqual([
+      { op: "typing", state: "start" },
+      { op: "typing", state: "stop" },
+    ]);
+    expect(screen(calls).at(-1)).toBe("Both done.");
+    expect(follower.finished).toBe(true);
+  });
+
   it("resumes after a dropped connection without sending anything twice", async () => {
     const { surface, calls } = recorder();
     const cursors: string[] = [];
