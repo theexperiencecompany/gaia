@@ -13,7 +13,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium, finishAnimations, load, newContext, stepLocator } from "./browser.mjs";
+import { chromium, finishAnimations, load, networkQuiet, newContext, stepLocator } from "./browser.mjs";
 import { DEFAULT_OUT, fileOf, MAX_PAGE_HEIGHT, stateId, VIEWPORTS, WEB_BASE } from "./config.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -59,7 +59,7 @@ async function shootBase(page, job, entry) {
 }
 
 async function shootState(page, job, step, entry) {
-  await load(page, BASE, job.target);
+  await load(page, BASE, job.target, { wholePage: false });
   const loc = stepLocator(page, step);
   if ((await loc.count()) === 0) {
     entry.missing = true;
@@ -70,6 +70,7 @@ async function shootState(page, job, step, entry) {
     return;
   }
   await loc.scrollIntoViewIfNeeded();
+  await networkQuiet(page, 400, 6000);
   if (step.action === "hover") await loc.hover();
   else await loc.click();
   await page.waitForTimeout(step.action === "hover" ? 900 : 600);

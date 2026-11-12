@@ -254,4 +254,6 @@ renderAll(); renderCode(); renderAbout();
 </script></html>`;
 
 writeFileSync(join(OUT, "review.html"), html);
+// The served directory holds thousands of shots; its root opens the review instead of a listing.
+writeFileSync(join(OUT, "index.html"), '<!doctype html><meta http-equiv="refresh" content="0; url=review.html">');
 console.log(`wrote ${join(OUT, "review.html")} (${data.rows.length} shots)`);

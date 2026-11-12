@@ -19,6 +19,7 @@ const API_ORIGIN = new URL(API_BASE).origin;
 const READ_ONLY_POSTS = [/\/conversations\/batch-sync$/, /\/calendar\/events\/query$/];
 const THIRD_PARTY_BLOCK = /(posthog|google-analytics|googletagmanager|doubleclick|rybbit|sentry|clarity\.ms|fastlane|hotjar|intercom|crisp\.chat)/;
 const ANON_USER = "anonymous@review.invalid";
+const THIRD_PARTY_KEEP = new Set(["image", "font", "stylesheet", "script"]);
 
 /** Applied before any page script: every CSS animation lands on its end frame, nothing transitions. */
 const FREEZE_CSS = `*,*::before,*::after{animation-duration:0s!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:0s!important;transition-delay:0s!important;caret-color:transparent!important;scroll-behavior:auto!important}`;
@@ -84,7 +85,9 @@ export async function newContext(browser, { vp, user, seed, cacheDir, log }) {
     }
     if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return route.continue();
     if (THIRD_PARTY_BLOCK.test(url.hostname)) return route.abort();
-    if (req.method() !== "GET") return route.abort();
+    // Third-party pixels (images, fonts, styles, scripts) are kept and replayed; third-party documents,
+    // iframes and API calls are not part of this app's rendering and only add network variance.
+    if (req.method() !== "GET" || !THIRD_PARTY_KEEP.has(type)) return route.abort();
     return replayThirdParty(route, cacheDir, log);
   });
   return ctx;
@@ -102,7 +105,7 @@ async function replayThirdParty(route, cacheDir, log) {
     return route.fulfill({ status: m.status, headers: m.headers, body: readFileSync(body) });
   }
   try {
-    const res = await route.fetch({ timeout: 30_000 });
+    const res = await route.fetch({ timeout: 15_000 });
     const headers = res.headers();
     delete headers["content-encoding"];
     delete headers["content-length"];
@@ -194,15 +197,19 @@ export async function finishAnimations(page) {
 }
 
 /** Navigate and settle. Returns facts the manifest records; a non-2xx page or a server error throws. */
-export async function load(page, base, target) {
+export async function load(page, base, target, { wholePage = true } = {}) {
   const res = await page.goto(base + target.url, { waitUntil: "load", timeout: 60_000 });
   const status = res?.status() ?? 0;
   if (status >= 400) throw new Error(`HTTP ${status} for ${target.url}`);
   const quiet = await networkQuiet(page);
   await imagesAndFonts(page);
-  await scrollToLoad(page);
-  const quiet2 = await networkQuiet(page, 500, 10_000);
-  await imagesAndFonts(page);
+  let quiet2 = true;
+  // A state shot is one viewport around its trigger, so only the full-page shot needs lazy content loaded.
+  if (wholePage) {
+    await scrollToLoad(page);
+    quiet2 = await networkQuiet(page, 500, 10_000);
+    await imagesAndFonts(page);
+  }
   await page.mouse.move(0, 0);
   await page.waitForTimeout(400);
   await finishAnimations(page);
