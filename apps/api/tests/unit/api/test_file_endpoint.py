@@ -14,6 +14,7 @@ import pytest
 from app.models.files_models import FileDocument
 from app.schemas.file import FileDeletedResponse, UpdateFileRequest
 from tests.conftest import FAKE_USER, FAKE_USER_2
+from tests.helpers import captured_wide_event
 
 FILE_BASE = "/api/v1"
 
@@ -166,9 +167,11 @@ class TestUploadFile:
         mock_upload.return_value = _file_doc(file_id="file-004")
         is_disconnected.return_value = True
 
-        await client.post(
-            f"{FILE_BASE}/upload", files={"file": ("a.txt", BytesIO(b"a"), "text/plain")}
-        )
+        async with captured_wide_event() as event:
+            await client.post(
+                f"{FILE_BASE}/upload", files={"file": ("a.txt", BytesIO(b"a"), "text/plain")}
+            )
+            assert event["outcome"] == "cancelled"
 
         mock_delete.assert_awaited_once_with(file_id="file-004", user_id=FAKE_USER.user_id)
 
@@ -179,9 +182,11 @@ class TestUploadFile:
     ):
         mock_upload.return_value = _file_doc(file_id="file-005")
 
-        response = await client.post(
-            f"{FILE_BASE}/upload", files={"file": ("a.txt", BytesIO(b"a"), "text/plain")}
-        )
+        async with captured_wide_event() as event:
+            response = await client.post(
+                f"{FILE_BASE}/upload", files={"file": ("a.txt", BytesIO(b"a"), "text/plain")}
+            )
+            assert event["outcome"] == "success"
 
         assert response.status_code == 201
         mock_delete.assert_not_awaited()
