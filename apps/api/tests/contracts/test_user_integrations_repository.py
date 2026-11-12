@@ -390,3 +390,19 @@ class TestTheReadCache:
         await repo.set_account_nickname("u", "gmail", "acct_1", "Work")
 
         assert (await repo.get_for_user("v", "gmail")).accounts[0].nickname is None
+
+    async def test_one_users_write_bumps_only_that_users_generation(self, repo, redis):
+        for user in ("u", "v"):
+            await repo.save_accounts(
+                user,
+                "gmail",
+                accounts=[self._account("acct_1")],
+                primary_account_id="acct_1",
+                status="connected",
+            )
+        before = {u: await redis.get(repo.cache_policy.generation_key(u)) for u in ("u", "v")}
+
+        await repo.set_account_nickname("u", "gmail", "acct_1", "Work")
+
+        assert int(await redis.get(repo.cache_policy.generation_key("u"))) == int(before["u"]) + 1
+        assert await redis.get(repo.cache_policy.generation_key("v")) == before["v"]
