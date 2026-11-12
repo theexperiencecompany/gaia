@@ -7,36 +7,46 @@ const parse = (value: unknown) => parseConversationFrame(JSON.stringify(value));
 
 const frameOf = (value: unknown) => {
   const result = parse(value);
-  if (!result.ok) throw new Error(`expected a frame, got ${result.error.kind}`);
+  if (!result.ok) {
+    throw new Error(`expected a frame, got ${JSON.stringify(result.error)}`);
+  }
   return result.frame;
 };
 
+const settled = (outcome: string, answers: string[]) => ({
+  kind: "reply_settled",
+  id: "rs",
+  reply_id: "r",
+  outcome,
+  answers,
+  through: 1,
+  quote_target: null,
+});
+
 describe("parseConversationFrame", () => {
-  it("parses an entry frame with a user message and fills the model's defaults", () => {
+  it("parses a flat entry frame with a user message and fills the model's defaults", () => {
     const frame = frameOf({
       kind: "entry",
-      entry: {
-        seq: 3,
-        at: AT,
-        entry: { kind: "user_message", id: "m1", text: "hi", surface: "web" },
-      },
+      seq: 3,
+      at: AT,
+      entry: { kind: "user_message", id: "m1", text: "hi", surface: "web" },
     });
     expect(frame).toEqual({
       kind: "entry",
+      seq: 3,
+      at: AT,
       entry: {
-        seq: 3,
-        at: AT,
-        entry: {
-          kind: "user_message",
-          id: "m1",
-          text: "hi",
-          surface: "web",
-          platform_message_id: null,
-          reply_to: null,
-          retry_of: null,
-          file_ids: [],
-          voice: false,
-        },
+        kind: "user_message",
+        id: "m1",
+        text: "hi",
+        surface: "web",
+        platform_message_id: null,
+        reply_to: null,
+        retry_of: null,
+        file_ids: [],
+        voice: false,
+        reaction: null,
+        revision: 0,
       },
     });
   });
@@ -89,157 +99,153 @@ describe("parseConversationFrame", () => {
         tool_data: [],
         follow_up_actions: [],
         heard_through: null,
+        revision: 2,
       },
-      {
-        kind: "reply_settled",
-        id: "rs",
-        reply_id: "r",
-        outcome: "answered",
-        answers: ["m1"],
-        through: 1,
-      },
+      settled("answered", ["m1"]),
     ];
     for (const entry of entries) {
-      const result = parse({ kind: "entry", entry: { seq: 2, at: AT, entry } });
+      const result = parse({ kind: "entry", seq: 2, at: AT, entry });
       expect(result.ok, entry.kind).toBe(true);
     }
   });
 
-  it("parses entry_updated, retract and state frames", () => {
+  it("parses a reaction filled in place on a user message", () => {
+    const frame = frameOf({
+      kind: "entry_updated",
+      seq: 1,
+      entry: {
+        kind: "user_message",
+        id: "m1",
+        text: "thanks",
+        surface: "web",
+        reaction: { emoji: "👍", by: "jev" },
+        revision: 1,
+      },
+    });
+    expect(frame.kind === "entry_updated" && frame.entry).toMatchObject({
+      reaction: { emoji: "👍", by: "jev" },
+      revision: 1,
+    });
+  });
+
+  it("parses retract and state frames", () => {
     expect(frameOf({ kind: "retract", attempt_id: "a1" })).toEqual({
       kind: "retract",
       attempt_id: "a1",
     });
-    expect(
-      frameOf({
-        kind: "state",
-        head: 4,
-        display: "working",
-        work_phase: "running",
-      }),
-    ).toEqual({
+    const state = {
       kind: "state",
       head: 4,
-      display: "working",
-      work_phase: "running",
-    });
-    const updated = frameOf({
-      kind: "entry_updated",
-      entry: {
-        seq: 5,
-        at: AT,
-        entry: {
-          kind: "reply",
-          id: "rp",
-          reply_id: "r",
-          attempt_id: "a",
-          text: "done",
-        },
-      },
-    });
-    expect(updated.kind).toBe("entry_updated");
+      display: "awaiting_approval",
+      work: [{ task_id: "k1", awaiting_approval: true }],
+    };
+    expect(frameOf(state)).toEqual(state);
   });
 
   it.each([
-    ["text", { response: "Hel" }, { type: "response", chunk: "Hel" }],
+    ["response", { response: "Hel" }, { type: "response", chunk: "Hel" }],
     [
       "reasoning",
-      { content: "hmm", subagent_id: null },
+      { reasoning: { content: "hmm", subagent_id: null } },
       { type: "reasoning", content: "hmm", subagent_id: undefined },
     ],
     [
-      "tool output",
-      { tool_call_id: "c1", output: "42", subagent_id: null },
+      "tool_output",
+      { tool_output: { tool_call_id: "c1", output: "42", subagent_id: null } },
       {
         type: "tool_output",
         output: { tool_call_id: "c1", output: "42", subagent_id: undefined },
       },
     ],
     [
-      "message boundary",
-      { message_id: "msg", discarded: true },
+      "message_boundary",
+      { message_boundary: { message_id: "msg", discarded: true } },
       { type: "message_boundary", messageId: "msg", discarded: true },
     ],
     [
-      "subagent end",
-      { subagent_id: "sa", duration_ms: 12, token_count: null },
+      "subagent_start",
+      {
+        subagent_start: {
+          subagent_id: "sa",
+          subagent_name: "Gmail",
+          agent_type: "spawned",
+          started_at: AT,
+          icon_url: null,
+          tool_category: "gmail",
+          parent_subagent_id: null,
+        },
+      },
+      {
+        type: "subagent_start",
+        payload: {
+          subagent_id: "sa",
+          subagent_name: "Gmail",
+          agent_type: "spawned",
+          started_at: AT,
+          icon_url: undefined,
+          tool_category: "gmail",
+          parent_subagent_id: undefined,
+        },
+      },
+    ],
+    [
+      "subagent_end",
+      {
+        subagent_end: { subagent_id: "sa", duration_ms: 12, token_count: null },
+      },
       {
         type: "subagent_end",
         payload: { subagent_id: "sa", duration_ms: 12, token_count: null },
       },
     ],
     [
-      "follow-up actions",
+      "follow_up_actions",
       { follow_up_actions: ["Again"] },
       { type: "follow_up_actions", actions: ["Again"] },
     ],
+    [
+      "todo_progress",
+      { todo_progress: { t1: { title: "x" } } },
+      { type: "todo_progress", snapshot: { t1: { title: "x" } } },
+    ],
   ])(
-    "turns a %s delta payload into the stream event the accumulator folds",
-    (_, payload, event) => {
+    "maps a tagged %s payload onto the stream event the accumulator folds",
+    (type, body, event) => {
       const frame = frameOf({
-        kind: "delta",
+        kind: "reply_delta",
         attempt_id: "a1",
-        reply_id: "r1",
-        payload,
+        reply_id: null,
+        index: 0,
+        payload: { type, ...body },
       });
       expect(frame).toEqual({
-        kind: "delta",
+        kind: "reply_delta",
         attempt_id: "a1",
-        reply_id: "r1",
-        task_id: null,
+        reply_id: null,
+        index: 0,
         payload: event,
       });
     },
   );
 
-  it("turns a subagent start payload into a subagent_start event", () => {
-    const frame = frameOf({
-      kind: "delta",
-      attempt_id: "a1",
-      task_id: "k1",
-      payload: {
-        subagent_id: "sa",
-        subagent_name: "Gmail",
-        subagent: null,
-        agent_type: "spawned",
-        started_at: AT,
-        icon_url: null,
-        tool_category: "gmail",
-        parent_subagent_id: null,
-      },
-    });
-    expect(frame.kind === "delta" && frame.payload).toEqual({
-      type: "subagent_start",
-      payload: {
-        subagent_id: "sa",
-        subagent_name: "Gmail",
-        agent_type: "spawned",
-        started_at: AT,
-        icon_url: undefined,
-        tool_category: "gmail",
-        parent_subagent_id: undefined,
-      },
-    });
-  });
-
-  it("turns a tool card payload into a tool_data event", () => {
+  it("parses a work delta carrying a tool card", () => {
     const card = {
       tool_name: "tool_calls_data",
       tool_category: "gmail",
       data: { tool_name: "send", message: "Sending email" },
       timestamp: AT,
-      mcp_ui: null,
-      mcp_server_url: null,
     };
     const frame = frameOf({
-      kind: "delta",
-      attempt_id: "a1",
+      kind: "work_delta",
       task_id: "k1",
-      payload: card,
+      index: 3,
+      payload: { type: "tool_data", tool_data: card },
     });
-    expect(frame.kind === "delta" && frame.payload).toEqual({
-      type: "tool_data",
-      entry: card,
+    expect(frame).toEqual({
+      kind: "work_delta",
+      task_id: "k1",
+      index: 3,
+      payload: { type: "tool_data", entry: card },
     });
   });
 
@@ -251,32 +257,33 @@ describe("parseConversationFrame", () => {
       "invalid_frame",
     ],
     [
-      "a delta with both targets",
+      "a payload with an unknown tag",
       JSON.stringify({
-        kind: "delta",
-        attempt_id: "a",
-        reply_id: "r",
-        task_id: "t",
+        kind: "work_delta",
+        task_id: "k",
+        index: 0,
+        payload: { type: "emoji_ack", emoji_ack: {} },
+      }),
+      "invalid_frame",
+    ],
+    [
+      "an untagged payload",
+      JSON.stringify({
+        kind: "work_delta",
+        task_id: "k",
+        index: 0,
         payload: { response: "x" },
       }),
       "invalid_frame",
     ],
     [
-      "a delta with neither target",
+      "a negative delta index",
       JSON.stringify({
-        kind: "delta",
-        attempt_id: "a",
-        payload: { response: "x" },
-      }),
-      "invalid_frame",
-    ],
-    [
-      "a delta with an unrecognised payload",
-      JSON.stringify({
-        kind: "delta",
+        kind: "reply_delta",
         attempt_id: "a",
         reply_id: "r",
-        payload: { nope: 1 },
+        index: -1,
+        payload: { type: "response", response: "x" },
       }),
       "invalid_frame",
     ],
@@ -284,11 +291,19 @@ describe("parseConversationFrame", () => {
       "an entry with seq 0",
       JSON.stringify({
         kind: "entry",
-        entry: {
-          seq: 0,
-          at: AT,
-          entry: { kind: "notice", id: "n", text: "", origin: "x" },
-        },
+        seq: 0,
+        at: AT,
+        entry: { kind: "notice", id: "n", text: "", origin: "x" },
+      }),
+      "invalid_frame",
+    ],
+    [
+      "a settled reply missing its quote target",
+      JSON.stringify({
+        kind: "entry",
+        seq: 2,
+        at: AT,
+        entry: { ...settled("answered", ["m1"]), quote_target: undefined },
       }),
       "invalid_frame",
     ],
@@ -296,18 +311,9 @@ describe("parseConversationFrame", () => {
       "an answered reply that answers nothing",
       JSON.stringify({
         kind: "entry",
-        entry: {
-          seq: 2,
-          at: AT,
-          entry: {
-            kind: "reply_settled",
-            id: "rs",
-            reply_id: "r",
-            outcome: "answered",
-            answers: [],
-            through: 1,
-          },
-        },
+        seq: 2,
+        at: AT,
+        entry: settled("answered", []),
       }),
       "invalid_frame",
     ],
@@ -319,21 +325,9 @@ describe("parseConversationFrame", () => {
   });
 
   it("lets a stopped reply settle with no answers", () => {
-    const result = parse({
-      kind: "entry",
-      entry: {
-        seq: 2,
-        at: AT,
-        entry: {
-          kind: "reply_settled",
-          id: "rs",
-          reply_id: "r",
-          outcome: "stopped",
-          answers: [],
-          through: 1,
-        },
-      },
-    });
-    expect(result.ok).toBe(true);
+    expect(
+      parse({ kind: "entry", seq: 2, at: AT, entry: settled("stopped", []) })
+        .ok,
+    ).toBe(true);
   });
 });

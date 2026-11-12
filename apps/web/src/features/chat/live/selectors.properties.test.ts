@@ -14,7 +14,7 @@ import { loadingRow, visibleBubbles } from "./selectors";
 
 const SEEDS = Array.from({ length: 200 }, (_, index) => index + 1);
 
-// Every prefix of a generated conversation, with sends pending at random points.
+// Every prefix of a generated conversation, with repeated frames and sends pending at random points.
 function* prefixViews(seed: number): Generator<ConversationView> {
   const { frames } = generateConversation(seed);
   const random = seededRandom(seed * 31);
@@ -23,6 +23,8 @@ function* prefixViews(seed: number): Generator<ConversationView> {
     if (random() < 0.1)
       view = addPendingSend(view, { id: `local-${index}`, text: "hi" });
     view = applyFrame(view, frame).view;
+    // Streams re-send frames after a reconnect; the screen must not change for it.
+    if (random() < 0.3) view = applyFrame(view, frame).view;
     yield view;
   }
 }

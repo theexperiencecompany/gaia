@@ -55,6 +55,12 @@ const TodoRunWakeSchema = z.object({
 }) satisfies z.ZodType<TodoRunWake>;
 
 const id = z.string().min(1);
+const revision = z.number().int().min(0).default(0);
+
+const ReactionSchema = z.object({
+  emoji: z.string().min(1),
+  by: z.enum(["jev", "chat_model"]),
+});
 const nullableString = z.string().nullable().default(null);
 
 const UserMessageSchema = z.object({
@@ -67,6 +73,8 @@ const UserMessageSchema = z.object({
   retry_of: nullableString,
   file_ids: z.array(z.string()).default([]),
   voice: z.boolean().default(false),
+  reaction: ReactionSchema.nullable().default(null),
+  revision,
 });
 
 const StopRequestedSchema = z.object({
@@ -144,6 +152,7 @@ const ReplySchema = z.object({
   tool_data: z.array(ToolDataEntrySchema).default([]),
   follow_up_actions: z.array(z.string()).default([]),
   heard_through: z.number().int().min(0).nullable().default(null),
+  revision,
 });
 
 const ReplySettledSchema = z
@@ -159,6 +168,7 @@ const ReplySettledSchema = z
     ]),
     answers: z.array(z.string()),
     through: z.number().int().min(1),
+    quote_target: z.string().nullable(),
   })
   .refine(
     (entry) =>
@@ -166,7 +176,7 @@ const ReplySettledSchema = z
     { message: "an answered or silent reply answers at least one entry" },
   );
 
-const EntrySchema = z.discriminatedUnion("kind", [
+export const EntrySchema = z.discriminatedUnion("kind", [
   UserMessageSchema,
   StopRequestedSchema,
   BargeInSchema,
@@ -181,15 +191,16 @@ const EntrySchema = z.discriminatedUnion("kind", [
   ReplySettledSchema,
 ]);
 
-export const LoggedEntrySchema = z.object({
-  seq: z.number().int().min(1),
-  at: z.iso.datetime({ offset: true }),
-  entry: EntrySchema,
-});
+/** An entry at its position in the log, as an entry frame delivers it. */
+export interface LoggedEntry {
+  seq: number;
+  at: string;
+  entry: Entry;
+}
 
 export type Entry = z.infer<typeof EntrySchema>;
-export type LoggedEntry = z.infer<typeof LoggedEntrySchema>;
 export type UserMessage = z.infer<typeof UserMessageSchema>;
+export type Reaction = z.infer<typeof ReactionSchema>;
 export type Notice = z.infer<typeof NoticeSchema>;
 export type Reply = z.infer<typeof ReplySchema>;
 export type ReplySettled = z.infer<typeof ReplySettledSchema>;

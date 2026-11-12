@@ -1,26 +1,36 @@
 import type { ToolDataEntry } from "@shared/api/generated";
-import { extractToolProgressMessage } from "@shared/chat";
+import { extractToolProgressMessage, type TurnAccumulator } from "@shared/chat";
 import {
-  type AttemptDraft,
-  CONVERSATION_DISPLAY,
-  type ConversationDisplay,
   type ConversationView,
+  DISPLAY_STATE,
+  type DisplayState,
   ENTRY_KIND,
   type LoggedEntry,
   type PendingSend,
+  type Reaction,
   type Reply,
+  type StreamDraft,
   type UserMessage,
 } from "@shared/conversation";
 
+type WorkOutcome = "done" | "failed" | "cancelled" | "lost";
+export type WorkStatus = "running" | "awaiting_approval" | WorkOutcome;
+
 /** One row of the chat screen, in the order visibleBubbles returns them. */
 export type LiveBubble =
-  | { kind: "user"; key: string; seq: number; message: UserMessage }
+  | {
+      kind: "user";
+      key: string;
+      seq: number;
+      message: UserMessage;
+      reaction: Reaction | null;
+    }
   | {
       kind: "reply";
       key: string;
       /** Null while the attempt streams before its Reply entry is appended. */
       seq: number | null;
-      replyId: string;
+      replyId: string | null;
       text: string;
       toolData: readonly ToolDataEntry[];
       followUpActions: readonly string[];
@@ -30,75 +40,73 @@ export type LiveBubble =
   | {
       kind: "work";
       key: string;
-      seq: number;
+      /** Null when the task's WorkStarted entry is not in the view. */
+      seq: number | null;
       taskId: string;
+      status: WorkStatus;
       toolData: readonly ToolDataEntry[];
     }
   | { kind: "pending"; key: string; send: PendingSend };
 
 export interface LoadingRow {
   visible: boolean;
-  status: ConversationDisplay;
+  status: DisplayState;
   /** The newest draft's tool progress line, shown under the status. */
   detail: string | null;
 }
 
-const newestDraft = (
-  drafts: readonly AttemptDraft[],
-  matches: (draft: AttemptDraft) => boolean,
-): AttemptDraft | undefined => drafts.findLast(matches);
+type ReplyDraft = Extract<StreamDraft, { source: "reply" }>;
+type WorkDraft = Extract<StreamDraft, { source: "work" }>;
 
-function draftBubble(
-  draft: AttemptDraft,
-  replyId: string,
-  seq: number | null,
-): LiveBubble {
-  return {
-    kind: "reply",
-    key: `reply:${replyId}`,
-    seq,
-    replyId,
-    text: draft.content.responseText,
-    toolData: draft.content.toolData,
-    followUpActions: draft.content.followUpActions ?? [],
-    streaming: true,
-  };
-}
+const isReplyDraft = (draft: StreamDraft): draft is ReplyDraft =>
+  draft.source === "reply";
+const isWorkDraft = (draft: StreamDraft): draft is WorkDraft =>
+  draft.source === "work";
+
+const draftContent = (content: TurnAccumulator) => ({
+  text: content.responseText,
+  toolData: content.toolData,
+  followUpActions: content.followUpActions ?? [],
+});
 
 function replyBubble(
   view: ConversationView,
   seq: number,
   entry: Reply,
 ): LiveBubble {
-  const draft = newestDraft(view.drafts, (d) => d.replyId === entry.reply_id);
-  if (draft) return draftBubble(draft, entry.reply_id, seq);
+  const draft = view.drafts
+    .filter(isReplyDraft)
+    .find((d) => d.attemptId === entry.attempt_id);
+  const content = draft
+    ? draftContent(draft.content)
+    : {
+        text: entry.text,
+        toolData: entry.tool_data,
+        followUpActions: entry.follow_up_actions,
+      };
   return {
     kind: "reply",
     key: `reply:${entry.reply_id}`,
     seq,
     replyId: entry.reply_id,
-    text: entry.text,
-    toolData: entry.tool_data,
-    followUpActions: entry.follow_up_actions,
-    streaming: false,
+    ...content,
+    streaming: draft !== undefined,
   };
 }
-
-const finishedTasks = (entries: readonly LoggedEntry[]): Set<string> =>
-  new Set(
-    entries.flatMap(({ entry }) =>
-      entry.kind === ENTRY_KIND.WORK_FINISHED ? [entry.task_id] : [],
-    ),
-  );
 
 function entryBubble(
   view: ConversationView,
   { seq, entry }: LoggedEntry,
-  finished: ReadonlySet<string>,
 ): LiveBubble | null {
   switch (entry.kind) {
     case ENTRY_KIND.USER_MESSAGE:
-      return { kind: "user", key: `user:${entry.id}`, seq, message: entry };
+      return {
+        kind: "user",
+        key: `user:${entry.id}`,
+        seq,
+        message: entry,
+        reaction: entry.reaction,
+      };
     case ENTRY_KIND.REPLY:
       return replyBubble(view, seq, entry);
     case ENTRY_KIND.NOTICE:
@@ -108,39 +116,74 @@ function entryBubble(
         seq,
         text: entry.text,
       };
-    case ENTRY_KIND.WORK_STARTED: {
-      if (finished.has(entry.task_id)) return null;
-      const draft = newestDraft(view.drafts, (d) => d.taskId === entry.task_id);
-      return {
-        kind: "work",
-        key: `work:${entry.task_id}`,
-        seq,
-        taskId: entry.task_id,
-        toolData: draft?.content.toolData ?? [],
-      };
-    }
     default:
       return null;
   }
 }
 
-/** The rows the chat screen renders: entries by seq, then drafts with no entry yet, then pending sends. */
+function workStatus(view: ConversationView, taskId: string): WorkStatus {
+  const finished = view.entries.find(
+    ({ entry }) =>
+      entry.kind === ENTRY_KIND.WORK_FINISHED && entry.task_id === taskId,
+  )?.entry;
+  if (finished?.kind === ENTRY_KIND.WORK_FINISHED) return finished.outcome;
+  const live = view.work.find((task) => task.task_id === taskId);
+  return live?.awaiting_approval ? "awaiting_approval" : "running";
+}
+
+// C2: one bubble per live task and per task whose cards no settled reply has taken over yet.
+function workBubbles(view: ConversationView): LiveBubble[] {
+  const drafts = view.drafts.filter(isWorkDraft);
+  const taskIds = [
+    ...new Set([
+      ...view.work.map((task) => task.task_id),
+      ...drafts.map((draft) => draft.taskId),
+    ]),
+  ];
+  return taskIds.map((taskId) => ({
+    kind: "work",
+    key: `work:${taskId}`,
+    seq:
+      view.entries.find(
+        ({ entry }) =>
+          entry.kind === ENTRY_KIND.WORK_STARTED && entry.task_id === taskId,
+      )?.seq ?? null,
+    taskId,
+    status: workStatus(view, taskId),
+    toolData:
+      drafts.find((draft) => draft.taskId === taskId)?.content.toolData ?? [],
+  }));
+}
+
+const seqOf = (bubble: LiveBubble): number | null =>
+  bubble.kind === "pending" ? null : bubble.seq;
+
+/** The rows the chat screen renders: by seq, then drafts with no entry yet, then pending sends. */
 export function visibleBubbles(view: ConversationView): LiveBubble[] {
-  const finished = finishedTasks(view.entries);
-  const replies = new Set(
+  const opened = new Set(
     view.entries.flatMap(({ entry }) =>
-      entry.kind === ENTRY_KIND.REPLY ? [entry.reply_id] : [],
+      entry.kind === ENTRY_KIND.REPLY ? [entry.attempt_id] : [],
     ),
   );
-  const logged = view.entries.flatMap((item) => {
-    const bubble = entryBubble(view, item, finished);
-    return bubble ? [bubble] : [];
-  });
-  const unopened = view.drafts.flatMap((draft) =>
-    draft.replyId !== null && !replies.has(draft.replyId)
-      ? [draftBubble(draft, draft.replyId, null)]
-      : [],
-  );
+  const unopened = view.drafts
+    .filter(isReplyDraft)
+    .filter((draft) => !opened.has(draft.attemptId))
+    .map(
+      (draft): LiveBubble => ({
+        kind: "reply",
+        key: `draft:${draft.attemptId}`,
+        seq: null,
+        replyId: draft.replyId,
+        ...draftContent(draft.content),
+        streaming: true,
+      }),
+    );
+  const placed = [
+    ...view.entries.flatMap((logged) => entryBubble(view, logged) ?? []),
+    ...workBubbles(view),
+  ];
+  const bySeq = placed.filter((bubble) => seqOf(bubble) !== null);
+  bySeq.sort((a, b) => (seqOf(a) ?? 0) - (seqOf(b) ?? 0));
   const pending = view.pending.map(
     (send): LiveBubble => ({
       kind: "pending",
@@ -148,12 +191,17 @@ export function visibleBubbles(view: ConversationView): LiveBubble[] {
       send,
     }),
   );
-  return [...logged, ...unopened, ...pending];
+  return [
+    ...bySeq,
+    ...placed.filter((bubble) => seqOf(bubble) === null),
+    ...unopened,
+    ...pending,
+  ];
 }
 
 /** The loading row, from the server's display state and the newest draft's progress only. */
 export function loadingRow(view: ConversationView): LoadingRow {
-  const visible = view.display !== CONVERSATION_DISPLAY.IDLE;
+  const visible = view.display !== DISPLAY_STATE.IDLE;
   const progress = visible
     ? view.drafts
         .at(-1)
@@ -161,4 +209,18 @@ export function loadingRow(view: ConversationView): LoadingRow {
         .findLast((message) => message !== null)
     : undefined;
   return { visible, status: view.display, detail: progress ?? null };
+}
+
+/** The user message a settled reply visibly points at, as the server chose it. */
+export function quoteFor(
+  view: ConversationView,
+  replyId: string,
+): string | null {
+  const settled = view.entries.find(
+    ({ entry }) =>
+      entry.kind === ENTRY_KIND.REPLY_SETTLED && entry.reply_id === replyId,
+  )?.entry;
+  return settled?.kind === ENTRY_KIND.REPLY_SETTLED
+    ? settled.quote_target
+    : null;
 }

@@ -9,19 +9,25 @@ import {
   approvalRequested,
   entryFrame,
   entryUpdatedFrame,
+  liveTask,
   notice,
   reply,
+  replyDelta,
   replySettled,
   stateFrame,
   stopRequested,
-  textDelta,
-  toolCardDelta,
   userMessage,
+  workCardDelta,
   workFinished,
   workStarted,
 } from "@shared/conversation/testing";
 import { describe, expect, it } from "vitest";
-import { loadingRow, visibleBubbles } from "./selectors";
+import {
+  type LiveBubble,
+  loadingRow,
+  quoteFor,
+  visibleBubbles,
+} from "./selectors";
 
 const fold = (
   frames: ConversationFrame[],
@@ -29,12 +35,18 @@ const fold = (
 ): ConversationView =>
   frames.reduce((current, frame) => applyFrame(current, frame).view, view);
 
+const describeBubble = (bubble: LiveBubble) => {
+  switch (bubble.kind) {
+    case "reply":
+      return `${bubble.key} "${bubble.text}"`;
+    case "work":
+      return `${bubble.key} ${bubble.status} cards=${bubble.toolData.length}`;
+    default:
+      return bubble.key;
+  }
+};
 const shape = (view: ConversationView) =>
-  visibleBubbles(view).map((bubble) =>
-    bubble.kind === "reply"
-      ? `reply:${bubble.replyId}:${bubble.text}`
-      : bubble.key,
-  );
+  visibleBubbles(view).map(describeBubble);
 
 describe("visibleBubbles", () => {
   it("shows user messages, replies and notices in seq order and hides the bookkeeping kinds", () => {
@@ -44,29 +56,34 @@ describe("visibleBubbles", () => {
       entryFrame(3, approvalRequested("k1", "p1")),
       entryFrame(4, approvalDecided("p1")),
       entryFrame(5, workFinished("k1")),
-      entryFrame(6, reply("r1", "a1", "done")),
-      entryFrame(7, replySettled("r1", ["m1"], 5)),
+      entryFrame(6, reply("k1", "a1", "done")),
+      entryFrame(7, replySettled("k1", ["m1"], 5)),
       entryFrame(8, stopRequested("s1")),
       entryFrame(9, notice("n1")),
     ]);
-    expect(shape(view)).toEqual(["user:m1", "reply:r1:done", "notice:n1"]);
+    expect(shape(view)).toEqual(["user:m1", 'reply:k1 "done"', "notice:n1"]);
   });
 
-  it("carries the user message itself so the screen can read its fields", () => {
-    const view = fold([entryFrame(1, userMessage("m1", "hello"))]);
+  it("carries the user message and the reaction filled in on it", () => {
+    const reacted = userMessage("m1", "thanks", { emoji: "👍", by: "jev" }, 1);
+    const view = fold([
+      entryFrame(1, userMessage("m1", "thanks")),
+      entryUpdatedFrame(1, reacted),
+    ]);
     expect(visibleBubbles(view)[0]).toMatchObject({
       kind: "user",
       seq: 1,
-      message: { id: "m1", text: "hello" },
+      message: { id: "m1", text: "thanks" },
+      reaction: { emoji: "👍", by: "jev" },
     });
   });
 
   it("shows the live draft in place of a reply's empty saved content", () => {
     const view = fold([
       entryFrame(1, userMessage("m1")),
-      textDelta("a1", { replyId: "r1" }, "Hel"),
+      replyDelta("a1", null, 0, "Hel"),
       entryFrame(2, reply("r1", "a1")),
-      textDelta("a1", { replyId: "r1" }, "lo"),
+      replyDelta("a1", "r1", 1, "lo"),
     ]);
     expect(visibleBubbles(view)[1]).toMatchObject({
       kind: "reply",
@@ -76,54 +93,92 @@ describe("visibleBubbles", () => {
     });
   });
 
-  it("shows the saved content once the reply is filled in place", () => {
-    const view = fold([
-      textDelta("a1", { replyId: "r1" }, "Hel"),
+  it("keeps showing the draft after the fill, and the saved content once the reply settles", () => {
+    const filled = fold([
+      entryFrame(1, userMessage("m1")),
+      replyDelta("a1", null, 0, "Hello"),
       entryFrame(2, reply("r1", "a1")),
-      entryUpdatedFrame(2, reply("r1", "a1", "Hello there")),
+      entryUpdatedFrame(2, reply("r1", "a1", "Hello", 1)),
     ]);
-    expect(visibleBubbles(view)[0]).toMatchObject({
-      kind: "reply",
-      text: "Hello there",
+    expect(visibleBubbles(filled)[1]).toMatchObject({
+      text: "Hello",
+      streaming: true,
+    });
+    const settled = fold(
+      [entryFrame(3, replySettled("r1", ["m1"], 1))],
+      filled,
+    );
+    expect(visibleBubbles(settled)[1]).toMatchObject({
+      text: "Hello",
       streaming: false,
     });
   });
 
-  it("shows a draft whose reply has no entry yet after every entry and before pending sends", () => {
+  it("shows a draft with no Reply entry yet after every entry and before pending sends", () => {
     let view = fold([
       entryFrame(1, userMessage("m1")),
-      textDelta("a1", { replyId: "r1" }, "Hi"),
+      replyDelta("a1", null, 0, "Hi"),
     ]);
     view = addPendingSend(view, { id: "m2", text: "second" });
-    expect(shape(view)).toEqual(["user:m1", "reply:r1:Hi", "pending:m2"]);
+    expect(shape(view)).toEqual(["user:m1", 'draft:a1 "Hi"', "pending:m2"]);
     expect(visibleBubbles(view)[1]).toMatchObject({
       seq: null,
       streaming: true,
     });
   });
 
-  it("shows one work bubble per live task with its streamed cards, at the seq it started", () => {
+  it("shows one work bubble per live task from state, at the seq it started", () => {
     const view = fold([
       entryFrame(1, userMessage("m1")),
       entryFrame(2, workStarted("k1", 1)),
       entryFrame(3, workStarted("k2", 1)),
-      toolCardDelta("w1", { taskId: "k1" }, "c1", "Searching mail"),
+      workCardDelta("k1", 0, "Searching mail"),
       entryFrame(4, notice("n1")),
+      stateFrame(4, "awaiting_approval", [
+        liveTask("k1"),
+        liveTask("k2", true),
+      ]),
     ]);
-    expect(shape(view)).toEqual(["user:m1", "work:k1", "work:k2", "notice:n1"]);
-    const [, first, second] = visibleBubbles(view);
-    expect(first.kind === "work" && first.toolData).toHaveLength(1);
-    expect(second.kind === "work" && second.toolData).toEqual([]);
+    expect(shape(view)).toEqual([
+      "user:m1",
+      "work:k1 running cards=1",
+      "work:k2 awaiting_approval cards=0",
+      "notice:n1",
+    ]);
   });
 
-  it("drops the work bubble when its work finishes", () => {
+  it("keeps the work bubble's cards after the work finishes done, until the reply keyed by it settles", () => {
+    const finished = fold([
+      entryFrame(1, userMessage("m1")),
+      entryFrame(2, workStarted("k1", 1)),
+      stateFrame(2, "working", [liveTask("k1")]),
+      workCardDelta("k1", 0, "Searching mail"),
+      entryFrame(3, workFinished("k1")),
+      stateFrame(3, "thinking"),
+    ]);
+    expect(shape(finished)).toEqual(["user:m1", "work:k1 done cards=1"]);
+    const narrated = fold(
+      [
+        replyDelta("a2", null, 0, "Found it"),
+        entryFrame(4, reply("k1", "a2")),
+        entryUpdatedFrame(4, reply("k1", "a2", "Found it", 1)),
+        entryFrame(5, replySettled("k1", ["m1"], 3)),
+      ],
+      finished,
+    );
+    expect(shape(narrated)).toEqual(["user:m1", 'reply:k1 "Found it"']);
+  });
+
+  it("shows cancelled work as stopped, keeping its cards", () => {
     const view = fold([
       entryFrame(1, userMessage("m1")),
       entryFrame(2, workStarted("k1", 1)),
-      toolCardDelta("w1", { taskId: "k1" }, "c1", "Searching mail"),
-      entryFrame(3, workFinished("k1")),
+      workCardDelta("k1", 0, "Archiving"),
+      entryFrame(3, stopRequested("s1")),
+      entryFrame(4, workFinished("k1", "cancelled")),
+      stateFrame(4, "idle"),
     ]);
-    expect(shape(view)).toEqual(["user:m1"]);
+    expect(shape(view)).toEqual(["user:m1", "work:k1 cancelled cards=1"]);
   });
 
   it("renders pending sends last, in send order", () => {
@@ -147,9 +202,9 @@ describe("loadingRow", () => {
 
   it("labels the row with the newest draft's tool progress", () => {
     const view = fold([
-      stateFrame(2, "working", "running"),
-      toolCardDelta("w1", { taskId: "k1" }, "c1", "Searching mail"),
-      toolCardDelta("w2", { taskId: "k2" }, "c2", "Reading calendar"),
+      stateFrame(2, "working", [liveTask("k1"), liveTask("k2")]),
+      workCardDelta("k1", 0, "Searching mail"),
+      workCardDelta("k2", 0, "Reading calendar"),
     ]);
     expect(loadingRow(view)).toEqual({
       visible: true,
@@ -159,13 +214,30 @@ describe("loadingRow", () => {
   });
 
   it("shows no detail while idle even if a draft carries progress", () => {
-    const view = fold([
-      toolCardDelta("w1", { taskId: "k1" }, "c1", "Searching mail"),
-    ]);
+    const view = fold([workCardDelta("k1", 0, "Searching mail")]);
     expect(loadingRow(view)).toEqual({
       visible: false,
       status: "idle",
       detail: null,
     });
+  });
+});
+
+describe("quoteFor", () => {
+  it.each([
+    ["the server's quote target", "m1", "m1"],
+    ["no quote when the server set none", null, null],
+  ])("returns %s", (_, target, expected) => {
+    const view = fold([
+      entryFrame(1, userMessage("m1")),
+      entryFrame(2, reply("r1", "a1", "x")),
+      entryFrame(3, replySettled("r1", ["m1"], 1, target)),
+    ]);
+    expect(quoteFor(view, "r1")).toBe(expected);
+  });
+
+  it("returns no quote for a reply that has not settled", () => {
+    const view = fold([entryFrame(2, reply("r1", "a1", "x"))]);
+    expect(quoteFor(view, "r1")).toBeNull();
   });
 });

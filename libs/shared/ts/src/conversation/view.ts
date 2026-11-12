@@ -5,23 +5,32 @@ import {
 } from "../chat/turnAccumulator";
 import { ENTRY_KIND, type Entry, type LoggedEntry } from "./entries";
 import {
-  CONVERSATION_DISPLAY,
-  type ConversationDisplay,
   type ConversationFrame,
-  type DeltaFrame,
+  DISPLAY_STATE,
+  type DisplayState,
   FRAME_KIND,
+  type LiveTask,
+  type ReplyDeltaFrame,
   type StateFrame,
-  WORK_PHASE,
-  type WorkPhase,
+  type WorkDeltaFrame,
 } from "./frames";
 
-/** What one attempt streamed and the log has not saved yet, for a reply or for running work. */
-export interface AttemptDraft {
-  attemptId: string;
-  replyId: string | null;
-  taskId: string | null;
-  content: TurnAccumulator;
-}
+/** What one reply attempt or one task has streamed and the log has not saved yet. */
+export type StreamDraft =
+  | {
+      source: "reply";
+      attemptId: string;
+      /** Null until the attempt's Reply entry exists. */
+      replyId: string | null;
+      nextIndex: number;
+      content: TurnAccumulator;
+    }
+  | {
+      source: "work";
+      taskId: string;
+      nextIndex: number;
+      content: TurnAccumulator;
+    };
 
 /** A message this device sent that the log has not given a seq yet. */
 export interface PendingSend {
@@ -34,27 +43,30 @@ export interface ConversationView {
   /** Ascending by seq, one entry per seq. */
   entries: readonly LoggedEntry[];
   /** In the order their first delta arrived. */
-  drafts: readonly AttemptDraft[];
-  /** Attempts retracted or saved: their late or replayed deltas are dropped. */
+  drafts: readonly StreamDraft[];
+  /** Attempts retracted or settled, and tasks whose cards a settled reply took over. */
   closedAttempts: Readonly<Record<string, true>>;
+  closedTasks: Readonly<Record<string, true>>;
   /** In send order. */
   pending: readonly PendingSend[];
-  display: ConversationDisplay;
-  workPhase: WorkPhase;
+  display: DisplayState;
+  work: readonly LiveTask[];
   head: number;
 }
 
 export type FrameOutcome =
   | { status: "applied"; view: ConversationView }
-  | { status: "unknown_seq"; seq: number; view: ConversationView };
+  | { status: "unknown_seq"; seq: number; view: ConversationView }
+  | { status: "index_gap"; expected: number; view: ConversationView };
 
 export const EMPTY_CONVERSATION_VIEW: ConversationView = {
   entries: [],
   drafts: [],
   closedAttempts: {},
+  closedTasks: {},
   pending: [],
-  display: CONVERSATION_DISPLAY.IDLE,
-  workPhase: WORK_PHASE.NONE,
+  display: DISPLAY_STATE.IDLE,
+  work: [],
   head: 0,
 };
 
@@ -77,60 +89,41 @@ function findSeq(entries: readonly LoggedEntry[], seq: number): number {
   return -(low + 1);
 }
 
-// The drafts an entry makes obsolete because the log now holds what they streamed.
-function supersededBy(view: ConversationView, entry: Entry): AttemptDraft[] {
-  switch (entry.kind) {
-    case ENTRY_KIND.REPLY:
-    case ENTRY_KIND.REPLY_SETTLED:
-      return view.drafts.filter((draft) => draft.replyId === entry.reply_id);
-    case ENTRY_KIND.WORK_FINISHED:
-      return view.drafts.filter((draft) => draft.taskId === entry.task_id);
-    default:
-      return [];
-  }
-}
-
-function settledAttempt(view: ConversationView, entry: Entry): string | null {
-  if (entry.kind !== ENTRY_KIND.REPLY_SETTLED) return null;
-  const opened = view.entries.find(
-    (logged) =>
-      logged.entry.kind === ENTRY_KIND.REPLY &&
-      logged.entry.reply_id === entry.reply_id,
-  );
-  return opened?.entry.kind === ENTRY_KIND.REPLY
-    ? opened.entry.attempt_id
+const revisionOf = (entry: Entry): number | null =>
+  entry.kind === ENTRY_KIND.USER_MESSAGE || entry.kind === ENTRY_KIND.REPLY
+    ? entry.revision
     : null;
-}
 
-function closeAttempts(
-  view: ConversationView,
-  attemptIds: readonly string[],
-): ConversationView {
-  const open = attemptIds.filter(
-    (attemptId) => !view.closedAttempts[attemptId],
+const withRecord = (record: Readonly<Record<string, true>>, key: string) =>
+  record[key] ? record : { ...record, [key]: true as const };
+
+// C1 and C2: a settled reply ends its attempt's draft and, when keyed by a task, that task's cards.
+function settle(view: ConversationView, replyId: string): ConversationView {
+  const opened = view.entries.find(
+    ({ entry }) =>
+      entry.kind === ENTRY_KIND.REPLY && entry.reply_id === replyId,
+  )?.entry;
+  const attempts = view.drafts.flatMap((draft) =>
+    draft.source === "reply" && draft.replyId === replyId
+      ? [draft.attemptId]
+      : [],
   );
-  if (open.length === 0) return view;
-  const closing = new Set(open);
-  const closedAttempts = { ...view.closedAttempts };
-  for (const attemptId of open) closedAttempts[attemptId] = true;
-  return {
-    ...view,
-    closedAttempts,
-    drafts: view.drafts.filter((draft) => !closing.has(draft.attemptId)),
-  };
-}
-
-function supersede(
-  view: ConversationView,
-  entry: Entry,
-  closesOpenedReply: boolean,
-) {
-  const attempts = supersededBy(view, entry).map((draft) => draft.attemptId);
-  const opened = settledAttempt(view, entry);
-  if (opened !== null) attempts.push(opened);
-  if (closesOpenedReply && entry.kind === ENTRY_KIND.REPLY)
-    attempts.push(entry.attempt_id);
-  return closeAttempts(view, attempts);
+  if (opened?.kind === ENTRY_KIND.REPLY) attempts.push(opened.attempt_id);
+  let closedAttempts = view.closedAttempts;
+  for (const attemptId of attempts)
+    closedAttempts = withRecord(closedAttempts, attemptId);
+  const keyedByTask = view.drafts.some(
+    (draft) => draft.source === "work" && draft.taskId === replyId,
+  );
+  const closedTasks = keyedByTask
+    ? withRecord(view.closedTasks, replyId)
+    : view.closedTasks;
+  const drafts = view.drafts.filter((draft) =>
+    draft.source === "reply"
+      ? !closedAttempts[draft.attemptId]
+      : !closedTasks[draft.taskId],
+  );
+  return { ...view, drafts, closedAttempts, closedTasks };
 }
 
 function applyEntry(
@@ -138,7 +131,7 @@ function applyEntry(
   logged: LoggedEntry,
 ): ConversationView {
   const index = findSeq(view.entries, logged.seq);
-  // An append is never re-content: a replayed original must not undo a later fill.
+  // An append never changes content: a replayed original must not undo a later fill.
   if (index >= 0) return view;
   const point = -(index + 1);
   const entries = [
@@ -147,52 +140,90 @@ function applyEntry(
     ...view.entries.slice(point),
   ];
   const pending = view.pending.filter((send) => send.id !== logged.entry.id);
-  const pendingChanged = pending.length !== view.pending.length;
-  // An empty Reply keeps its draft on screen: superseding it here would flash an empty bubble.
   const next = {
     ...view,
     entries,
-    pending: pendingChanged ? pending : view.pending,
+    pending: pending.length === view.pending.length ? view.pending : pending,
   };
-  return logged.entry.kind === ENTRY_KIND.REPLY
-    ? next
-    : supersede(next, logged.entry, false);
+  return logged.entry.kind === ENTRY_KIND.REPLY_SETTLED
+    ? settle(next, logged.entry.reply_id)
+    : next;
 }
 
 function applyEntryUpdated(
   view: ConversationView,
-  logged: LoggedEntry,
+  seq: number,
+  entry: Entry,
 ): FrameOutcome {
-  const index = findSeq(view.entries, logged.seq);
-  if (index < 0) return { status: "unknown_seq", seq: logged.seq, view };
-  const entries = view.entries.map((current, at) =>
-    at === index ? logged : current,
+  const index = findSeq(view.entries, seq);
+  if (index < 0) return { status: "unknown_seq", seq, view };
+  const held = view.entries[index];
+  const incoming = revisionOf(entry);
+  const current = revisionOf(held.entry);
+  if (incoming === null || current === null || incoming <= current)
+    return applied(view);
+  const entries = view.entries.map((logged, at) =>
+    at === index ? { ...held, entry } : logged,
   );
-  return applied(supersede({ ...view, entries }, logged.entry, true));
+  return applied({ ...view, entries });
+}
+
+const sameStream =
+  (frame: ReplyDeltaFrame | WorkDeltaFrame) => (draft: StreamDraft) =>
+    frame.kind === FRAME_KIND.REPLY_DELTA
+      ? draft.source === "reply" && draft.attemptId === frame.attempt_id
+      : draft.source === "work" && draft.taskId === frame.task_id;
+
+function newDraft(frame: ReplyDeltaFrame | WorkDeltaFrame): StreamDraft {
+  const fresh = { nextIndex: 0, content: createTurnAccumulator() };
+  return frame.kind === FRAME_KIND.REPLY_DELTA
+    ? {
+        source: "reply",
+        attemptId: frame.attempt_id,
+        replyId: frame.reply_id,
+        ...fresh,
+      }
+    : { source: "work", taskId: frame.task_id, ...fresh };
 }
 
 function applyDelta(
   view: ConversationView,
-  frame: DeltaFrame,
-): ConversationView {
-  if (view.closedAttempts[frame.attempt_id]) return view;
-  const existing = view.drafts.find(
-    (draft) => draft.attemptId === frame.attempt_id,
-  );
-  const draft: AttemptDraft = existing ?? {
-    attemptId: frame.attempt_id,
-    replyId: frame.reply_id,
-    taskId: frame.task_id,
-    content: createTurnAccumulator(),
-  };
-  const updated = {
-    ...draft,
+  frame: ReplyDeltaFrame | WorkDeltaFrame,
+): FrameOutcome {
+  const closed =
+    frame.kind === FRAME_KIND.REPLY_DELTA
+      ? view.closedAttempts[frame.attempt_id]
+      : view.closedTasks[frame.task_id];
+  if (closed) return applied(view);
+  const existing = view.drafts.find(sameStream(frame));
+  const draft = existing ?? newDraft(frame);
+  if (frame.index < draft.nextIndex) return applied(view);
+  if (frame.index > draft.nextIndex) {
+    return { status: "index_gap", expected: draft.nextIndex, view };
+  }
+  const advanced = {
+    nextIndex: draft.nextIndex + 1,
     content: applyStreamEvent(draft.content, frame.payload),
   };
+  const updated: StreamDraft =
+    draft.source === "reply" && frame.kind === FRAME_KIND.REPLY_DELTA
+      ? { ...draft, ...advanced, replyId: frame.reply_id ?? draft.replyId }
+      : { ...draft, ...advanced };
   const drafts = existing
     ? view.drafts.map((current) => (current === existing ? updated : current))
     : [...view.drafts, updated];
-  return { ...view, drafts };
+  return applied({ ...view, drafts });
+}
+
+function retract(view: ConversationView, attemptId: string): ConversationView {
+  if (view.closedAttempts[attemptId]) return view;
+  return {
+    ...view,
+    closedAttempts: withRecord(view.closedAttempts, attemptId),
+    drafts: view.drafts.filter(
+      (draft) => draft.source !== "reply" || draft.attemptId !== attemptId,
+    ),
+  };
 }
 
 function applyState(
@@ -200,35 +231,31 @@ function applyState(
   frame: StateFrame,
 ): ConversationView {
   if (frame.head < view.head) return view;
-  if (
-    frame.head === view.head &&
-    frame.display === view.display &&
-    frame.work_phase === view.workPhase
-  ) {
-    return view;
-  }
   return {
     ...view,
     head: frame.head,
     display: frame.display,
-    workPhase: frame.work_phase,
+    work: frame.work,
   };
 }
 
-/** Fold one frame into the view; replays and duplicates of entry, update, retract and state frames are no-ops. */
+/** Fold one frame into the view; a duplicated or replayed frame of any kind changes nothing. */
 export function applyFrame(
   view: ConversationView,
   frame: ConversationFrame,
 ): FrameOutcome {
   switch (frame.kind) {
     case FRAME_KIND.ENTRY:
-      return applied(applyEntry(view, frame.entry));
+      return applied(
+        applyEntry(view, { seq: frame.seq, at: frame.at, entry: frame.entry }),
+      );
     case FRAME_KIND.ENTRY_UPDATED:
-      return applyEntryUpdated(view, frame.entry);
-    case FRAME_KIND.DELTA:
-      return applied(applyDelta(view, frame));
+      return applyEntryUpdated(view, frame.seq, frame.entry);
+    case FRAME_KIND.REPLY_DELTA:
+    case FRAME_KIND.WORK_DELTA:
+      return applyDelta(view, frame);
     case FRAME_KIND.RETRACT:
-      return applied(closeAttempts(view, [frame.attempt_id]));
+      return applied(retract(view, frame.attempt_id));
     case FRAME_KIND.STATE:
       return applied(applyState(view, frame));
     default: {
@@ -247,9 +274,4 @@ export function addPendingSend(
     view.pending.some((pending) => pending.id === send.id) ||
     view.entries.some((logged) => logged.entry.id === send.id);
   return known ? view : { ...view, pending: [...view.pending, send] };
-}
-
-/** Drop open drafts before a resumed stream re-sends their deltas from the attempt's start. */
-export function beginReplay(view: ConversationView): ConversationView {
-  return view.drafts.length === 0 ? view : { ...view, drafts: [] };
 }

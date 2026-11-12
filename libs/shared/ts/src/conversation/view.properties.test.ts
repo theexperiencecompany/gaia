@@ -3,7 +3,6 @@ import type { ConversationFrame } from "./frames";
 import { generateConversation, seededRandom } from "./testing";
 import {
   applyFrame,
-  beginReplay,
   type ConversationView,
   EMPTY_CONVERSATION_VIEW,
 } from "./view";
@@ -16,29 +15,12 @@ const fold = (
 ): ConversationView =>
   frames.reduce((current, frame) => applyFrame(current, frame).view, view);
 
-// Deltas carry no position on the wire, so only the other four frame kinds can be told apart from a repeat.
 const withDuplicates = (
   frames: ConversationFrame[],
   seed: number,
 ): ConversationFrame[] => {
   const random = seededRandom(seed * 7919);
-  return frames.flatMap((frame) =>
-    frame.kind !== "delta" && random() < 0.4 ? [frame, frame] : [frame],
-  );
-};
-
-// A resumed stream restarts no later than the first delta of any attempt still open.
-const replayStart = (
-  frames: ConversationFrame[],
-  live: ConversationView,
-  seed: number,
-) => {
-  const open = new Set(live.drafts.map((draft) => draft.attemptId));
-  const firstOpenDelta = frames.findIndex(
-    (frame) => frame.kind === "delta" && open.has(frame.attempt_id),
-  );
-  const limit = firstOpenDelta === -1 ? frames.length : firstOpenDelta;
-  return Math.floor(seededRandom(seed * 104729)() * (limit + 1));
+  return frames.flatMap((frame) => (random() < 0.4 ? [frame, frame] : [frame]));
 };
 
 beforeEach(() => {
@@ -51,18 +33,38 @@ afterEach(() => {
 });
 
 describe("applyFrame properties over generated conversations", () => {
-  it.each(SEEDS)("seed %i: duplicated frames fold to the same view", (seed) => {
-    const { frames } = generateConversation(seed);
-    expect(fold(withDuplicates(frames, seed))).toEqual(fold(frames));
-  });
+  it.each(SEEDS)(
+    "seed %i: duplicated frames of every kind fold to the same view",
+    (seed) => {
+      const { frames } = generateConversation(seed);
+      expect(fold(withDuplicates(frames, seed))).toEqual(fold(frames));
+    },
+  );
 
   it.each(SEEDS)(
-    "seed %i: a reconnect replaying a suffix folds to the same view",
+    "seed %i: a reconnect replaying from any earlier frame folds to the same view",
     (seed) => {
       const { frames } = generateConversation(seed);
       const live = fold(frames);
-      const start = replayStart(frames, live, seed);
-      expect(fold(frames.slice(start), beginReplay(live))).toEqual(live);
+      const start = Math.floor(
+        seededRandom(seed * 104729)() * (frames.length + 1),
+      );
+      expect(fold(withDuplicates(frames.slice(start), seed + 1), live)).toEqual(
+        live,
+      );
+    },
+  );
+
+  it.each(SEEDS)(
+    "seed %i: every delta applies cleanly in stream order",
+    (seed) => {
+      const { frames } = generateConversation(seed);
+      let view = EMPTY_CONVERSATION_VIEW;
+      for (const frame of withDuplicates(frames, seed)) {
+        const outcome = applyFrame(view, frame);
+        expect(outcome.status).toBe("applied");
+        view = outcome.view;
+      }
     },
   );
 
@@ -77,7 +79,9 @@ describe("applyFrame properties over generated conversations", () => {
 
   it.each(SEEDS)("seed %i: no retracted attempt keeps a draft", (seed) => {
     const { frames, retractedAttempts } = generateConversation(seed);
-    const attempts = fold(frames).drafts.map((draft) => draft.attemptId);
+    const attempts = fold(frames).drafts.flatMap((draft) =>
+      draft.source === "reply" ? [draft.attemptId] : [],
+    );
     for (const retracted of retractedAttempts)
       expect(attempts).not.toContain(retracted);
   });

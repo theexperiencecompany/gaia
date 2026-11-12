@@ -2,6 +2,7 @@ export type {
   Entry,
   LoggedEntry,
   Notice,
+  Reaction,
   Reply,
   ReplySettled,
   StopRequested,
@@ -10,29 +11,20 @@ export type {
 } from "./entries";
 export { ENTRY_KIND, REPLY_OUTCOME } from "./entries";
 export type {
-  ConversationDisplay,
   ConversationFrame,
-  DeltaFrame,
+  DisplayState,
   FrameParseError,
   FrameParseResult,
+  LiveTask,
+  ReplyDeltaFrame,
   StateFrame,
-  WorkPhase,
+  WorkDeltaFrame,
 } from "./frames";
-export {
-  CONVERSATION_DISPLAY,
-  FRAME_KIND,
-  parseConversationFrame,
-  WORK_PHASE,
-} from "./frames";
+export { DISPLAY_STATE, FRAME_KIND, parseConversationFrame } from "./frames";
 export type {
-  AttemptDraft,
   ConversationView,
   FrameOutcome,
   PendingSend,
+  StreamDraft,
 } from "./view";
-export {
-  addPendingSend,
-  applyFrame,
-  beginReplay,
-  EMPTY_CONVERSATION_VIEW,
-} from "./view";
+export { addPendingSend, applyFrame, EMPTY_CONVERSATION_VIEW } from "./view";

@@ -1,25 +1,15 @@
-import type { Entry, LoggedEntry, UserMessage } from "./entries";
-import type {
-  ConversationDisplay,
-  ConversationFrame,
-  WorkPhase,
-} from "./frames";
+import type { Entry, Reaction, UserMessage } from "./entries";
+import type { ConversationFrame, DisplayState, LiveTask } from "./frames";
 
 /** Builders for conversation frames in tests, shaped as parseConversationFrame returns them. */
 
 const AT = "2026-11-12T10:00:00+00:00";
 
-export type DeltaTarget = { replyId: string } | { taskId: string };
-
-export const logged = (seq: number, entry: Entry): LoggedEntry => ({
-  seq,
-  at: AT,
-  entry,
-});
-
 export const userMessage = (
   id: string,
   text = `text of ${id}`,
+  reaction: Reaction | null = null,
+  revision = 0,
 ): UserMessage => ({
   kind: "user_message",
   id,
@@ -30,12 +20,15 @@ export const userMessage = (
   retry_of: null,
   file_ids: [],
   voice: false,
+  reaction,
+  revision,
 });
 
 export const reply = (
   replyId: string,
   attemptId: string,
   text = "",
+  revision = 0,
 ): Entry => ({
   kind: "reply",
   id: `entry-${replyId}`,
@@ -45,12 +38,14 @@ export const reply = (
   tool_data: [],
   follow_up_actions: [],
   heard_through: null,
+  revision,
 });
 
 export const replySettled = (
   replyId: string,
   answers: string[],
   through: number,
+  quoteTarget: string | null = null,
   outcome: "answered" | "stopped" | "failed" | "silent" = "answered",
 ): Entry => ({
   kind: "reply_settled",
@@ -59,6 +54,7 @@ export const replySettled = (
   outcome,
   answers,
   through,
+  quote_target: quoteTarget,
 });
 
 export const workStarted = (taskId: string, causeThrough: number): Entry => ({
@@ -116,7 +112,9 @@ export const notice = (id: string, text = `notice ${id}`): Entry => ({
 
 export const entryFrame = (seq: number, entry: Entry): ConversationFrame => ({
   kind: "entry",
-  entry: logged(seq, entry),
+  seq,
+  at: AT,
+  entry,
 });
 
 export const entryUpdatedFrame = (
@@ -124,40 +122,37 @@ export const entryUpdatedFrame = (
   entry: Entry,
 ): ConversationFrame => ({
   kind: "entry_updated",
-  entry: logged(seq, entry),
+  seq,
+  entry,
 });
 
-const targetOf = (target: DeltaTarget) =>
-  "replyId" in target
-    ? { reply_id: target.replyId, task_id: null }
-    : { reply_id: null, task_id: target.taskId };
-
-export const textDelta = (
+export const replyDelta = (
   attemptId: string,
-  target: DeltaTarget,
+  replyId: string | null,
+  index: number,
   chunk: string,
 ): ConversationFrame => ({
-  kind: "delta",
+  kind: "reply_delta",
   attempt_id: attemptId,
-  ...targetOf(target),
+  reply_id: replyId,
+  index,
   payload: { type: "response", chunk },
 });
 
-export const toolCardDelta = (
-  attemptId: string,
-  target: DeltaTarget,
-  toolCallId: string,
+export const workCardDelta = (
+  taskId: string,
+  index: number,
   message: string,
 ): ConversationFrame => ({
-  kind: "delta",
-  attempt_id: attemptId,
-  ...targetOf(target),
+  kind: "work_delta",
+  task_id: taskId,
+  index,
   payload: {
     type: "tool_data",
     entry: {
       tool_name: "tool_calls_data",
       tool_category: "gmail",
-      data: { tool_name: "send", tool_call_id: toolCallId, message },
+      data: { tool_name: "send", tool_call_id: `${taskId}-${index}`, message },
       timestamp: AT,
     },
   },
@@ -168,16 +163,19 @@ export const retractFrame = (attemptId: string): ConversationFrame => ({
   attempt_id: attemptId,
 });
 
+export const liveTask = (
+  taskId: string,
+  awaitingApproval = false,
+): LiveTask => ({
+  task_id: taskId,
+  awaiting_approval: awaitingApproval,
+});
+
 export const stateFrame = (
   head: number,
-  display: ConversationDisplay,
-  workPhase: WorkPhase = "none",
-): ConversationFrame => ({
-  kind: "state",
-  head,
-  display,
-  work_phase: workPhase,
-});
+  display: DisplayState,
+  work: LiveTask[] = [],
+): ConversationFrame => ({ kind: "state", head, display, work });
 
 /** A deterministic PRNG, so a failing property run names the seed that reproduces it. */
 export function seededRandom(seed: number): () => number {
@@ -205,8 +203,10 @@ class ConversationScript {
   readonly retractedAttempts: string[] = [];
   private seq = 0;
   private counter = 0;
-  private readonly liveTasks: string[] = [];
+  private readonly liveTasks: LiveTask[] = [];
   private readonly unanswered: string[] = [];
+  private readonly indices = new Map<string, number>();
+  private lastMessageId: string | null = null;
 
   constructor(private readonly random: () => number) {}
 
@@ -222,43 +222,69 @@ class ConversationScript {
   userTurn(mayStayOpen: boolean): void {
     const messageId = this.next("m");
     this.unanswered.push(messageId);
+    this.lastMessageId = messageId;
     this.append(userMessage(messageId));
     this.publish("thinking");
     const replyId = this.next("r");
     let attemptId = this.next("a");
     while (this.chance(0.3)) {
-      this.stream(attemptId, { replyId }, this.chunks(1));
+      this.streamReply(attemptId, null, this.chunks(1));
       this.frames.push(retractFrame(attemptId));
       this.retractedAttempts.push(attemptId);
       attemptId = this.next("a");
     }
-    this.stream(attemptId, { replyId }, this.chunks(1));
+    this.streamReply(attemptId, null, this.chunks(1));
     const replySeq = this.append(reply(replyId, attemptId));
-    this.stream(attemptId, { replyId }, this.chunks(0));
+    this.streamReply(attemptId, replyId, this.chunks(0));
     if (mayStayOpen && this.chance(0.5)) return;
-    const saved = reply(replyId, attemptId, `saved ${replyId}`);
+    const saved = reply(replyId, attemptId, `saved ${replyId}`, 1);
     this.frames.push(entryUpdatedFrame(replySeq, saved));
-    this.append(replySettled(replyId, this.unanswered.splice(0), this.seq));
+    if (this.chance(0.3)) {
+      const reacted = userMessage(
+        messageId,
+        undefined,
+        { emoji: "👍", by: "jev" },
+        1,
+      );
+      this.frames.push(entryUpdatedFrame(this.seqOf(messageId), reacted));
+    }
+    const quote = this.chance(0.3) ? messageId : null;
+    this.append(
+      replySettled(replyId, this.unanswered.splice(0), this.seq, quote),
+    );
     this.publishSettled();
   }
 
   startWork(): void {
     const taskId = this.next("k");
-    this.liveTasks.push(taskId);
+    this.liveTasks.push(liveTask(taskId));
     this.append(workStarted(taskId, this.seq));
     this.publish("working");
-    this.stream(this.next("a"), { taskId }, this.chunks(1));
+    this.streamWork(taskId, this.chunks(1));
     if (!this.chance(0.4)) return;
     const approvalId = this.next("p");
     this.append(approvalRequested(taskId, approvalId));
-    this.publish("awaiting_approval", "awaiting_approval");
+    this.setApproval(taskId, true);
+    this.publish("awaiting_approval");
     this.append(approvalDecided(approvalId));
+    this.setApproval(taskId, false);
     this.publish("working");
   }
 
+  /** The task's work ends and its narrating reply (reply_id = task_id) settles it. */
   finishWork(): void {
-    const [taskId] = this.liveTasks.splice(0, 1);
-    this.append(workFinished(taskId));
+    const [task] = this.liveTasks.splice(0, 1);
+    this.append(workFinished(task.task_id));
+    this.publish(this.hasLiveWork ? "working" : "thinking");
+    const attemptId = this.next("a");
+    this.streamReply(attemptId, null, this.chunks(1));
+    this.append(reply(task.task_id, attemptId));
+    const cause = this.lastMessageId;
+    const answers = cause === null ? [] : [cause];
+    const outcome = cause === null ? "failed" : "answered";
+    this.append(
+      replySettled(task.task_id, answers, this.seq - 1, null, outcome),
+    );
     this.publishSettled();
   }
 
@@ -269,10 +295,23 @@ class ConversationScript {
 
   stop(): void {
     this.append(stopRequested(this.next("s")));
-    for (const taskId of this.liveTasks.splice(0)) {
-      this.append(workFinished(taskId, "cancelled"));
+    for (const task of this.liveTasks.splice(0)) {
+      this.append(workFinished(task.task_id, "cancelled"));
     }
     this.publish("idle");
+  }
+
+  private seqOf(entryId: string): number {
+    const found = this.frames.find(
+      (frame) => frame.kind === "entry" && frame.entry.id === entryId,
+    );
+    if (found?.kind !== "entry") throw new Error(`no entry ${entryId}`);
+    return found.seq;
+  }
+
+  private setApproval(taskId: string, awaiting: boolean): void {
+    const at = this.liveTasks.findIndex((task) => task.task_id === taskId);
+    this.liveTasks[at] = liveTask(taskId, awaiting);
   }
 
   private chance(p: number): boolean {
@@ -288,25 +327,48 @@ class ConversationScript {
     return `${prefix}${this.counter}`;
   }
 
+  private nextIndex(stream: string): number {
+    const index = this.indices.get(stream) ?? 0;
+    this.indices.set(stream, index + 1);
+    return index;
+  }
+
   private append(entry: Entry): number {
     this.seq += 1;
     this.frames.push(entryFrame(this.seq, entry));
     return this.seq;
   }
 
-  private publish(display: ConversationDisplay, workPhase?: WorkPhase): void {
-    const phase = workPhase ?? (this.hasLiveWork ? "running" : "none");
-    this.frames.push(stateFrame(this.seq, display, phase));
+  private publish(display: DisplayState): void {
+    this.frames.push(stateFrame(this.seq, display, [...this.liveTasks]));
   }
 
   private publishSettled(): void {
     this.publish(this.hasLiveWork ? "working" : "idle");
   }
 
-  private stream(attemptId: string, target: DeltaTarget, chunks: number): void {
+  private streamReply(
+    attemptId: string,
+    replyId: string | null,
+    chunks: number,
+  ): void {
+    for (let i = 0; i < chunks; i++) {
+      const index = this.nextIndex(attemptId);
+      this.frames.push(
+        replyDelta(
+          attemptId,
+          replyId,
+          index,
+          `${attemptMarker(attemptId)}${index} `,
+        ),
+      );
+    }
+  }
+
+  private streamWork(taskId: string, chunks: number): void {
     for (let i = 0; i < chunks; i++) {
       this.frames.push(
-        textDelta(attemptId, target, `${attemptMarker(attemptId)}${i} `),
+        workCardDelta(taskId, this.nextIndex(taskId), `step ${i}`),
       );
     }
   }
