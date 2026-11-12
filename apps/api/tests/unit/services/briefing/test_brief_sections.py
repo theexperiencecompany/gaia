@@ -264,11 +264,12 @@ class TestLayOut:
         [section] = lay_out(composition, pool).chosen.sections
 
         asks, digest, sync = section.items
-        assert (asks.text, asks.detail, asks.count, asks.app, asks.url) == (
+        assert (asks.text, asks.detail, asks.count, asks.app, asks.source, asks.url) == (
             "Three asks",
             "one thread, three nudges",
             3,
             "Gmail",
+            "gmail",
             "https://mail.example/t7",
         )
         assert (digest.detail, digest.kind) == (None, "you")

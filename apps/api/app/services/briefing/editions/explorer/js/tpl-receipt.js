@@ -16,11 +16,6 @@
    Reading order: deck -> awaiting payment -> today -> overnight -> totals.
    ========================================================================== */
 (() => {
-  // "GitHub, Gmail and Slack": the apps the brief read, as a sentence names them.
-  const appList = (sources) => {
-    const n = sources.map((s) => s.name);
-    return n.length < 2 ? n.join("") : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
-  };
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const caps = (s) => esc(String(s).toUpperCase());
   const pad2 = (n) => String(n).padStart(2, "0");
@@ -204,7 +199,7 @@
   <div class="bars" style="width:min(100%, ${bars.width}px)">${EXPLORER.code(bars, "code")}</div>
   <p class="barnum">ED${ed.editionNo}-${ed.time24.replace(":", "")}-GAIA</p>
   <p class="colo">EDITION No. ${ed.editionNo} &middot; GENERATED ${ed.time24} BY GAIA</p>
-  ${ed.sources.length ? `<div class="src" data-block="sources"><p class="logos">${ed.sources.map((x) => EXPLORER.blocks.logo(x.logo, { cls: "" })).join("")}</p><p class="colo">MADE FROM YOUR ${caps(appList(ed.sources))}</p></div>` : ""}
+  ${ed.sources.length ? `<div class="src" data-block="sources"><p class="logos">${ed.sources.map((x) => EXPLORER.blocks.logo(x.logo, { cls: "" })).join("")}</p><p class="colo">MADE FROM YOUR ${caps(EXPLORER.blocks.appList(ed.sources))}</p></div>` : ""}
 </div></div></article>`;
     },
   });

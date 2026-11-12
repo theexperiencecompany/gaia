@@ -26,6 +26,12 @@ EXPLORER.blocks = (() => {
       : `<span class="rs-verb">${esc(it.verb)}</span>`;
   }
 
+  // "GitHub, Gmail and Slack": the apps the brief read, as a sentence names them.
+  const appList = (sources) => {
+    const names = sources.map((s) => s.name);
+    return names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  };
+
   const detail = (text) => (text ? `<div class="rs-detail">${esc(text)}</div>` : "");
   const more = (n) => (n > 0 ? `<div class="rs-more">+${n} more in the full brief</div>` : "");
 
@@ -221,5 +227,5 @@ EXPLORER.blocks = (() => {
   /* The facts line under a chart's title: its range and unit, as "Mon 3 – Sun 9 Nov · tasks". */
   const facts = (chart, sep = " · ") => [chart.range, chart.unit].filter(Boolean).join(sep);
 
-  return { esc, fmt, snap, logo, item, items, events, section, lead, list, more, detail, layout, plot, bars, line, spark, cells, legend, facts, svg, txt, rect, niceTicks, totals };
+  return { esc, fmt, appList, snap, logo, item, items, events, section, lead, list, more, detail, layout, plot, bars, line, spark, cells, legend, facts, svg, txt, rect, niceTicks, totals };
 })();

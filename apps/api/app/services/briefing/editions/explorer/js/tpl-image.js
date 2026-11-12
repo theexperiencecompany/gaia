@@ -6,11 +6,6 @@
    ========================================================================== */
 (() => {
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  // "GitHub, Gmail and Slack": the apps the brief read, as a sentence names them.
-  const appList = (sources) => {
-    const n = sources.map((x) => x.name);
-    return n.length < 2 ? n.join("") : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
-  };
   const grain = (id, freq) =>
     `<svg class="grain" aria-hidden="true"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="${freq}" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#${id})"/></svg>`;
   /* Primed-canvas weave: two fine crossing thread patterns. */
@@ -107,7 +102,7 @@ ${grain("hz-g", 0.7)}
 <h1>${esc(ed.deck)}</h1>
 ${EXPLORER.fold(B.layout(ed, R)).join("")}
 <div class="foot"><span><b>The ${esc(ed.weekday)} Brief</b><br>Edition No ${ed.editionNo}<br>${esc(ed.dateLong)}</span>${s ? `<span class="r2">Done ${s.done}${s.mail ? ` · mail ${s.mail}` : ""}${s.focus ? ` · focus ${esc(s.focus)}` : ""}${s.you && s.gaia ? `<br>${s.you} by you · ${s.gaia} by GAIA` : ""}</span>` : ""}</div>
-${ed.sources.length ? `<p class="src" data-block="sources"><span class="logos">${ed.sources.map((x) => B.logo(x.logo, { cls: "" })).join("")}</span>Made from your ${esc(appList(ed.sources))}</p>` : ""}
+${ed.sources.length ? `<p class="src" data-block="sources"><span class="logos">${ed.sources.map((x) => B.logo(x.logo, { cls: "" })).join("")}</span>Made from your ${esc(EXPLORER.blocks.appList(ed.sources))}</p>` : ""}
 </article>`;
     },
   });
@@ -207,7 +202,7 @@ ${ed.sources.length ? `<p class="src" data-block="sources"><span class="logos">$
   <p class="deck">${esc(ed.deck)}</p>
   ${B.layout(ed, R).join("")}
   ${s ? `<p class="foot">Yesterday ${s.done} done${s.you && s.gaia ? ` (you ${s.you} / GAIA ${s.gaia})` : ""}${s.mail || s.focus ? `<br>${[s.mail ? `${s.mail} emails handled` : "", s.focus ? `${esc(s.focus)} of focus today` : ""].filter(Boolean).join(" · ")}` : ""}<br>Brief generated ${esc(ed.time)}</p>` : ""}
-  ${ed.sources.length ? `<p class="src" data-block="sources"><span class="logos">${ed.sources.map((x) => B.logo(x.logo, { mode: "color", cls: "" })).join("")}</span>Made from your ${esc(appList(ed.sources))}</p>` : ""}
+  ${ed.sources.length ? `<p class="src" data-block="sources"><span class="logos">${ed.sources.map((x) => B.logo(x.logo, { mode: "color", cls: "" })).join("")}</span>Made from your ${esc(EXPLORER.blocks.appList(ed.sources))}</p>` : ""}
 </div></article>`;
     },
   });
@@ -313,7 +308,7 @@ ${grain("wk-g", 0.85)}
 <div class="mast"><h1>The Week</h1><div class="no"><b>No ${weekNo}</b>${esc(range)}</div></div>
 <p class="deck">${esc(ed.deck)}</p>
 ${EXPLORER.fold(parts).join("")}
-<p class="foot">Weekly review · compiled by GAIA ${esc(ed.dateLong)} · week No&nbsp;${weekNo} · from daily edition No&nbsp;${ed.editionNo}${ed.sources.length ? `<span class="src" data-block="sources"><span class="logos">${ed.sources.map((x) => B.logo(x.logo, { cls: "" })).join("")}</span>Made from your ${esc(appList(ed.sources))}</span>` : ""}</p>
+<p class="foot">Weekly review · compiled by GAIA ${esc(ed.dateLong)} · week No&nbsp;${weekNo} · from daily edition No&nbsp;${ed.editionNo}${ed.sources.length ? `<span class="src" data-block="sources"><span class="logos">${ed.sources.map((x) => B.logo(x.logo, { cls: "" })).join("")}</span>Made from your ${esc(EXPLORER.blocks.appList(ed.sources))}</span>` : ""}</p>
 </article>`;
     },
   });

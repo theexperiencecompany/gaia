@@ -15,11 +15,6 @@
    (today) and the overnight report, then the figures box.
    ========================================================================== */
 (() => {
-  // "GitHub, Gmail and Slack": the apps the brief read, as a sentence names them.
-  const appList = (sources) => {
-    const n = sources.map((s) => s.name);
-    return n.length < 2 ? n.join("") : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
-  };
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
   const WORDS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
@@ -193,7 +188,7 @@ ${grain("bs-g", 0.75)}
 <div class="lead"><div class="kick bk">Front page</div><h2>${esc(ed.deck)}</h2>${dek}<hr class="short"></div>
 ${EXPLORER.fold(sections).join(orn)}
 ${figs}
-<div class="imprint bk">Edition No. ${ed.editionNo} · Generated ${esc(ed.time)} by GAIA · Printed for a readership of one${ed.sources.length ? `<div class="wire" data-block="sources"><p class="logos">${ed.sources.map((x) => EXPLORER.blocks.logo(x.logo, { cls: "" })).join("")}</p><p>Reported from your ${esc(appList(ed.sources))}</p></div>` : ""}</div>
+<div class="imprint bk">Edition No. ${ed.editionNo} · Generated ${esc(ed.time)} by GAIA · Printed for a readership of one${ed.sources.length ? `<div class="wire" data-block="sources"><p class="logos">${ed.sources.map((x) => EXPLORER.blocks.logo(x.logo, { cls: "" })).join("")}</p><p>Reported from your ${esc(EXPLORER.blocks.appList(ed.sources))}</p></div>` : ""}</div>
 </article>`;
     },
   });
