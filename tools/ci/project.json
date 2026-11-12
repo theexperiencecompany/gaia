@@ -602,8 +602,7 @@
         "cwd": "apps/api"
       },
       "inputs": [
-        "{workspaceRoot}/libs/shared/py/analytics/**/*",
-        "{workspaceRoot}/libs/shared/py/tests/test_analytics_catalog.py",
+        "{workspaceRoot}/libs/shared/py/**/*.py",
         "{workspaceRoot}/libs/shared/ts/src/analytics/generated/**/*",
         "{workspaceRoot}/apps/api/app/**/*",
         "{workspaceRoot}/apps/api/pytest.ini",

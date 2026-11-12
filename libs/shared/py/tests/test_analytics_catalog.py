@@ -43,10 +43,56 @@ _WEB_SOURCES = ("apps/web/src", "apps/web/instrumentation-client.ts")
 _BOT_SOURCES = ("libs/shared/ts/src/bots", "apps/bots")
 _ATTRIBUTED_OWNERS = (Surface.SERVER, Surface.VOICE)
 _TEST_PATH = re.compile(r"(__tests__|/tests?/|\.test\.tsx?$|\.spec\.tsx?$)")
+_EMITTER_SITE_SOURCES = (*_SERVER_SOURCES, *_VOICE_SOURCES, "libs/shared/py")
+# The capture machinery names events to configure them (the active-use set) and emits none itself.
+_ANALYTICS_PACKAGE = "libs/shared/py/analytics/"
+
+# Events built in several functions, one per mutually exclusive path; a count may only fall.
+_MULTI_SITE_EVENTS: dict[str, tuple[int, str]] = {
+    "agent:run_started": (2, "the comms run and the executor run are different runs"),
+    "approval:decided": (2, "the single and the batch decision routes; props say which"),
+    "browser:handoff_resolved": (3, "card reply or button, card stop button, chat stop tool"),
+    "calendar:event_created": (2, "the single and the batch route; batch props say which"),
+    "calendar:event_deleted": (2, "the single and the batch route; batch props say which"),
+    "calendar:event_updated": (2, "the single and the batch route; batch props say which"),
+    "chat:conversation_created": (2, "a user's conversation and a system one, never both"),
+    "chat:conversation_deleted": (2, "delete one and delete all; props say which"),
+    "chat:message_submitted": (2, "the web chat route and the bot turn charge, one per surface"),
+    "email:sent": (2, "send a new email and send a saved draft"),
+    "hil:decision_submitted": (
+        2,
+        "auto mode's verdict has no card; a card's decision has no verdict",
+    ),
+    "hil:resumed": (2, "a parked todo run and a parked workflow run"),
+    "hil:revoked": (2, "the proposer's revoke and a cancelled run's sweep"),
+    "integration:connect_initiated": (3, "the connect route, a connect link, a platform connect"),
+    "integration:connected": (
+        7,
+        "each connect transport finishes in its own place: Composio and MCP OAuth callbacks, "
+        "direct, custom, marketplace and workspace adds, bot platform links",
+    ),
+    "integration:disconnected": (
+        4,
+        "agent tool, settings route, workspace removal, platform unlink",
+    ),
+    "payment:checkout_started": (2, "the redirect checkout and the embedded overlay"),
+    "profile:updated": (4, "the full profile, name, timezone and card colour routes"),
+    "settings:preferences_changed": (5, "one site per setting; setting says which"),
+    "skill:installed": (2, "install from GitHub and write inline"),
+    "todos:deleted": (2, "delete one and bulk delete; props say which"),
+    "todos:toggled": (3, "a todo, a bulk selection, a subtask"),
+    "todos:updated": (6, "a todo, a bulk edit, a bulk move, and three subtask routes"),
+    "tool:used": (
+        3,
+        "bound tools, the execute proxy, the MCP app proxy; via and source split them",
+    ),
+    "workflow:created": (4, "one per origin: user, chat agent, todo conversion, todo request"),
+    "workflow:executed": (2, "manual runs at the run-now route, every other trigger in the worker"),
+}
 
 
-def _source_files(roots: tuple[str, ...], suffixes: tuple[str, ...]) -> list[str]:
-    texts: list[str] = []
+def _source_texts(roots: tuple[str, ...], suffixes: tuple[str, ...]) -> list[tuple[str, str]]:
+    texts: list[tuple[str, str]] = []
     for root in roots:
         base = REPO_ROOT / root
         files = [base] if base.is_file() else base.rglob("*")
@@ -57,37 +103,88 @@ def _source_files(roots: tuple[str, ...], suffixes: tuple[str, ...]) -> list[str
                 and "node_modules" not in path.parts
                 and not _TEST_PATH.search(relative)
             ):
-                texts.append(path.read_text(encoding="utf-8"))
+                texts.append((relative, path.read_text(encoding="utf-8")))
     return texts
 
 
-def _python_references(source: str) -> set[str]:
-    """Names the module's code loads; imports, comments, docstrings and annotations emit nothing."""
-    tree = ast.parse(source)
-    annotations = [
+def _source_files(roots: tuple[str, ...], suffixes: tuple[str, ...]) -> list[str]:
+    return [text for _, text in _source_texts(roots, suffixes)]
+
+
+def _not_emitting(tree: ast.Module) -> set[int]:
+    """Ids of nodes that name a class without building it: annotations, type aliases, type checks, X.event."""
+    types = [
         node.annotation
         for node in ast.walk(tree)
         if isinstance(node, ast.arg | ast.AnnAssign) and node.annotation is not None
     ]
-    annotations += [
+    types += [
         node.returns
         for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.returns is not None
     ]
-    in_annotation = {id(child) for annotation in annotations for child in ast.walk(annotation)}
-    return {
-        node.id
+    types += [
+        node.value
         for node in ast.walk(tree)
-        if isinstance(node, ast.Name) and id(node) not in in_annotation
-    }
+        if isinstance(node, ast.AnnAssign)
+        and node.value is not None
+        and ast.unparse(node.annotation).endswith("TypeAlias")
+    ]
+    types += [
+        node.args[1]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in ("isinstance", "issubclass")
+        and len(node.args) == 2
+    ]
+    types += [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute) and node.attr in ("event", "__name__")
+    ]
+    return {id(child) for node in types for child in ast.walk(node)}
+
+
+def _python_references(source: str) -> dict[str, set[str]]:
+    """Each name the module's code loads, with the functions that load it; module level is ""."""
+    tree = ast.parse(source)
+    skipped = _not_emitting(tree)
+    scopes: dict[str, set[str]] = {}
+
+    def visit(node: ast.AST, scope: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            inner = scope
+            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+                inner = f"{scope}.{child.name}" if scope else child.name
+            elif isinstance(child, ast.Name) and id(child) not in skipped:
+                scopes.setdefault(child.id, set()).add(scope)
+            visit(child, inner)
+
+    visit(tree, "")
+    return scopes
 
 
 @pytest.fixture(scope="module")
 def python_references() -> dict[Surface, set[str]]:
     return {
-        surface: set().union(*(_python_references(text) for text in _source_files(roots, (".py",))))
+        surface: set().union(
+            *(_python_references(text).keys() for text in _source_files(roots, (".py",)))
+        )
         for surface, roots in ((Surface.SERVER, _SERVER_SOURCES), (Surface.VOICE, _VOICE_SOURCES))
     }
+
+
+@pytest.fixture(scope="module")
+def emitter_sites() -> dict[str, set[tuple[str, str]]]:
+    """Every (file, function) that names each catalog class in product Python."""
+    sites: dict[str, set[tuple[str, str]]] = {}
+    for relative, text in _source_texts(_EMITTER_SITE_SOURCES, (".py",)):
+        if relative.startswith(_ANALYTICS_PACKAGE):
+            continue
+        for name, scopes in _python_references(text).items():
+            sites.setdefault(name, set()).update((relative, scope) for scope in scopes)
+    return sites
 
 
 @pytest.fixture(scope="module")
@@ -180,6 +277,53 @@ def test_every_event_has_an_emitter(
         )
 
 
+@pytest.mark.parametrize(
+    "name", [name for name, model in CATALOG.items() if model.owner in _ATTRIBUTED_OWNERS]
+)
+def test_every_server_and_voice_event_has_one_emitter(
+    name: str, emitter_sites: dict[str, set[tuple[str, str]]]
+) -> None:
+    """One action, one emitter: a second function building the same event is how double counts start."""
+    sites = sorted(emitter_sites.get(CATALOG[name].__name__, set()))
+    allowed = _MULTI_SITE_EVENTS[name][0] if name in _MULTI_SITE_EVENTS else 1
+    where = "\n".join(f"  {path}: {scope or '<module>'}" for path, scope in sites)
+    assert len(sites) <= allowed, (
+        f"{name} is built in {len(sites)} functions, allowed {allowed}; converge it:\n{where}"
+    )
+    assert len(sites) == allowed or name not in _MULTI_SITE_EVENTS, (
+        f"{name} is down to {len(sites)} sites: shrink its _MULTI_SITE_EVENTS entry to match"
+    )
+
+
+def test_every_multi_site_entry_names_a_server_or_voice_event() -> None:
+    for name, (count, _) in _MULTI_SITE_EVENTS.items():
+        assert CATALOG[name].owner in _ATTRIBUTED_OWNERS, name
+        assert count > 1, f"{name}: one site needs no entry"
+
+
+def test_each_function_that_builds_an_event_is_one_site() -> None:
+    source = (
+        "def charge():\n"
+        "    capture(uid, PaymentFailed())\n"
+        "    capture(other, PaymentFailed(retry=True))\n"
+        "class Webhook:\n"
+        "    def on_failure(self):\n"
+        "        event_cls = PaymentFailed\n"
+        "        capture(uid, event_cls())\n"
+    )
+    assert _python_references(source)["PaymentFailed"] == {"charge", "Webhook.on_failure"}
+
+
+def test_a_type_alias_type_check_or_event_name_read_is_not_an_emitter() -> None:
+    source = (
+        "Lifecycle: TypeAlias = PaymentFailed | PaymentSucceeded\n"
+        "def f(event):\n"
+        "    if isinstance(event, PaymentFailed):\n"
+        "        return PaymentFailed.event\n"
+    )
+    assert "PaymentFailed" not in _python_references(source)
+
+
 def test_an_import_comment_docstring_or_annotation_is_not_an_emitter() -> None:
     source = (
         "from shared.py.analytics.catalog.billing import PaymentFailed\n"
@@ -195,7 +339,7 @@ def test_a_class_picked_before_it_is_built_is_an_emitter() -> None:
     source = (
         "event_cls = PaymentFailed if failed else PaymentSucceeded\ncapture(uid, event_cls())\n"
     )
-    assert {"PaymentFailed", "PaymentSucceeded"} <= _python_references(source)
+    assert {"PaymentFailed", "PaymentSucceeded"} <= _python_references(source).keys()
 
 
 def test_the_generated_typescript_matches_the_catalog() -> None:
