@@ -815,7 +815,7 @@
   "motion": {
     "name": "Motion",
     "tagline": "タスクを空き時間に自動で配置し、予定が変わると組み直すAIカレンダーアプリ",
-    "metaTitle": "Motionの代替：自動スケジューリングにメールとタスクも加えたGAIA",
+    "metaTitle": "Motionの代替：メールとタスクから予定作りを手伝うAIアシスタントGAIA",
     "metaDescription": "Motionはタスクを空き時間に自動配置する有料カレンダーですが、メールとは連携しません。GAIAはGmailからタスクを作り、予定の重複を知らせるソース公開型です。料金を比較。",
     "keywords": [
       "motion 代替",

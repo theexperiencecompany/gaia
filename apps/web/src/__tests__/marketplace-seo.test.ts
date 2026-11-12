@@ -359,4 +359,20 @@ describe("marketplace cross-links", () => {
       marketplaceApiIdentifier("resend-mcp-communication"),
     ).resolves.toBe("resend-mcp-communication");
   });
+
+  it("resolves a native slug while the community catalog is down", async () => {
+    vi.setSystemTime(new Date("2033-01-01T00:00:00Z"));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: Request) =>
+        input.url.includes("/integrations/config")
+          ? Response.json(NATIVE_CONFIG)
+          : new Response("boom", { status: 500 }),
+      ),
+    );
+
+    await expect(marketplaceApiIdentifier("microsoft-teams")).resolves.toBe(
+      "microsoft_teams",
+    );
+  });
 });
