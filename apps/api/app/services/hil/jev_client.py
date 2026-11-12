@@ -9,7 +9,12 @@ from collections.abc import Mapping
 
 import httpx
 
-from app.constants.hil import HIL_JEV_MODEL_NAME, HIL_JEV_TIMEOUT_SECONDS, HIL_JEV_URL
+from app.constants.hil import (
+    HIL_JEV_MODEL_NAME,
+    HIL_JEV_TIMEOUT_SECONDS,
+    HIL_JEV_URL,
+    JevFailure,
+)
 from app.constants.providers import CredentialProviderName
 from app.models.jev_models import JevDecisionsResponse
 from app.services.providers.provider_credentials_service import ProviderConfig, resolve
@@ -17,6 +22,22 @@ from app.services.providers.provider_credentials_service import ProviderConfig, 
 
 class JevUnconfiguredError(RuntimeError):
     """No OpenRouter key is saved or set, so JEV cannot be asked at all (a self-host without one)."""
+
+
+# First match wins; anything else is an error, so it is alerted on.
+_FAILURES: tuple[tuple[type[Exception] | tuple[type[Exception], ...], JevFailure], ...] = (
+    (JevUnconfiguredError, JevFailure.UNCONFIGURED),
+    ((TimeoutError, httpx.TimeoutException), JevFailure.TIMEOUT),
+    # Pydantic's ValidationError and a body that is not JSON are both ValueErrors.
+    (ValueError, JevFailure.MALFORMED),
+)
+
+
+def jev_failure(error: Exception) -> JevFailure:
+    """Name why a JEV call, or the read of its answer, gave nothing usable; anything unforeseen is ERROR."""
+    return next(
+        (failure for kinds, failure in _FAILURES if isinstance(error, kinds)), JevFailure.ERROR
+    )
 
 
 async def post_decisions(

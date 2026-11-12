@@ -1,0 +1,1991 @@
+# reaction-ack calibration: synthetic messages, written for this suite, never copied from users.
+# expect: must_not_react (any tap fails), should_react (a tap from emojis passes), may_react
+# (either passes). A frustrated, corrective or scolding message must never get a tap.
+- id: find-flight-email
+  ticket: 'task: find the email with my flight confirmation for next week'
+  tags:
+  - task
+  - should_react
+  prompt: find the email with my flight confirmation for next week
+  setup:
+    message: find the email with my flight confirmation for next week
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 📥
+    - 🔎
+    score:
+      gates:
+      - reaction_expect
+- id: search-inbox-invoice
+  ticket: 'task: search my inbox for the invoice from the design agency'
+  tags:
+  - task
+  - should_react
+  prompt: search my inbox for the invoice from the design agency
+  setup:
+    message: search my inbox for the invoice from the design agency
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 📥
+    - 🔎
+    score:
+      gates:
+      - reaction_expect
+- id: draft-reply-landlord
+  ticket: 'task: draft a reply to my landlord saying I''ll pay rent on friday'
+  tags:
+  - task
+  - should_react
+  prompt: draft a reply to my landlord saying I'll pay rent on friday
+  setup:
+    message: draft a reply to my landlord saying I'll pay rent on friday
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - ✍️
+    - 📝
+    - 📨
+    score:
+      gates:
+      - reaction_expect
+- id: send-email-team
+  ticket: 'task: send an email to the team that standup moves to 10am tomorro'
+  tags:
+  - task
+  - should_react
+  prompt: send an email to the team that standup moves to 10am tomorrow
+  setup:
+    message: send an email to the team that standup moves to 10am tomorrow
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 📨
+    - 📤
+    - ✍️
+    score:
+      gates:
+      - reaction_expect
+- id: schedule-dentist
+  ticket: 'task: schedule a dentist appointment for tuesday at 3pm'
+  tags:
+  - task
+  - should_react
+  prompt: schedule a dentist appointment for tuesday at 3pm
+  setup:
+    message: schedule a dentist appointment for tuesday at 3pm
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 📅
+    score:
+      gates:
+      - reaction_expect
+- id: remind-call-mom
+  ticket: 'task: remind me to call mom at 7 tonight'
+  tags:
+  - task
+  - should_react
+  prompt: remind me to call mom at 7 tonight
+  setup:
+    message: remind me to call mom at 7 tonight
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - ⏰
+    score:
+      gates:
+      - reaction_expect
+- id: set-alarm-gym
+  ticket: 'task: set a reminder for gym at 6am every weekday'
+  tags:
+  - task
+  - should_react
+  prompt: set a reminder for gym at 6am every weekday
+  setup:
+    message: set a reminder for gym at 6am every weekday
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - ⏰
+    - 📅
+    score:
+      gates:
+      - reaction_expect
+- id: create-todo-taxes
+  ticket: 'task: add file taxes to my todo list'
+  tags:
+  - task
+  - should_react
+  prompt: add file taxes to my todo list
+  setup:
+    message: add file taxes to my todo list
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 📋
+    - 🗂️
+    score:
+      gates:
+      - reaction_expect
+- id: cancel-meeting
+  ticket: 'task: cancel my 4pm meeting with Dana'
+  tags:
+  - task
+  - should_react
+  prompt: cancel my 4pm meeting with Dana
+  setup:
+    message: cancel my 4pm meeting with Dana
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 🧹
+    - 📅
+    score:
+      gates:
+      - reaction_expect
+- id: summarise-link
+  ticket: 'task: summarise this article for me https://example.com/post/ai-ag'
+  tags:
+  - task
+  - should_react
+  prompt: summarise this article for me https://example.com/post/ai-agents
+  setup:
+    message: summarise this article for me https://example.com/post/ai-agents
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 🔗
+    - 📝
+    score:
+      gates:
+      - reaction_expect
+- id: research-laptops
+  ticket: 'task: research the best laptops under 1500 for video editing'
+  tags:
+  - task
+  - should_react
+  prompt: research the best laptops under 1500 for video editing
+  setup:
+    message: research the best laptops under 1500 for video editing
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 🔎
+    - 🔍
+    score:
+      gates:
+      - reaction_expect
+- id: check-weather
+  ticket: 'task: check the weather in Lisbon for saturday'
+  tags:
+  - task
+  - should_react
+  prompt: check the weather in Lisbon for saturday
+  setup:
+    message: check the weather in Lisbon for saturday
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 🔎
+    score:
+      gates:
+      - reaction_expect
+- id: connect-notion
+  ticket: 'task: connect my notion account'
+  tags:
+  - task
+  - should_react
+  prompt: connect my notion account
+  setup:
+    message: connect my notion account
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 🔌
+    - 🔧
+    score:
+      gates:
+      - reaction_expect
+- id: reconnect-gmail
+  ticket: 'task: reconnect gmail, it says the token expired'
+  tags:
+  - task
+  - should_react
+  prompt: reconnect gmail, it says the token expired
+  setup:
+    message: reconnect gmail, it says the token expired
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 🔧
+    - 🔌
+    score:
+      gates:
+      - reaction_expect
+- id: fix-workflow
+  ticket: 'task: fix the morning digest workflow, it skipped today'
+  tags:
+  - task
+  - should_react
+  prompt: fix the morning digest workflow, it skipped today
+  setup:
+    message: fix the morning digest workflow, it skipped today
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 🛠️
+    - 🔧
+    - 🔁
+    score:
+      gates:
+      - reaction_expect
+- id: write-tweet
+  ticket: 'task: write a tweet announcing our new pricing page'
+  tags:
+  - task
+  - should_react
+  prompt: write a tweet announcing our new pricing page
+  setup:
+    message: write a tweet announcing our new pricing page
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - ✍️
+    - 📝
+    score:
+      gates:
+      - reaction_expect
+- id: rewrite-bio
+  ticket: 'task: rewrite my linkedin bio to sound more senior'
+  tags:
+  - task
+  - should_react
+  prompt: rewrite my linkedin bio to sound more senior
+  setup:
+    message: rewrite my linkedin bio to sound more senior
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 📝
+    - ✍️
+    score:
+      gates:
+      - reaction_expect
+- id: make-chart
+  ticket: 'task: make a chart of my monthly spending from the sheet'
+  tags:
+  - task
+  - should_react
+  prompt: make a chart of my monthly spending from the sheet
+  setup:
+    message: make a chart of my monthly spending from the sheet
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 📊
+    score:
+      gates:
+      - reaction_expect
+- id: open-github-pr
+  ticket: 'task: open a github issue for the login bug on mobile'
+  tags:
+  - task
+  - should_react
+  prompt: open a github issue for the login bug on mobile
+  setup:
+    message: open a github issue for the login bug on mobile
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 📋
+    - 💻
+    score:
+      gates:
+      - reaction_expect
+- id: deploy-staging
+  ticket: 'task: deploy the latest build to staging'
+  tags:
+  - task
+  - should_react
+  prompt: deploy the latest build to staging
+  setup:
+    message: deploy the latest build to staging
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 🚀
+    - 💻
+    score:
+      gates:
+      - reaction_expect
+- id: delete-old-drafts
+  ticket: 'task: delete all my email drafts older than a month'
+  tags:
+  - task
+  - should_react
+  prompt: delete all my email drafts older than a month
+  setup:
+    message: delete all my email drafts older than a month
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 🧹
+    score:
+      gates:
+      - reaction_expect
+- id: screenshot-desktop
+  ticket: 'task: take a screenshot of my screen'
+  tags:
+  - task
+  - should_react
+  prompt: take a screenshot of my screen
+  setup:
+    message: take a screenshot of my screen
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 📸
+    score:
+      gates:
+      - reaction_expect
+- id: remember-allergy
+  ticket: 'task: remember that I''m allergic to peanuts'
+  tags:
+  - task
+  - should_react
+  prompt: remember that I'm allergic to peanuts
+  setup:
+    message: remember that I'm allergic to peanuts
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 🧠
+    score:
+      gates:
+      - reaction_expect
+- id: morning-brief
+  ticket: 'task: give me my morning briefing'
+  tags:
+  - task
+  - should_react
+  prompt: give me my morning briefing
+  setup:
+    message: give me my morning briefing
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 🌅
+    score:
+      gates:
+      - reaction_expect
+- id: organize-notes
+  ticket: 'task: organize my meeting notes into folders by project'
+  tags:
+  - task
+  - should_react
+  prompt: organize my meeting notes into folders by project
+  setup:
+    message: organize my meeting notes into folders by project
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 🗂️
+    - 📝
+    score:
+      gates:
+      - reaction_expect
+- id: design-logo
+  ticket: 'task: generate a logo concept for my coffee shop'
+  tags:
+  - task
+  - should_react
+  prompt: generate a logo concept for my coffee shop
+  setup:
+    message: generate a logo concept for my coffee shop
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 🎨
+    score:
+      gates:
+      - reaction_expect
+- id: reset-password
+  ticket: 'task: change the password on my shared vault entry for the wifi'
+  tags:
+  - task
+  - should_react
+  prompt: change the password on my shared vault entry for the wifi
+  setup:
+    message: change the password on my shared vault entry for the wifi
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 🔐
+    - 🔧
+    score:
+      gates:
+      - reaction_expect
+- id: read-slack
+  ticket: 'task: read my unread slack messages and tell me what matters'
+  tags:
+  - task
+  - should_react
+  prompt: read my unread slack messages and tell me what matters
+  setup:
+    message: read my unread slack messages and tell me what matters
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 📥
+    - 🔎
+    score:
+      gates:
+      - reaction_expect
+- id: route-airport
+  ticket: 'task: plan a route to the airport that avoids tolls'
+  tags:
+  - task
+  - should_react
+  prompt: plan a route to the airport that avoids tolls
+  setup:
+    message: plan a route to the airport that avoids tolls
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 🧭
+    score:
+      gates:
+      - reaction_expect
+- id: post-blog
+  ticket: 'task: publish the blog post draft we finished yesterday'
+  tags:
+  - task
+  - should_react
+  prompt: publish the blog post draft we finished yesterday
+  setup:
+    message: publish the blog post draft we finished yesterday
+    previous_assistant: ''
+  expected:
+    expect: should_react
+    category: task
+    emojis:
+    - 📤
+    - 🚀
+    score:
+      gates:
+      - reaction_expect
+- id: thanks
+  ticket: 'sign_off: thanks'
+  tags:
+  - sign_off
+  - should_react
+  prompt: thanks
+  setup:
+    message: thanks
+    previous_assistant: Done. I've added the meeting to your calendar for Thursday at 2pm.
+  expected:
+    expect: should_react
+    category: sign_off
+    emojis:
+    - 🙏
+    - ✅
+    - 👍
+    score:
+      gates:
+      - reaction_expect
+- id: thank-you-so-much
+  ticket: 'sign_off: thank you so much'
+  tags:
+  - sign_off
+  - should_react
+  prompt: thank you so much
+  setup:
+    message: thank you so much
+    previous_assistant: I sent the follow-up to Priya and copied you.
+  expected:
+    expect: should_react
+    category: sign_off
+    emojis:
+    - 🙏
+    - ✅
+    score:
+      gates:
+      - reaction_expect
+- id: ok
+  ticket: 'sign_off: ok'
+  tags:
+  - sign_off
+  - should_react
+  prompt: ok
+  setup:
+    message: ok
+    previous_assistant: I'll check your inbox again at 5pm and flag anything urgent.
+  expected:
+    expect: should_react
+    category: sign_off
+    emojis:
+    - 👍
+    - ✅
+    score:
+      gates:
+      - reaction_expect
+- id: perfect
+  ticket: 'sign_off: perfect'
+  tags:
+  - sign_off
+  - should_react
+  prompt: perfect
+  setup:
+    message: perfect
+    previous_assistant: Here's the final version of the cover letter.
+  expected:
+    expect: should_react
+    category: sign_off
+    emojis:
+    - ✅
+    - 👍
+    score:
+      gates:
+      - reaction_expect
+- id: go-ahead
+  ticket: 'sign_off: go ahead'
+  tags:
+  - sign_off
+  - should_react
+  prompt: go ahead
+  setup:
+    message: go ahead
+    previous_assistant: I drafted the email to the vendor. Want me to send it?
+  expected:
+    expect: should_react
+    category: sign_off
+    emojis:
+    - 👍
+    - 📨
+    - 📤
+    - ✅
+    - ⏳
+    score:
+      gates:
+      - reaction_expect
+- id: yes-send-it
+  ticket: 'sign_off: yes send it'
+  tags:
+  - sign_off
+  - should_react
+  prompt: yes send it
+  setup:
+    message: yes send it
+    previous_assistant: Here is the draft reply to Marcus. Should I send it?
+  expected:
+    expect: should_react
+    category: sign_off
+    emojis:
+    - 📨
+    - 📤
+    - 👍
+    - ✅
+    score:
+      gates:
+      - reaction_expect
+- id: sure
+  ticket: 'sign_off: sure'
+  tags:
+  - sign_off
+  - should_react
+  prompt: sure
+  setup:
+    message: sure
+    previous_assistant: Want me to set a reminder for the renewal date?
+  expected:
+    expect: should_react
+    category: sign_off
+    emojis:
+    - 👍
+    - ✅
+    - ⏰
+    score:
+      gates:
+      - reaction_expect
+- id: approved
+  ticket: 'sign_off: approved'
+  tags:
+  - sign_off
+  - should_react
+  prompt: approved
+  setup:
+    message: approved
+    previous_assistant: This will move 14 emails to the archive. Approve?
+  expected:
+    expect: should_react
+    category: sign_off
+    emojis:
+    - 👍
+    - ✅
+    - ⏳
+    score:
+      gates:
+      - reaction_expect
+- id: sounds-good
+  ticket: 'sign_off: sounds good'
+  tags:
+  - sign_off
+  - should_react
+  prompt: sounds good
+  setup:
+    message: sounds good
+    previous_assistant: I'll book the 7pm table for two and send you the confirmation.
+  expected:
+    expect: should_react
+    category: sign_off
+    emojis:
+    - 👍
+    - ✅
+    score:
+      gates:
+      - reaction_expect
+- id: great-thanks
+  ticket: 'sign_off: great thanks!'
+  tags:
+  - sign_off
+  - should_react
+  prompt: great thanks!
+  setup:
+    message: great thanks!
+    previous_assistant: All three invoices are saved to your Finance folder.
+  expected:
+    expect: should_react
+    category: sign_off
+    emojis:
+    - 🙏
+    - ✅
+    - 👍
+    score:
+      gates:
+      - reaction_expect
+- id: yep
+  ticket: 'sign_off: yep'
+  tags:
+  - sign_off
+  - should_react
+  prompt: yep
+  setup:
+    message: yep
+    previous_assistant: Should I keep the same subject line?
+  expected:
+    expect: should_react
+    category: sign_off
+    emojis:
+    - 👍
+    - ✅
+    score:
+      gates:
+      - reaction_expect
+- id: do-it
+  ticket: 'sign_off: do it'
+  tags:
+  - sign_off
+  - should_react
+  prompt: do it
+  setup:
+    message: do it
+    previous_assistant: I can cancel the duplicate subscription. Want me to?
+  expected:
+    expect: should_react
+    category: sign_off
+    emojis:
+    - 👍
+    - 🧹
+    - ✅
+    score:
+      gates:
+      - reaction_expect
+- id: cool-got-it
+  ticket: 'sign_off: cool, got it'
+  tags:
+  - sign_off
+  - should_react
+  prompt: cool, got it
+  setup:
+    message: cool, got it
+    previous_assistant: Your flight leaves at 6:40am from terminal 2.
+  expected:
+    expect: should_react
+    category: sign_off
+    emojis:
+    - 👍
+    - ✅
+    score:
+      gates:
+      - reaction_expect
+- id: awesome
+  ticket: 'sign_off: awesome'
+  tags:
+  - sign_off
+  - should_react
+  prompt: awesome
+  setup:
+    message: awesome
+    previous_assistant: The workflow is live and will run every Monday at 9am.
+  expected:
+    expect: should_react
+    category: sign_off
+    emojis:
+    - ✅
+    - 👍
+    - 🚀
+    score:
+      gates:
+      - reaction_expect
+- id: ty
+  ticket: 'sign_off: ty'
+  tags:
+  - sign_off
+  - should_react
+  prompt: ty
+  setup:
+    message: ty
+    previous_assistant: Reminder set for 8am tomorrow.
+  expected:
+    expect: should_react
+    category: sign_off
+    emojis:
+    - 🙏
+    - ✅
+    - 👍
+    score:
+      gates:
+      - reaction_expect
+- id: what-is-rag
+  ticket: 'needs_words: what is retrieval augmented generation?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: what is retrieval augmented generation?
+  setup:
+    message: what is retrieval augmented generation?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: should-i-take-job
+  ticket: 'needs_words: should I take the job offer in Berlin or stay where I am?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: should I take the job offer in Berlin or stay where I am?
+  setup:
+    message: should I take the job offer in Berlin or stay where I am?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: how-sleep-better
+  ticket: 'needs_words: how can I sleep better when I''m travelling?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: how can I sleep better when I'm travelling?
+  setup:
+    message: how can I sleep better when I'm travelling?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: explain-tax-bracket
+  ticket: 'needs_words: can you explain how tax brackets work?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: can you explain how tax brackets work?
+  setup:
+    message: can you explain how tax brackets work?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: opinion-name
+  ticket: 'needs_words: do you think Lumen is a good name for a meditation app?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: do you think Lumen is a good name for a meditation app?
+  setup:
+    message: do you think Lumen is a good name for a meditation app?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: whats-difference
+  ticket: 'needs_words: what''s the difference between a roth and traditional ira?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: what's the difference between a roth and traditional ira?
+  setup:
+    message: what's the difference between a roth and traditional ira?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: recommend-book
+  ticket: 'needs_words: what book would you recommend for learning about negotiation'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: what book would you recommend for learning about negotiation?
+  setup:
+    message: what book would you recommend for learning about negotiation?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: how-are-you
+  ticket: 'needs_words: how are you doing today?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: how are you doing today?
+  setup:
+    message: how are you doing today?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: why-sky-blue
+  ticket: 'needs_words: why is the sky blue'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: why is the sky blue
+  setup:
+    message: why is the sky blue
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: ideas-birthday
+  ticket: 'needs_words: give me some ideas for my partner''s birthday'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: give me some ideas for my partner's birthday
+  setup:
+    message: give me some ideas for my partner's birthday
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: more-options
+  ticket: 'needs_words: any more options?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: any more options?
+  setup:
+    message: any more options?
+    previous_assistant: 'Here are three hotels near the venue: the Grand, Hotel Mira and Casa Nova.'
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: also-restaurants
+  ticket: 'needs_words: also good restaurants nearby too'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: also good restaurants nearby too
+  setup:
+    message: also good restaurants nearby too
+    previous_assistant: 'Here are three hotels near the venue: the Grand, Hotel Mira and Casa Nova.'
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: headache-advice
+  ticket: 'needs_words: I''ve had a headache for three days, what could cause that?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: I've had a headache for three days, what could cause that?
+  setup:
+    message: I've had a headache for three days, what could cause that?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: compare-phones
+  ticket: 'needs_words: which is better for photos, pixel or iphone?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: which is better for photos, pixel or iphone?
+  setup:
+    message: which is better for photos, pixel or iphone?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: what-can-you-do
+  ticket: 'needs_words: what can you actually do?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: what can you actually do?
+  setup:
+    message: what can you actually do?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: meaning-word
+  ticket: 'needs_words: what does ephemeral mean'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: what does ephemeral mean
+  setup:
+    message: what does ephemeral mean
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: translate-question
+  ticket: 'needs_words: how do you say good morning in japanese?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: how do you say good morning in japanese?
+  setup:
+    message: how do you say good morning in japanese?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: pros-cons-remote
+  ticket: 'needs_words: what are the pros and cons of working remotely?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: what are the pros and cons of working remotely?
+  setup:
+    message: what are the pros and cons of working remotely?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: math-question
+  ticket: 'needs_words: what''s 15 percent of 240?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: what's 15 percent of 240?
+  setup:
+    message: what's 15 percent of 240?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: when-meeting
+  ticket: 'needs_words: when is my next meeting?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: when is my next meeting?
+  setup:
+    message: when is my next meeting?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: explain-error
+  ticket: 'needs_words: what does a 502 bad gateway error mean?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: what does a 502 bad gateway error mean?
+  setup:
+    message: what does a 502 bad gateway error mean?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: suggest-accordingly
+  ticket: 'needs_words: I''m vegetarian, give suggestions accordingly'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: I'm vegetarian, give suggestions accordingly
+  setup:
+    message: I'm vegetarian, give suggestions accordingly
+    previous_assistant: Here are five dinner ideas for tonight.
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: history-question
+  ticket: 'needs_words: who was the first person to climb everest?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: who was the first person to climb everest?
+  setup:
+    message: who was the first person to climb everest?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: advice-feedback
+  ticket: 'needs_words: how should I give tough feedback to a junior colleague?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: how should I give tough feedback to a junior colleague?
+  setup:
+    message: how should I give tough feedback to a junior colleague?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: which-plan
+  ticket: 'needs_words: which of your plans would suit a small team?'
+  tags:
+  - needs_words
+  - must_not_react
+  prompt: which of your plans would suit a small team?
+  setup:
+    message: which of your plans would suit a small team?
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: needs_words
+    score:
+      gates:
+      - reaction_expect
+- id: dude-do-it-again
+  ticket: 'upset: dude do it again'
+  tags:
+  - upset
+  - must_not_react
+  prompt: dude do it again
+  setup:
+    message: dude do it again
+    previous_assistant: I tried to pull the report but the export came back empty.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: no-not-that-one
+  ticket: 'upset: no, not that one'
+  tags:
+  - upset
+  - must_not_react
+  prompt: no, not that one
+  setup:
+    message: no, not that one
+    previous_assistant: I opened the Q3 budget spreadsheet.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: wrong-again
+  ticket: 'upset: that''s wrong again, I said thursday not tuesday'
+  tags:
+  - upset
+  - must_not_react
+  prompt: that's wrong again, I said thursday not tuesday
+  setup:
+    message: that's wrong again, I said thursday not tuesday
+    previous_assistant: I've moved the call to Tuesday at 3pm.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: wtf-deleted
+  ticket: 'upset: wtf why did you delete that email'
+  tags:
+  - upset
+  - must_not_react
+  prompt: wtf why did you delete that email
+  setup:
+    message: wtf why did you delete that email
+    previous_assistant: I archived 12 promotional emails.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: you-didnt-do-it
+  ticket: 'upset: you didn''t do it'
+  tags:
+  - upset
+  - must_not_react
+  prompt: you didn't do it
+  setup:
+    message: you didn't do it
+    previous_assistant: I've sent the invite to the whole team.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: stop-doing-that
+  ticket: 'upset: stop adding emojis to every message'
+  tags:
+  - upset
+  - must_not_react
+  prompt: stop adding emojis to every message
+  setup:
+    message: stop adding emojis to every message
+    previous_assistant: Done! 🎉 Your note is saved ✨
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: this-is-cringe
+  ticket: 'upset: this sounds so cringe, nobody talks like that'
+  tags:
+  - upset
+  - must_not_react
+  prompt: this sounds so cringe, nobody talks like that
+  setup:
+    message: this sounds so cringe, nobody talks like that
+    previous_assistant: 'Here''s your tweet: ''Excited to embark on this journey!'''
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: just-use-the-api
+  ticket: 'upset: stop exploring, just use the API'
+  tags:
+  - upset
+  - must_not_react
+  prompt: stop exploring, just use the API
+  setup:
+    message: stop exploring, just use the API
+    previous_assistant: I'm looking through the documentation pages to find the right approach.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: useless
+  ticket: 'upset: this is useless'
+  tags:
+  - upset
+  - must_not_react
+  prompt: this is useless
+  setup:
+    message: this is useless
+    previous_assistant: Here are some general tips for productivity.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: not-what-i-asked
+  ticket: 'upset: that is not what I asked for'
+  tags:
+  - upset
+  - must_not_react
+  prompt: that is not what I asked for
+  setup:
+    message: that is not what I asked for
+    previous_assistant: Here is a summary of the article.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: swear-broken
+  ticket: 'upset: this damn thing is broken again'
+  tags:
+  - upset
+  - must_not_react
+  prompt: this damn thing is broken again
+  setup:
+    message: this damn thing is broken again
+    previous_assistant: The sync finished with 3 errors.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: no-need
+  ticket: 'upset: no need to cc my boss on these'
+  tags:
+  - upset
+  - must_not_react
+  prompt: no need to cc my boss on these
+  setup:
+    message: no need to cc my boss on these
+    previous_assistant: I sent the update and copied Raj.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: make-sure-dont
+  ticket: 'upset: still make sure you don''t send anything without asking me'
+  tags:
+  - upset
+  - must_not_react
+  prompt: still make sure you don't send anything without asking me
+  setup:
+    message: still make sure you don't send anything without asking me
+    previous_assistant: Got it, I'll handle the replies.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: nah
+  ticket: 'upset: nah'
+  tags:
+  - upset
+  - must_not_react
+  prompt: nah
+  setup:
+    message: nah
+    previous_assistant: Want me to schedule the post for 9am?
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: meh
+  ticket: 'upset: meh'
+  tags:
+  - upset
+  - must_not_react
+  prompt: meh
+  setup:
+    message: meh
+    previous_assistant: Here's a revised version of the intro.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: frustrated-slow
+  ticket: 'upset: why is this taking forever, I asked an hour ago'
+  tags:
+  - upset
+  - must_not_react
+  prompt: why is this taking forever, I asked an hour ago
+  setup:
+    message: why is this taking forever, I asked an hour ago
+    previous_assistant: I'm still working on the research.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: i-told-you
+  ticket: 'upset: I told you three times already, the meeting is cancelled'
+  tags:
+  - upset
+  - must_not_react
+  prompt: I told you three times already, the meeting is cancelled
+  setup:
+    message: I told you three times already, the meeting is cancelled
+    previous_assistant: 'Reminder: you have a meeting with Leo at 2pm.'
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: ugh-again
+  ticket: 'upset: ugh, again?? fix it properly this time'
+  tags:
+  - upset
+  - must_not_react
+  prompt: ugh, again?? fix it properly this time
+  setup:
+    message: ugh, again?? fix it properly this time
+    previous_assistant: The workflow failed to run this morning.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: you-keep-forgetting
+  ticket: 'upset: you keep forgetting my name is spelled Aleks'
+  tags:
+  - upset
+  - must_not_react
+  prompt: you keep forgetting my name is spelled Aleks
+  setup:
+    message: you keep forgetting my name is spelled Aleks
+    previous_assistant: Thanks, Alex! I've updated the doc.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: venting-work
+  ticket: 'upset: I''m so stressed, my manager yelled at me today'
+  tags:
+  - upset
+  - must_not_react
+  prompt: I'm so stressed, my manager yelled at me today
+  setup:
+    message: I'm so stressed, my manager yelled at me today
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: scared-results
+  ticket: 'upset: I''m scared about my test results tomorrow'
+  tags:
+  - upset
+  - must_not_react
+  prompt: I'm scared about my test results tomorrow
+  setup:
+    message: I'm scared about my test results tomorrow
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: hate-this
+  ticket: 'upset: I hate how you write these emails, rewrite it like a human'
+  tags:
+  - upset
+  - must_not_react
+  prompt: I hate how you write these emails, rewrite it like a human
+  setup:
+    message: I hate how you write these emails, rewrite it like a human
+    previous_assistant: Dear Sir or Madam, I hope this email finds you well.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: wrong-person
+  ticket: 'upset: you sent it to the wrong person!!'
+  tags:
+  - upset
+  - must_not_react
+  prompt: you sent it to the wrong person!!
+  setup:
+    message: you sent it to the wrong person!!
+    previous_assistant: Email sent to Sam Lee.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: disagree
+  ticket: 'upset: no, I disagree, that''s a terrible idea'
+  tags:
+  - upset
+  - must_not_react
+  prompt: no, I disagree, that's a terrible idea
+  setup:
+    message: no, I disagree, that's a terrible idea
+    previous_assistant: I'd suggest moving the launch to December.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: pay-attention
+  ticket: 'upset: pay attention, I said the blue one'
+  tags:
+  - upset
+  - must_not_react
+  prompt: pay attention, I said the blue one
+  setup:
+    message: pay attention, I said the blue one
+    previous_assistant: I picked the red template.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: terse-redo
+  ticket: 'upset: redo it. properly'
+  tags:
+  - upset
+  - must_not_react
+  prompt: redo it. properly
+  setup:
+    message: redo it. properly
+    previous_assistant: Here's the slide deck outline.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: cancel-and-scold
+  ticket: 'upset: cancel that, you messed it up'
+  tags:
+  - upset
+  - must_not_react
+  prompt: cancel that, you messed it up
+  setup:
+    message: cancel that, you messed it up
+    previous_assistant: I've booked the flight for the 12th.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: not-funny
+  ticket: 'upset: that''s not funny'
+  tags:
+  - upset
+  - must_not_react
+  prompt: that's not funny
+  setup:
+    message: that's not funny
+    previous_assistant: Why did the scarecrow win an award? Because he was outstanding in his field!
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: seriously
+  ticket: 'upset: seriously? you made it worse'
+  tags:
+  - upset
+  - must_not_react
+  prompt: seriously? you made it worse
+  setup:
+    message: seriously? you made it worse
+    previous_assistant: I updated the formatting in the report.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: fuck-off-bug
+  ticket: 'upset: fuck, it crashed again'
+  tags:
+  - upset
+  - must_not_react
+  prompt: fuck, it crashed again
+  setup:
+    message: fuck, it crashed again
+    previous_assistant: The export completed.
+  expected:
+    expect: must_not_react
+    category: upset
+    score:
+      gates:
+      - reaction_expect
+- id: could-you-try-again
+  ticket: 'polite_retry: could you try again?'
+  tags:
+  - polite_retry
+  - may_react
+  prompt: could you try again?
+  setup:
+    message: could you try again?
+    previous_assistant: Sorry, I couldn't reach your calendar just now.
+  expected:
+    expect: may_react
+    category: polite_retry
+    score:
+      gates:
+      - reaction_expect
+- id: please-try-now
+  ticket: 'polite_retry: please try now, I reconnected it'
+  tags:
+  - polite_retry
+  - may_react
+  prompt: please try now, I reconnected it
+  setup:
+    message: please try now, I reconnected it
+    previous_assistant: Gmail isn't connected, so I couldn't read your inbox.
+  expected:
+    expect: may_react
+    category: polite_retry
+    score:
+      gates:
+      - reaction_expect
+- id: try-once-more
+  ticket: 'polite_retry: can you try once more please'
+  tags:
+  - polite_retry
+  - may_react
+  prompt: can you try once more please
+  setup:
+    message: can you try once more please
+    previous_assistant: The search timed out.
+  expected:
+    expect: may_react
+    category: polite_retry
+    score:
+      gates:
+      - reaction_expect
+- id: retry-the-export
+  ticket: 'polite_retry: mind retrying the export?'
+  tags:
+  - polite_retry
+  - may_react
+  prompt: mind retrying the export?
+  setup:
+    message: mind retrying the export?
+    previous_assistant: The export failed with a network error.
+  expected:
+    expect: may_react
+    category: polite_retry
+    score:
+      gates:
+      - reaction_expect
+- id: give-it-another-go
+  ticket: 'polite_retry: give it another go when you can'
+  tags:
+  - polite_retry
+  - may_react
+  prompt: give it another go when you can
+  setup:
+    message: give it another go when you can
+    previous_assistant: I couldn't load that page.
+  expected:
+    expect: may_react
+    category: polite_retry
+    score:
+      gates:
+      - reaction_expect
+- id: them-too
+  ticket: 'follow_up: them too'
+  tags:
+  - follow_up
+  - may_react
+  prompt: them too
+  setup:
+    message: them too
+    previous_assistant: I've invited Ana and Ben to the planning call.
+  expected:
+    expect: may_react
+    category: follow_up
+    score:
+      gates:
+      - reaction_expect
+- id: actually-do-it
+  ticket: 'follow_up: actually do it'
+  tags:
+  - follow_up
+  - may_react
+  prompt: actually do it
+  setup:
+    message: actually do it
+    previous_assistant: I can unsubscribe you from those newsletters if you like.
+  expected:
+    expect: may_react
+    category: follow_up
+    score:
+      gates:
+      - reaction_expect
+- id: same-for-friday
+  ticket: 'follow_up: same for friday'
+  tags:
+  - follow_up
+  - may_react
+  prompt: same for friday
+  setup:
+    message: same for friday
+    previous_assistant: I blocked 9 to 11am on Thursday for deep work.
+  expected:
+    expect: may_react
+    category: follow_up
+    score:
+      gates:
+      - reaction_expect
+- id: and-the-other-one
+  ticket: 'follow_up: and the other one'
+  tags:
+  - follow_up
+  - may_react
+  prompt: and the other one
+  setup:
+    message: and the other one
+    previous_assistant: I've archived the first thread from the landlord.
+  expected:
+    expect: may_react
+    category: follow_up
+    score:
+      gates:
+      - reaction_expect
+- id: send-to-address
+  ticket: 'follow_up: send it to the address in the last email'
+  tags:
+  - follow_up
+  - may_react
+  prompt: send it to the address in the last email
+  setup:
+    message: send it to the address in the last email
+    previous_assistant: The letter is ready as a PDF.
+  expected:
+    expect: may_react
+    category: follow_up
+    score:
+      gates:
+      - reaction_expect
+- id: pasted-article
+  ticket: 'pasted: The quarterly results showed revenue growth of 12 percent ye'
+  tags:
+  - pasted
+  - must_not_react
+  prompt: The quarterly results showed revenue growth of 12 percent year over year, driven primarily by
+    expansion in the enterprise segment. Operating margins compressed slightly due to increased investment
+    in research and development, while customer acquisition costs fell for the third consecutive quarter.
+    Management reiterated full-year guidance and highlighted a strong pipeline heading into the holiday
+    season.
+  setup:
+    message: The quarterly results showed revenue growth of 12 percent year over year, driven primarily
+      by expansion in the enterprise segment. Operating margins compressed slightly due to increased investment
+      in research and development, while customer acquisition costs fell for the third consecutive quarter.
+      Management reiterated full-year guidance and highlighted a strong pipeline heading into the holiday
+      season.
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: pasted
+    score:
+      gates:
+      - reaction_expect
+- id: pasted-log
+  ticket: 'pasted: 2026-03-04 10:22:01 INFO starting worker'
+  tags:
+  - pasted
+  - must_not_react
+  prompt: '2026-03-04 10:22:01 INFO starting worker
+
+    2026-03-04 10:22:03 WARN retrying connection to queue
+
+    2026-03-04 10:22:09 ERROR connection refused after 3 attempts
+
+    2026-03-04 10:22:09 INFO shutting down'
+  setup:
+    message: '2026-03-04 10:22:01 INFO starting worker
+
+      2026-03-04 10:22:03 WARN retrying connection to queue
+
+      2026-03-04 10:22:09 ERROR connection refused after 3 attempts
+
+      2026-03-04 10:22:09 INFO shutting down'
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: pasted
+    score:
+      gates:
+      - reaction_expect
+- id: pasted-recipe
+  ticket: 'pasted: Ingredients: 2 cups flour, 1 cup sugar, 3 eggs, 1 cup milk, '
+  tags:
+  - pasted
+  - must_not_react
+  prompt: 'Ingredients: 2 cups flour, 1 cup sugar, 3 eggs, 1 cup milk, 2 tsp baking powder, pinch of salt.
+    Preheat oven to 180C. Mix dry ingredients, whisk in eggs and milk, pour into a greased tin and bake
+    for 35 minutes.'
+  setup:
+    message: 'Ingredients: 2 cups flour, 1 cup sugar, 3 eggs, 1 cup milk, 2 tsp baking powder, pinch of
+      salt. Preheat oven to 180C. Mix dry ingredients, whisk in eggs and milk, pour into a greased tin
+      and bake for 35 minutes.'
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: pasted
+    score:
+      gates:
+      - reaction_expect
+- id: pasted-email-thread
+  ticket: 'pasted: From: Jordan'
+  tags:
+  - pasted
+  - must_not_react
+  prompt: 'From: Jordan
+
+    Subject: Re: contract
+
+
+    Hi, we reviewed the redlines and accept clauses 2 through 5. Clause 7 on liability still needs work
+    from our side. Let''s aim to sign by the end of the month.
+
+
+    Best,
+
+    Jordan'
+  setup:
+    message: 'From: Jordan
+
+      Subject: Re: contract
+
+
+      Hi, we reviewed the redlines and accept clauses 2 through 5. Clause 7 on liability still needs work
+      from our side. Let''s aim to sign by the end of the month.
+
+
+      Best,
+
+      Jordan'
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: pasted
+    score:
+      gates:
+      - reaction_expect
+- id: pasted-poem
+  ticket: 'pasted: The fog comes on little cat feet. It sits looking over harbo'
+  tags:
+  - pasted
+  - must_not_react
+  prompt: The fog comes on little cat feet. It sits looking over harbor and city on silent haunches and
+    then moves on.
+  setup:
+    message: The fog comes on little cat feet. It sits looking over harbor and city on silent haunches
+      and then moves on.
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: pasted
+    score:
+      gates:
+      - reaction_expect
+- id: good-morning
+  ticket: 'small_talk: good morning!'
+  tags:
+  - small_talk
+  - must_not_react
+  prompt: good morning!
+  setup:
+    message: good morning!
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: small_talk
+    score:
+      gates:
+      - reaction_expect
+- id: lol
+  ticket: 'small_talk: lol'
+  tags:
+  - small_talk
+  - may_react
+  prompt: lol
+  setup:
+    message: lol
+    previous_assistant: Why did the developer go broke? Because he used up all his cache.
+  expected:
+    expect: may_react
+    category: small_talk
+    score:
+      gates:
+      - reaction_expect
+- id: nice-weather
+  ticket: 'small_talk: it''s so nice outside today'
+  tags:
+  - small_talk
+  - must_not_react
+  prompt: it's so nice outside today
+  setup:
+    message: it's so nice outside today
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: small_talk
+    score:
+      gates:
+      - reaction_expect
+- id: just-landed
+  ticket: 'small_talk: just landed in tokyo'
+  tags:
+  - small_talk
+  - must_not_react
+  prompt: just landed in tokyo
+  setup:
+    message: just landed in tokyo
+    previous_assistant: ''
+  expected:
+    expect: must_not_react
+    category: small_talk
+    score:
+      gates:
+      - reaction_expect
+- id: haha-nice
+  ticket: 'small_talk: haha nice'
+  tags:
+  - small_talk
+  - may_react
+  prompt: haha nice
+  setup:
+    message: haha nice
+    previous_assistant: Your playlist now has 200 songs.
+  expected:
+    expect: may_react
+    category: small_talk
+    score:
+      gates:
+      - reaction_expect
