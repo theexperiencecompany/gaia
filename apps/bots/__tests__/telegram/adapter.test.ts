@@ -31,6 +31,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // ---------------------------------------------------------------------------
 
 const mockBotOn = vi.fn();
+const mockBotUse = vi.fn();
 const mockBotCommand = vi.fn();
 const mockBotCatch = vi.fn();
 const mockBotStart = vi.fn();
@@ -45,6 +46,7 @@ const mockSetMessageReaction = vi.fn().mockResolvedValue(true);
 
 const mockBotInstance = {
   on: mockBotOn,
+  use: mockBotUse,
   command: mockBotCommand,
   catch: mockBotCatch,
   start: mockBotStart,
@@ -1855,5 +1857,63 @@ describe("TelegramAdapter - live turn reaction", () => {
 
     await expect(hook("👍", null)).resolves.toBe("no_target");
     expect(react).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Inbound order — one user's updates run one at a time, /stop at once
+// ---------------------------------------------------------------------------
+
+describe("TelegramAdapter - inbound order", () => {
+  type Middleware = (
+    ctx: { from?: { id: number }; message?: { text?: string } },
+    next: () => Promise<void>,
+  ) => unknown;
+
+  /** Feeds updates from one sender through the adapter's queue; the first stays running until release(). */
+  async function deliver(texts: string[]) {
+    vi.clearAllMocks();
+    const adapter = makeAdapter();
+    (
+      adapter as unknown as { registerInboundQueue: () => void }
+    ).registerInboundQueue();
+    const middleware = vi.mocked(mockBotUse).mock.calls[0]?.[0] as Middleware;
+    let release = (): void => undefined;
+    const firstHeld = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const handled: string[] = [];
+    for (const text of texts) {
+      await middleware({ from: { id: 42 }, message: { text } }, async () => {
+        handled.push(text);
+        if (text === texts[0]) await firstHeld;
+      });
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+    return { handled, release };
+  }
+
+  it("does not hold grammY's polling loop on a running turn", async () => {
+    const { handled, release } = await deliver(["do the work"]);
+
+    // The middleware returned while the handler is still running.
+    expect(handled).toEqual(["do the work"]);
+    release();
+  });
+
+  it("handles a /stop behind a held message at once", async () => {
+    const { handled, release } = await deliver(["do the work", "/stop"]);
+
+    expect(handled).toContain("/stop");
+    release();
+  });
+
+  it("keeps a normal message behind the held one", async () => {
+    const { handled, release } = await deliver(["do the work", "and then"]);
+    expect(handled).toEqual(["do the work"]);
+
+    release();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(handled).toEqual(["do the work", "and then"]);
   });
 });

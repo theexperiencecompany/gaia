@@ -31,12 +31,12 @@ from app.models.bot_models import (
     BotAuthStatusResponse,
     BotChatRequest,
     BotRateLimitCardData,
+    BotSessionRequest,
     BotSettingsResponse,
     BotStreamToolCard,
     BotWebStreamPayload,
     IntegrationInfo,
     LinkedUsersResponse,
-    ResetSessionRequest,
     ResetSessionResponse,
     TranscribeAudioResponse,
     UnlinkAccountResponse,
@@ -44,6 +44,7 @@ from app.models.bot_models import (
 from app.models.integration_models import UserIntegrationDocument
 from app.models.payment_models import PlanType
 from app.models.user_models import AuthenticatedUser
+from app.models.work_cancel_models import ConversationStopResponse
 from app.schemas.errors import error_responses
 from app.services.analytics_service import capture
 from app.services.audio_transcription_service import (
@@ -71,6 +72,7 @@ from app.services.bot_service import (
     build_bot_message_request,
     charge_bot_turn,
 )
+from app.services.bot_session_stop import reset_bot_session, stop_bot_session
 from app.services.bot_token_service import create_bot_session_token
 from app.services.chat.stream import run_chat_stream_background
 from app.services.integrations.marketplace import get_integration_details
@@ -710,7 +712,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     summary="Reset Bot Session",
     description="Start a new conversation, archiving the current one.",
 )
-async def reset_session(request: Request, body: ResetSessionRequest) -> ResetSessionResponse:
+async def reset_session(request: Request, body: BotSessionRequest) -> ResetSessionResponse:
     """Archive the current conversation and start a fresh bot session."""
     await require_bot_api_key(request)
     log.set(operation="reset_session", platform=body.platform)
@@ -719,7 +721,7 @@ async def reset_session(request: Request, body: ResetSessionRequest) -> ResetSes
     user_id = user.user_id
     log.set(user={"id": user_id})
 
-    new_conversation_id = await BotService.reset_session(
+    new_conversation_id = await reset_bot_session(
         body.platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
     )
     # Explicit id: bot routes are auth-excluded, so the request context has
@@ -727,6 +729,30 @@ async def reset_session(request: Request, body: ResetSessionRequest) -> ResetSes
     capture(UserId(user_id), BotSessionReset(platform=body.platform))
     log.set(outcome="success")
     return ResetSessionResponse(success=True, conversation_id=new_conversation_id)
+
+
+@router.post(
+    "/stop",
+    summary="Stop Bot Conversation",
+    description="Stop everything the session's conversation is running, keeping the session.",
+)
+async def stop_session(request: Request, body: BotSessionRequest) -> ConversationStopResponse:
+    """Stop the bot session's conversation: its live turn and all its background work."""
+    await require_bot_api_key(request)
+    log.set(operation="stop_session", platform=body.platform)
+
+    user = await _require_linked_bot_caller(request, body.platform, body.platform_user_id)
+    log.set(user={"id": user.user_id})
+
+    result = await stop_bot_session(
+        body.platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
+    )
+    log.set(
+        bot={"conversation_id": result.conversation_id},
+        outcome="success",
+        stopped_work=result.work.stopped_anything,
+    )
+    return result
 
 
 @router.get(

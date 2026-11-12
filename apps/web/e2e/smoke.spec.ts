@@ -1,12 +1,11 @@
 import { expect, test } from "@playwright/test";
 import {
+  COMPOSER_PLACEHOLDER,
   FIRST_SEEDED_TODO,
   SCRIPTED_CHAT_MESSAGE,
   SCRIPTED_REPLY,
   SIM_ENABLED,
 } from "./harness";
-
-const COMPOSER_PLACEHOLDER = "What can I do for you today?";
 
 /**
  * Smoke template for GAIA web e2e. Rides the dev harness — no login, no manual

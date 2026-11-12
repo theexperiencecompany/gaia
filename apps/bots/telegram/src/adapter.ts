@@ -37,6 +37,7 @@ import {
   MEDIA_READ_TIMEOUT_MS,
   type MediaKind,
   type OutboundFile,
+  PerUserInboundQueue,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -192,6 +193,7 @@ export class TelegramAdapter extends BaseBotAdapter {
   private token!: string;
   private botUsername: string | undefined;
   private readonly adapterLogger = createBotLogger("telegram", "adapter");
+  private readonly inbound = new PerUserInboundQueue();
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -207,6 +209,7 @@ export class TelegramAdapter extends BaseBotAdapter {
 
     this.bot = new Bot(this.token);
     this.registerErrorHandler();
+    this.registerInboundQueue();
     // Cache the bot username upfront to avoid calling getMe() on every message
     const botInfo = await this.bot.api.getMe();
     this.botUsername = botInfo.username;
@@ -218,21 +221,42 @@ export class TelegramAdapter extends BaseBotAdapter {
    * with the failure's reason and the hashed sender and chat, like Slack's app.error.
    */
   private registerErrorHandler(): void {
-    this.bot.catch((err) =>
-      withWideEvent(
-        "bot_runtime_error",
-        {
-          platform: this.platform,
-          component: "adapter",
-          user_hash: hashLogIdentifier(err.ctx?.from?.id),
-          channel_hash: hashLogIdentifier(err.ctx?.chat?.id),
-          update_id: err.ctx?.update?.update_id,
-        },
-        async () => {
-          recordBotFailure("telegram_runtime_error", err.error);
-        },
-      ),
+    this.bot.catch((err) => this.recordRuntimeError(err.ctx, err.error));
+  }
+
+  /** Record a failure of the update ctx carries as a failed bot_runtime_error event. */
+  private recordRuntimeError(ctx: Context, error: unknown): Promise<void> {
+    return withWideEvent(
+      "bot_runtime_error",
+      {
+        platform: this.platform,
+        component: "adapter",
+        user_hash: hashLogIdentifier(ctx.from?.id),
+        channel_hash: hashLogIdentifier(ctx.chat?.id),
+        update_id: ctx.update.update_id,
+      },
+      async () => {
+        recordBotFailure("telegram_runtime_error", error);
+      },
     );
+  }
+
+  /**
+   * Hands each update to its sender's queue instead of grammY's polling loop,
+   * which awaits every handler before fetching the next update: a turn held open
+   * by background work then held up every later update, /stop included.
+   */
+  private registerInboundQueue(): void {
+    this.bot.use(async (ctx, next) => {
+      const sender = ctx.from?.id.toString();
+      if (!sender) {
+        await next();
+        return;
+      }
+      void this.inbound
+        .enqueue(sender, ctx.message?.text, () => next())
+        .catch((error: unknown) => this.recordRuntimeError(ctx, error));
+    });
   }
 
   /**

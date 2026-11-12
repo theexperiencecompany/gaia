@@ -301,6 +301,88 @@ describe("TranscriptRecorder — wall-clock stamp", () => {
   });
 });
 
+describe("HarnessAdapter — a burst of inbound messages", () => {
+  /** A gaia whose every stream stays open until the test releases it. */
+  function heldGaia() {
+    const releases: Array<() => void> = [];
+    const gaia = makeGaia({});
+    gaia.chatStream.mockImplementation(
+      async (
+        _req: unknown,
+        _onChunk: unknown,
+        onDone: (full: string, conv: string) => void | Promise<void>,
+      ) => {
+        await new Promise<void>((resolve) => releases.push(resolve));
+        await onDone("reply", "conv-1");
+        return "conv-1";
+      },
+    );
+    return { gaia, releases };
+  }
+
+  function burstAdapter(platform: PlatformName) {
+    const { adapter, recorder } = makeAdapter(platform, {});
+    const held = heldGaia();
+    (adapter as unknown as { gaia: unknown }).gaia = held.gaia;
+    return { adapter, recorder, releases: held.releases };
+  }
+
+  const inboundTexts = (events: readonly TranscriptEvent[]) =>
+    events.flatMap((e) => (e.type === "inbound" ? [e.text] : []));
+  /** Messages whose turn has started: each opens with a typing indicator. */
+  const turnsStarted = (events: readonly TranscriptEvent[]) =>
+    events.filter((e) => e.type === "typing" && e.state === "start").length;
+
+  it.each<PlatformName>(["telegram", "whatsapp"])(
+    "%s takes the second message only after the first one's reply",
+    async (platform) => {
+      const { adapter, recorder, releases } = burstAdapter(platform);
+      const first = adapter.simulateMessage("dev-user-1", "one");
+      const second = adapter.simulateMessage("dev-user-1", "two");
+      await tick();
+      expect(inboundTexts(recorder.getEvents())).toEqual(["one", "two"]);
+      expect(turnsStarted(recorder.getEvents())).toBe(1);
+
+      releases[0]();
+      await first;
+      await tick();
+      expect(turnsStarted(recorder.getEvents())).toBe(2);
+      releases[1]();
+      await second;
+    },
+  );
+
+  it.each<PlatformName>(["slack", "discord"])(
+    "%s takes every message the moment it arrives",
+    async (platform) => {
+      const { adapter, recorder, releases } = burstAdapter(platform);
+      const handled = [
+        adapter.simulateMessage("dev-user-1", "one"),
+        adapter.simulateMessage("dev-user-1", "two"),
+      ];
+      await tick();
+      expect(turnsStarted(recorder.getEvents())).toBe(2);
+      for (const release of releases) release();
+      await Promise.all(handled);
+    },
+  );
+
+  it("still takes the next message after one fails, and reports the failure", async () => {
+    const { adapter, recorder, releases } = burstAdapter("telegram");
+    const boom = new Error("handler crashed");
+    (adapter as unknown as { dispatchCommand: unknown }).dispatchCommand = vi
+      .fn()
+      .mockRejectedValue(boom);
+    const crashing = adapter.simulateMessage("dev-user-1", "/todo");
+    const after = adapter.simulateMessage("dev-user-1", "two");
+    await expect(crashing).rejects.toBe(boom);
+    await tick();
+    expect(turnsStarted(recorder.getEvents())).toBe(1);
+    releases[0]();
+    await after;
+  });
+});
+
 describe("HarnessAdapter — reactions", () => {
   /** A real GaiaClient whose transport replays a comms turn that resolved to a reaction. */
   function reactionTurnGaia(): GaiaClient {

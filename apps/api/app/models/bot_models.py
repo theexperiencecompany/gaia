@@ -158,8 +158,8 @@ class RedeemLinkCodeResponse(BaseModel):
     )
 
 
-class ResetSessionRequest(BaseModel):
-    """Request model for resetting a bot session (starting a new conversation)."""
+class BotSessionRequest(BaseModel):
+    """Names one bot session: a platform user in a DM or in one channel."""
 
     platform: str = Field(..., description="Platform name (discord, slack, etc.)")
     platform_user_id: str = Field(..., description=_PLATFORM_USER_ID_DESC, min_length=1)

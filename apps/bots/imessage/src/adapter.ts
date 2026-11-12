@@ -17,6 +17,7 @@ import {
   MediaReadTimeoutError,
   mediaKindFromMime,
   type OutboundFile,
+  PerUserInboundQueue,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -109,7 +110,7 @@ export class ImessageAdapter extends BaseBotAdapter {
   private imInstance: ImessageInstance | null = null;
 
   private readonly linkedUsers = new Set<string>();
-  private readonly messageQueues = new Map<string, Promise<void>>();
+  private readonly inbound = new PerUserInboundQueue();
   private readonly recentMessageIds = new Set<string>();
   private readonly adapterLogger = createBotLogger("imessage", "adapter");
 
@@ -227,7 +228,7 @@ export class ImessageAdapter extends BaseBotAdapter {
 
     if (content.type === "text" || content.type === "markdown") {
       const text = content.type === "text" ? content.text : content.markdown;
-      this.enqueueForUser(handle, () =>
+      void this.inbound.enqueue(handle, text, () =>
         this.handleIncomingMessage(handle, space, text, message.id).catch(
           (err) =>
             this.adapterLogger.error("incoming_message_processing_failed", {
@@ -241,7 +242,7 @@ export class ImessageAdapter extends BaseBotAdapter {
     }
 
     if (content.type === "attachment" || content.type === "voice") {
-      this.enqueueForUser(handle, () =>
+      void this.inbound.enqueue(handle, undefined, () =>
         this.handleMediaMessage(handle, space, [content]).catch((err) =>
           this.adapterLogger.error("media_message_processing_failed", {
             user_hash: handleHash,
@@ -254,7 +255,7 @@ export class ImessageAdapter extends BaseBotAdapter {
     }
 
     if (content.type === "group") {
-      this.enqueueForUser(handle, () =>
+      void this.inbound.enqueue(handle, undefined, () =>
         this.handleMultiPartMessage(handle, space, content.items).catch((err) =>
           this.adapterLogger.error("multipart_message_processing_failed", {
             user_hash: handleHash,
@@ -267,7 +268,7 @@ export class ImessageAdapter extends BaseBotAdapter {
     }
 
     if (content.type === "contact") {
-      this.enqueueForUser(handle, async () => {
+      void this.inbound.enqueue(handle, undefined, async () => {
         try {
           await this.sendImessageText(
             space,
@@ -282,22 +283,6 @@ export class ImessageAdapter extends BaseBotAdapter {
         }
       });
     }
-  }
-
-  private enqueueForUser(handle: string, fn: () => Promise<void>): void {
-    const previous = this.messageQueues.get(handle) ?? Promise.resolve();
-    const task = previous.catch(() => undefined).then(() => fn());
-    this.messageQueues.set(handle, task);
-    task.then(
-      () => {
-        if (this.messageQueues.get(handle) === task)
-          this.messageQueues.delete(handle);
-      },
-      () => {
-        if (this.messageQueues.get(handle) === task)
-          this.messageQueues.delete(handle);
-      },
-    );
   }
 
   private async handleIncomingMessage(

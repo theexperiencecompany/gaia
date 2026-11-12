@@ -238,6 +238,15 @@ export const chatApi = {
     });
   },
 
+  // Stop everything the conversation runs: its live turn, executor, subagents, approvals, browser job
+  stopConversation: async (conversationId: string): Promise<void> => {
+    await api.post("/api/v1/conversations/{conversation_id}/stop", {
+      path: { conversation_id: conversationId },
+      silent: true,
+      errorMessage: "Failed to stop the conversation",
+    });
+  },
+
   // Delete conversation
   deleteConversation: async (conversationId: string): Promise<void> => {
     await api.delete("/api/v1/conversations/{conversation_id}", {

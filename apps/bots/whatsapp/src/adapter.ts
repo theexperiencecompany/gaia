@@ -34,6 +34,7 @@ import {
   MEDIA_READ_TIMEOUT_MS,
   type OutboundFile,
   type OutboundNotifications,
+  PerUserInboundQueue,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -146,11 +147,10 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    */
   private readonly linkedUsers = new Set<string>();
   /**
-   * Per-user message processing queue. Serializes handleIncomingMessage calls for
-   * the same waId so rapid messages or batched webhook deliveries never run in
-   * parallel — eliminates overlapping typing states and interleaved replies.
+   * One user's messages run one at a time, in order, so rapid messages or batched
+   * webhook deliveries never interleave typing states or replies; /stop skips it.
    */
-  private readonly messageQueues = new Map<string, Promise<void>>();
+  private readonly inbound = new PerUserInboundQueue();
   private readonly adapterLogger = createBotLogger("whatsapp", "adapter");
 
   private get whatsAppClient(): WhatsAppClient {
@@ -424,7 +424,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     // Enqueue per user — webhook returns 200 immediately while processing is
     // serialized: messages from the same user run one at a time, in order.
     if (text) {
-      this.enqueueForUser(waId, () =>
+      void this.inbound.enqueue(waId, text, () =>
         this.handleIncomingMessage(waId, text, msgId).catch((err) =>
           this.adapterLogger.error("incoming_message_processing_failed", {
             user_hash: waIdHash,
@@ -442,7 +442,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     if (!media) {
       // No usable media descriptor (sticker without id, unknown type, etc.)
       // Fall back to the friendly rejection.
-      this.enqueueForUser(waId, async () => {
+      void this.inbound.enqueue(waId, undefined, async () => {
         try {
           await this.sendWhatsAppText(
             waId,
@@ -459,7 +459,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       return;
     }
 
-    this.enqueueForUser(waId, () =>
+    void this.inbound.enqueue(waId, undefined, () =>
       this.handleMediaMessage(waId, media, msgId).catch((err) =>
         this.adapterLogger.error("media_message_processing_failed", {
           user_hash: waIdHash,
@@ -583,29 +583,6 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   // ---------------------------------------------------------------------------
   // Message handling
   // ---------------------------------------------------------------------------
-
-  /**
-   * Serializes message processing per user. Chains the new task onto the tail of
-   * the existing promise for this waId so messages are always handled one at a
-   * time, in order. Cleans up the map entry once the task settles.
-   */
-  private enqueueForUser(waId: string, fn: () => Promise<void>): void {
-    const previous = this.messageQueues.get(waId) ?? Promise.resolve();
-    const task = previous
-      .catch(() => undefined) // previous failure must not block the queue
-      .then(() => fn());
-    this.messageQueues.set(waId, task);
-    task.then(
-      () => {
-        if (this.messageQueues.get(waId) === task)
-          this.messageQueues.delete(waId);
-      },
-      () => {
-        if (this.messageQueues.get(waId) === task)
-          this.messageQueues.delete(waId);
-      },
-    );
-  }
 
   /**
    * Dispatch an incoming WhatsApp message to the appropriate handler. Shows a
