@@ -1370,6 +1370,9 @@ html {
   --gaia-slider-sm-track: 0.25rem;
   --gaia-slider-sm-thumb: 1.25rem;
   --gaia-slider-sm-thumb-inner: 1rem;
+  /* tailwind indigo-300 and indigo-400 (quiet hours) */
+  --gaia-slider-indigo-thumb: oklch(78.5% 0.115 274.713);
+  --gaia-slider-indigo-fill: color-mix(in oklab, oklch(67.3% 0.182 276.935) 70%, transparent);
 }
 
 @layer gaia {
@@ -1729,6 +1732,13 @@ html {
   .slider.gaia-slider-sm .slider__thumb::after {
     width: var(--gaia-slider-sm-thumb-inner);
     height: var(--gaia-slider-sm-thumb-inner);
+  }
+  .slider.gaia-slider-indigo .slider__fill {
+    background-color: var(--gaia-slider-indigo-fill);
+  }
+  .slider.gaia-slider-indigo .slider__thumb,
+  .slider.gaia-slider-indigo .slider__thumb::after {
+    background-color: var(--gaia-slider-indigo-thumb);
   }
 
   /* Modal: v2's section rhythm. The dialog has no padding of its own; the
