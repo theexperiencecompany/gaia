@@ -144,3 +144,65 @@ class TestSignalClaims:
 
         assert voiced_signals(message, [_REVIEW, _TICKET]) == [_REVIEW, _TICKET]
         assert voiced_signals("Nothing from your apps today.", [_REVIEW, _TICKET]) == []
+
+
+_DEPLOY = Signal(
+    integration_id="linear",
+    app="Linear",
+    external_id="OPS-1",
+    kind="issue assigned to you",
+    title="Review API deployment",
+)
+_BACKUP = Signal(
+    integration_id="linear",
+    app="Linear",
+    external_id="OPS-2",
+    kind="issue assigned to you",
+    title="Review database backup",
+    importance=SignalImportance.HIGH,
+)
+
+
+@pytest.mark.unit
+class TestASignalIsSpokenOfOnlyWhenIdentified:
+    def test_a_word_every_signal_shares_does_not_cover_the_important_one(self) -> None:
+        problems = message_contradictions(
+            "Review the deployment before lunch.",
+            _payload(),
+            _NOTHING_SHOWN,
+            context="",
+            require_coverage=True,
+            signals=[_DEPLOY, _BACKUP],
+        )
+
+        assert problems == [
+            "the message never mentions 'Review database backup' in Linear, which is important"
+        ]
+
+    def test_a_word_every_signal_shares_does_not_mark_the_other_shown(self) -> None:
+        assert voiced_signals("Review the deployment before lunch.", [_DEPLOY, _BACKUP]) == [
+            _DEPLOY
+        ]
+
+    def test_the_signals_exact_link_covers_it_under_any_words(self) -> None:
+        assert _signal_problems(f"[That PR]({_REVIEW.url}) first.") == []
+
+    def test_a_link_that_only_starts_with_the_signals_link_is_not_it(self) -> None:
+        message = f"[That PR]({_REVIEW.url}0) first."
+
+        assert voiced_signals(message, [_REVIEW]) == []
+
+    def test_titles_sharing_every_word_need_all_of_them_said(self) -> None:
+        rollback = Signal(
+            integration_id="linear",
+            app="Linear",
+            external_id="OPS-3",
+            kind="issue assigned to you",
+            title="Review API deployment rollback",
+        )
+
+        assert voiced_signals("The rollback is ready.", [_DEPLOY, rollback]) == [rollback]
+        assert voiced_signals("Review the API deployment rollback.", [_DEPLOY, rollback]) == [
+            _DEPLOY,
+            rollback,
+        ]
