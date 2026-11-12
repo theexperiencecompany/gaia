@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Description,
   FieldError,
   Input,
@@ -18,6 +17,7 @@ import {
   tabsVariants,
 } from "@/components/shared/controlVariants";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { toast } from "@/lib/toast";
@@ -181,19 +181,18 @@ function SkillEditorFooter({
 }>) {
   return (
     <Modal.Footer>
-      <Button variant="ghost" className="rounded-xl" onPress={onClose}>
+      <GaiaButton variant="ghost" onPress={onClose}>
         {isWriting ? "Cancel" : "Done"}
-      </Button>
+      </GaiaButton>
       {isWriting && (
-        <Button
-          className="rounded-xl"
+        <GaiaButton
           onPress={onSave}
           isPending={isSaving}
           isDisabled={!isValid}
           variant="primary"
         >
           {isEdit ? "Save changes" : "Create skill"}
-        </Button>
+        </GaiaButton>
       )}
     </Modal.Footer>
   );

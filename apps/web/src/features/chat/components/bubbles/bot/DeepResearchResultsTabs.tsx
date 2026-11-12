@@ -40,14 +40,11 @@ export default function DeepResearchResultsTabs({
   return (
     <div className="w-full">
       <Accordion
-        className="w-full max-w-(--breakpoint-sm) px-0"
+        className="w-full max-w-(--breakpoint-sm)"
         expandedKeys={isExpanded ? ["1"] : []}
         onExpandedChange={(keys) => setIsExpanded(keys.has("1"))}
       >
-        <Accordion.Item
-          id="1"
-          className="w-screen max-w-(--breakpoint-sm) px-0"
-        >
+        <Accordion.Item id="1" className="w-screen max-w-(--breakpoint-sm)">
           <Accordion.Heading>
             <Accordion.Trigger
               aria-label="Deep Research Results"

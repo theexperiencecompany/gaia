@@ -4,6 +4,7 @@ import { Accordion, AccordionItem, Chip, Separator } from "@heroui/react";
 import { AiWebBrowsingIcon, Alert01Icon, CheckmarkCircle02Icon } from "@icons";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
+import { toneVariants } from "@/components/shared/tone";
 import { BrowserStatusChip } from "@/features/browser/components/BrowserStatusChip";
 import { useLiveView } from "@/features/browser/hooks/useLiveView";
 import { useBrowserPanel } from "@/features/browser/stores/browserPanelStore";
@@ -12,6 +13,7 @@ import { browserCardPhase, foldBrowserTask } from "@/features/browser/utils";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import {
   ACCORDION_INDICATOR,
+  ACCORDION_PANEL_COMPACT,
   ACCORDION_TRIGGER_COMPACT,
 } from "@/lib/heroui/accordionParity";
 import { useLayoutSidebar } from "@/stores/layoutStore";
@@ -105,7 +107,7 @@ function StepsAccordion({
   currentTask: string | undefined;
 }) {
   return (
-    <Accordion className="px-0">
+    <Accordion>
       <AccordionItem key="steps" id="steps">
         <Accordion.Heading>
           <Accordion.Trigger className={ACCORDION_TRIGGER_COMPACT}>
@@ -114,7 +116,12 @@ function StepsAccordion({
                 Steps
               </span>
               <Chip size="sm" variant="soft" className="h-5 bg-zinc-700">
-                <Chip.Label className="px-1.5 text-xs text-zinc-300">
+                <Chip.Label
+                  className={toneVariants({
+                    tone: "dim",
+                    className: "text-xs",
+                  })}
+                >
                   {steps.length}
                 </Chip.Label>
               </Chip>
@@ -127,7 +134,7 @@ function StepsAccordion({
             <Accordion.Indicator className={ACCORDION_INDICATOR} />
           </Accordion.Trigger>
         </Accordion.Heading>
-        <Accordion.Panel className="space-y-2 pt-1 pb-2">
+        <Accordion.Panel className={`space-y-2 ${ACCORDION_PANEL_COMPACT}`}>
           {steps.map((step) => (
             <StepRow key={`browser-step-${step.index}`} step={step} />
           ))}

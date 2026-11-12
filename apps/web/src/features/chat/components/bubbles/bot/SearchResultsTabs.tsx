@@ -236,10 +236,7 @@ function SourcesButton({ web }: SourcesButtonProps) {
           </div>
           <span className="font-medium text-zinc-300">Search Results</span>
         </GaiaButton>
-        <Popover.Content
-          placement="top"
-          className="bg-transparent p-0! shadow-none"
-        >
+        <Popover.Content placement="top" className="bg-transparent shadow-none">
           <WebResults web={web} />
         </Popover.Content>
       </Popover>

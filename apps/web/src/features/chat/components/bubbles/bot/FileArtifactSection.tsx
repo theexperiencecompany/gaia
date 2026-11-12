@@ -1,4 +1,4 @@
-import { Button, Card, Chip } from "@heroui/react";
+import { Card, Chip } from "@heroui/react";
 import { CodeIcon, Download01Icon, File01Icon } from "@icons";
 import { formatFileSize } from "@shared/utils";
 import type React from "react";
@@ -151,7 +151,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
         className="group cursor-pointer border border-zinc-700/80 bg-zinc-900/70 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
         onClick={handleOpen}
       >
-        <Card.Content className="p-3.5">
+        <Card.Content>
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 flex-1 items-center gap-2.5">
               <div className="flex-shrink-0">
@@ -192,16 +192,16 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
               >
                 Open
               </GaiaButton>
-              <Button
+              <GaiaButton
                 isIconOnly
                 size="sm"
                 variant="ghost"
-                className="text-zinc-300 group-hover:text-white"
+                tone="dim"
                 onPress={handleDownload}
                 aria-label="Download artifact"
               >
                 <Download01Icon size={16} />
-              </Button>
+              </GaiaButton>
             </div>
           </div>
         </Card.Content>

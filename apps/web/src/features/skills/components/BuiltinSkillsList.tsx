@@ -104,12 +104,7 @@ export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
             trailing={
               group.connected ? undefined : (
                 <div className="flex shrink-0 items-center gap-2">
-                  <Chip
-                    size="sm"
-                    variant="soft"
-                    color="warning"
-                    className="bg-warning/15"
-                  >
+                  <Chip size="sm" variant="soft" color="warning">
                     <Chip.Label className="text-xs font-medium">
                       Not connected
                     </Chip.Label>

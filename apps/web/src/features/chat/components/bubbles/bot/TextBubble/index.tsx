@@ -177,9 +177,7 @@ function BubbleContent({
       {!!disclaimer && showDisclaimer && (
         <Chip color="warning" size="sm" variant="soft">
           <Alert01Icon className="text-warning-500" height={17} />
-          <Chip.Label className="text-xs font-medium text-warning-500">
-            {disclaimer}
-          </Chip.Label>
+          <Chip.Label className="text-xs font-medium">{disclaimer}</Chip.Label>
         </Chip>
       )}
     </div>

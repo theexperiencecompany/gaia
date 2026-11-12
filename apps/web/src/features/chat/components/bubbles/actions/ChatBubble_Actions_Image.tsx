@@ -1,4 +1,4 @@
-import { Button, Tooltip } from "@heroui/react";
+import { Tooltip } from "@heroui/react";
 import { Cancel01Icon, DownloadSquare01Icon } from "@icons";
 import type React from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -68,16 +68,17 @@ export default function ChatBubble_Actions_Image({
         </GaiaButton>
       ) : null}
       <Tooltip>
-        <Button
-          className={`w-fit ${fullWidth ? "px-3 py-2" : "bg-transparent p-0 text-zinc-500 data-[hover=true]:bg-transparent"} h-fit rounded-lg`}
+        <GaiaButton
+          className={fullWidth ? "w-fit" : "w-fit h-fit"}
           isIconOnly={!fullWidth}
           style={{ minWidth: "22px" }}
           variant={fullWidth ? "primary" : "ghost"}
+          tone={fullWidth ? "default" : "faint"}
           onPress={downloadFromSrc}
         >
           <DownloadSquare01Icon className={`cursor-pointer`} height="22" />
           <span className="text-black">{fullWidth ? "Download" : ""}</span>
-        </Button>
+        </GaiaButton>
         <Tooltip.Content
           className={fullWidth ? "hidden" : ""}
           placement="right"

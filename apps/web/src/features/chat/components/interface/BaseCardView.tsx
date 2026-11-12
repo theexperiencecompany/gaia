@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Dropdown, Header, Separator, Tooltip } from "@heroui/react";
+import { Dropdown, Header, Separator, Tooltip } from "@heroui/react";
 import {
   ArrowUpRight01Icon,
   RedoIcon,
@@ -10,6 +10,7 @@ import {
 import type React from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { IntegrationConnectCard } from "@/components/shared/IntegrationConnectCard";
+import { toneVariants } from "@/components/shared/tone";
 
 export interface CardAction {
   key: string;
@@ -77,20 +78,21 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
           <h2 className="font-medium text-zinc-300">{title}</h2>
           {onRefresh && isConnected && (
             <Tooltip>
-              <Button
+              <GaiaButton
                 isIconOnly
                 size="sm"
                 variant="ghost"
                 onPress={onRefresh}
                 isDisabled={isFetching}
-                className="min-w-0 text-zinc-400 transition-colors duration-200 hover:bg-zinc-800"
+                tone="muted"
+                className="min-w-0 transition-colors duration-200"
               >
                 <div
                   className={`transition-transform duration-500 ${isFetching ? "animate-spin" : "hover:rotate-180"}`}
                 >
                   <RedoIcon className="h-4 w-4" />
                 </div>
-              </Button>
+              </GaiaButton>
               <Tooltip.Content placement="bottom" showArrow>
                 Refresh
               </Tooltip.Content>
@@ -98,7 +100,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
           )}
         </div>
         {hasMenu && (
-          <Dropdown className="text-foreground">
+          <Dropdown>
             <GaiaButton
               size="sm"
               variant="default-soft"
@@ -112,7 +114,12 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
               <Dropdown.Menu aria-label={`${title} actions`} className="w-100">
                 {hasActions ? (
                   <Dropdown.Section id="ask-gaia">
-                    <Header className="px-2 py-1 text-xs text-zinc-500">
+                    <Header
+                      className={toneVariants({
+                        tone: "faint",
+                        className: "text-xs",
+                      })}
+                    >
                       Ask GAIA
                     </Header>
                     {actions.map((action) => (
@@ -143,7 +150,12 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                 {hasActions && path ? <Separator /> : null}
                 {path ? (
                   <Dropdown.Section id="navigation">
-                    <Header className="px-2 py-1 text-xs text-zinc-500">
+                    <Header
+                      className={toneVariants({
+                        tone: "faint",
+                        className: "text-xs",
+                      })}
+                    >
                       Navigation
                     </Header>
                     <Dropdown.Item
@@ -192,13 +204,13 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                     Connect your account to view {title.toLowerCase()}
                   </p>
                   {onConnect && (
-                    <Button
+                    <GaiaButton
                       variant="tertiary"
                       size="sm"
                       onPress={() => onConnect(connectIntegrationId || "")}
                     >
                       {connectButtonText}
-                    </Button>
+                    </GaiaButton>
                   )}
                 </>
               )}

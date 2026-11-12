@@ -1,6 +1,6 @@
-import { Button } from "@heroui/react";
 import * as m from "motion/react-m";
 
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useVoiceSession } from "@/features/chat/components/voice-agent/VoiceSessionContext";
 import { useAppendToInput } from "@/stores/composerStore";
 
@@ -56,15 +56,16 @@ export default function FollowUpActions({
             visible: { opacity: 1, y: 0 },
           }}
         >
-          <Button
-            className="text-xs text-foreground-500 outline-1 outline-zinc-700 transition-colors outline-dashed hover:bg-zinc-700 hover:text-foreground-700"
+          <GaiaButton
+            className="text-xs outline-1 outline-zinc-700 transition-colors outline-dashed"
             variant="ghost"
+            tone="muted"
             size="sm"
             onPress={() => handleActionClick(action)}
             isDisabled={loading}
           >
             {action}
-          </Button>
+          </GaiaButton>
         </m.div>
       ))}
     </m.div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, InputGroup, Skeleton, TextField } from "@heroui/react";
+import { InputGroup, Skeleton, TextField } from "@heroui/react";
 import {
   AiBrain01Icon,
   ArrowLeft01Icon,
@@ -101,25 +101,23 @@ export function MemoryList({ onChanged }: MemoryListProps) {
         </TextField>
         <div className="flex-1" />
         {totalCount > 0 && (
-          <Button
+          <GaiaButton
             variant="danger-soft"
             size="sm"
-            className="rounded-xl"
             isPending={isClearing}
             onPress={handleClearAll}
           >
             Clear all
-          </Button>
+          </GaiaButton>
         )}
-        <Button
+        <GaiaButton
           size="sm"
-          className="rounded-xl"
           onPress={() => setIsAddModalOpen(true)}
           variant="primary"
         >
           <PlusSignIcon className="size-4" />
           Add memory
-        </Button>
+        </GaiaButton>
       </div>
 
       {list.loading ? (

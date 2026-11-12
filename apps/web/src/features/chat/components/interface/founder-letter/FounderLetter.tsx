@@ -237,7 +237,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
           if (!open) closeLetter();
         }}
       >
-        <Modal.Backdrop className="bg-black/70 backdrop-blur-sm">
+        <Modal.Backdrop variant="blur">
           <Modal.Container className="items-center justify-center p-3 sm:p-6">
             <Modal.Dialog
               aria-label="A letter from Aryan Randeriya"

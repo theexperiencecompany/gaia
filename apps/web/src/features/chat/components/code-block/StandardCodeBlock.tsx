@@ -1,8 +1,8 @@
-import { Button } from "@heroui/react";
 import { Copy01Icon, Tick02Icon } from "@icons";
 import type React from "react";
 import { PrismAsyncLight } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 import DownloadButton from "./DownloadButton";
 import { getLanguageIcon } from "./languageIcons";
@@ -41,8 +41,9 @@ const StandardCodeBlock: React.FC<StandardCodeBlockProps> = ({
               content={String(children)}
               language={match ? match[1] : undefined}
             />
-            <Button
-              className="text-xs text-zinc-400 hover:text-gray-300"
+            <GaiaButton
+              className="text-xs"
+              tone="muted"
               size="sm"
               isIconOnly
               variant="ghost"
@@ -53,7 +54,7 @@ const StandardCodeBlock: React.FC<StandardCodeBlockProps> = ({
               ) : (
                 <Copy01Icon width={18} height={18} />
               )}
-            </Button>
+            </GaiaButton>
           </div>
         </div>
       )}

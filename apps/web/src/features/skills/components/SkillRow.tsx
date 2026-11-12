@@ -1,7 +1,9 @@
 "use client";
 
-import { Button, Chip, Switch } from "@heroui/react";
+import { Chip, Switch } from "@heroui/react";
 import { Delete02Icon, Link04Icon, PencilEdit02Icon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { Skill, SkillTarget } from "../api/types";
 import { EXECUTOR_TARGET } from "../constants";
@@ -42,17 +44,18 @@ export function SkillRow({
         <div className="flex items-center gap-2">
           <p className="truncate text-sm text-zinc-100">{skill.name}</p>
           {showTarget && isScoped && targetMeta && (
-            <Chip
-              size="sm"
-              variant="soft"
-              className="h-5 shrink-0 gap-1 bg-zinc-800 pl-1.5"
-            >
+            <Chip size="sm" variant="secondary" className="h-5 shrink-0 gap-1">
               <SkillTargetIcon
                 value={targetMeta.value}
                 icon={targetMeta.icon}
                 size={12}
               />
-              <Chip.Label className="px-1 text-xs text-zinc-400">
+              <Chip.Label
+                className={toneVariants({
+                  tone: "muted",
+                  className: "text-xs",
+                })}
+              >
                 {targetMeta.label}
               </Chip.Label>
             </Chip>
@@ -70,8 +73,8 @@ export function SkillRow({
           <a href={skill.source_url} target="_blank" rel="noopener noreferrer">
             <Chip
               size="sm"
-              variant="soft"
-              className="h-6 shrink-0 cursor-pointer gap-1 bg-zinc-800 pl-2 data-[hover=true]:bg-zinc-700"
+              variant="secondary"
+              className="h-6 shrink-0 cursor-pointer gap-1"
             >
               {skill.source === "github" ? (
                 getToolCategoryIcon("github", {
@@ -83,7 +86,12 @@ export function SkillRow({
               ) : (
                 <Link04Icon className="size-3.5 text-zinc-300" />
               )}
-              <Chip.Label className="px-1 text-xs text-zinc-400">
+              <Chip.Label
+                className={toneVariants({
+                  tone: "muted",
+                  className: "text-xs",
+                })}
+              >
                 {skill.source === "github" ? "GitHub" : "Source"}
               </Chip.Label>
             </Chip>
@@ -92,7 +100,7 @@ export function SkillRow({
 
       <div className="flex shrink-0 items-center gap-1">
         <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          <Button
+          <GaiaButton
             isIconOnly
             size="sm"
             variant="ghost"
@@ -100,8 +108,8 @@ export function SkillRow({
             onPress={() => onEdit(skill)}
           >
             <PencilEdit02Icon className="size-4 text-zinc-400" />
-          </Button>
-          <Button
+          </GaiaButton>
+          <GaiaButton
             isIconOnly
             size="sm"
             variant="ghost"
@@ -110,7 +118,7 @@ export function SkillRow({
             onPress={() => onDelete(skill)}
           >
             <Delete02Icon className="size-4" />
-          </Button>
+          </GaiaButton>
         </div>
         <Switch
           size="sm"

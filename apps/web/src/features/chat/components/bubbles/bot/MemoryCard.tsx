@@ -14,6 +14,7 @@ import type { MemoryEntry } from "@shared/api/generated";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import type { MemoryData } from "@/config/registries/toolRegistry";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { CORE_DOCUMENTS } from "@/features/memory/constants";
@@ -143,7 +144,9 @@ function SearchSection({
           </div>
         )}
         <Chip size="sm" variant="soft" className="ml-auto">
-          <Chip.Label className="text-xs text-zinc-400">
+          <Chip.Label
+            className={toneVariants({ tone: "muted", className: "text-xs" })}
+          >
             {item.memories.length} result{item.memories.length === 1 ? "" : "s"}
           </Chip.Label>
         </Chip>

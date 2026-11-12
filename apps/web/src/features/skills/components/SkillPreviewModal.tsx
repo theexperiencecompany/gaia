@@ -1,7 +1,8 @@
 "use client";
 
-import { Button, Modal } from "@heroui/react";
+import { Modal } from "@heroui/react";
 import { modalVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { SkillTargetIcon } from "./SkillTargetIcon";
 
@@ -76,13 +77,9 @@ export function SkillPreviewModal({
                   )}
                 </Modal.Body>
                 <Modal.Footer>
-                  <Button
-                    variant="ghost"
-                    className="rounded-xl"
-                    onPress={onClose}
-                  >
+                  <GaiaButton variant="ghost" onPress={onClose}>
                     Close
-                  </Button>
+                  </GaiaButton>
                 </Modal.Footer>
               </>
             )}

@@ -53,20 +53,22 @@ export function VoiceCustomizePopover() {
       <Popover.Content
         placement="top end"
         offset={12}
-        className="w-[30rem] max-w-[calc(100vw-2rem)] p-2"
+        className="w-[30rem] max-w-[calc(100vw-2rem)]"
       >
-        <VoiceTable
-          aria-label="Choose a voice"
-          showLanguage={false}
-          showPreview={false}
-          inlineGender
-          wrapText
-          onSelect={applyLiveVoice}
-          classNames={{
-            base: "max-h-[60vh] overflow-y-auto overflow-x-hidden",
-            wrapper: "p-0 shadow-none bg-transparent",
-          }}
-        />
+        <div className="p-2">
+          <VoiceTable
+            aria-label="Choose a voice"
+            showLanguage={false}
+            showPreview={false}
+            inlineGender
+            wrapText
+            onSelect={applyLiveVoice}
+            classNames={{
+              base: "max-h-[60vh] overflow-y-auto overflow-x-hidden",
+              wrapper: "p-0 shadow-none bg-transparent",
+            }}
+          />
+        </div>
       </Popover.Content>
     </Popover>
   );

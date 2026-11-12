@@ -1,4 +1,4 @@
-import { Button, Tooltip } from "@heroui/react";
+import { Tooltip } from "@heroui/react";
 import {
   Copy01Icon,
   LinkBackwardIcon,
@@ -8,6 +8,7 @@ import {
   ThumbsUpIcon,
 } from "@icons";
 import { useParams } from "next/navigation";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { copyWithFeedback } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
@@ -95,10 +96,11 @@ export default function ChatBubble_Actions({
       {!loading && (
         <div className="flex w-fit items-center">
           <Tooltip>
-            <Button
+            <GaiaButton
               isIconOnly
-              className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+              className="aspect-square size-7.5 min-w-7.5"
               variant="ghost"
+              tone="faint"
               onPress={handleReply}
             >
               <LinkBackwardIcon
@@ -106,42 +108,45 @@ export default function ChatBubble_Actions({
                 height="18"
                 width="18"
               />
-            </Button>
+            </GaiaButton>
             <Tooltip.Content placement="bottom">Reply</Tooltip.Content>
           </Tooltip>
 
           <Tooltip>
-            <Button
+            <GaiaButton
               isIconOnly
-              className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+              className="aspect-square size-7.5 min-w-7.5"
               variant="ghost"
+              tone="faint"
               onPress={copyToClipboard}
             >
               <Copy01Icon className="cursor-pointer" height="20" width="20" />
-            </Button>
+            </GaiaButton>
             <Tooltip.Content placement="bottom">
               Copy to clipboard
             </Tooltip.Content>
           </Tooltip>
 
           <Tooltip>
-            <Button
+            <GaiaButton
               isIconOnly
-              className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+              className="aspect-square size-7.5 min-w-7.5"
               variant="ghost"
+              tone="faint"
               onPress={handlePinToggle}
             >
               <PinIcon className={`cursor-pointer`} height="20" width="20" />
-            </Button>
+            </GaiaButton>
             <Tooltip.Content placement="bottom">Pin message</Tooltip.Content>
           </Tooltip>
 
           {messageRole === "assistant" && (
             <Tooltip>
-              <Button
+              <GaiaButton
                 isIconOnly
-                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+                className="aspect-square size-7.5 min-w-7.5"
                 variant="ghost"
+                tone="faint"
                 onPress={handleThumbsUp}
               >
                 <ThumbsUpIcon
@@ -149,7 +154,7 @@ export default function ChatBubble_Actions({
                   height="20"
                   width="20"
                 />
-              </Button>
+              </GaiaButton>
               <Tooltip.Content placement="bottom">
                 Helpful response
               </Tooltip.Content>
@@ -158,10 +163,11 @@ export default function ChatBubble_Actions({
 
           {messageRole === "assistant" && (
             <Tooltip>
-              <Button
+              <GaiaButton
                 isIconOnly
-                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+                className="aspect-square size-7.5 min-w-7.5"
                 variant="ghost"
+                tone="faint"
                 onPress={handleThumbsDown}
               >
                 <ThumbsDownIcon
@@ -169,24 +175,25 @@ export default function ChatBubble_Actions({
                   height="20"
                   width="20"
                 />
-              </Button>
+              </GaiaButton>
               <Tooltip.Content placement="bottom">Not helpful</Tooltip.Content>
             </Tooltip>
           )}
 
           {onRetry && (
             <Tooltip>
-              <Button
+              <GaiaButton
                 isIconOnly
                 isDisabled={isRetrying}
-                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+                className="aspect-square size-7.5 min-w-7.5"
                 variant="ghost"
+                tone="faint"
                 onPress={onRetry}
               >
                 <div className={isRetrying ? "animate-spin" : ""}>
                   <RedoIcon className="cursor-pointer" height="18" width="18" />
                 </div>
-              </Button>
+              </GaiaButton>
               <Tooltip.Content placement="bottom">Retry</Tooltip.Content>
             </Tooltip>
           )}

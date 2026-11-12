@@ -27,7 +27,7 @@ export function SkillTargetSelect({
       onChange={(key) => key != null && onChange(String(key))}
     >
       <Label>Runs in</Label>
-      <Select.Trigger className="rounded-xl bg-zinc-800">
+      <Select.Trigger>
         {selected && (
           <SkillTargetIcon
             value={selected.value}

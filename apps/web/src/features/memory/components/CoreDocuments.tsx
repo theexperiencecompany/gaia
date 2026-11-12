@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Separator, Skeleton, Tabs, TextArea } from "@heroui/react";
+import { Separator, Skeleton, Tabs, TextArea } from "@heroui/react";
 import { FileEmpty02Icon, PencilEdit02Icon } from "@icons";
 import type { MemoryDocType, MemoryDocument } from "@shared/api/generated";
 import { formatDistanceToNow } from "date-fns";
@@ -121,23 +121,17 @@ export function CoreDocuments() {
           autoFocus
         />
         <div className="flex justify-end gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="rounded-xl"
-            onPress={() => setDraft(null)}
-          >
+          <GaiaButton size="sm" variant="ghost" onPress={() => setDraft(null)}>
             Cancel
-          </Button>
-          <Button
+          </GaiaButton>
+          <GaiaButton
             size="sm"
-            className="rounded-xl"
             onPress={handleSave}
             isPending={isSaving}
             variant="primary"
           >
             Save
-          </Button>
+          </GaiaButton>
         </div>
       </div>
     );

@@ -1,10 +1,12 @@
 "use client";
 
-import { Button, Chip, Spinner, Tooltip } from "@heroui/react";
+import { Chip, Spinner, Tooltip } from "@heroui/react";
 import { Delete02Icon, PencilEdit02Icon } from "@icons";
 import type { MemoryEntry } from "@shared/api/generated";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { cn } from "@/lib/utils";
 
@@ -56,12 +58,14 @@ export function MemoryRow({
   return (
     <div className="group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-white/5">
       <Tooltip closeDelay={0}>
-        <Tooltip.Trigger
-          className={cn(
-            "mt-1.5 size-2 shrink-0 rounded-full",
-            importanceColor(memory.importance),
-          )}
-        />
+        <Tooltip.Trigger className="mt-1.5 shrink-0">
+          <span
+            className={cn(
+              "block size-2 rounded-full",
+              importanceColor(memory.importance),
+            )}
+          />
+        </Tooltip.Trigger>
         <Tooltip.Content placement="left">
           {`Importance ${Math.round(memory.importance * 100)}%`}
         </Tooltip.Content>
@@ -76,8 +80,13 @@ export function MemoryRow({
             </span>
           )}
           {showCategory && memory.category_path && (
-            <Chip size="sm" variant="soft" className="h-5 bg-zinc-800">
-              <Chip.Label className="px-1.5 text-xs text-zinc-400">
+            <Chip size="sm" variant="secondary" className="h-5">
+              <Chip.Label
+                className={toneVariants({
+                  tone: "muted",
+                  className: "text-xs",
+                })}
+              >
                 {memory.category_path}
               </Chip.Label>
             </Chip>
@@ -85,11 +94,16 @@ export function MemoryRow({
           {memory.version > 1 && (
             <Chip
               size="sm"
-              variant="soft"
+              variant="secondary"
               onClick={toggleHistory}
-              className="h-5 cursor-pointer bg-zinc-800 data-[hover=true]:bg-zinc-700"
+              className="h-5 cursor-pointer"
             >
-              <Chip.Label className="px-1.5 text-xs text-zinc-400">
+              <Chip.Label
+                className={toneVariants({
+                  tone: "muted",
+                  className: "text-xs",
+                })}
+              >
                 v{memory.version}
                 {expanded ? " · hide history" : " · history"}
               </Chip.Label>
@@ -133,7 +147,7 @@ export function MemoryRow({
       </div>
 
       <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-        <Button
+        <GaiaButton
           isIconOnly
           size="sm"
           variant="ghost"
@@ -141,8 +155,8 @@ export function MemoryRow({
           onPress={() => onEdit(memory)}
         >
           <PencilEdit02Icon className="size-4 text-zinc-400" />
-        </Button>
-        <Button
+        </GaiaButton>
+        <GaiaButton
           isIconOnly
           size="sm"
           variant="danger-soft"
@@ -151,7 +165,7 @@ export function MemoryRow({
           onPress={() => onForget(memory)}
         >
           <Delete02Icon className="size-4" />
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );

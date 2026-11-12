@@ -1,6 +1,6 @@
-import { Button } from "@heroui/react";
 import { Download01Icon } from "@icons";
 import type React from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 interface DownloadButtonProps {
   content: string;
@@ -65,15 +65,16 @@ const DownloadButton: React.FC<DownloadButtonProps> = ({
   };
 
   return (
-    <Button
-      className="text-xs text-zinc-400 hover:text-gray-300"
+    <GaiaButton
+      className="text-xs"
+      tone="muted"
       size="sm"
       isIconOnly
       variant="ghost"
       onPress={handleDownload}
     >
       <Download01Icon width={18} height={18} />
-    </Button>
+    </GaiaButton>
   );
 };
 
