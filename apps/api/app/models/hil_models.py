@@ -34,12 +34,12 @@ class HILApprovalStatus(StrEnum):
         return self is not HILApprovalStatus.PENDING
 
 
-# The three global approval modes. Launch switch: the default stays
-# ``always_allow`` (HIL off — nothing gated) until we flip it post-launch.
+# The three global approval modes. The default applies at read time to every user
+# who never chose a mode, so changing it moves all of them at once.
 HILMode = Literal["always_allow", "always_ask", "auto"]
 # once: this call only. always_tool: also set a "never ask" override for the tool.
 ApprovalScope = Literal["once", "always_tool"]
-HIL_DEFAULT_MODE: HILMode = "always_allow"
+HIL_DEFAULT_MODE: HILMode = "auto"
 
 
 class DeclinedCallRecord(TypedDict):

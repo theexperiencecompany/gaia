@@ -23,7 +23,7 @@ export type {
 
 export const APPROVAL_REQUEST_TOOL_NAME = "approval_request";
 
-export const DEFAULT_HIL_MODE: HilMode = "always_allow";
+export const DEFAULT_HIL_MODE: HilMode = "auto";
 
 /** Approve taps on cards older than this re-confirm in place first. */
 export const RECONFIRM_AGE_SECONDS = 86400;

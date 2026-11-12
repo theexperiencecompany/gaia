@@ -74,6 +74,18 @@ class TestReads:
 
         assert await get_hil_preferences(USER_ID) == HILPreferences()
 
+    async def test_a_user_who_never_chose_a_mode_asks_when_unsure(self, user_repo) -> None:
+        user_repo.get.return_value = _user_with(None)
+        assert (await get_hil_preferences(USER_ID)).mode == "auto"
+
+    async def test_a_user_with_only_tool_overrides_gets_the_default_mode(self, user_repo) -> None:
+        user_repo.get.return_value = _user_with({"tool_overrides": {"GMAIL_SEND_EMAIL": True}})
+        assert (await get_hil_preferences(USER_ID)).mode == "auto"
+
+    async def test_an_explicit_never_ask_choice_is_kept(self, user_repo) -> None:
+        user_repo.get.return_value = _user_with({"mode": "always_allow"})
+        assert (await get_hil_preferences(USER_ID)).mode == "always_allow"
+
     async def test_a_missing_user_document_does_not_crash_the_gate(self, user_repo) -> None:
         user_repo.get.return_value = None
 

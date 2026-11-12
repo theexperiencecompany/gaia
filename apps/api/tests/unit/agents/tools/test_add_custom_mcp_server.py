@@ -316,7 +316,7 @@ async def test_unexpected_failure_is_caught_and_logged(seams):
 
 
 def test_add_custom_mcp_server_is_force_gated():
-    """HIL is globally always_allow pre-launch; only always_gate_tools force a confirmation card."""
+    """It asks even under always_allow, where only always_gate_tools force a confirmation card."""
     registry = ToolRegistry()
     registry._initialize_categories()
 

@@ -12,8 +12,8 @@ from typing import Final, Literal
 from app.constants.cache import EXECUTOR_BUSY_TTL
 from app.constants.general import FINISH_TASK_NAME
 
-# The launch switch is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (the
-# default mode is a HILPreferences field default, so it lives with the model).
+# The default mode is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (a
+# HILPreferences field default, so it lives with the model).
 
 # auto mode: what the intent judge is shown. Intent routinely spans turns
 # ("draft an email to Bob" ... "looks good, send it"), so the latest message

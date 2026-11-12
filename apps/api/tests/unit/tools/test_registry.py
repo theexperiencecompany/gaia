@@ -435,7 +435,7 @@ _EXPECTED_DESTRUCTIVE_TOOL_NAMES = {
 }
 
 
-#: Tools that ask the user in every HIL mode, including the always_allow default.
+#: Tools that ask the user in every HIL mode, including always_allow.
 #: Standing-instruction writes are here because what the agent saves rides in every
 #: later conversation: text planted in an email must never persist without a yes.
 _EXPECTED_ALWAYS_GATE_TOOL_NAMES = {

@@ -7563,7 +7563,7 @@
         "description": "A user's HIL preferences as returned by the preferences endpoints.",
         "properties": {
           "mode": {
-            "default": "always_allow",
+            "default": "auto",
             "enum": [
               "always_allow",
               "always_ask",
