@@ -14,6 +14,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { cn } from "@/lib/utils";
 import { shareActivityCard } from "./shareActivityCard";
 import { buildTweetText, openTweetIntent } from "./shareTweet";
@@ -203,7 +204,8 @@ export function ActivityBadge({
   const t = TIERS[tier];
   return (
     <>
-      <Button
+      <GaiaButton
+        variant="default-solid"
         onPress={onOpen}
         className="flex h-auto w-44 shrink-0 flex-col items-center justify-start gap-1 rounded-2xl bg-zinc-900/60 p-4 text-center transition-colors data-[hover=true]:bg-zinc-800/70"
       >
@@ -212,7 +214,7 @@ export function ActivityBadge({
         <p className="text-[11px] leading-tight text-zinc-500">
           of GAIA users by activity
         </p>
-      </Button>
+      </GaiaButton>
 
       <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
         <Modal.Backdrop>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import {
   Calendar03Icon,
   Clock01Icon,
@@ -9,8 +9,8 @@ import {
   PencilEdit01Icon,
 } from "@icons";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
-
 import { getScheduleDescription } from "../utils/cronUtils";
 import WorkflowModal from "./WorkflowModal";
 
@@ -128,15 +128,15 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
           )}
         </button>
 
-        <Button
+        <GaiaButton
+          variant="accent-soft"
           size="sm"
-          variant="tertiary"
           onPress={() => setIsModalOpen(true)}
           className="mt-1 w-full rounded-xl font-medium"
         >
           <PencilEdit01Icon className="size-3.5" />
           Review &amp; Create
-        </Button>
+        </GaiaButton>
       </div>
 
       {isModalOpen && (

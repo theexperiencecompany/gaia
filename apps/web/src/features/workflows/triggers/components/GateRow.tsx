@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, Popover } from "@heroui/react";
+import { Popover } from "@heroui/react";
 import { FilterHorizontalIcon } from "@icons";
 import type { AuthoredGateView, SystemGateView } from "@shared/api/generated";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { PanelRowContent } from "@/components/shared/PanelRow";
 import { PANEL_ROW_BUTTON_PROPS } from "@/components/shared/panelRowButtonProps";
 import { GATE_COPY, gateSkipCount } from "../../constants/gates";
@@ -27,14 +28,14 @@ export function GateRow({ saved, watchesMail, ...rule }: GateRowProps) {
 
   return (
     <Popover>
-      <Button {...PANEL_ROW_BUTTON_PROPS}>
+      <GaiaButton variant="default-solid" {...PANEL_ROW_BUTTON_PROPS}>
         <PanelRowContent
           icon={FilterHorizontalIcon}
           label={rule.enabled ? gateSentence(rule.condition) : copy.off}
           isMuted={!rule.enabled}
           end={rule.enabled && skippedCount > 0 && gateSkipCount(skippedCount)}
         />
-      </Button>
+      </GaiaButton>
       <Popover.Content placement="bottom" offset={6}>
         <Popover.Dialog className="w-80 rounded-2xl bg-zinc-900 p-0 shadow-xl">
           <GateDetail

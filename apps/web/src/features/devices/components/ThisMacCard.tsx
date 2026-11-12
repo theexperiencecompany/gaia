@@ -9,6 +9,7 @@ import {
   RedoIcon,
 } from "@icons";
 import type { DeviceServerView } from "@shared/bridge-core/ipc.types";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { UseBridge } from "../hooks/useBridge";
 import { thisDeviceLabel } from "../hooks/useDesktopPlatform";
 import { AddServerModal } from "./AddServerModal";
@@ -175,14 +176,14 @@ export function ThisMacCard({
             </Switch>
           </div>
         ) : (
-          <Button
+          <GaiaButton
+            variant="accent-soft"
             size="sm"
-            variant="tertiary"
             isPending={busy === "pair"}
             onPress={() => void pair()}
           >
             Enable on {noun}
-          </Button>
+          </GaiaButton>
         )}
       </div>
 

@@ -6,6 +6,7 @@ import { ScrollArea } from "@radix-ui/react-scroll-area";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { DUMMY_NOTIFICATIONS, ease } from "./demoConstants";
 
 interface DemoNotificationsPopoverProps {
@@ -112,9 +113,9 @@ export default function DemoNotificationsPopover({
 
             {/* Footer */}
             <div className="flex w-full items-center justify-evenly gap-3 p-3">
-              <Button size="sm" fullWidth>
+              <GaiaButton variant="default-solid" size="sm" fullWidth>
                 Mark all as read
-              </Button>
+              </GaiaButton>
               <Button size="sm" variant="secondary" fullWidth>
                 View all notifications
               </Button>

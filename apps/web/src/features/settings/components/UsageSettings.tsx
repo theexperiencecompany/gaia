@@ -1,8 +1,8 @@
 "use client";
 
-import { Button, Skeleton } from "@heroui/react";
+import { Skeleton } from "@heroui/react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
-
 import {
   useUsageActivity,
   useUsageHistory,
@@ -47,14 +47,14 @@ function UsageError({ onRetry }: { onRetry: () => void }) {
         Your usage is still being tracked. This page just couldn&apos;t reach
         it. Try again in a moment.
       </p>
-      <Button
+      <GaiaButton
+        variant="accent-soft"
         size="sm"
-        variant="tertiary"
         className="mt-1 font-medium"
         onPress={onRetry}
       >
         Try again
-      </Button>
+      </GaiaButton>
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   ZapIcon,
 } from "@icons";
 import { useEffect, useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   CATEGORY_LABELS,
@@ -66,9 +67,13 @@ function DemoIntegrationRow({
             Connected
           </Chip>
         ) : (
-          <Button variant="tertiary" size="sm" className="text-sm text-primary">
+          <GaiaButton
+            variant="accent-soft"
+            size="sm"
+            className="text-sm text-primary"
+          >
             Connect
-          </Button>
+          </GaiaButton>
         )}
       </div>
     </div>
@@ -197,15 +202,15 @@ function DemoIntegrationSidebar({
                 </Button>
               )}
               {isPublic && (
-                <Button
+                <GaiaButton
+                  variant="default-solid"
                   isIconOnly={useIconOnly}
                   className="w-full"
                   aria-label="Share"
-                  variant="primary"
                 >
                   <Share08Icon width={18} height={18} />
                   {!useIconOnly && "Share"}
-                </Button>
+                </GaiaButton>
               )}
             </ButtonGroup>
           )}

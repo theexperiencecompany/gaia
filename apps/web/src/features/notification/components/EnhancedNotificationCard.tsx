@@ -9,7 +9,7 @@ import {
 } from "@icons";
 import { useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { Button } from "@/components/ui/button";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
 import {
@@ -145,7 +145,8 @@ export const EnhancedNotificationCard = ({
                   const showLoading = isLoading && action.type !== "modal";
 
                   return (
-                    <Button
+                    <GaiaButton
+                      variant="default-solid"
                       key={action.id}
                       disabled={buttonProps.disabled || isLoading || isExecuted}
                       onClick={() => handleActionClick(action.id)}
@@ -172,7 +173,7 @@ export const EnhancedNotificationCard = ({
                           {!isExecuted && getActionIcon(action.type)}
                         </>
                       )}
-                    </Button>
+                    </GaiaButton>
                   );
                 })}
               </div>

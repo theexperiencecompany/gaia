@@ -119,9 +119,9 @@ export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
                     </Chip.Label>
                   </Chip>
                   <LinkButton
+                    variant="accent-soft"
                     href={`/integrations?id=${encodeURIComponent(group.icon)}`}
                     size="sm"
-                    variant="tertiary"
                     className="rounded-lg"
                   >
                     Connect

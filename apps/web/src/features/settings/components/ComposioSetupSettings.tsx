@@ -3,6 +3,7 @@
 import { Button, Link, Spinner } from "@heroui/react";
 import { Search01Icon, SquareArrowUpRight02Icon } from "@icons";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { COMPOSIO_SETUP_DOCS_URL } from "@/features/settings/api/composioSetupApi";
 import { ComposioAuthConfigRow } from "@/features/settings/components/ComposioAuthConfigRow";
 import { ComposioCatalogModal } from "@/features/settings/components/composio/ComposioCatalogModal";
@@ -74,15 +75,15 @@ export function ComposioSetupSettings() {
         description="Set up an integration in one click, or pick an auth config you already made in Composio. Browse the catalog to add any other app Composio supports."
       >
         <div className="flex justify-end p-2">
-          <Button
+          <GaiaButton
+            variant="accent-soft"
             size="sm"
-            variant="secondary"
             isDisabled={!canBrowse}
             onPress={() => openCatalog(null)}
           >
             <Search01Icon className="size-4" />
             Browse Composio catalog
-          </Button>
+          </GaiaButton>
         </div>
         {composio.isLoading && <Spinner size="sm" className="p-4" />}
         {composio.error && (

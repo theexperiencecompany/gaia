@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { FullScreenIcon } from "@icons";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronLeft, ChevronRight } from "@/components/shared/icons";
 import { useImageDialog } from "@/stores/uiStore";
 
@@ -89,7 +89,8 @@ export function RecapSlideshow({
           </span>
         </button>
         {!atStart && (
-          <Button
+          <GaiaButton
+            variant="default-solid"
             isIconOnly
             size="sm"
             className="absolute left-2.5 top-1/2 -translate-y-1/2 bg-black/45 text-white opacity-0 backdrop-blur-sm transition group-hover:opacity-100 data-[hover=true]:bg-black/65"
@@ -97,10 +98,11 @@ export function RecapSlideshow({
             onPress={() => go(safeIdx - 1)}
           >
             <ChevronLeft className="size-4" />
-          </Button>
+          </GaiaButton>
         )}
         {!atEnd && (
-          <Button
+          <GaiaButton
+            variant="default-solid"
             isIconOnly
             size="sm"
             className="absolute right-2.5 top-1/2 -translate-y-1/2 bg-black/45 text-white opacity-0 backdrop-blur-sm transition group-hover:opacity-100 data-[hover=true]:bg-black/65"
@@ -108,7 +110,7 @@ export function RecapSlideshow({
             onPress={() => go(safeIdx + 1)}
           >
             <ChevronRight className="size-4" />
-          </Button>
+          </GaiaButton>
         )}
       </div>
 

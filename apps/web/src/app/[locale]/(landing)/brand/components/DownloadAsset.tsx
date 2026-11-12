@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { Download01Icon } from "@icons";
 import Image from "next/image";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 interface DownloadOption {
   format: string;
@@ -67,7 +67,8 @@ export function DownloadAsset({
           className={`absolute bottom-4 right-4 flex gap-2 transition-opacity duration-300 ${isHovered ? "opacity-100" : "opacity-0"}`}
         >
           {downloadOptions.map((option) => (
-            <Button
+            <GaiaButton
+              variant="default-solid"
               key={`${option.format}-${option.variant || "default"}`}
               size="sm"
               onPress={() => downloadAsset(option.path, option.format)}
@@ -76,7 +77,7 @@ export function DownloadAsset({
               {option.variant
                 ? `${option.format} (${option.variant})`
                 : option.format}
-            </Button>
+            </GaiaButton>
           ))}
         </div>
       </div>

@@ -2,6 +2,7 @@
 
 import { Button, Description, Input, Label, TextField } from "@heroui/react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { StoredProviderConfig } from "@/features/settings/api/providersApi";
 import { useConfigureProvider } from "@/features/settings/hooks/useConfigureProvider";
 import type { CustomPreset } from "@/features/settings/utils/customPresets";
@@ -223,8 +224,8 @@ function ProviderFormActions({
           Test
         </Button>
       )}
-      <Button
-        variant="secondary"
+      <GaiaButton
+        variant="accent-soft"
         size="sm"
         isPending={isSaving}
         isDisabled={isTesting}
@@ -233,7 +234,7 @@ function ProviderFormActions({
         }}
       >
         {testable ? "Test & Save" : "Save"}
-      </Button>
+      </GaiaButton>
     </div>
   );
 }

@@ -1,10 +1,11 @@
 "use client";
 
-import { Button, ButtonGroup, Dropdown } from "@heroui/react";
+import { ButtonGroup, Dropdown } from "@heroui/react";
 import { ArrowDown01Icon } from "@icons";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import React from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   getEventColor,
   isTooDark,
@@ -82,7 +83,11 @@ export default function CalendarEventAIActions({
 
   return (
     <ButtonGroup variant="secondary" fullWidth>
-      <Button onPress={handleAction} className="flex-1 cursor-pointer">
+      <GaiaButton
+        variant="default-solid"
+        onPress={handleAction}
+        className="flex-1 cursor-pointer"
+      >
         <Image
           alt="GAIA Logo"
           src="/images/logos/logo.webp"
@@ -90,11 +95,11 @@ export default function CalendarEventAIActions({
           height={18}
         />
         {currentAction.label}
-      </Button>
+      </GaiaButton>
       <Dropdown>
-        <Button isIconOnly>
+        <GaiaButton variant="default-solid" isIconOnly>
           <ArrowDown01Icon className="size-4" />
-        </Button>
+        </GaiaButton>
         <Dropdown.Popover placement="bottom end">
           <Dropdown.Menu
             disallowEmptySelection

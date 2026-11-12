@@ -340,6 +340,7 @@ function MobileSection() {
       actions={
         <div className="flex flex-col gap-3">
           <LinkButton
+            variant="default-solid"
             href={appConfig.site.mobileWaitlist}
             target="_blank"
             rel="noopener noreferrer"
