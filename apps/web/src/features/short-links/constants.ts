@@ -1,4 +1,10 @@
-import type { LinkAccess, ReportReason } from "@/types/features/shortLinkTypes";
+import type {
+  LinkAccess,
+  LinkDenial,
+  ReportReason,
+} from "@/types/features/shortLinkTypes";
+
+import type { DeadLinkState } from "./types";
 
 /** Mirrors MAX_GRANTEES in apps/api/app/models/short_link_models.py. */
 export const MAX_GRANTEES = 50;
@@ -78,8 +84,11 @@ export const UNFURL_BOT_USER_AGENT_MARKERS = [
   "applebot",
 ] as const;
 
-/** What a dead link says, keyed by the API's denial code. No owner, title or type is ever disclosed. */
-export const DEAD_LINK_COPY = {
+/** The API's code for a viewer locked out after opening too many unknown slugs; not a LinkDenial. */
+export const LINK_LOOKUP_LOCKED_CODE = "link_lookup_locked";
+
+/** What a dead link says, keyed by the API's code. No owner, title or type is ever disclosed. */
+export const DEAD_LINK_COPY: Record<DeadLinkState, string> = {
   link_not_found: "This link doesn't exist.",
   link_revoked:
     "This link was turned off by the person who shared it. Ask them for a new one.",
@@ -87,15 +96,18 @@ export const DEAD_LINK_COPY = {
     "This link has expired. Ask the person who shared it for a new one.",
   link_target_deleted: "What this link pointed to was deleted.",
   link_removed: "This link was removed for breaking GAIA's terms.",
-} as const;
+  [LINK_LOOKUP_LOCKED_CODE]:
+    "Too many links that don't exist were opened from here. Try again in an hour.",
+};
 
 export const SIGN_IN_REQUIRED_COPY = "Sign in to open this";
 export const FORBIDDEN_COPY = "You don't have access to this.";
 
-export const LINK_DENIAL_CODES = {
-  signInRequired: "link_sign_in_required",
-  forbidden: "link_forbidden",
-} as const;
+/** The denials a signed-in viewer might get past, so the browser resolves them again. */
+export const GATED_LINK_DENIALS = [
+  "link_sign_in_required",
+  "link_forbidden",
+] as const satisfies readonly LinkDenial[];
 
 /**
  * The sandbox an active (HTML) snapshot runs in: scripts and forms but no

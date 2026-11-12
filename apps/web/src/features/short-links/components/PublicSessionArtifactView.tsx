@@ -134,6 +134,7 @@ function FramedContent({
 
 const CANNOT_PREVIEW =
   "This file can't be previewed here. Download it to open it.";
+const CANNOT_OPEN = "This file can't be opened from this link.";
 
 function MetadataCard({ message }: { message: string }) {
   return (
@@ -174,6 +175,7 @@ export function PublicSessionArtifactView({
   slug,
   view,
   content,
+  downloadable,
   reportAction,
 }: LinkViewProps<"session_artifact">) {
   return (
@@ -190,16 +192,18 @@ export function PublicSessionArtifactView({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {reportAction}
-          <Button
-            as={Link}
-            href={linkDownloadUrl(slug)}
-            referrerPolicy="no-referrer"
-            size="sm"
-            variant="flat"
-            startContent={<Download01Icon className="size-4" />}
-          >
-            Download
-          </Button>
+          {downloadable && (
+            <Button
+              as={Link}
+              href={linkDownloadUrl(slug)}
+              referrerPolicy="no-referrer"
+              size="sm"
+              variant="flat"
+              startContent={<Download01Icon className="size-4" />}
+            >
+              Download
+            </Button>
+          )}
         </div>
       </header>
       <div className="overflow-hidden rounded-2xl bg-zinc-800">
@@ -212,7 +216,7 @@ export function PublicSessionArtifactView({
         ) : view.text !== null ? (
           <TextContent view={view} />
         ) : (
-          <MetadataCard message={CANNOT_PREVIEW} />
+          <MetadataCard message={downloadable ? CANNOT_PREVIEW : CANNOT_OPEN} />
         )}
       </div>
     </article>

@@ -107,6 +107,7 @@ describe("a heygaia.link that doesn't open", () => {
     expect(Object.keys(DEAD_LINK_COPY).sort()).toEqual(
       [
         "link_expired",
+        "link_lookup_locked",
         "link_not_found",
         "link_removed",
         "link_revoked",
@@ -194,6 +195,7 @@ describe("a shared file", () => {
   function renderFile(
     view: PublicSessionArtifact,
     linkContent: LinkContent | null,
+    downloadable = true,
   ) {
     issueLinkContentUrl.mockResolvedValue({
       content_url: CONTENT_URL,
@@ -204,6 +206,7 @@ describe("a shared file", () => {
         slug="abcdefghijk"
         view={view}
         content={linkContent}
+        downloadable={downloadable}
         reportAction={<span>report</span>}
       />,
     );
@@ -299,5 +302,17 @@ describe("a shared file", () => {
     expect(
       screen.getByRole("button", { name: "Download" }).getAttribute("href"),
     ).toBe("http://localhost:8000/l/abcdefghijk/download");
+  });
+
+  it("offers no Download when the link may not serve the file's bytes", () => {
+    renderFile(
+      { ...FILE, filename: "huge.zip", content_type: "application/zip" },
+      null,
+      false,
+    );
+
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+    expect(screen.queryByText(/Download it to open it/)).toBeNull();
+    expect(screen.getByText("report")).toBeTruthy();
   });
 });

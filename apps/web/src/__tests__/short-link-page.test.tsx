@@ -129,13 +129,27 @@ describe("ShortLinkPage", () => {
     expect(resolveLinkInBrowser).toHaveBeenCalledWith(SLUG);
   });
 
-  it("fails loud on an answer that is not a link denial", async () => {
+  it("tells a viewer locked out for guessing links to wait", async () => {
     fetchMock.mockResolvedValue(
       respond(429, { message: "slow down", code: "link_lookup_locked" }),
     );
 
+    render(await ShortLinkPage({ params }));
+
+    expect(
+      screen.getByRole("heading", {
+        name: "Too many links that don't exist were opened from here. Try again in an hour.",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("fails loud on an answer that is not a link denial", async () => {
+    fetchMock.mockResolvedValue(
+      respond(503, { message: "down", code: "service_unavailable" }),
+    );
+
     await expect(ShortLinkPage({ params })).rejects.toThrow(
-      "Short link resolve failed with 429",
+      "Short link resolve failed with 503",
     );
   });
 });

@@ -14,11 +14,13 @@ function LinkPage<T extends ShortLinkTargetType>({
   targetType,
   view,
   content,
+  downloadable,
 }: {
   slug: string;
   targetType: T;
   view: LinkViewOf<T>;
   content: LinkContent | null;
+  downloadable: boolean;
 }) {
   const entry = LINK_VIEWS[targetType];
   const View = entry.component;
@@ -38,6 +40,7 @@ function LinkPage<T extends ShortLinkTargetType>({
         slug={slug}
         view={view}
         content={content}
+        downloadable={downloadable}
         reportAction={reportAction}
       />
     </StandalonePage>
@@ -58,6 +61,7 @@ export function PublicLinkView({
       targetType={envelope.view.target_type}
       view={envelope.view}
       content={envelope.content}
+      downloadable={envelope.downloadable}
     />
   );
 }
