@@ -2,10 +2,10 @@
 conversation endpoints' response shapes.
 
 The persistence models describe the document as it is actually stored and read
-back — distinct from the API *request* models, which live in ``chat_models``. The
-embedded ``messages`` array reuses ``MessageModel``; a before-validator runs the
-legacy tool-data normalization at the read boundary so the rest of the app never
-sees an un-normalized message.
+back — distinct from the API *request* models, which live in ``chat_models``.
+Messages are ``MessageModel`` entries read from conversation_entries; a
+before-validator runs the legacy tool-data normalization at the read boundary so
+the rest of the app never sees an un-normalized message.
 
 The response models at the bottom of this file live here rather than alongside
 the requests in ``chat_models`` because they are built from the persistence
