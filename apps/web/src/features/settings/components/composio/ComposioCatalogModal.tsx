@@ -11,7 +11,6 @@ import {
 import { Search01Icon } from "@icons";
 import { useDeferredValue, useState } from "react";
 import { modalVariants } from "@/components/shared/controlVariants";
-import { fieldVariants } from "@/components/shared/fieldVariants";
 import { COMPOSIO_APP_COUNT } from "@/features/settings/api/composioSetupApi";
 import { ComposioKeyMissing } from "@/features/settings/components/composio/ComposioKeyMissing";
 import { ComposioToolkitDetail } from "@/features/settings/components/composio/ComposioToolkitDetail";
@@ -87,10 +86,7 @@ export function ComposioCatalogModal({
                     <Select
                       aria-label="Category"
                       placeholder="All categories"
-                      className={fieldVariants({
-                        labelPlacement: "inside",
-                        className: "w-56",
-                      })}
+                      className="w-56"
                       selectedKey={category}
                       onSelectionChange={(key) =>
                         setCategory(key === null ? null : String(key))
