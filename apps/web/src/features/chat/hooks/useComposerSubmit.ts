@@ -4,8 +4,9 @@ import type React from "react";
 
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
-import { sendMessage } from "@/features/chat/stream/sendMessage";
+import { sendMessage } from "@/features/chat/live/sendMessage";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { toast } from "@/lib/toast";
 import {
   useComposerFiles,
   useComposerIsUploading,
@@ -17,6 +18,9 @@ import {
   useReplyToMessage,
 } from "@/stores/composerStore";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
+
+const UNSENDABLE_SELECTION_MESSAGE =
+  "Sending a selected tool, workflow or calendar event isn't available yet. Remove it and send your message.";
 
 interface UseComposerSubmitParams {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -36,7 +40,6 @@ export function useComposerSubmit({
   const { clearInputText } = useComposerTextActions();
   const {
     selectedTool,
-    selectedToolCategory,
     setSelectedTool,
     setSelectedToolCategory,
     clearToolSelection,
@@ -75,20 +78,19 @@ export function useComposerSubmit({
 
     // GAIA is paid-only: block send with the paywall unless subscription
     // status is unknown (cold cache / rehydrating), in which case let it
-    // proceed — the backend's 402 on chat-stream is the backstop.
+    // proceed — the send route's 402 is the backstop.
     if (!isSubscriptionStatusUnknown && !isPaid) {
       openUpgradeModal(undefined, { source: "composer_submit" });
       return;
     }
-    // Note: Loading state is now set in sendMessage AFTER user message is persisted
-    // This ensures the loading indicator appears AFTER the user message in the UI
+    // The send route carries text, files and a reply only; a selection it cannot carry is refused, not dropped.
+    if (selectedTool || selectedWorkflow || selectedCalendarEvent) {
+      toast.error(UNSENDABLE_SELECTION_MESSAGE);
+      return;
+    }
 
     sendMessage(inputText, {
       files: uploadedFileData,
-      selectedTool: selectedTool ?? null,
-      selectedToolCategory: selectedToolCategory ?? null,
-      selectedWorkflow,
-      selectedCalendarEvent,
       replyToMessage,
     }).catch((error) => {
       console.error("Chat send failed", error);
@@ -112,9 +114,7 @@ export function useComposerSubmit({
   const handleKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (
     event,
   ) => {
-    // Enter always submits. If a stream is still open (initial response OR a
-    // background executor still running), the send is held in the turn
-    // manager's per-conversation queue rather than starting a new turn.
+    // Enter always submits, also while GAIA is busy: the server folds it into the conversation.
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       handleFormSubmit();

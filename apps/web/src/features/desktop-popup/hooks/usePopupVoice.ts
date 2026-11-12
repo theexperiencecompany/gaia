@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  useActiveLoading,
-  useIsInitialResponseStreaming,
-} from "@/stores/streamStore";
+  useActiveLiveLoading,
+  useActiveReplyStreaming,
+} from "@/features/chat/live/useLiveChat";
 import { WAKE_ACK_AUDIO_SRC } from "../constants";
 
 /**
@@ -37,8 +37,8 @@ export interface PopupVoiceSession {
  */
 export function usePopupVoice(): PopupVoiceSession {
   const [active, setActive] = useState(false);
-  const { isLoading } = useActiveLoading();
-  const isMainResponseStreaming = useIsInitialResponseStreaming();
+  const { isLoading } = useActiveLiveLoading();
+  const isReplyStreaming = useActiveReplyStreaming();
   const ackAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -69,7 +69,7 @@ export function usePopupVoice(): PopupVoiceSession {
 
   let agentState: PopupAgentState = "idle";
   if (active) {
-    if (isMainResponseStreaming) agentState = "speaking";
+    if (isReplyStreaming) agentState = "speaking";
     else if (isLoading) agentState = "thinking";
     else agentState = "listening";
   }

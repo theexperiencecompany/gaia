@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { sendMessage } from "@/features/chat/stream/sendMessage";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { toast } from "@/lib/toast";
 import { useComposerStore } from "@/stores/composerStore";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
@@ -45,14 +45,10 @@ export const useWorkflowAutoSend = (): void => {
         return;
       }
 
-      sendMessage("Run this workflow", {
-        selectedWorkflow: workflow,
-        selectedTool: null,
-        selectedToolCategory: null,
-        conversationId: null,
-      }).catch((error) => {
-        console.error("Workflow auto-send failed", error);
-      });
+      // The send route has no workflow field yet, so the run is refused out loud.
+      toast.error(
+        `Running "${workflow.title}" from chat isn't available yet. Run it from the Workflows page.`,
+      );
     }, 0);
 
     // Supersede semantics: a genuinely NEW selection replaces the pending

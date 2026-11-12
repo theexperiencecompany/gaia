@@ -58,7 +58,8 @@ interface LiveConversationState {
     messageId: string,
     failed: boolean,
   ) => void;
-  forget: (conversationId: string) => void;
+  /** Take another window's copy of a conversation as-is (the desktop popup's render-only feed). */
+  mirror: (conversationId: string, live: LiveConversation) => void;
 }
 
 const fold = (
@@ -142,13 +143,10 @@ export const useLiveConversationStore = create<LiveConversationState>()(
       }));
     },
 
-    forget: (conversationId) => {
-      if (!get().conversations[conversationId]) return;
-      set((state) => {
-        const { [conversationId]: _forgotten, ...rest } = state.conversations;
-        return { conversations: rest };
-      });
-    },
+    mirror: (conversationId, live) =>
+      set((state) => ({
+        conversations: { ...state.conversations, [conversationId]: live },
+      })),
   }),
 );
 

@@ -11,7 +11,7 @@ import {
   listMCPResourceTemplates,
   readMCPResource,
 } from "@/features/chat/api/mcpProxyApi";
-import { sendMessage } from "@/features/chat/stream/sendMessage";
+import { sendMessage } from "@/features/chat/live/sendMessage";
 import { getBrowserTimezone } from "@/lib/timezone";
 
 type DisplayMode = "inline" | "fullscreen";

@@ -19,7 +19,7 @@ vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
   useIsPaid: () => ({ isPaid, isUnknown: isSubscriptionStatusUnknown }),
 }));
 
-vi.mock("@/features/chat/stream/sendMessage", () => ({ sendMessage }));
+vi.mock("@/features/chat/live/sendMessage", () => ({ sendMessage }));
 
 vi.mock("@/features/chat/hooks/useCalendarEventSelection", () => ({
   useCalendarEventSelection: () => ({

@@ -10,6 +10,7 @@ import {
   type ActiveToolInfo,
   useAuxLoadingStore,
 } from "@/stores/auxLoadingStore";
+import { useChatStore } from "@/stores/chatStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import { getRandomThinkingMessage } from "@/utils/playfulThinking";
 import { openConversation } from "./connection";
@@ -98,4 +99,21 @@ export function useLiveLoading(conversationId: string | null): LiveLoading {
     return { isLoading: true, loadingText: aux.text, toolInfo: aux.toolInfo };
   }
   return { isLoading: false, loadingText: "" };
+}
+
+/** Whether a reply is streaming into the conversation on screen. */
+export function useActiveReplyStreaming(): boolean {
+  const conversationId = useChatStore((state) => state.activeConversationId);
+  return useLiveConversationStore((state) =>
+    conversationId
+      ? (state.conversations[conversationId]?.view.drafts.some(
+          (draft) => draft.source === "reply",
+        ) ?? false)
+      : false,
+  );
+}
+
+/** The loading row of the conversation on screen. */
+export function useActiveLiveLoading(): LiveLoading {
+  return useLiveLoading(useChatStore((state) => state.activeConversationId));
 }

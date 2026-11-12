@@ -4,7 +4,6 @@ import { v4 as uuidv4 } from "uuid";
 import { setUserProperties } from "@/lib/analytics";
 import { db, type IConversation } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
-import { useComposerStore } from "@/stores/composerStore";
 import type { FileData } from "@/types/shared/fileTypes";
 import { deliverSend, persistConversation } from "./connection";
 import {
@@ -71,11 +70,9 @@ export async function sendMessage(
   content: string,
   overrides?: SendMessageOverrides,
 ): Promise<void> {
-  const composer = useComposerStore.getState();
   const text = content.trim();
-  const fileData = overrides?.files ?? composer.uploadedFileData ?? [];
-  const replyToMessage =
-    overrides?.replyToMessage ?? composer.replyToMessage ?? null;
+  const fileData = overrides?.files ?? [];
+  const replyToMessage = overrides?.replyToMessage ?? null;
   if (!text && fileData.length === 0) return;
 
   trackFirstMessageMilestone();

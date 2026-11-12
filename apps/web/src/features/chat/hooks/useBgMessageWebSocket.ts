@@ -1,17 +1,16 @@
 import type { MessageReaction, TodoRunWake } from "@shared/api/generated";
 import { useCallback, useEffect } from "react";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
+import { applyMessageReaction } from "@/features/chat/utils/reactionUtils";
 import {
   isViewingConversation,
   markConversationUnread,
-} from "@/features/chat/stream/unread";
-import { applyMessageReaction } from "@/features/chat/utils/reactionUtils";
+} from "@/features/chat/utils/unread";
 import type { IMessage } from "@/lib/db/chatDb";
 import { db } from "@/lib/db/chatDb";
 import { streamLog } from "@/lib/streamLogger";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { useChatStore } from "@/stores/chatStore";
-import { useStreamStore } from "@/stores/streamStore";
 
 /**
  * WebSocket payload for a message saved outside the open turn: a background
@@ -122,13 +121,6 @@ export function useBgMessageWebSocket() {
     // End the awaiting-executor session AFTER the result message is in the
     // store, so loading hands off to the rendered result in the same frame — no
     // flash of "loading gone" before the result appears.
-    const stream = useStreamStore.getState();
-    if (
-      isBotReply &&
-      stream.sessions[conversation_id]?.phase === "awaiting_executor"
-    ) {
-      stream.endSession(conversation_id);
-    }
     streamLog("ws", "conversation.new_message", {
       conversationId: conversation_id,
       detail: { task_id: message.task_id },
@@ -143,10 +135,6 @@ export function useBgMessageWebSocket() {
       by: reaction.by,
     });
     // The reaction is the result's whole answer, so the run it ends is over.
-    const stream = useStreamStore.getState();
-    if (stream.sessions[conversation_id]?.phase === "awaiting_executor") {
-      stream.endSession(conversation_id);
-    }
     streamLog("ws", REACTION_EVENT, { conversationId: conversation_id });
   }, []);
 

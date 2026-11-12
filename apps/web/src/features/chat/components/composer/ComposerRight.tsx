@@ -105,25 +105,14 @@ export default function RightSide({
     hasSelectedCalendarEvent ||
     hasFiles;
 
-  // Mirror the send button's state so the tooltip matches what the button shows
-  // (Stop while streaming with an empty composer, Queue while streaming with
-  // typed content, send hints otherwise).
-  const { showStop, showQueue } = useComposerSendMode(hasContent);
+  // Mirror the send button's state so the tooltip matches what the button shows.
+  const { showStop } = useComposerSendMode(hasContent);
 
   const getTooltipContent = () => {
     if (showStop) return "Stop generation";
 
     if (isUploading) {
       return `Uploading file${uploadedFiles.length > 1 ? "s" : ""}...`;
-    }
-
-    if (showQueue) {
-      return (
-        <div className="flex items-center gap-2">
-          Queue message
-          <Kbd className="text-zinc-400" keys={["enter"]} />
-        </div>
-      );
     }
 
     const sendWithHint = resolveSendWithHint({
