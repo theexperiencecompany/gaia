@@ -15,7 +15,7 @@ The bridge is what the user actually sees, and what stops them being asked twice
 
 import asyncio
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -986,6 +986,7 @@ class TestHeldAndAutoCards:
         data = published_frame(bridge)["data"]
         assert data["status"] == "auto_approved"
         assert data["auto_reason"] == "You asked to email Bob"
+        assert datetime.fromisoformat(data["asked_at"]).utcoffset() == timedelta(0)
 
 
 class TestPendingCard:

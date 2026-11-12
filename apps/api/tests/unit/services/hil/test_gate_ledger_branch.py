@@ -785,6 +785,7 @@ class TestLedgerAutoMode:
         _assert_pending(result)
         assert gate_seams.publish_ledger.await_args.kwargs["auto_reason"] == AUTO_ASK_NOTE
         assert "Auto mode wasn't sure" not in str(result.content)
+        assert str(result.content).endswith(gate._pending_guidance("ap_abc1234567"))
 
     async def test_a_policy_that_never_judged_puts_no_note_on_the_card(
         self, gate_seams: GateSeams

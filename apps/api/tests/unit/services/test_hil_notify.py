@@ -139,7 +139,7 @@ class TestSendExpoPush:
         mock_channels.device.deactivate_tokens.assert_awaited_once_with(["token-2"])
 
     async def test_post_failure_is_swallowed(self, mock_channels, mock_expo):
-        """notify must never raise."""
+        """Notify must never raise."""
         mock_channels.device.get_active_tokens.return_value = ["token-1"]
         mock_expo.post.side_effect = RuntimeError("expo down")
 

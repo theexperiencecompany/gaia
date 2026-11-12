@@ -64,7 +64,6 @@ class TestCuratedTool:
 
         assert details[0].value == "p0@x.com, p1@x.com, p2@x.com, p3@x.com and 3 more"
 
-
     def test_a_list_exactly_at_the_cap_is_shown_whole(self) -> None:
         to = [f"p{i}@x.com" for i in range(4)]
         details = describe_call("GMAIL_SEND_EMAIL", {"extra_recipients": to}, None).details
