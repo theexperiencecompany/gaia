@@ -11,10 +11,12 @@ from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED
 from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
+    FollowUpActionsEvent,
     ReplyDeltaFrame,
     ResponseEvent,
     RetractFrame,
     StreamPayload,
+    ToolDataEvent,
 )
 from app.models.conversation_log_models import (
     ApprovalDecided,
@@ -72,11 +74,10 @@ class _Quiet:
 
 @dataclass(frozen=True)
 class _Showing:
-    """Committed, and the user sees this reply."""
+    """Committed, and the user sees this reply: its content is the fold of every delta shown."""
 
     reply: Reply
     seq: int
-    text: str
 
 
 @dataclass
@@ -424,9 +425,9 @@ async def _show(ports: RuntimePorts, attempt: _Attempt, payload: StreamPayload) 
     if not isinstance(attempt.progress, _Showing):
         reply = _empty_reply(attempt)
         opened = await _append(ports, attempt.claim, reply)
-        attempt.progress = _Showing(reply=reply, seq=opened.seq, text="")
-    if isinstance(payload, ResponseEvent):
-        attempt.progress = replace(attempt.progress, text=attempt.progress.text + payload.response)
+        attempt.progress = _Showing(reply=reply, seq=opened.seq)
+    shown = attempt.progress
+    attempt.progress = replace(shown, reply=_fold(shown.reply, payload))
     delta = ReplyDeltaFrame(
         attempt_id=attempt.attempt_id,
         reply_id=attempt.reply_id,
@@ -461,7 +462,7 @@ async def _stop(ports: RuntimePorts, attempt: _Attempt) -> None:
         await _retract(ports, attempt)
         await _set_comms(ports, attempt.claim, CommsPhase.IDLE)
         return
-    await _amend(ports, attempt.claim, progress.reply.model_copy(update={"text": progress.text}))
+    await _amend(ports, attempt.claim, progress.reply)
     state = await ports.log.state(attempt.claim.conversation_id)
     await _append(
         ports,
@@ -482,8 +483,9 @@ async def _truncate(ports: RuntimePorts, attempt: _Attempt) -> None:
         for logged in after
         if isinstance(logged.entry, BargeIn) and logged.entry.reply_id == attempt.reply_id
     ]
-    heard = min(len(barges[-1].heard_text), len(progress.text)) if barges else len(progress.text)
-    cut = progress.reply.model_copy(update={"text": progress.text[:heard], "heard_through": heard})
+    shown = progress.reply.text
+    heard = min(len(barges[-1].heard_text), len(shown)) if barges else len(shown)
+    cut = progress.reply.model_copy(update={"text": shown[:heard], "heard_through": heard})
     await _conclude(ports, attempt, cut, ReplyOutcome.STOPPED)
 
 
@@ -511,18 +513,16 @@ async def _finish(ports: RuntimePorts, attempt: _Attempt, outcome: RunOutcome) -
 
 
 def _final_reply(attempt: _Attempt, outcome: RunOutcome) -> tuple[Reply, ReplyOutcome]:
-    shown = _shown_text(attempt)
-    match outcome:
-        case Replied(text=text, tool_data=tool_data, follow_up_actions=follow_up_actions):
-            filled = _base_reply(attempt).model_copy(
-                update={
-                    "text": text or shown,
-                    "tool_data": tool_data,
-                    "follow_up_actions": follow_up_actions,
-                }
-            )
-        case _:
-            filled = _base_reply(attempt).model_copy(update={"text": shown})
+    """Save what was shown; a run's Replied content is used only when it streamed nothing."""
+    filled = _base_reply(attempt)
+    if isinstance(outcome, Replied) and not isinstance(attempt.progress, _Showing):
+        filled = filled.model_copy(
+            update={
+                "text": outcome.text,
+                "tool_data": outcome.tool_data,
+                "follow_up_actions": outcome.follow_up_actions,
+            }
+        )
     if filled.text or filled.tool_data:
         return filled, ReplyOutcome.ANSWERED
     if isinstance(outcome, Reacted) or not _asked(attempt):
@@ -552,8 +552,7 @@ async def _fail(ports: RuntimePorts, attempt: _Attempt, error: Exception) -> Non
         conversation_id=attempt.claim.conversation_id,
         attempt_id=attempt.attempt_id,
     )
-    failed = _base_reply(attempt).model_copy(update={"text": _shown_text(attempt)})
-    await _conclude(ports, attempt, failed, ReplyOutcome.FAILED)
+    await _conclude(ports, attempt, _base_reply(attempt), ReplyOutcome.FAILED)
 
 
 async def _conclude(
@@ -616,6 +615,18 @@ def _visible(logged: LoggedEntry) -> VisibleEntry | None:
     return None
 
 
+def _fold(reply: Reply, payload: StreamPayload) -> Reply:
+    """Return reply with one more shown delta folded in: text, a tool card, or follow-ups."""
+    match payload:
+        case ResponseEvent(response=response):
+            return reply.model_copy(update={"text": reply.text + response})
+        case ToolDataEvent(tool_data=card):
+            return reply.model_copy(update={"tool_data": (*reply.tool_data, card)})
+        case FollowUpActionsEvent(follow_up_actions=actions):
+            return reply.model_copy(update={"follow_up_actions": tuple(actions)})
+    return reply
+
+
 def _empty_reply(attempt: _Attempt) -> Reply:
     return Reply(
         id=f"{attempt.attempt_id}:reply", reply_id=attempt.reply_id, attempt_id=attempt.attempt_id
@@ -625,11 +636,6 @@ def _empty_reply(attempt: _Attempt) -> Reply:
 def _base_reply(attempt: _Attempt) -> Reply:
     progress = attempt.progress
     return progress.reply if isinstance(progress, _Showing) else _empty_reply(attempt)
-
-
-def _shown_text(attempt: _Attempt) -> str:
-    progress = attempt.progress
-    return progress.text if isinstance(progress, _Showing) else ""
 
 
 async def _put_reply(ports: RuntimePorts, attempt: _Attempt, reply: Reply) -> LoggedEntry:

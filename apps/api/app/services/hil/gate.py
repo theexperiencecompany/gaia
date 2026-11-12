@@ -50,7 +50,6 @@ from app.services.feature_flags import is_hil_ledger_enabled, is_jev_judge_enabl
 from app.services.hil.approvals_store import approval_id_for, get_approval
 from app.services.hil.bridge import (
     ApprovalOutcome,
-    GatedApproval,
     build_summary,
     publish_approval_request,
     publish_auto_approval,
@@ -86,6 +85,7 @@ from app.services.hil.prompts import (
 )
 from app.services.hil.tool_key import hil_tool_key, mcp_tool_identity
 from app.services.hil.utils import (
+    GatedApproval,
     GatedCall,
     approval_window_label,
     configurable_of,

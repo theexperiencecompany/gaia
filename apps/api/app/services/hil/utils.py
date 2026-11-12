@@ -47,6 +47,19 @@ class GatedCall:
 
 
 @dataclass(frozen=True)
+class GatedApproval:
+    """Identity of a gated call being surfaced — shared by request and receipt."""
+
+    approval_id: str
+    stream_id: str
+    user_id: str
+    conversation_id: str
+    tool_call: GatedCall
+    summary: str
+    integration_name: str | None
+
+
+@dataclass(frozen=True)
 class PriorCall:
     """A tool call this run already made — an action, never a narration.
 

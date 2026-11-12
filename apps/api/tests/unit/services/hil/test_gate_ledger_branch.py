@@ -19,12 +19,12 @@ from app.models.hil_models import (
     LedgerState,
 )
 from app.services.hil import gate
-from app.services.hil.bridge import ApprovalOutcome, GatedApproval
+from app.services.hil.bridge import ApprovalOutcome
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import AutoContext, IntentDecision, JudgedCall, summarize_history
 from app.services.hil.jev_judge import JevIntentJudge
 from app.services.hil.prompts import AUTO_REJECT_TEMPLATE, DENIED_TEMPLATE, GATE_ERROR_TEMPLATE
-from app.services.hil.utils import GatedCall
+from app.services.hil.utils import GatedApproval, GatedCall
 from app.utils.general_utils import ELLIPSIS
 
 from .conftest import (

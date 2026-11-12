@@ -17,7 +17,7 @@ from pydantic import (
 
 from app.constants.reminders import REMINDER_DEFAULT_LIFETIME
 from app.constants.scheduling import ScheduleRejection
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 from app.models.scheduler_models import (
     BaseScheduledTask,
     DeactivationReason,

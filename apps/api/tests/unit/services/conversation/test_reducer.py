@@ -23,7 +23,7 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
-from app.services.conversation.reducer import reduce, with_comms
+from app.services.conversation.reducer import reduce
 from tests.unit.services.conversation.log_helpers import (
     asked,
     barge,
@@ -374,15 +374,8 @@ def test_reply_settled_answering_itself_or_later_is_rejected(through: int) -> No
 # ---- comms phase owned by the step ----
 
 
-def test_with_comms_sets_only_the_phase() -> None:
-    state, _ = fold([user("u1")])
-    assert with_comms(state, CommsPhase.THINKING) == state.model_copy(
-        update={"comms": CommsPhase.THINKING}
-    )
-
-
 def test_reduce_keeps_the_thinking_phase_the_step_set_until_a_reply() -> None:
-    thinking = with_comms(fold([user("u1")])[0], CommsPhase.THINKING)
+    thinking = fold([user("u1")])[0].model_copy(update={"comms": CommsPhase.THINKING})
     assert _accept(thinking, 2, user("u2")).state.comms is CommsPhase.THINKING
     assert _accept(thinking, 2, opened("o")).state.comms is CommsPhase.ANSWERING
 

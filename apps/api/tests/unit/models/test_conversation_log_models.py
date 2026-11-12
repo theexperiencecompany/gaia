@@ -47,6 +47,7 @@ from app.models.stream_events import (
     ToolOutputPayload,
 )
 from tests.unit.services.conversation.log_helpers import (
+    EMPTY,
     T0,
     asked,
     barge,
@@ -83,8 +84,11 @@ _ALL_ENTRIES: list[Entry] = [
 ]
 
 
+_FRAMES: TypeAdapter[OutputFrame] = TypeAdapter(OutputFrame)
+
+
 def _state(comms: CommsPhase, *work: LiveWork) -> ConversationState:
-    return ConversationState.empty().model_copy(update={"comms": comms, "work": work})
+    return EMPTY.model_copy(update={"comms": comms, "work": work})
 
 
 def _work(*approvals: str) -> LiveWork:
@@ -112,7 +116,7 @@ def test_a_stopped_or_failed_reply_may_settle_answering_nothing(outcome: ReplyOu
 
 @pytest.mark.parametrize("outcome", [ReplyOutcome.ANSWERED, ReplyOutcome.SILENT])
 def test_an_answered_or_silent_reply_must_name_what_it_answers(outcome: ReplyOutcome) -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match=f"a {outcome} reply answers at least one entry"):
         _settle(outcome)
 
 
@@ -172,7 +176,7 @@ def test_display_puts_comms_first_then_approvals_then_work(
     assert state.display is display
 
 
-_PAYLOADS: list[BaseModel] = [
+_PAYLOADS: list[StreamPayload] = [
     ResponseEvent(response="hi"),
     ReasoningEvent(reasoning=ReasoningPayload(content="thinking")),
     ToolDataEvent(tool_data={"tool_name": "search", "data": {"q": "x"}, "tool_category": "web"}),
@@ -213,7 +217,8 @@ def test_every_delta_round_trips_with_its_payload_type(
     payload: StreamPayload, frame_of: Callable[[StreamPayload], ReplyDeltaFrame | WorkDeltaFrame]
 ) -> None:
     frame = frame_of(payload)
-    parsed = TypeAdapter(OutputFrame).validate_json(frame.model_dump_json())
+    parsed = _FRAMES.validate_json(frame.model_dump_json())
+    assert isinstance(parsed, ReplyDeltaFrame | WorkDeltaFrame)
     assert type(parsed) is type(frame)
     assert type(parsed.payload) is type(payload)
     assert parsed == frame
@@ -221,7 +226,7 @@ def test_every_delta_round_trips_with_its_payload_type(
 
 def test_a_payload_without_its_tag_is_refused() -> None:
     with pytest.raises(ValidationError):
-        TypeAdapter(OutputFrame).validate_python(
+        _FRAMES.validate_python(
             {"kind": "work_delta", "task_id": "t1", "index": 0, "payload": {"response": "hi"}}
         )
 
@@ -251,4 +256,4 @@ def test_a_delta_index_is_never_negative() -> None:
     ids=lambda frame: frame.kind,
 )
 def test_output_frames_round_trip_on_their_kind(frame: BaseModel) -> None:
-    assert TypeAdapter(OutputFrame).validate_json(frame.model_dump_json()) == frame
+    assert _FRAMES.validate_json(frame.model_dump_json()) == frame

@@ -337,3 +337,30 @@ def get_session_id(config: AgentRunConfig | None) -> str | None:
         or read_run_metadata(config).conversation_id
         or configurable.thread_id
     )
+
+
+class ExecutorRunItem(TypedDict, total=False):
+    """The serialized run context stored between an executor turn and its re-dispatch.
+
+    Written by build_run_item into the Redis queue and into
+    HILApprovalRecord.resume_item; read back by prepare_run_from_item.
+
+    total=False is the honest shape: the HIL resume path re-dispatches from
+    record.resume_item or {}, so an absent or empty item is a real, handled
+    input — every read below supplies a default.
+    """
+
+    task: str
+    task_id: str | None
+    configurable: AgentConfigurable
+    conversation_id: str
+    user_message_id: str | None
+    # Original live turn's bot message id, set only by a HIL pause (_record_pause);
+    # a plain queue enqueue never sets it. Read back into ExecutorRun.
+    bot_message_id: str | None
+    # Workflow execution the run belongs to. It lives only on the workflow task's
+    # wide event, and a queue pop or HIL resume rebuilds the run elsewhere, so the
+    # item is the only carrier across; read into ExecutorRun for attribution.
+    workflow_execution_id: str | None
+    # ISO dispatch time (RunIdentity.dispatched_at), so a rebuilt run keeps it.
+    dispatched_at: str

@@ -6,10 +6,9 @@ from typing import Any, Literal, NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.agents.core.background.executor_queue import ExecutorRunItem
 from app.constants.hil import ApprovalDecision
-from app.db.repositories.base import MongoDocument
-from app.models.agent_config import SubagentResumeItem
+from app.models.agent_config import ExecutorRunItem, SubagentResumeItem
+from app.models.document_models import MongoDocument
 
 
 class HILApprovalStatus(StrEnum):

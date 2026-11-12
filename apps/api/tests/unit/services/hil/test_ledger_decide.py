@@ -1246,8 +1246,8 @@ class TestRevokeSettlesSessionFrame:
         )
         from app.models.hil_models import HILApprovalStatus
         from app.services.hil import ledger_decide
-        from app.services.hil.bridge import GatedApproval, _approval_entry, _publish_entry
-        from app.services.hil.utils import GatedCall
+        from app.services.hil.bridge import _approval_entry, _publish_entry
+        from app.services.hil.utils import GatedApproval, GatedCall
 
         stream_id = "stream-settle-test"
         create_session(stream_id, RunKind.LIVE)

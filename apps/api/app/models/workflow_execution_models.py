@@ -6,7 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY, TOOL_RESULT_NOTE_SEPARATOR
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 from app.schemas.common import ResponseModel
 
 #: How much of a tool's result is kept on the record. Enough to tell the next run

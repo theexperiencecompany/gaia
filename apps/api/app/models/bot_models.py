@@ -6,7 +6,7 @@ Pydantic models for bot chat, sessions, and related operations.
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
 from app.constants.platform_links import Platform
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 from app.models.message_models import FileData
 from app.models.stream_events import EmojiAckPayload
 from app.schemas.common import ResponseModel
