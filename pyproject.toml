@@ -757,6 +757,7 @@ module = [
   "app.models.support_models",
   "app.models.notification.notification_models",
   "app.models.platform_models",
+  "app.models.device_token_models",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
