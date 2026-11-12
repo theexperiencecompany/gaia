@@ -65,6 +65,10 @@ on:
 # listener's 5-minute cancellation timeout (#1131). select-runner cancels the
 # superseded runs through the API instead (`runner.py cancel-superseded`), so a
 # new push starts at once. A merge group's ref is unique to that group.
+# One push can still start two runs on one SHA: a push that moves a stacked
+# PR's base and head together gets two pull_request events from GitHub, with
+# the same before/after. This group cancels the older run, whose gate then
+# fails on lanes that never ran; `mise ci:remote` reads each workflow's newest run only.
 concurrency:
   group: ci-${{ github.head_ref || github.ref }}-${{ github.sha }}
   cancel-in-progress: true
