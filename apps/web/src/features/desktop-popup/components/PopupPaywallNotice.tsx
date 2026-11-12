@@ -39,7 +39,7 @@ export default function PopupPaywallNotice() {
       <GaiaButton
         shape="pill"
         size="sm"
-        className="font-medium text-black"
+        className="font-medium"
         isPending={isOpeningCheckout}
         onPress={() => void openCheckout()}
         variant="primary"

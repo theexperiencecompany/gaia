@@ -48,7 +48,7 @@ export default function Sidebar() {
             onClick={prepareNewChat}
             size="sm"
             fullWidth
-            className="mb-4 flex justify-start text-sm font-medium text-primary"
+            className="mb-4 flex justify-start text-sm font-medium"
             data-keyboard-shortcut="create-chat"
           >
             <BubbleChatAddIcon width={18} height={18} />

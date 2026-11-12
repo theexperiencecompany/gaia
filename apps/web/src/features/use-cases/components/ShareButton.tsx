@@ -35,7 +35,8 @@ export default function ShareButton({
   return (
     <GaiaButton
       variant="default-soft"
-      className="font-light text-zinc-400"
+      tone="muted"
+      className="font-light"
       onPress={handleCopyLink}
     >
       {copied ? (

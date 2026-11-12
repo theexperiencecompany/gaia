@@ -35,10 +35,11 @@ export function CopyableContentView(
     return (
       <GaiaButton
         size="sm"
-        variant="default-soft"
+        variant="tertiary"
+        shape="pill"
         onPress={copy}
         aria-label={copied ? "Copied" : "Copy content"}
-        className="inline-flex items-center gap-1.5 rounded-full bg-zinc-800 hover:bg-zinc-700 transition-colors px-3 py-1.5 min-w-0 h-auto"
+        className="inline-flex items-center gap-1.5 transition-colors min-w-0 h-auto"
       >
         <span className="font-mono text-xs text-zinc-200 truncate">
           {props.content}

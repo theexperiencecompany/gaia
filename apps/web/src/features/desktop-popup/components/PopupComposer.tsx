@@ -114,7 +114,8 @@ export default function PopupComposer({
               variant="ghost"
               onPress={dismissPopup}
               aria-label="Close"
-              className="h-6 min-h-6 w-6 max-w-6 min-w-6 shrink-0 text-zinc-500 hover:text-zinc-200"
+              tone="faint"
+              className="h-6 min-h-6 w-6 max-w-6 min-w-6 shrink-0"
             >
               <Cancel01Icon className="size-3.5" />
             </GaiaButton>

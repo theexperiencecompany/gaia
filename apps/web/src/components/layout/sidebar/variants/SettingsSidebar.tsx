@@ -71,7 +71,7 @@ export default function SettingsSidebar() {
               onPress={navigate}
               size="sm"
               variant="accent-soft"
-              className="group flex w-full justify-start text-primary"
+              className="group flex w-full justify-start"
             >
               {label}
             </GaiaButton>

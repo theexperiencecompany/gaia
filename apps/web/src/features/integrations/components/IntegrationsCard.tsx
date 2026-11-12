@@ -202,7 +202,8 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
                 fullWidth
                 size="sm"
                 variant="default-soft"
-                className="mt-2 text-xs text-zinc-400"
+                tone="muted"
+                className="mt-2 text-xs"
                 onPress={() => {
                   router.push("/integrations");
                   onClose?.();

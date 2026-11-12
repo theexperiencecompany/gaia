@@ -92,8 +92,10 @@ const DummyComposer: React.FC<{
         {/* Integration Banner - uses searchbar class to match composer width */}
         {!hideIntegrationBanner && (
           <GaiaButton
-            variant="default-solid"
-            className="searchbar absolute -top-4 z-0 flex h-fit rounded-full bg-zinc-800/40 px-4 py-2 pb-8 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400"
+            variant="default-soft"
+            shape="pill"
+            tone="dim"
+            className="searchbar absolute -top-4 z-0 flex h-fit py-2 pb-8 text-xs"
             onPress={handleIntegrationsClick}
             aria-label="Connect your tools to GAIA"
           >

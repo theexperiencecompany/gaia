@@ -107,11 +107,9 @@ export default function ModelSelectorDevControls() {
         size="sm"
         variant="ghost"
         aria-label="Dev model selector"
-        // Tint primary when a non-default model is pinned, so it's obvious at a
+        // Tint accent when a non-default model is pinned, so it's obvious at a
         // glance that the dev override is active.
-        className={
-          useDefaultModels ? "text-zinc-400 hover:text-primary" : "text-primary"
-        }
+        tone={useDefaultModels ? "muted" : "accent"}
       >
         <CpuIcon width={20} height={20} />
       </GaiaButton>
