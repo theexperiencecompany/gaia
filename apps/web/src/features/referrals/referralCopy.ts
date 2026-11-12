@@ -185,6 +185,7 @@ export const REFERRAL_UI_COPY = {
   subscribedOn: (date: string) => `Subscribed ${date}`,
   statusPaid: "Free month",
   statusPending: "On the way",
+  statusRefunded: "Refunded",
   pendingHint: "You get a free month when they subscribe",
   suggestionsTitle: "People you might invite",
   suggestionReason: (reason: ReferralSuggestionReason, count: number) =>

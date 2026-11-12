@@ -40,7 +40,6 @@ export function FriendsList({ friends }: FriendsListProps) {
 }
 
 function FriendRow({ friend }: { friend: ReferredFriend }) {
-  const isPaid = friend.status === "paid";
   const name = friend.first_name ?? REFERRAL_UI_COPY.unnamedFriend;
   return (
     <li className="flex items-center gap-3 px-4 py-3">
@@ -53,7 +52,15 @@ function FriendRow({ friend }: { friend: ReferredFriend }) {
             : REFERRAL_UI_COPY.joinedOn(formatDate(friend.joined_at))}
         </p>
       </div>
-      {isPaid ? (
+      <FriendStatusChip status={friend.status} />
+    </li>
+  );
+}
+
+function FriendStatusChip({ status }: { status: ReferredFriend["status"] }) {
+  switch (status) {
+    case "paid":
+      return (
         <Chip
           size="sm"
           variant="flat"
@@ -62,13 +69,20 @@ function FriendRow({ friend }: { friend: ReferredFriend }) {
         >
           {REFERRAL_UI_COPY.statusPaid}
         </Chip>
-      ) : (
+      );
+    case "refunded":
+      return (
+        <Chip size="sm" variant="flat" className="text-zinc-500">
+          {REFERRAL_UI_COPY.statusRefunded}
+        </Chip>
+      );
+    case "joined":
+      return (
         <Tooltip content={REFERRAL_UI_COPY.pendingHint} delay={300}>
           <Chip size="sm" variant="flat" className="text-zinc-400">
             {REFERRAL_UI_COPY.statusPending}
           </Chip>
         </Tooltip>
-      )}
-    </li>
-  );
+      );
+  }
 }

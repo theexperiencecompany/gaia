@@ -16,6 +16,8 @@ interface AnnualSavingsOptions {
   initialPlans?: Plan[];
   /** An offer's percentage, taken off the yearly price before comparing. */
   offerPercent?: number;
+  /** What this viewer pays for the first year when it is not the list price, such as a referred friend's gift. */
+  yearlyPriceMinor?: number;
 }
 
 /** A yearly saving against twelve monthly payments, as a percentage and as whole months. */
@@ -32,6 +34,7 @@ export interface AnnualSavings {
 export function useAnnualSavings({
   initialPlans,
   offerPercent,
+  yearlyPriceMinor,
 }: AnnualSavingsOptions = {}): AnnualSavings | null {
   const { plans } = usePricing(initialPlans);
 
@@ -44,9 +47,9 @@ export function useAnnualSavings({
   if (!monthly || !yearly) return null;
 
   const fullPrice = monthly.amount * MONTHS_PER_YEAR;
-  const yearlyPrice = offerPercent
-    ? getOfferPrice(yearly.amount, offerPercent)
-    : yearly.amount;
+  const yearlyPrice =
+    yearlyPriceMinor ??
+    (offerPercent ? getOfferPrice(yearly.amount, offerPercent) : yearly.amount);
   const percent = getAnnualSavingsPercent(fullPrice, yearlyPrice);
   if (percent <= 0) return null;
   return { percent, monthsFree: monthsFreeFromPrices(fullPrice, yearlyPrice) };

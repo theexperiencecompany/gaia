@@ -21,7 +21,7 @@ from app.constants.referrals import (
 from app.models.referral_models import (
     ReferralCodeDocument,
     ReferralNudgeStateDocument,
-    ReferredFriendStatus,
+    ReferredFriendStanding,
 )
 from app.models.user_models import UserDocument
 from app.schemas.referrals import (
@@ -178,7 +178,7 @@ class TestMe:
         self, client: AsyncClient, route_log: MagicMock
     ) -> None:
         friend = ReferredFriend(
-            first_name="Priya", status=ReferredFriendStatus.PAID, joined_at=NOW, paid_at=NOW
+            first_name="Priya", status=ReferredFriendStanding.PAID, joined_at=NOW, paid_at=NOW
         )
         overview = ReferralMeResponse(
             code="aryan-k7f2",

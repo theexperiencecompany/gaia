@@ -21,7 +21,7 @@ from app.models.agent_models import agent_configurable, get_user_id, runs_on_bot
 from app.models.referral_models import (
     ReferralInviteStatus,
     ReferralInviteSurface,
-    ReferredFriendStatus,
+    ReferredFriendStanding,
 )
 from app.schemas.referrals import ReferralInviteRequest, ReferralMeResponse
 from app.services.referrals.invites import friend_price_line, price_lines, send_invites
@@ -60,9 +60,10 @@ _INVITE_OUTCOMES: dict[ReferralInviteStatus, str] = {
     ReferralInviteStatus.OWN_ADDRESS: "the user's own address, not sent",
 }
 
-_FRIEND_STATUSES: dict[ReferredFriendStatus, str] = {
-    ReferredFriendStatus.PAID: "paid, earned a free month",
-    ReferredFriendStatus.JOINED: "joined, has not paid yet",
+_FRIEND_STATUSES: dict[ReferredFriendStanding, str] = {
+    ReferredFriendStanding.PAID: "paid, earned a free month",
+    ReferredFriendStanding.JOINED: "joined, has not paid yet",
+    ReferredFriendStanding.REFUNDED: "paid, then refunded, so earned nothing",
 }
 
 

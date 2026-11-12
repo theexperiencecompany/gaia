@@ -13513,14 +13513,14 @@ export interface components {
              * @description When their first payment went through
              */
             paid_at: string | null;
-            status: components["schemas"]["ReferredFriendStatus"];
+            status: components["schemas"]["ReferredFriendStanding"];
         };
         /**
-         * ReferredFriendStatus
-         * @description Where a referred friend is: signed up, or past their first successful payment.
+         * ReferredFriendStanding
+         * @description How the referral page lists a friend: joined, paid, or refunded, a first payment taken back.
          * @enum {string}
          */
-        ReferredFriendStatus: "joined" | "paid";
+        ReferredFriendStanding: "joined" | "paid" | "refunded";
         /**
          * RegenerateStepsRequest
          * @description Request model for regenerating workflow steps.
@@ -17407,7 +17407,7 @@ export type ReferralWeeklyCardResponse = components['schemas']['ReferralWeeklyCa
 export type ReferralWorkflowCreditResponse = components['schemas']['ReferralWorkflowCreditResponse'];
 export type ReferralWorkflowMeter = components['schemas']['ReferralWorkflowMeter'];
 export type ReferredFriend = components['schemas']['ReferredFriend'];
-export type ReferredFriendStatus = components['schemas']['ReferredFriendStatus'];
+export type ReferredFriendStanding = components['schemas']['ReferredFriendStanding'];
 export type RegenerateStepsRequest = components['schemas']['RegenerateStepsRequest'];
 export type RegenerateWritingStyleExampleResponse = components['schemas']['RegenerateWritingStyleExampleResponse'];
 export type RegisterServerRequest = components['schemas']['RegisterServerRequest'];
