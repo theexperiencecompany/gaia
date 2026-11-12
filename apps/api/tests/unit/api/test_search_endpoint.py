@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.models.chat_models import MessageModel
+from app.models.conversation_models import ConversationEntry
 from app.models.search_models import MessageSearchResult, SearchResultsResponse
 from app.utils.log_identifiers import user_text_shape
 from app.utils.search.models import SearchResultItem, WebSearchResult
@@ -46,7 +46,7 @@ class TestSearchMessages:
             messages=[
                 MessageSearchResult(
                     conversation_id="conv-1",
-                    message=MessageModel(type="bot", response="hello"),
+                    message=ConversationEntry(type="bot", response="hello", seq=1),
                     snippet="hello",
                 )
             ],
@@ -105,7 +105,7 @@ class TestSearchAnalytics:
             messages=[
                 MessageSearchResult(
                     conversation_id="conv-1",
-                    message=MessageModel(type="bot", response="hello"),
+                    message=ConversationEntry(type="bot", response="hello", seq=1),
                     snippet="hello",
                 )
             ],

@@ -12,7 +12,7 @@ notification. The repositories and engine are fakes (stateful where the
 invariant needs state); the task logic is the real module code.
 """
 
-from collections.abc import AsyncGenerator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -20,8 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.memory.ingestion import RetainResult
-from app.models.chat_models import MessageModel
-from app.models.conversation_models import ConversationDocument
+from app.models.conversation_models import ConversationDocument, ConversationEntry
 from app.models.user_models import UserDocument
 from app.workers.tasks.memory_backfill_tasks import backfill_user_memories
 
@@ -72,8 +71,8 @@ def _conversation(cid: str, content: str) -> ConversationDocument:
         conversation_id=cid,
         user_id="user-1",
         messages=[
-            MessageModel(type="user", response=content),
-            MessageModel(type="bot", response=f"answer: {content}"),
+            ConversationEntry(type="user", response=content, seq=1),
+            ConversationEntry(type="bot", response=f"answer: {content}", seq=2),
         ],
         createdAt="2025-06-01T10:00:00Z",
     )
@@ -82,7 +81,7 @@ def _conversation(cid: str, content: str) -> ConversationDocument:
 @contextmanager
 def _backend(
     user: UserDocument, conversations: list[ConversationDocument], *, facts: int = 2
-) -> AsyncGenerator[_Backend, None]:
+) -> Iterator[_Backend]:
     user_repo = _FakeUserRepository(user)
     convo_repo = MagicMock()
     convo_repo.recent_for_user = AsyncMock(return_value=conversations)
