@@ -653,7 +653,8 @@ class TestNotifyAccountLinked:
 class TestOutboundBubbleSplitting:
     """Raw agent text carries bubble-break sentinels; outbound publish is the last place that can turn them into real bubbles."""
 
-    async def test_sentinels_inside_one_part_become_ordered_bubbles(self) -> None:
+    async def test_a_part_travels_whole_for_the_bot_to_split_into_bubbles(self) -> None:
+        """The bot consumer splits with the streamed reply's splitter, so the API never pre-splits."""
         publisher = AsyncMock()
         with (
             patch.object(
@@ -673,9 +674,12 @@ class TestOutboundBubbleSplitting:
             )
         assert ok is od.OutboundResult.PUBLISHED
         envelope = json.loads(publisher.publish_outbound.await_args.args[1])
-        assert envelope["text_parts"] == ["all set.", "8 tasks created", "2 nudges"]
+        assert (
+            envelope["text"] == "all set.<NEW_MESSAGE_BREAK>8 tasks created[NEW_LINE_BREAK]2 nudges"
+        )
+        assert envelope.get("text_parts") is None
 
-    async def test_a_trailing_partial_sentinel_never_ships(self) -> None:
+    async def test_a_part_of_nothing_but_sentinels_is_not_published(self) -> None:
         publisher = AsyncMock()
         with (
             patch.object(
@@ -688,11 +692,11 @@ class TestOutboundBubbleSplitting:
                 od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
             ),
         ):
-            await od.publish_outbound_message(
-                ConversationSource.WHATSAPP, "user-1", ["here are your numbers<NEW_MESSAGE_B"]
+            ok = await od.publish_outbound_message(
+                ConversationSource.WHATSAPP, "user-1", ["<NEW_MESSAGE_BREAK> [NEW_LINE_BREAK]"]
             )
-        envelope = json.loads(publisher.publish_outbound.await_args.args[1])
-        assert envelope["text"] == "here are your numbers"
+        assert ok is od.OutboundResult.SKIPPED
+        publisher.publish_outbound.assert_not_awaited()
 
 
 class TestPublishOutboundReaction:
