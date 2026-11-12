@@ -1,7 +1,8 @@
 """The instant reaction: one JEV call decides whether a user's message gets an emoji tap, and which."""
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Coroutine, Mapping
+from contextlib import asynccontextmanager
 import json
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -9,7 +10,9 @@ import httpx
 from prometheus_client import REGISTRY
 from pydantic import ValidationError
 import pytest
+import respx
 
+from app.constants.hil import HIL_JEV_URL
 from app.constants.reactions import (
     REACTION_CONTEXT_MAX_CHARS,
     REACTION_EMOJI_INSTRUCTIONS,
@@ -32,6 +35,7 @@ from app.services.conversation.ack import (
     read_reaction,
 )
 from app.services.hil.jev_client import JevUnconfiguredError
+from app.services.providers.provider_credentials_service import ProviderConfig
 from tests.helpers import captured_wide_event, reaction_answers
 
 _POST = "app.services.conversation.ack.post_decisions"
@@ -325,3 +329,100 @@ class TestDecideReaction:
         assert decision.emoji is None
         assert event["reaction_ack"]["reason"] == "jev_unconfigured"
         assert _failures(event) == []
+
+
+# The deadline under test, the slack it may overrun by, and the probe a blocked loop would delay.
+_DEADLINE_S = 0.3
+_SLACK_S = 0.15
+_PROBE_S = 0.05
+
+
+@asynccontextmanager
+async def _silent_jev() -> AsyncIterator[str]:
+    """Serve a Decisions URL that accepts the connection and never answers."""
+    held: list[asyncio.StreamWriter] = []
+
+    async def hold(_: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        held.append(writer)
+
+    server = await asyncio.start_server(hold, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    try:
+        yield f"http://127.0.0.1:{port}/api/alpha/decisions"
+    finally:
+        for writer in held:
+            writer.close()
+        server.close()
+        await server.wait_closed()
+
+
+async def _timed_beside_a_probe(
+    call: Coroutine[object, object, ReactionDecision],
+) -> tuple[ReactionDecision, float, float]:
+    """Run the call next to a short sleep; return the decision, its wall time and the sleep's lateness."""
+    loop = asyncio.get_running_loop()
+
+    async def probe() -> float:
+        started = loop.time()
+        await asyncio.sleep(_PROBE_S)
+        return loop.time() - started - _PROBE_S
+
+    probe_task = asyncio.create_task(probe())
+    await asyncio.sleep(0)  # the probe's clock starts before the call can block the loop
+    started = loop.time()
+    decision = await call
+    elapsed = loop.time() - started
+    return decision, elapsed, await probe_task
+
+
+class TestTheDeadlineIsAWallClockBound:
+    @pytest.fixture(autouse=True)
+    def _keyed_and_short(self) -> object:
+        key = ProviderConfig(api_key="or-key")  # pragma: allowlist secret
+        with (
+            patch("app.services.hil.jev_client.resolve", AsyncMock(return_value=key)),
+            patch.object(ack, "REACTION_TIMEOUT_SECONDS", _DEADLINE_S),
+        ):
+            yield
+
+    async def test_the_call_builds_no_http_client(self) -> None:
+        with (
+            respx.mock(assert_all_called=True) as router,
+            patch("httpx.AsyncClient", side_effect=AssertionError("client built on the call")),
+        ):
+            router.post(HIL_JEV_URL).respond(json=reaction_answers())
+            decision = await decide_reaction("find my flight email", "")
+
+        assert decision.reason is ReactionReason.REACTED
+
+    async def test_a_connection_that_never_comes_times_out_on_time(self) -> None:
+        reached = asyncio.Event()
+
+        async def never_connects(_: httpx.Request) -> httpx.Response:
+            reached.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        with respx.mock(assert_all_called=False) as router:
+            router.post(HIL_JEV_URL).mock(side_effect=never_connects)
+            decision, elapsed, lateness = await _timed_beside_a_probe(
+                decide_reaction("find it", "")
+            )
+
+        assert reached.is_set()
+        assert decision.reason is ReactionReason.TIMEOUT
+        assert decision.emoji is None
+        assert elapsed < _DEADLINE_S + _SLACK_S
+        assert lateness < _PROBE_S
+
+    async def test_a_server_that_never_answers_times_out_on_time(self) -> None:
+        async with _silent_jev() as url:
+            with patch("app.services.hil.jev_client.HIL_JEV_URL", url):
+                decision, elapsed, lateness = await _timed_beside_a_probe(
+                    decide_reaction("find it", "")
+                )
+
+        assert decision.reason is ReactionReason.TIMEOUT
+        assert decision.emoji is None
+        assert elapsed < _DEADLINE_S + _SLACK_S
+        assert lateness < _PROBE_S

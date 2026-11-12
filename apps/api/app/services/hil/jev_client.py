@@ -33,6 +33,11 @@ _FAILURES: tuple[tuple[type[Exception] | tuple[type[Exception], ...], JevFailure
 )
 
 
+# Built at import, so a caller's deadline never pays first-use setup (lazy transport imports,
+# the CA bundle load) synchronously on the event loop; it also keeps the TLS connection pooled.
+jev_http_client = httpx.AsyncClient(timeout=HIL_JEV_TIMEOUT_SECONDS)
+
+
 def jev_failure(error: Exception) -> JevFailure:
     """Name why a JEV call, or the read of its answer, gave nothing usable; anything unforeseen is ERROR."""
     return next(
@@ -48,11 +53,10 @@ async def post_decisions(
     key = config.api_key if config else None
     if not key:
         raise JevUnconfiguredError("No OpenRouter key saved or set; cannot reach the JEV judge")
-    async with httpx.AsyncClient(timeout=HIL_JEV_TIMEOUT_SECONDS) as client:
-        resp = await client.post(
-            HIL_JEV_URL,
-            json={"model": HIL_JEV_MODEL_NAME, "state": state, "questions": questions},
-            headers={"Authorization": f"Bearer {key}"},
-        )
-        resp.raise_for_status()
-        return JevDecisionsResponse.model_validate(resp.json())
+    resp = await jev_http_client.post(
+        HIL_JEV_URL,
+        json={"model": HIL_JEV_MODEL_NAME, "state": state, "questions": questions},
+        headers={"Authorization": f"Bearer {key}"},
+    )
+    resp.raise_for_status()
+    return JevDecisionsResponse.model_validate(resp.json())
