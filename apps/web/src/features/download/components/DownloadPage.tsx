@@ -441,7 +441,7 @@ export default function DownloadPage() {
           Download GAIA
         </h1>
         <p className="max-w-xl text-center text-lg text-zinc-400">
-          Available on all your devices. Choose your platform below.
+          Available for macOS, Windows and Linux. Choose your platform below.
         </p>
       </section>
 
