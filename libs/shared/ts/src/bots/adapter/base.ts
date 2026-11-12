@@ -69,7 +69,7 @@ import type {
 } from "../types";
 import {
   BOT_FAILURE_REASON,
-  classifyBotFailure,
+  type BotFailureReason,
   recordBotFailure,
 } from "../utils/failure-reasons";
 import {
@@ -737,7 +737,16 @@ export abstract class BaseBotAdapter {
         try {
           accepted = await this.gaia.postMessage(request);
         } catch (error) {
-          await this.reportPostRefused(error, request, surface, onAuthError);
+          const reason = recordBotFailure("chat_post_refused", error, {
+            context: "chat:post",
+          });
+          await this.reportPostRefused(
+            reason,
+            error,
+            request,
+            surface,
+            onAuthError,
+          );
           analytics.client.capture(analytics.distinctId, "bot:error", {
             context: "chat:post",
             duration_ms: 0,
@@ -761,15 +770,20 @@ export abstract class BaseBotAdapter {
     );
   }
 
+  /** Settles once every conversation followed so far is idle with its replies shown. */
+  conversationsIdle(): Promise<void> {
+    return this.followers.idle();
+  }
+
   /** Tells the user why their message was not accepted: the link prompt, the plan prompt, or the error. */
   private async reportPostRefused(
+    reason: BotFailureReason,
     error: unknown,
     request: ChatRequest,
     surface: ConversationSurface,
     onAuthError: (authUrl: string) => Promise<void>,
   ): Promise<void> {
-    if (classifyBotFailure(error) === BOT_FAILURE_REASON.ACCOUNT_NOT_LINKED) {
-      wideLog.fail(BOT_FAILURE_REASON.ACCOUNT_NOT_LINKED);
+    if (reason === BOT_FAILURE_REASON.ACCOUNT_NOT_LINKED) {
       const { authUrl } = await this.gaia.createLinkToken(
         request.platform,
         request.platformUserId,
@@ -780,9 +794,6 @@ export abstract class BaseBotAdapter {
       await onAuthError(authUrl);
       return;
     }
-    const reason = recordBotFailure("chat_post_failed", error, {
-      context: "chat:post",
-    });
     const text =
       reason === BOT_FAILURE_REASON.PLAN_REQUIRED
         ? buildPlanRequiredMessage(this.gaia.getPricingUrl())

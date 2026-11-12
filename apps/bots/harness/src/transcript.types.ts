@@ -54,8 +54,8 @@ export interface SendEvent extends TranscriptEventBase {
   text: string;
   /** `text.length` — the value the platform's length cap is checked against. */
   length: number;
-  /** Set when this bubble carries a user-facing error (from `onGenericError`). */
-  isError?: boolean;
+  /** The platform message this one answers natively, when the reply quotes one. */
+  replyTo?: string;
 }
 
 /** An in-place edit of a previously-sent bubble. */
@@ -64,7 +64,6 @@ export interface EditEvent extends TranscriptEventBase {
   messageId: string;
   text: string;
   length: number;
-  isError?: boolean;
 }
 
 /** A delivered bubble taken back off the screen (a retracted reply's later bubbles). */
@@ -91,21 +90,6 @@ export interface RichEvent extends TranscriptEventBase {
   title: string;
   /** Rendered representation of the rich payload for the emulated platform. */
   text: string;
-}
-
-/**
- * Metadata describing how a single logical response was split into multiple
- * bubbles for the emulated platform, so tests can assert split boundaries
- * without reconstructing them from `send` events.
- */
-export interface SplitEvent extends TranscriptEventBase {
-  type: "split";
-  /** Number of bubbles the response was split into. */
-  segmentCount: number;
-  /** Character length of each delivered bubble, in order. */
-  segmentLengths: number[];
-  /** The platform character limit each bubble was measured against. */
-  limit: number;
 }
 
 /**
@@ -157,7 +141,6 @@ export type TranscriptEvent =
   | TypingEvent
   | EphemeralEvent
   | RichEvent
-  | SplitEvent
   | OutboundDeliveryEvent
   | OutboundAttachmentEvent
   | ReactionEvent;
@@ -171,7 +154,6 @@ export type TranscriptEventInput =
   | Omit<TypingEvent, keyof TranscriptEventBase>
   | Omit<EphemeralEvent, keyof TranscriptEventBase>
   | Omit<RichEvent, keyof TranscriptEventBase>
-  | Omit<SplitEvent, keyof TranscriptEventBase>
   | Omit<OutboundDeliveryEvent, keyof TranscriptEventBase>
   | Omit<OutboundAttachmentEvent, keyof TranscriptEventBase>
   | Omit<ReactionEvent, keyof TranscriptEventBase>;

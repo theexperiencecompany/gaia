@@ -26,18 +26,17 @@ import {
   type BotCommand,
   type BotFileData,
   buildAuthLinkMessage,
+  type ConversationSurface,
   createBotLogger,
   extractSubcommandArgs,
   fetchBytesCapped,
   friendlyMediaError,
-  handleStreamingChat,
   hashLogIdentifier,
   htmlToPlainText,
   type IncomingMedia,
   MEDIA_READ_TIMEOUT_MS,
   type MediaKind,
   type OutboundFile,
-  PerUserInboundQueue,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -48,7 +47,6 @@ import {
   renderForPlatform,
   richMessageToMarkdown,
   type SentMessage,
-  STREAMING_DEFAULTS,
   sanitizeErrorForLog,
   withWideEvent,
 } from "@gaia/shared/bots";
@@ -193,7 +191,6 @@ export class TelegramAdapter extends BaseBotAdapter {
   private token!: string;
   private botUsername: string | undefined;
   private readonly adapterLogger = createBotLogger("telegram", "adapter");
-  private readonly inbound = new PerUserInboundQueue();
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -209,7 +206,6 @@ export class TelegramAdapter extends BaseBotAdapter {
 
     this.bot = new Bot(this.token);
     this.registerErrorHandler();
-    this.registerInboundQueue();
     // Cache the bot username upfront to avoid calling getMe() on every message
     const botInfo = await this.bot.api.getMe();
     this.botUsername = botInfo.username;
@@ -239,24 +235,6 @@ export class TelegramAdapter extends BaseBotAdapter {
         recordBotFailure("telegram_runtime_error", error);
       },
     );
-  }
-
-  /**
-   * Hands each update to its sender's queue instead of grammY's polling loop,
-   * which awaits every handler before fetching the next update: a turn held open
-   * by background work then held up every later update, /stop included.
-   */
-  private registerInboundQueue(): void {
-    this.bot.use(async (ctx, next) => {
-      const sender = ctx.from?.id.toString();
-      if (!sender) {
-        await next();
-        return;
-      }
-      void this.inbound
-        .enqueue(sender, ctx.message?.text, () => next())
-        .catch((error: unknown) => this.recordRuntimeError(ctx, error));
-    });
   }
 
   /**
@@ -355,7 +333,7 @@ export class TelegramAdapter extends BaseBotAdapter {
       });
 
       if (isPrivate) {
-        await this.handleTelegramStreaming(ctx, userId, ctx.message.text);
+        await this.postTelegramMessage(ctx, userId, ctx.message.text);
         return;
       }
 
@@ -370,7 +348,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleTelegramStreaming(ctx, userId, content);
+      await this.postTelegramMessage(ctx, userId, content);
     });
 
     // Inbound media (photos, documents, voice notes, audio, …). Routed through
@@ -598,17 +576,15 @@ export class TelegramAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleTelegramStreaming(ctx, userId, message);
+      await this.postTelegramMessage(ctx, userId, message);
     });
   }
 
   /**
-   * Shared streaming handler for `/gaia`, DMs, and @mentions.
-   *
-   * Sends an initial "Thinking..." message with a typing indicator,
-   * then updates it in place as chunks arrive.
+   * Posts a `/gaia` message, DM or @mention and follows its conversation in this
+   * chat. Returns once the message is accepted, so the next one is never held.
    */
-  private async handleTelegramStreaming(
+  private async postTelegramMessage(
     ctx: Context,
     userId: string,
     message: string,
@@ -616,199 +592,129 @@ export class TelegramAdapter extends BaseBotAdapter {
   ): Promise<void> {
     const chatId = ctx.chat?.id;
     if (!chatId) return;
+    const isGroup = ctx.chat?.type !== "private";
 
-    const loading = await ctx.reply("Thinking...");
-    const placeholderId = loading.message_id;
-    const removePlaceholder = async (): Promise<void> => {
-      try {
-        await ctx.api.deleteMessage(chatId, loading.message_id);
-      } catch (e) {
-        // The reply is already settled; a stale "Thinking..." is all this costs.
+    await this.postAndFollow(
+      {
+        message,
+        platform: "telegram",
+        platformUserId: userId,
+        channelId: chatId.toString(),
+        isDm: !isGroup,
+        platformMessageId: ctx.msg?.message_id?.toString(),
+        ...(attachments.length > 0
+          ? {
+              fileIds: attachments.map((a) => a.fileId),
+              fileData: attachments,
+            }
+          : {}),
+      },
+      this.conversationSurface(chatId, isGroup),
+      (authUrl) => this.sendAuthLink(chatId, userId, isGroup, authUrl),
+    );
+  }
+
+  /** The chat a conversation follows into: native replies, reactions and the typing action. */
+  private conversationSurface(
+    chatId: number,
+    isGroup: boolean,
+  ): ConversationSurface {
+    const logEditFailure =
+      (messageId: number) =>
+      (e: unknown): void =>
         this.adapterLogger.error(
-          "placeholder_delete_failed",
-          {
-            channel_hash: hashLogIdentifier(chatId),
-            message_id: loading.message_id,
-          },
+          "edit_message_text_failed",
+          { channel_hash: hashLogIdentifier(chatId), message_id: messageId },
           e,
         );
-      }
-    };
-
-    // Typing indicator with 5s refresh (Telegram expires it after ~5s).
-    const clearTyping = this.startTypingIndicator(
-      () => ctx.api.sendChatAction(chatId, "typing"),
-      TELEGRAM_TYPING_REFRESH_INTERVAL_MS,
-    );
-
-    try {
-      await handleStreamingChat(
-        this.gaia,
-        {
-          message,
-          platform: "telegram",
-          platformUserId: userId,
-          channelId: chatId.toString(),
-          isDm: ctx.chat?.type === "private",
-          platformMessageId: ctx.msg?.message_id?.toString(),
-          ...(attachments.length > 0
-            ? {
-                fileIds: attachments.map((a) => a.fileId),
-                fileData: attachments,
-              }
-            : {}),
-        },
-        async (text: string) => {
-          await this.editHtml(
-            (t, opts) =>
-              ctx.api.editMessageText(chatId, placeholderId, t, opts),
-            text,
-            (e) =>
-              this.adapterLogger.error(
-                "edit_message_text_failed",
-                {
-                  channel_hash: hashLogIdentifier(chatId),
-                  message_id: placeholderId,
-                },
-                e,
-              ),
-          );
-        },
-        async (text: string) => {
-          const newMessage = await this.sendHtml(
-            (t, opts) => ctx.reply(t, opts),
-            text,
-          );
-          return {
-            edit: async (updatedText: string) => {
-              await this.editHtml(
-                (t, opts) =>
-                  ctx.api.editMessageText(
-                    chatId,
-                    newMessage.message_id,
-                    t,
-                    opts,
-                  ),
-                updatedText,
-                (e) =>
-                  this.adapterLogger.error(
-                    "edit_message_text_failed",
-                    {
-                      channel_hash: hashLogIdentifier(chatId),
-                      message_id: newMessage.message_id,
-                    },
-                    e,
-                  ),
-              );
-            },
-            delete: async () => {
-              await ctx.api.deleteMessage(chatId, newMessage.message_id);
-            },
-          };
-        },
-        async (authUrl: string) => {
-          clearTyping();
-          // Same HTML pipeline as every other send, so the auth prompt renders
-          // identically to the /auth command (bold + a clickable link), not
-          // literal `**`/`[ ]( )`. In groups, DM it for privacy.
-          const isGroup = ctx.chat?.type !== "private";
-          const authHtml = renderForPlatform(
-            buildAuthLinkMessage(authUrl),
-            "telegram",
-          );
-          try {
-            if (isGroup) {
-              await this.sendHtml(
-                (t, opts) => ctx.api.sendMessage(Number(userId), t, opts),
-                authHtml,
-              );
-              await ctx.api.editMessageText(
-                chatId,
-                placeholderId,
-                "I sent you a DM with the authentication link.",
-              );
-            } else {
-              await this.editHtml(
-                (t, opts) =>
-                  ctx.api.editMessageText(chatId, placeholderId, t, opts),
-                authHtml,
-                (e) =>
-                  this.adapterLogger.error(
-                    "auth_message_failed",
-                    {
-                      channel_hash: hashLogIdentifier(chatId),
-                      user_hash: hashLogIdentifier(userId),
-                    },
-                    e,
-                  ),
-              );
-            }
-          } catch (e) {
-            this.adapterLogger.error(
-              "auth_message_failed",
-              {
-                channel_hash: hashLogIdentifier(chatId),
-                user_hash: hashLogIdentifier(userId),
+    return {
+      send: async (text, replyTo) => {
+        const quote = replyTo
+          ? {
+              reply_parameters: {
+                message_id: Number(replyTo),
+                allow_sending_without_reply: true,
               },
-              e,
-            );
-            // DM failed (privacy settings) — update group message with fallback
-            try {
-              const fallback = this.botUsername
-                ? `I couldn't send you a DM. Your privacy settings may be blocking bot messages.\n\nPlease message me directly at @${this.botUsername} and use /auth to link your account.`
-                : `I couldn't send you a DM. Your privacy settings may be blocking bot messages.\n\nPlease message me directly and use /auth to link your account.`;
-              await ctx.api.editMessageText(chatId, placeholderId, fallback);
-            } catch (fallbackErr) {
-              this.adapterLogger.error(
-                "auth_fallback_message_failed",
-                {
-                  channel_hash: hashLogIdentifier(chatId),
-                  user_hash: hashLogIdentifier(userId),
-                },
-                fallbackErr,
-              );
             }
-          }
-        },
-        async (errMsg: string) => {
-          clearTyping();
-          try {
-            await this.editHtml(
+          : {};
+        const sent = await this.sendHtml(
+          (t, opts) =>
+            this.bot.api.sendMessage(chatId, t, { ...opts, ...quote }),
+          text,
+        );
+        return {
+          edit: (updated: string) =>
+            this.editHtml(
               (t, opts) =>
-                ctx.api.editMessageText(chatId, placeholderId, t, opts),
-              errMsg,
-              (e) =>
-                this.adapterLogger.error(
-                  "edit_message_text_failed",
-                  {
-                    channel_hash: hashLogIdentifier(chatId),
-                    message_id: placeholderId,
-                  },
-                  e,
-                ),
-            );
-          } catch {
-            // This is already the error path — the failure is logged by the
-            // onError callback above, and there is no further fallback to try.
-          }
-        },
-        STREAMING_DEFAULTS.telegram,
-        await this.analyticsFor(userId),
-        async (emoji: string, replaces: string | null) => {
-          const inboundId = ctx.msg?.message_id;
-          if (inboundId === undefined) return REACTION_OUTCOME.NO_TARGET;
-          return this.reactToMessage(
-            chatId.toString(),
-            inboundId.toString(),
-            emoji,
-            ctx.chat?.type !== "private",
-            replaces,
-          );
-        },
-        removePlaceholder,
+                this.bot.api.editMessageText(chatId, sent.message_id, t, opts),
+              updated,
+              logEditFailure(sent.message_id),
+            ),
+          delete: async () => {
+            await this.bot.api.deleteMessage(chatId, sent.message_id);
+          },
+        };
+      },
+      react: (platformMessageId, emoji, replaces) =>
+        this.reactToMessage(
+          chatId.toString(),
+          platformMessageId,
+          emoji,
+          isGroup,
+          replaces,
+        ),
+      startTyping: () =>
+        this.startTypingIndicator(
+          () => this.bot.api.sendChatAction(chatId, "typing"),
+          TELEGRAM_TYPING_REFRESH_INTERVAL_MS,
+        ),
+    };
+  }
+
+  /**
+   * Sends the account-link prompt: in the chat for a DM, by DM for a group so the
+   * link stays private, with a note in the group when Telegram refuses the DM.
+   */
+  private async sendAuthLink(
+    chatId: number,
+    userId: string,
+    isGroup: boolean,
+    authUrl: string,
+  ): Promise<void> {
+    // Same HTML pipeline as every other send, so the prompt renders like the /auth command.
+    const authHtml = renderForPlatform(
+      buildAuthLinkMessage(authUrl),
+      "telegram",
+    );
+    if (!isGroup) {
+      await this.sendHtml(
+        (t, opts) => this.bot.api.sendMessage(chatId, t, opts),
+        authHtml,
       );
-    } finally {
-      clearTyping();
+      return;
+    }
+    try {
+      await this.sendHtml(
+        (t, opts) => this.bot.api.sendMessage(Number(userId), t, opts),
+        authHtml,
+      );
+      await this.bot.api.sendMessage(
+        chatId,
+        "I sent you a DM with the authentication link.",
+      );
+    } catch (e) {
+      this.adapterLogger.error(
+        "auth_message_failed",
+        {
+          channel_hash: hashLogIdentifier(chatId),
+          user_hash: hashLogIdentifier(userId),
+        },
+        e,
+      );
+      const fallback = this.botUsername
+        ? `I couldn't send you a DM. Your privacy settings may be blocking bot messages.\n\nPlease message me directly at @${this.botUsername} and use /auth to link your account.`
+        : `I couldn't send you a DM. Your privacy settings may be blocking bot messages.\n\nPlease message me directly and use /auth to link your account.`;
+      await this.bot.api.sendMessage(chatId, fallback);
     }
   }
 
@@ -880,7 +786,7 @@ export class TelegramAdapter extends BaseBotAdapter {
       if (outcome.action === "reply") {
         await ctx.reply(outcome.text);
       } else {
-        await this.handleTelegramStreaming(
+        await this.postTelegramMessage(
           ctx,
           userId,
           outcome.text,

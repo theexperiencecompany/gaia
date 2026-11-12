@@ -24,9 +24,9 @@ import {
   BaseBotAdapter,
   type BotCommand,
   buildAuthLinkMessage,
+  type ConversationSurface,
   createBotLogger,
   extractSubcommandArgs,
-  handleStreamingChat,
   hashLogIdentifier,
   type OutboundFile,
   type PlatformName,
@@ -38,7 +38,6 @@ import {
   renderForPlatform,
   richMessageToMarkdown,
   type SentMessage,
-  STREAMING_DEFAULTS,
   withWideEvent,
 } from "@gaia/shared/bots";
 import { App, type CodedError, type Context } from "@slack/bolt";
@@ -211,7 +210,7 @@ export class SlackAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleSlackStreaming(
+      await this.postSlackMessage(
         client,
         channelId,
         userId,
@@ -229,7 +228,7 @@ export class SlackAdapter extends BaseBotAdapter {
       if (msg.channel_type !== "im") return;
       if (!msg.text || !msg.user || !msg.channel) return;
 
-      await this.handleSlackStreaming(
+      await this.postSlackMessage(
         client,
         msg.channel,
         msg.user,
@@ -414,7 +413,7 @@ export class SlackAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleSlackStreaming(
+      await this.postSlackMessage(
         client,
         channelId,
         userId,
@@ -425,12 +424,10 @@ export class SlackAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Shared streaming handler for `/gaia`, @mentions, and DMs.
-   *
-   * Posts an initial "Thinking..." message, then updates it via
-   * `chat.update` as chunks arrive from the streaming API.
+   * Posts a `/gaia` message, @mention or DM and follows its conversation in this
+   * channel. Returns once the message is accepted.
    */
-  private async handleSlackStreaming(
+  private async postSlackMessage(
     client: SlackWebClient,
     channelId: string,
     userId: string,
@@ -438,51 +435,7 @@ export class SlackAdapter extends BaseBotAdapter {
     isDm: boolean,
     inboundTs?: string,
   ): Promise<void> {
-    const result = await client.chat.postMessage({
-      channel: channelId,
-      text: "Thinking...",
-    });
-
-    const ts = (result as { ts?: string }).ts;
-    if (!ts) {
-      this.adapterLogger.warn("post_message_missing_ts", {
-        user_hash: hashLogIdentifier(userId),
-        channel_hash: hashLogIdentifier(channelId),
-      });
-      try {
-        await client.chat.postEphemeral({
-          channel: channelId,
-          user: userId,
-          text: "Something went wrong processing your message. Please try again.",
-        });
-      } catch (fallbackErr) {
-        this.adapterLogger.error(
-          "post_ephemeral_fallback_failed",
-          {
-            user_hash: hashLogIdentifier(userId),
-            channel_hash: hashLogIdentifier(channelId),
-          },
-          fallbackErr,
-        );
-      }
-      return;
-    }
-
-    const removePlaceholder = async (): Promise<void> => {
-      try {
-        await client.chat.delete({ channel: channelId, ts });
-      } catch (err) {
-        // The reply is already settled; a stale "Thinking..." is all this costs.
-        this.adapterLogger.error(
-          "placeholder_delete_failed",
-          { channel_hash: hashLogIdentifier(channelId) },
-          err,
-        );
-      }
-    };
-
-    await handleStreamingChat(
-      this.gaia,
+    await this.postAndFollow(
       {
         message,
         platform: "slack",
@@ -491,19 +444,25 @@ export class SlackAdapter extends BaseBotAdapter {
         isDm,
         platformMessageId: inboundTs,
       },
-      async (text: string) => {
-        await client.chat.update({
-          channel: channelId,
-          ts,
-          text,
-        });
-      },
-      async (text: string) => {
-        const newMessage = await client.chat.postMessage({
-          channel: channelId,
-          text,
-        });
-        const sentTs = newMessage.ts;
+      this.conversationSurface(channelId),
+      (authUrl) => this.sendAuthLink(client, channelId, userId, authUrl),
+    );
+  }
+
+  /** The channel a conversation follows into; a quoted reply is a thread reply also shown in the channel. */
+  private conversationSurface(channelId: string): ConversationSurface {
+    const { client } = this.app;
+    return {
+      send: async (text, replyTo) => {
+        const posted = await (replyTo
+          ? client.chat.postMessage({
+              channel: channelId,
+              text,
+              thread_ts: replyTo,
+              reply_broadcast: true,
+            })
+          : client.chat.postMessage({ channel: channelId, text }));
+        const sentTs = posted.ts;
         if (!sentTs) throw new Error("chat.postMessage returned no ts");
         return {
           edit: async (updatedText: string) => {
@@ -518,51 +477,42 @@ export class SlackAdapter extends BaseBotAdapter {
           },
         };
       },
-      async (authUrl: string) => {
-        const authMessage = renderForPlatform(
-          buildAuthLinkMessage(authUrl),
-          "slack",
-        );
-        // In a DM (channel id starts with "D") there is no risk of exposing the
-        // token to others, and chat.postEphemeral is unreliable there — so put
-        // the link straight into the placeholder message where it always shows.
-        if (channelId.startsWith("D")) {
-          await client.chat.update({
-            channel: channelId,
-            ts,
-            text: authMessage,
-          });
-          return;
-        }
-        // In a public channel, keep the token out of the visible message and
-        // deliver the link as an ephemeral only the requesting user can see.
-        await client.chat.update({
-          channel: channelId,
-          ts,
-          text: "🔒 Authentication required. Check the private message below to link your account.",
-        });
-        await client.chat.postEphemeral({
-          channel: channelId,
-          user: userId,
-          text: authMessage,
-        });
-      },
-      async (errMsg: string) => {
-        await client.chat.update({
-          channel: channelId,
-          ts,
-          text: errMsg,
-        });
-      },
-      STREAMING_DEFAULTS.slack,
-      await this.analyticsFor(userId),
-      async (emoji: string, replaces: string | null) => {
-        // A slash command has no inbound message to react to.
-        if (!inboundTs) return REACTION_OUTCOME.NO_TARGET;
-        return this.reactToMessage(channelId, inboundTs, emoji, true, replaces);
-      },
-      removePlaceholder,
+      react: (platformMessageId, emoji, replaces) =>
+        this.reactToMessage(
+          channelId,
+          platformMessageId,
+          emoji,
+          true,
+          replaces,
+        ),
+      // Slack has no typing indicator API for bots.
+      startTyping: () => () => undefined,
+    };
+  }
+
+  /**
+   * Sends the account-link prompt: straight into a DM, where chat.postEphemeral is
+   * unreliable and no one else can see it; as an ephemeral in a public channel.
+   */
+  private async sendAuthLink(
+    client: SlackWebClient,
+    channelId: string,
+    userId: string,
+    authUrl: string,
+  ): Promise<void> {
+    const authMessage = renderForPlatform(
+      buildAuthLinkMessage(authUrl),
+      "slack",
     );
+    if (channelId.startsWith("D")) {
+      await client.chat.postMessage({ channel: channelId, text: authMessage });
+      return;
+    }
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: userId,
+      text: authMessage,
+    });
   }
 
   // ---------------------------------------------------------------------------

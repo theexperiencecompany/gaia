@@ -13,8 +13,7 @@
  * whether a platform can edit a delivered message in place (grammY
  * `editMessageText`, Slack `chat.update`, Discord `message.edit`) — pinned to
  * the real adapter by the conformance suite — and
- * {@link PlatformEmulation.serializesInbound}, whether the adapter handles one
- * user's messages one at a time.
+ * {@link PlatformEmulation.supportsDelete}, whether it can take one back.
  */
 
 import {
@@ -46,13 +45,6 @@ export interface PlatformEmulation {
    * Slack `chat.delete`): the live platforms, whose retracted bubbles are deleted.
    */
   supportsDelete: boolean;
-  /**
-   * Whether the adapter handles a user's next message only after the previous
-   * one's handler finished: Telegram, WhatsApp and iMessage, through the shared
-   * `PerUserInboundQueue` (which runs /stop at once). Discord and Slack run
-   * every event handler as it arrives.
-   */
-  serializesInbound: boolean;
 }
 
 /** Residual capability map — see {@link PlatformEmulation.supportsEdit}. */
@@ -71,15 +63,6 @@ const SUPPORTS_DELETE: Record<PlatformName, boolean> = {
   telegram: true,
   whatsapp: false,
   imessage: false,
-};
-
-/** Residual dispatch map — see {@link PlatformEmulation.serializesInbound}. */
-const SERIALIZES_INBOUND: Record<PlatformName, boolean> = {
-  discord: false,
-  slack: false,
-  telegram: true,
-  whatsapp: true,
-  imessage: true,
 };
 
 /**
@@ -102,7 +85,6 @@ export function resolveEmulation(platform: PlatformName): PlatformEmulation {
     render: (text: string) => renderForPlatform(text, platform),
     supportsEdit: SUPPORTS_EDIT[platform],
     supportsDelete: SUPPORTS_DELETE[platform],
-    serializesInbound: SERIALIZES_INBOUND[platform],
   };
 }
 

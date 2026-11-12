@@ -208,7 +208,9 @@ export async function sendOneShot(params: {
   const cutShort = terminationRequested();
   try {
     await Promise.race([
-      adapter.simulateMessage(user.platformUserId, message, { channelId }),
+      adapter
+        .simulateMessage(user.platformUserId, message, { channelId })
+        .then(() => adapter.conversationsIdle()),
       cutShort,
     ]);
     await settle(settleMs, cutShort);
@@ -301,7 +303,7 @@ function turnLabel(turn: ScenarioTurn): string {
 
 /**
  * Injects a turn's messages at their scripted gaps, each without waiting for
- * the reply to the one before, and resolves once every one has been handled.
+ * the reply to the one before, and resolves once every reply has been shown.
  */
 export async function deliverTurn(
   adapter: HarnessAdapter,
@@ -320,6 +322,7 @@ export async function deliverTurn(
     );
   }
   await Promise.all(handled);
+  await adapter.conversationsIdle();
 }
 
 /**

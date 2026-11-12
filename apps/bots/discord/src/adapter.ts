@@ -22,10 +22,10 @@ import {
   type BotCommand,
   type BotFileData,
   buildAuthLinkMessage,
+  type ConversationSurface,
   createBotLogger,
   formatBotError,
   friendlyMediaError,
-  handleStreamingChat,
   hashLogIdentifier,
   type IncomingMedia,
   type MediaOutcome,
@@ -38,7 +38,6 @@ import {
   recordBotFailure,
   renderForPlatform,
   type SentMessage,
-  STREAMING_DEFAULTS,
   sanitizeErrorForLog,
   wideLog,
   withWideEvent,
@@ -381,20 +380,9 @@ export class DiscordAdapter extends BaseBotAdapter {
 
     await interaction.deferReply();
 
-    await handleStreamingChat(
-      this.gaia,
+    await this.postAndFollow(
       { message, platform: "discord", platformUserId: userId, channelId, isDm },
-      async (content: string) => {
-        await interaction.editReply({ content });
-      },
-      async (content: string) => {
-        const followUp = await interaction.followUp({ content });
-        return {
-          edit: async (updatedText: string) => {
-            await followUp.edit({ content: updatedText });
-          },
-        };
-      },
+      this.interactionSurface(interaction),
       async (authUrl: string) => {
         const publicContent =
           "To use GAIA, please authenticate first. Check your DMs for the link.";
@@ -417,11 +405,6 @@ export class DiscordAdapter extends BaseBotAdapter {
           await interaction.editReply({ content: publicContentFallback });
         }
       },
-      async (errMsg: string) => {
-        await interaction.editReply({ content: errMsg });
-      },
-      STREAMING_DEFAULTS.discord,
-      await this.analyticsFor(userId),
     );
   }
 
@@ -477,9 +460,10 @@ export class DiscordAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Streams a context-menu action's reply (Summarize, Add as Todo). Both
-   * actions share the same streaming + auth-fallback wiring; only the prompt
-   * sent to GAIA and the bold header on the reply differ.
+   * Posts a context-menu action (Summarize, Add as Todo) and follows its reply.
+   * Both share the wiring; only the prompt and the bold header differ. The header
+   * owns the deferred reply and each bubble is a follow-up of its own, keeping
+   * bubbles under Discord's 2000-character limit.
    */
   private async streamContextMenuReply(
     interaction: MessageContextMenuCommandInteraction,
@@ -488,14 +472,8 @@ export class DiscordAdapter extends BaseBotAdapter {
     message: string,
     header: string,
   ): Promise<void> {
-    let replied = false;
-    // Header owns the deferred reply; each bubble is its own follow-up (editing
-    // the reply for extra bubbles used to silently overwrite the prior one).
-    // Keeping the header out of streamed content keeps bubbles under Discord's 2000-char limit.
     await interaction.editReply({ content: `**${header}**` });
-    let lastFollowUp: Message | null = null;
-    await handleStreamingChat(
-      this.gaia,
+    await this.postAndFollow(
       {
         message,
         platform: "discord",
@@ -503,51 +481,103 @@ export class DiscordAdapter extends BaseBotAdapter {
         channelId,
         isDm: !interaction.guild,
       },
-      async (text: string) => {
-        replied = true;
-        if (lastFollowUp) {
-          await lastFollowUp.edit({ content: text });
-        } else {
-          lastFollowUp = await interaction.followUp({ content: text });
+      this.interactionSurface(interaction, { headerOwnsReply: true }),
+      async (authUrl: string) => {
+        const link = renderForPlatform(
+          buildAuthLinkMessage(authUrl),
+          "discord",
+        );
+        try {
+          await interaction.editReply({ content: link });
+        } catch (replyError) {
+          wideLog.warning("auth_reply_failed", sanitizeErrorForLog(replyError));
+          await interaction.user.send(link);
         }
       },
-      async (text: string) => {
-        replied = true;
-        const followUp = await interaction.followUp({ content: text });
+    );
+  }
+
+  /**
+   * The interaction a slash command or context-menu action follows into: the
+   * first message fills the deferred reply (unless a header owns it), the rest
+   * are follow-ups. Interactions have no typing indicator and no reply target.
+   */
+  private interactionSurface(
+    interaction:
+      | ChatInputCommandInteraction
+      | MessageContextMenuCommandInteraction,
+    { headerOwnsReply = false }: { headerOwnsReply?: boolean } = {},
+  ): ConversationSurface {
+    let replyFilled = headerOwnsReply;
+    return {
+      send: async (content) => {
+        if (!replyFilled) {
+          replyFilled = true;
+          await interaction.editReply({ content });
+          return {
+            edit: async (updated: string) => {
+              await interaction.editReply({ content: updated });
+            },
+          };
+        }
+        const followUp = await interaction.followUp({ content });
         return {
           edit: async (updated: string) => {
             await followUp.edit({ content: updated });
           },
         };
       },
-      async (authUrl: string) => {
-        try {
-          await interaction.editReply({
-            content: renderForPlatform(
-              buildAuthLinkMessage(authUrl),
-              "discord",
+      react: (platformMessageId, emoji, replaces) =>
+        this.reactToMessage(
+          interaction.channelId,
+          platformMessageId,
+          emoji,
+          true,
+          replaces,
+        ),
+      startTyping: () => () => undefined,
+    };
+  }
+
+  /**
+   * The channel a DM or mention follows into: native replies, reactions on the
+   * user's messages, and the typing indicator.
+   */
+  private channelSurface(message: Message): ConversationSurface {
+    const channel = message.channel as SendableChannels;
+    const inGuild = Boolean(message.guild);
+    return {
+      send: async (content, replyTo) => {
+        const sent = await channel.send({
+          content,
+          ...(replyTo
+            ? { reply: { messageReference: replyTo, failIfNotExists: false } }
+            : {}),
+        });
+        return {
+          edit: async (updated: string) => {
+            await sent.edit(updated);
+          },
+        };
+      },
+      react: (platformMessageId, emoji, replaces) =>
+        inGuild
+          ? this.reactToMessage(
+              message.channelId,
+              platformMessageId,
+              emoji,
+              true,
+              replaces,
+            )
+          : this.reactToMessage(
+              message.author.id,
+              platformMessageId,
+              emoji,
+              false,
+              replaces,
             ),
-          });
-          replied = true;
-        } catch (replyError) {
-          wideLog.warning("auth_reply_failed", sanitizeErrorForLog(replyError));
-          try {
-            await interaction.user.send(
-              renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
-            );
-            replied = true;
-          } catch (dmError) {
-            // Neither the reply nor the DM reached the user: the link is lost.
-            wideLog.error("auth_link_undelivered", undefined, dmError);
-          }
-        }
-      },
-      async (err: string) => {
-        if (!replied) await interaction.editReply({ content: err });
-      },
-      STREAMING_DEFAULTS.discord,
-      await this.analyticsFor(userId),
-    );
+      startTyping: () => this.startMentionTyping(message),
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -625,23 +655,7 @@ export class DiscordAdapter extends BaseBotAdapter {
     }
 
     try {
-      const hasTyping = "sendTyping" in message.channel;
-      const stopTyping = hasTyping
-        ? this.startTypingIndicator(
-            () =>
-              (
-                message.channel as { sendTyping: () => Promise<void> }
-              ).sendTyping(),
-            TYPING_REFRESH_INTERVAL_MS,
-          )
-        : () => {
-            /* channel has no typing indicator */
-          };
-
-      let currentMsg: Message | null = null;
-
-      await handleStreamingChat(
-        this.gaia,
+      await this.postAndFollow(
         {
           message: content,
           platform: "discord",
@@ -656,50 +670,13 @@ export class DiscordAdapter extends BaseBotAdapter {
               }
             : {}),
         },
-        async (content: string) => {
-          stopTyping();
-          if (!currentMsg) {
-            currentMsg = await send(content);
-          } else {
-            await currentMsg.edit(content);
-          }
-        },
-        async (content: string) => {
-          stopTyping();
-          const sent = await send(content);
-          return {
-            edit: async (updatedText: string) => {
-              await sent.edit(updatedText);
-            },
-          };
-        },
+        this.channelSurface(message),
         async (authUrl: string) => {
-          stopTyping();
-          const msg = renderForPlatform(
-            buildAuthLinkMessage(authUrl),
-            "discord",
+          await send(
+            renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
           );
-          if (!currentMsg) {
-            currentMsg = await send(msg);
-          } else {
-            await currentMsg.edit(msg);
-          }
         },
-        async (errMsg: string) => {
-          stopTyping();
-          if (!currentMsg) {
-            currentMsg = await send(errMsg);
-          } else {
-            await currentMsg.edit(errMsg);
-          }
-        },
-        STREAMING_DEFAULTS.discord,
-        await this.analyticsFor(userId),
-        (emoji: string, replaces: string | null) =>
-          this.reactToMessage(userId, message.id, emoji, false, replaces),
       );
-
-      stopTyping();
     } catch (error) {
       this.adapterLogger.error(
         "dm_message_processing_failed",
@@ -788,8 +765,8 @@ export class DiscordAdapter extends BaseBotAdapter {
   /**
    * Handles @mention messages in guild channels.
    *
-   * Strips the bot's own mention tag, sends a typing indicator, and
-   * delegates to `handleStreamingChat` for authenticated guild-scoped streaming.
+   * Strips the bot's own mention tag and posts the rest, following the
+   * conversation in the channel.
    */
   private async handleMentionMessage(
     message: Message,
@@ -880,10 +857,7 @@ export class DiscordAdapter extends BaseBotAdapter {
     );
   }
 
-  /**
-   * Streams a GAIA chat turn back to a Discord mention/DM, managing the
-   * typing indicator and incremental message edits.
-   */
+  /** Posts a mention's message and follows its conversation in the channel. */
   private async streamMentionReply(
     message: Message,
     send: (text: string) => Promise<Message>,
@@ -891,20 +865,7 @@ export class DiscordAdapter extends BaseBotAdapter {
     attachments: BotFileData[],
   ): Promise<void> {
     try {
-      const stopTyping = this.startMentionTyping(message);
-      let currentMsg: Message | null = null;
-
-      const sendOrEdit = async (text: string) => {
-        stopTyping();
-        if (currentMsg) {
-          await currentMsg.edit(text);
-        } else {
-          currentMsg = await send(text);
-        }
-      };
-
-      await handleStreamingChat(
-        this.gaia,
+      await this.postAndFollow(
         {
           message: content,
           platform: "discord",
@@ -919,45 +880,9 @@ export class DiscordAdapter extends BaseBotAdapter {
               }
             : {}),
         },
-        sendOrEdit,
-        async (text: string) => {
-          stopTyping();
-          const sent = await send(text);
-          return {
-            edit: async (updatedText: string) => {
-              await sent.edit(updatedText);
-            },
-          };
-        },
-        async (authUrl: string) => {
-          stopTyping();
-          await this.sendMentionAuthPrompt(message, send, authUrl);
-        },
-        async (errMsg: string) => {
-          stopTyping();
-          await sendOrEdit(errMsg);
-        },
-        STREAMING_DEFAULTS.discord,
-        await this.analyticsFor(message.author.id),
-        (emoji: string, replaces: string | null) =>
-          message.guild
-            ? this.reactToMessage(
-                message.channelId,
-                message.id,
-                emoji,
-                true,
-                replaces,
-              )
-            : this.reactToMessage(
-                message.author.id,
-                message.id,
-                emoji,
-                false,
-                replaces,
-              ),
+        this.channelSurface(message),
+        (authUrl: string) => this.sendMentionAuthPrompt(message, send, authUrl),
       );
-
-      stopTyping();
     } catch (error) {
       this.adapterLogger.error(
         "mention_message_processing_failed",
