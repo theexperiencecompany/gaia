@@ -42,6 +42,7 @@ from app.services.hil.conversational import (
     classify_batch_with_llm,
     classify_with_llm,
     ledger_outcome_text,
+    list_pending_for_reply,
     resolve_pending_from_message,
 )
 from app.services.hil.ledger_decide import LedgerDecision
@@ -715,6 +716,28 @@ class TestLedgerRows:
 
         assert action == "unrelated"
         assert decided(ledger["decide"]) == []
+
+    async def test_a_numbered_reply_decides_the_item_the_prompt_showed_at_that_number(
+        self, ledger: dict[str, AsyncMock]
+    ) -> None:
+        # The bot prompt shows the server's list; "yes 2" must approve its second line only.
+        rows = [_ledger_row("ap_old"), _ledger_row("ap_new1"), _ledger_row("ap_new2")]
+        ledger["list_open"].return_value = rows
+        ledger["llm"].return_value = BatchDecisionResult(
+            unrelated=False,
+            decisions=[
+                BatchItemDecision(index=1, action="leave"),
+                BatchItemDecision(index=2, action="approve"),
+                BatchItemDecision(index=3, action="leave"),
+            ],
+        )
+
+        shown = [row.approval_id for row in await list_pending_for_reply(CONVERSATION_ID)]
+        action = await resolved_action(CONVERSATION_ID, USER_ID, "yes 2")
+
+        assert shown == ["ap_old", "ap_new1", "ap_new2"]
+        assert action == "approve"
+        assert decided(ledger["decide"]) == [("ap_new1", "approve", None)]
 
     async def test_a_batch_of_rows_is_decided_per_item(self, ledger: dict[str, AsyncMock]) -> None:
         ledger["list_open"].return_value = [_ledger_row("ap_1"), _ledger_row("ap_2")]

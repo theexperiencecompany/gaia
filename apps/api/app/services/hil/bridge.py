@@ -41,6 +41,7 @@ from app.db.repositories.conversations import conversation_repository
 from app.models.agent_config import SubagentResumeItem
 from app.models.hil_models import (
     ApprovalDescription,
+    ApprovalLedgerDocument,
     DeclinedCallRecord,
     HILApprovalRecord,
     HILApprovalStatus,
@@ -569,6 +570,36 @@ def _is_held(event: object) -> bool:
         return False
     frame: _SessionFrame = cast(_SessionFrame, event)
     return frame.get("_held_approval") is True
+
+
+async def pending_card(
+    record: HILApprovalRecord | ApprovalLedgerDocument,
+) -> PendingApprovalCardData:
+    """Rebuild a still-pending approval's card from its stored row, as the bot prompt lists it."""
+    if isinstance(record, ApprovalLedgerDocument):
+        card = SettledApprovalCard(
+            approval_id=record.approval_id,
+            tool_call=GatedCall(name=record.tool_name, id="", args=record.args),
+            description=describe_call(record.tool_name, record.args, None, record.account),
+            integration_name=None,
+        )
+        entry = await _pending_entry(card, auto_reason=None, asked_at=record.created_at)
+        data = entry.data
+        data.ledger_version = record.v
+    else:
+        card = SettledApprovalCard(
+            approval_id=record.approval_id,
+            tool_call=GatedCall(name=record.tool_name, id=record.tool_call_id, args=record.args),
+            description=describe_call(record.tool_name, record.args, record.integration_name),
+            integration_name=record.integration_name,
+        )
+        entry = await _pending_entry(
+            card, auto_reason=None, asked_at=record.created_at, expires_at=record.expires_at
+        )
+        data = entry.data
+    if not isinstance(data, PendingApprovalCardData):
+        raise TypeError("a pending entry built a settled card")
+    return data
 
 
 async def _pending_entry(

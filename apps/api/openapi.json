@@ -13303,7 +13303,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Expires At"
           },
           "feedback": {
@@ -13341,7 +13340,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Ledger Version"
           },
           "status": {
@@ -13393,6 +13391,23 @@
           "conversation_id"
         ],
         "title": "PendingApprovalRef",
+        "type": "object"
+      },
+      "PendingApprovalsResponse": {
+        "description": "A conversation's pending approvals, numbered in this order by both the bot prompt and the reply.",
+        "properties": {
+          "approvals": {
+            "items": {
+              "$ref": "#/components/schemas/PendingApprovalCardData"
+            },
+            "title": "Approvals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "approvals"
+        ],
+        "title": "PendingApprovalsResponse",
         "type": "object"
       },
       "PersistedTriageSummary": {
@@ -22726,6 +22741,69 @@
           }
         },
         "summary": "Post Batch Decision",
+        "tags": [
+          "Approvals"
+        ]
+      }
+    },
+    "/api/v1/approvals/pending": {
+      "get": {
+        "description": "List the conversation's pending approvals in the order a chat reply is read against.",
+        "operationId": "approvals_get_pending_approvals",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingApprovalsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Pending Approvals",
         "tags": [
           "Approvals"
         ]

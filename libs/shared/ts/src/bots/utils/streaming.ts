@@ -616,6 +616,26 @@ async function runStreamingChat(
   };
 
   const pendingApprovals = new Map<string, ApprovalRequestData>();
+  /**
+   * One question for everything left pending, numbered from the server's list: the
+   * reply is read against that list, so older approvals from earlier turns count too.
+   */
+  const askPendingApprovals = async (
+    convId: string,
+    deliverOutOfBand: (text: string) => Promise<void>,
+  ): Promise<void> => {
+    if (pendingApprovals.size === 0 || !convId) return;
+    try {
+      const cards = await gaia.listPendingApprovals(convId, {
+        platform: request.platform,
+        platformUserId: request.platformUserId,
+      });
+      const prompt = formatApprovalPrompt(cards);
+      if (prompt) await deliverOutOfBand(prompt);
+    } catch (error) {
+      logger.error("approval_prompt_failed", {}, error);
+    }
+  };
   const streamFn = (
     onChunk: (text: string) => void | Promise<void>,
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
@@ -637,13 +657,11 @@ async function runStreamingChat(
         responseLength = fullText.length;
         conversationId = convId;
         await onDone(fullText, convId);
-        // One question for everything the turn left pending, after the reply it belongs to.
-        const prompt = formatApprovalPrompt([...pendingApprovals.values()]);
-        if (prompt) await deliverOutOfBand(prompt);
+        await askPendingApprovals(convId, deliverOutOfBand);
       },
       onError,
-      // Collected and asked as ONE numbered question when the turn ends (above); a frame
-      // that settles a card first takes it off the list, the reply narrates settled ones.
+      // A pending frame means the turn ends with a question (above); one that settles
+      // first cancels it. The reply narrates settled cards.
       (data: ApprovalRequestData) => {
         if (data.status === "pending")
           pendingApprovals.set(data.approval_id, data);

@@ -98,18 +98,23 @@ async def resolve_pending_from_message(
     things were only declined, "unrelated" when the reply is a new request (nothing
     is decided); None when nothing was pending or the reply addressed none of it.
     """
+    pending = await list_pending_for_reply(conversation_id)
+    if not pending:
+        return None
+    if len(pending) == 1:
+        return await _resolve_single(pending[0], user_id, message, history)
+    return await _resolve_batch(pending, user_id, message, history)
+
+
+async def list_pending_for_reply(
+    conversation_id: str,
+) -> list[HILApprovalRecord] | list[ApprovalLedgerDocument]:
+    """List the approvals a chat reply decides, in the order the bot prompt numbers them, oldest first."""
     pending = await list_pending_for_conversation(conversation_id)
     if pending:
-        if len(pending) == 1:
-            return await _resolve_single(pending[0], user_id, message, history)
-        return await _resolve_batch(pending, user_id, message, history)
+        return pending
     # Barrier store empty: ledger-enabled users' rows live in approval_ledger.
-    ledger_pending = await _list_pending_ledger(conversation_id)
-    if not ledger_pending:
-        return None
-    if len(ledger_pending) == 1:
-        return await _resolve_single(ledger_pending[0], user_id, message, history)
-    return await _resolve_batch(ledger_pending, user_id, message, history)
+    return await _list_pending_ledger(conversation_id)
 
 
 async def _resolve_single(

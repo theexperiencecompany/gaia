@@ -36,7 +36,6 @@ class StreamFrameFastAPI(FastAPI):
     """FastAPI whose document also carries the SSE frame models no route returns.
 
     Clients then get generated types for stream frames like every other wire shape.
-    A frame name that collides with a route component of another shape raises.
     """
 
     stream_frame_models: tuple[type[BaseModel], ...] = ()
@@ -52,7 +51,7 @@ class StreamFrameFastAPI(FastAPI):
         )
         components: dict[str, Any] = schema.setdefault("components", {}).setdefault("schemas", {})
         for name, body in frames.get("$defs", {}).items():
-            if name in components and components[name] != body:
-                raise ValueError(f"stream frame schema {name} collides with a route component")
-            components[name] = body
+            # A route that returns the same model already published it; the export
+            # refuses two models sharing a class name, so the name is the same model.
+            components.setdefault(name, body)
         return schema

@@ -78,16 +78,14 @@ function severalPrompt(cards: ApprovalRequestData[]): string {
 
 /**
  * One message for every pending approval: the action and its facts for one, a
- * numbered list for several (numbered in the order the server classifies replies).
+ * numbered list for several, in the order given (the server's reply order).
  */
 export function formatApprovalPrompt(
   cards: ApprovalRequestData[],
   now: number = Date.now(),
 ): string {
-  // Oldest first, the order the server numbers pending approvals when it reads the reply.
-  const pending = cards
-    .filter((card) => card.status === "pending")
-    .sort((a, b) => (a.asked_at ?? "").localeCompare(b.asked_at ?? ""));
+  // Kept in the given order: the server numbers the reply against exactly this list.
+  const pending = cards.filter((card) => card.status === "pending");
   if (pending.length === 0) return "";
   return pending.length === 1
     ? singlePrompt(pending[0], now)

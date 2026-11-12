@@ -75,7 +75,7 @@ describe("formatApprovalPrompt", () => {
     expect(formatApprovalPrompt([stale], NOW)).toContain("Asked 2d ago.");
   });
 
-  it("lists several actions as one numbered message, oldest first", () => {
+  it("lists several actions as one numbered message, in the order given", () => {
     const prompt = formatApprovalPrompt(
       [
         card({
@@ -97,8 +97,8 @@ describe("formatApprovalPrompt", () => {
       [
         "2 things need your OK:",
         "",
-        '1. Send an email to bob@x.com, jane@y.com: "Q3 numbers"',
-        "2. Delete a calendar event from Work",
+        "1. Delete a calendar event from Work",
+        '2. Send an email to bob@x.com, jane@y.com: "Q3 numbers"',
         "",
         'Reply yes to all, no to all, or pick some: "yes 1 and 3".',
       ].join("\n"),

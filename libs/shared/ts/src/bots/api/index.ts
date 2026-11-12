@@ -2,6 +2,8 @@ import axios, { type AxiosInstance } from "axios";
 import type {
   ConversationStopResponse,
   DeliveryFailureReport,
+  PendingApprovalCardData,
+  PendingApprovalsResponse,
 } from "../../api/generated";
 import type {
   AuthStatus,
@@ -295,6 +297,26 @@ export class GaiaClient {
           ) ?? [],
       };
     });
+  }
+
+  /**
+   * The conversation's pending approvals, in the order the server reads a reply's numbers
+   * against — the one numbering the bot prompt shows.
+   */
+  async listPendingApprovals(
+    conversationId: string,
+    ctx: BotUserContext,
+  ): Promise<PendingApprovalCardData[]> {
+    return this.requestWithAuth(async () => {
+      const { data } = await this.client.get<PendingApprovalsResponse>(
+        "/api/v1/approvals/pending",
+        {
+          headers: this.userHeaders(ctx),
+          params: { conversation_id: conversationId },
+        },
+      );
+      return data.approvals;
+    }, ctx);
   }
 
   /**

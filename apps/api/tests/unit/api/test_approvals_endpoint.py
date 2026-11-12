@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.models.hil_models import HILMode, HILPreferences, LedgerState
+from app.models.hil_models import ApprovalLedgerDocument, HILMode, HILPreferences, LedgerState
 from app.schemas.hil_schemas import ApprovalDecisionRequest, BatchDecisionOutcome
 from app.services.hil import resolution
 from app.services.hil.ledger_decide import LedgerDecision
@@ -558,3 +558,42 @@ class TestLedgerAlwaysToolScope:
         assert resp.json()["message"] == (
             "This action always asks for approval and can't be set to always allow"
         )
+
+
+class TestGetPendingApprovals:
+    """GET /api/v1/approvals/pending — the list a bot prompt numbers."""
+
+    async def test_lists_the_users_pending_cards_in_reply_order(self, client: AsyncClient):
+        rows = [
+            ApprovalLedgerDocument(
+                approval_id=approval_id,
+                conversation_id="conv-1",
+                user_id=user_id,
+                fingerprint=f"fp-{approval_id}",
+                tool_name="GMAIL_SEND_EMAIL",
+                args={"recipient_email": "bob@x.com"},
+                summary="Send an email to bob@x.com",
+            )
+            for approval_id, user_id in (
+                ("ap_old", USER_ID),
+                ("ap_foreign", "someone-else"),
+                ("ap_new", USER_ID),
+            )
+        ]
+        with (
+            patch(
+                "app.api.v1.endpoints.approvals.list_pending_for_reply",
+                new=AsyncMock(return_value=rows),
+            ) as listed,
+            patch("app.services.hil.bridge.asks_every_time", new=AsyncMock(return_value=False)),
+        ):
+            resp = await client.get(
+                f"{APPROVALS_BASE}/pending", params={"conversation_id": "conv-1"}
+            )
+
+        assert resp.status_code == 200
+        listed.assert_awaited_once_with("conv-1")
+        cards = resp.json()["approvals"]
+        assert [c["approval_id"] for c in cards] == ["ap_old", "ap_new"]
+        assert cards[0]["status"] == "pending"
+        assert cards[0]["description"]["headline"] == "Send an email to bob@x.com"

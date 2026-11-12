@@ -76,6 +76,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/approvals/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pending Approvals
+         * @description List the conversation's pending approvals in the order a chat reply is read against.
+         */
+        get: operations["approvals_get_pending_approvals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/approvals/preferences": {
         parameters: {
             query?: never;
@@ -12069,10 +12089,7 @@ export interface components {
             /** Auto Reason */
             auto_reason: string | null;
             description: components["schemas"]["ApprovalDescription"];
-            /**
-             * Expires At
-             * @default null
-             */
+            /** Expires At */
             expires_at?: string | null;
             /** Feedback */
             feedback: string | null;
@@ -12080,10 +12097,7 @@ export interface components {
             gated_tool_name: string;
             /** Integration Name */
             integration_name: string | null;
-            /**
-             * Ledger Version
-             * @default null
-             */
+            /** Ledger Version */
             ledger_version?: number | null;
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -12112,6 +12126,14 @@ export interface components {
              * @description Conversation holding the card
              */
             conversation_id: string;
+        };
+        /**
+         * PendingApprovalsResponse
+         * @description A conversation's pending approvals, numbered in this order by both the bot prompt and the reply.
+         */
+        PendingApprovalsResponse: {
+            /** Approvals */
+            approvals: components["schemas"]["PendingApprovalCardData"][];
         };
         /**
          * PersistedTriageSummary
@@ -17024,6 +17046,7 @@ export type PaginationMeta = components['schemas']['PaginationMeta'];
 export type PaymentVerificationResponse = components['schemas']['PaymentVerificationResponse'];
 export type PendingApprovalCardData = components['schemas']['PendingApprovalCardData'];
 export type PendingApprovalRef = components['schemas']['PendingApprovalRef'];
+export type PendingApprovalsResponse = components['schemas']['PendingApprovalsResponse'];
 export type PersistedTriageSummary = components['schemas']['PersistedTriageSummary'];
 export type PersonalizationResponse = components['schemas']['PersonalizationResponse'];
 export type PersonalizationTodo = components['schemas']['PersonalizationTodo'];
@@ -17436,6 +17459,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BatchApprovalDecisionResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    approvals_get_pending_approvals: {
+        parameters: {
+            query: {
+                conversation_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingApprovalsResponse"];
                 };
             };
             /** @description Unprocessable Entity */
