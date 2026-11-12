@@ -14,10 +14,17 @@ surviving.
 from collections.abc import Mapping
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.repositories.base import UserScopedRepository
 from app.models.document_models import UserScopedDocument
+
+
+class _UserWindowTotal(BaseModel):
+    """One user's row of the window-totals aggregate."""
+
+    user_id: str = Field(alias="_id")
+    total: int
 
 
 class UsageDailyDocument(UserScopedDocument):
@@ -199,15 +206,16 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
 
     async def user_window_totals(self, window_start: str) -> list[tuple[str, int]]:
         """Every user's summed action count since window_start, one pass."""
-        return [
-            (str(row["_id"]), int(row["total"]))
-            async for row in self._raw_collection().aggregate(
+        rows = [
+            _UserWindowTotal.model_validate(raw)
+            async for raw in self._raw_collection().aggregate(
                 [
                     {"$match": {"date": {"$gte": window_start}}},
                     {"$group": {"_id": "$user_id", "total": {"$sum": "$count"}}},
                 ]
             )
         ]
+        return [(row.user_id, row.total) for row in rows]
 
 
 usage_daily_repository = UsageDailyRepository()

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.core.stream_manager import stream_manager
 from app.models.hil_models import LedgerState
 
 from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_request
@@ -303,7 +304,7 @@ class TestFlushHeldCards:
         try:
             with (
                 patch.object(bridge, "approval_ledger_repository") as repo,
-                patch.object(bridge.stream_manager, "publish_chunk", new=AsyncMock()) as chunk,
+                patch.object(stream_manager, "publish_chunk", new=AsyncMock()) as chunk,
                 patch.object(bridge, "_schedule_pending_notification") as notify,
             ):
                 repo.get_by_approval_id = AsyncMock(return_value=row)
@@ -324,7 +325,7 @@ class TestFlushHeldCards:
         try:
             with (
                 patch.object(bridge, "approval_ledger_repository") as repo,
-                patch.object(bridge.stream_manager, "publish_chunk", new=AsyncMock()) as chunk,
+                patch.object(stream_manager, "publish_chunk", new=AsyncMock()) as chunk,
                 patch.object(bridge, "_schedule_pending_notification") as notify,
             ):
                 repo.get_by_approval_id = AsyncMock(return_value=row)
