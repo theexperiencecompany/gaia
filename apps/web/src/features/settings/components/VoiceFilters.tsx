@@ -90,7 +90,6 @@ export function VoiceFilters({
         aria-label="Search voices"
         value={search}
         onChange={onSearchChange}
-        fullWidth
         className="sm:max-w-xs"
       >
         <SearchField.Group>
@@ -105,7 +104,6 @@ export function VoiceFilters({
         onSelectionChange={(key) =>
           onGenderFilterChange(typeof key === "string" ? key : ALL_FILTER)
         }
-        fullWidth
         className="sm:max-w-40"
       >
         <Select.Trigger>
@@ -135,7 +133,6 @@ export function VoiceFilters({
         onSelectionChange={(key) =>
           onCountryFilterChange(typeof key === "string" ? key : ALL_FILTER)
         }
-        fullWidth
         className="sm:max-w-44"
       >
         <ComboBoxInput

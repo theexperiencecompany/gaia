@@ -354,7 +354,10 @@ export default function PreferencesSettings({
             isDisabled={isUpdating}
           >
             <Select.Trigger className="bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]">
-              <Select.Value className="text-white text-sm" />
+              {/* The trigger shows the style's name; the description is for the open list. */}
+              <Select.Value className="text-white text-sm">
+                {({ selectedText }) => selectedText}
+              </Select.Value>
               <Select.Indicator />
             </Select.Trigger>
             <Select.Popover className="bg-zinc-800 z-50">
