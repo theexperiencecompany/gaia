@@ -36,6 +36,7 @@ from shared.py.wide_events import log
 # Best-effort caps so a slow upstream LLM never stalls the inline publish flow.
 _CONTENT_GENERATION_TIMEOUT_SECONDS = 20
 _CATEGORY_INFERENCE_TIMEOUT_SECONDS = 10
+_UNKNOWN_DOMAIN = "unknown"
 
 
 _AUTH_DESCRIPTIONS: dict[MCPAuthType, str] = {
@@ -46,12 +47,16 @@ _AUTH_DESCRIPTIONS: dict[MCPAuthType, str] = {
 
 
 def _tools_catalog(tools: list[StoredIntegrationTool]) -> str:
-    """One line per named tool: every name, plus as much description as the budget allows."""
+    """One line per named tool: every name, plus as much description as the budget allows.
+
+    The space the names leave is shared only among tools that have a description.
+    """
     named = named_tools(tools)
     if not named:
         return "None"
+    described = [tool for tool in named if first_sentence(tool.description)]
     name_chars = sum(len(tool.name) + len("- : ") for tool in named)
-    share = (TOOLS_PROMPT_CHAR_BUDGET - name_chars) // len(named)
+    share = (TOOLS_PROMPT_CHAR_BUDGET - name_chars) // len(described or named)
     description_chars = min(TOOL_DESCRIPTION_MAX_CHARS, share)
     lines = []
     for tool in named:
@@ -71,9 +76,9 @@ def _auth_description(auth_type: AuthType | None) -> str:
 def _server_domain(server_url: str) -> str:
     # .hostname (not .netloc) so any embedded credentials/port never leak into the prompt.
     try:
-        return urlparse(server_url).hostname or "unknown"
+        return urlparse(server_url).hostname or _UNKNOWN_DOMAIN
     except ValueError:
-        return "unknown"
+        return _UNKNOWN_DOMAIN
 
 
 async def infer_integration_category(
@@ -146,7 +151,7 @@ async def infer_integration_content(
     """
     name = integration.name
     tools = integration.tools
-    server_url = integration.mcp_config.server_url if integration.mcp_config else ""
+    config = integration.mcp_config
     log.set(integration={"provider": name, "action": "infer_content"})
     prompt = CONTENT_INFERENCE_PROMPT.format(
         name=name,
@@ -155,7 +160,7 @@ async def infer_integration_content(
         auth=_auth_description(auth_type),
         tool_count=len(named_tools(tools)),
         tools=_tools_catalog(tools),
-        domain=_server_domain(server_url),
+        domain=_server_domain(config.server_url) if config else _UNKNOWN_DOMAIN,
         use_cases_count=USE_CASES_COUNT,
         how_it_works_count=HOW_IT_WORKS_COUNT,
         faq_count=FAQ_COUNT,
