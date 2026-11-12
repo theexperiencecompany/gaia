@@ -329,6 +329,25 @@ def fetch_statuses(repo: Repo, head_sha: str) -> tuple[list[dict], bool]:
     return statuses, True
 
 
+def fetch_superseded_run_ids(repo: Repo, head_sha: str) -> set[int]:
+    """Return the cancelled workflow runs on head_sha that another run of the same workflow replaced."""
+    rc, out, err = gh(
+        ["api", f"{repo.api('actions/runs')}?head_sha={head_sha}&per_page=100"], repo.timeout_s
+    )
+    if rc != 0:
+        eprint(f"ci:remote: GET actions/runs failed:\n{err.strip()[:400]}")
+        sys.exit(classify_failure(err, rc))
+    by_workflow: dict[int, list[dict]] = {}
+    for run in json.loads(out).get("workflow_runs", []):
+        by_workflow.setdefault(run["workflow_id"], []).append(run)
+    superseded: set[int] = set()
+    for runs in by_workflow.values():
+        cancelled = {r["id"] for r in runs if r.get("conclusion") == "cancelled"}
+        if len(cancelled) < len(runs):
+            superseded |= cancelled
+    return superseded
+
+
 def status_checks(statuses: list[dict]) -> list[dict]:
     """Recast commit statuses in the check-run shape `normalize` reads.
 
@@ -1353,7 +1372,8 @@ def snapshot_once(repo: Repo, pr_number: int, branch: str, with_stack: bool) -> 
     pr_meta = fetch_pr_state(repo, pr_number)
     runs, runs_truncated = fetch_check_runs(repo, pr_meta["headRefOid"])
     statuses, statuses_truncated = fetch_statuses(repo, pr_meta["headRefOid"])
-    checks = normalize(runs + status_checks(statuses))
+    superseded = fetch_superseded_run_ids(repo, pr_meta["headRefOid"])
+    checks = [c for c in normalize(runs + status_checks(statuses)) if c["run_id"] not in superseded]
     truncated = runs_truncated or statuses_truncated
     counts = {k: sum(1 for c in checks if c["status"] == k) for k in COUNT_KEYS}
     verdicts, shards, tails, sources = diagnose(repo, checks)

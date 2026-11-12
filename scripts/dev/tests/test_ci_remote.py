@@ -128,6 +128,8 @@ class FakeGh:
         self.checks = checks
         # The legacy commit-status endpoint; only the tests that read it set it.
         self.statuses: list[dict[str, Any]] = []
+        # Workflow runs on the head commit; only the duplicate-run tests set them.
+        self.workflow_runs: list[dict[str, Any]] = []
         self.pr_meta = pr_meta or PR_META
         self.artifacts = artifacts if artifacts is not None else []
         # Keyed by artifact id; the None key is served for any artifact id.
@@ -146,6 +148,8 @@ class FakeGh:
             return 0, json.dumps({"check_runs": self.checks}), ""
         if "/status?" in endpoint:
             return 0, json.dumps({"statuses": self.statuses}), ""
+        if "actions/runs?" in endpoint:
+            return 0, json.dumps({"workflow_runs": self.workflow_runs}), ""
         if "/artifacts" in endpoint:
             return 0, json.dumps({"artifacts": self.artifacts}), ""
         raise AssertionError(f"unexpected gh call: {args}")
@@ -1630,3 +1634,43 @@ def test_a_watch_downloads_each_uploaded_verdict_once(wire) -> None:
     for _ in range(3):
         ci_remote.snapshot_once(repo, 7, "feat/thing", with_stack=False)
     assert sum(1 for call in fake.calls if call.endswith("/72/zip")) == 1
+
+
+# ----------------------------------------------------------- duplicate runs on one commit
+
+
+def _gate(run_id: int, conclusion: str) -> dict[str, Any]:
+    return {
+        "name": "quality-gate",
+        "status": "completed",
+        "conclusion": conclusion,
+        "html_url": f"https://github.com/o/r/actions/runs/{run_id}/job/{run_id}1",
+        "app": {"slug": "github-actions"},
+    }
+
+
+def test_a_cancelled_duplicate_run_does_not_redden_a_pr_whose_twin_passed(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = wire(FakeGh(checks=[_gate(98, "failure"), _gate(99, "success")]))
+    fake.workflow_runs = [
+        {"id": 98, "workflow_id": 1, "conclusion": "cancelled"},
+        {"id": 99, "workflow_id": 1, "conclusion": "success"},
+    ]
+
+    run_cli(monkeypatch, ["7"])
+
+    out = capsys.readouterr().out
+    assert "1 pass / 0 fail" in out
+    assert "FAIL" not in out
+
+
+def test_a_cancelled_run_with_no_replacement_still_shows_its_failures(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = wire(FakeGh(checks=[_gate(98, "failure")]))
+    fake.workflow_runs = [{"id": 98, "workflow_id": 1, "conclusion": "cancelled"}]
+
+    run_cli(monkeypatch, ["7"])
+
+    assert "FAIL  quality-gate" in capsys.readouterr().out
