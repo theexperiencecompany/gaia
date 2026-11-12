@@ -1,10 +1,11 @@
-import type { TodoRunWake } from "@shared/api/generated";
+import type { MessageReaction, TodoRunWake } from "@shared/api/generated";
 import { useCallback, useEffect } from "react";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import {
   isViewingConversation,
   markConversationUnread,
 } from "@/features/chat/stream/unread";
+import { applyMessageReaction } from "@/features/chat/utils/reactionUtils";
 import type { IMessage } from "@/lib/db/chatDb";
 import { db } from "@/lib/db/chatDb";
 import { streamLog } from "@/lib/streamLogger";
@@ -24,8 +25,6 @@ interface BgMessageEvent {
     response: string;
     message_id: string;
     date: string;
-    kind?: string;
-    reacts_to_message_id?: string;
     task_id?: string;
     /** Why a run that produced no reply failed — rendered instead of an empty bubble. */
     error?: string;
@@ -40,8 +39,17 @@ interface BgMessageEvent {
   };
 }
 
+/** A background result's reaction on the user message that asked for it. */
+interface BgReactionEvent {
+  type: typeof REACTION_EVENT;
+  conversation_id: string;
+  reaction: MessageReaction & { message_id: string };
+}
+
+const REACTION_EVENT = "conversation.message_reaction";
+
 /**
- * Subscribe to `conversation.new_message` WebSocket events and insert the
+ * Subscribe to `conversation.new_message` (and its reaction twin) and insert the
  * message into IndexedDB and the Zustand store.
  *
  * Conversation-scoped: only the active chat view updates immediately; other
@@ -79,8 +87,6 @@ export function useBgMessageWebSocket() {
       createdAt: new Date(message.date),
       updatedAt: new Date(message.date),
       messageId: message.message_id,
-      kind: message.kind ?? null,
-      reacts_to_message_id: message.reacts_to_message_id ?? null,
       tool_data: message.tool_data ?? null,
       error: message.error ?? null,
       follow_up_actions: message.follow_up_actions ?? null,
@@ -126,10 +132,27 @@ export function useBgMessageWebSocket() {
     });
   }, []);
 
+  const handleBgReaction = useCallback(async (raw: unknown) => {
+    const { conversation_id, reaction } = raw as BgReactionEvent;
+    if (!conversation_id || !reaction?.message_id) return;
+    await applyMessageReaction(conversation_id, reaction.message_id, {
+      emoji: reaction.emoji,
+      by: reaction.by,
+    });
+    // The reaction is the result's whole answer, so the run it ends is over.
+    const stream = useStreamStore.getState();
+    if (stream.sessions[conversation_id]?.phase === "awaiting_executor") {
+      stream.endSession(conversation_id);
+    }
+    streamLog("ws", REACTION_EVENT, { conversationId: conversation_id });
+  }, []);
+
   useEffect(() => {
     wsManager.on("conversation.new_message", handleBgMessage);
+    wsManager.on(REACTION_EVENT, handleBgReaction);
     return () => {
       wsManager.off("conversation.new_message", handleBgMessage);
+      wsManager.off(REACTION_EVENT, handleBgReaction);
     };
-  }, [handleBgMessage]);
+  }, [handleBgMessage, handleBgReaction]);
 }
