@@ -11,8 +11,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 
-from pydantic import TypeAdapter
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 from pymongo import ReturnDocument
 
 from app.db.repositories.conversation_entries import (
@@ -37,7 +38,7 @@ from app.models.conversation_log_models import (
 )
 
 _ENTRY: TypeAdapter[Entry] = TypeAdapter(Entry)
-_DOCUMENT_KEYS = ("_id", "conversation_id", "user_id", "seq", "at")
+_DOCUMENT_KEYS = ("_id", "conversation_id", "user_id")
 _EMPTY_STATE: dict[str, object] = ConversationState.empty().model_dump(mode="json")
 
 
@@ -203,38 +204,57 @@ def _comms_as_read(comms: CommsPhase | None) -> dict[str, object]:
     return {f"{STATE_FIELD}.comms": comms.value}
 
 
+class _StoredRunner(BaseModel):
+    epoch: int
+    alive_key: str
+
+
+class _StoredLog(BaseModel):
+    """The log's own fields on a head document."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    log_head: int = 0
+    state: ConversationState | None = None
+    runner: _StoredRunner | None = None
+    runner_epoch: int = 0
+
+    def current(self) -> ConversationState:
+        """Return the stored fold at log_head: a seq holding a message folds as an entry that changes nothing."""
+        return (self.state or ConversationState.empty()).model_copy(update={"head": self.log_head})
+
+
 def _state(raw: Mapping[str, object]) -> ConversationState:
-    """Return the stored fold at the head's log_head: a seq holding a message folds as an entry that changes nothing."""
-    stored = raw.get(STATE_FIELD)
-    state = (
-        ConversationState.model_validate(stored)
-        if isinstance(stored, Mapping)
-        else ConversationState.empty()
-    )
-    log_head = raw.get(LOG_HEAD_FIELD, 0)
-    return state.model_copy(update={"head": log_head if isinstance(log_head, int) else 0})
+    return _StoredLog.model_validate(raw).current()
 
 
 def _log_head(head: Head) -> LogHead:
-    stored = head.raw.get(STATE_FIELD)
-    runner = head.raw.get(RUNNER_FIELD)
-    holder = runner.get("epoch") if isinstance(runner, Mapping) else None
-    runner_epoch = head.raw.get(RUNNER_EPOCH_FIELD)
+    stored = _StoredLog.model_validate(head.raw)
     return LogHead(
         conversation_id=head.conversation_id,
         user_id=head.user_id,
         log_head=head.log_head,
-        state=_state(head.raw),
-        stored_comms=CommsPhase(stored["comms"]) if isinstance(stored, Mapping) else None,
-        holder=holder if isinstance(holder, int) else None,
-        runner_epoch=runner_epoch if isinstance(runner_epoch, int) else 0,
+        state=stored.current(),
+        stored_comms=None if stored.state is None else stored.state.comms,
+        holder=None if stored.runner is None else stored.runner.epoch,
+        runner_epoch=stored.runner_epoch,
         known=head.known_seqs(),
     )
 
 
+class _StoredEntry(BaseModel):
+    """A log entry document: its position, and the entry's own fields beside it."""
+
+    model_config = ConfigDict(extra="allow")
+
+    seq: int
+    at: datetime
+
+
 def _logged(raw: Mapping[str, object]) -> LoggedEntry:
-    entry = _ENTRY.validate_python({k: v for k, v in raw.items() if k not in _DOCUMENT_KEYS})
-    return LoggedEntry.model_validate({"seq": raw["seq"], "at": raw["at"], "entry": entry})
+    stored = _StoredEntry.model_validate(raw)
+    fields = {k: v for k, v in (stored.model_extra or {}).items() if k not in _DOCUMENT_KEYS}
+    return LoggedEntry(seq=stored.seq, at=stored.at, entry=_ENTRY.validate_python(fields))
 
 
 conversation_log_repository = ConversationLogRepository()

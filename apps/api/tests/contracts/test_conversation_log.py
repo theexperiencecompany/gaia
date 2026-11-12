@@ -26,6 +26,7 @@ from app.models.conversation_log_models import (
     EntryKind,
     LoggedEntry,
     Rejected,
+    Reply,
 )
 from app.models.conversation_models import ConversationDocument
 from app.services.conversation.mongo_log import MongoConversationLog
@@ -202,6 +203,7 @@ async def test_amend_updates_the_one_entry_whether_or_not_it_was_flushed(
     await log.amend(claim, reply.model_copy(update={"text": "hello again"}))
     await held.run_all()
     [stored] = await log.read_after(conversation, UID, 1)
+    assert isinstance(amended.entry, Reply)
     assert (amended.seq, amended.entry.revision) == (2, 1)
     assert stored.entry == reply.model_copy(update={"text": "hello again", "revision": 2})
     assert (
