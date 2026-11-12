@@ -76,7 +76,7 @@ const DummyIntegrationsCard: React.FC = () => {
 
                     {/* Status */}
                     <div className="flex-shrink-0">
-                      <Chip size="sm" variant="tertiary" color="success">
+                      <Chip size="sm" variant="soft" color="success">
                         Connected
                       </Chip>
                     </div>

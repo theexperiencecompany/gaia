@@ -62,7 +62,7 @@ export default function SettingsSidebar() {
                 ))}
               <span className="text-sm">{item.label}</span>
               {item.isNew && (
-                <Chip size="sm" variant="tertiary" color="success">
+                <Chip size="sm" variant="soft" color="success">
                   New
                 </Chip>
               )}

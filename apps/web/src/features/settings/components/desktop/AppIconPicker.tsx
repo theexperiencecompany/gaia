@@ -25,7 +25,7 @@ export function AppIconPicker({
           <Button
             key={icon.id}
             isIconOnly
-            variant="tertiary"
+            variant="ghost"
             aria-label={`${icon.label} app icon`}
             aria-pressed={isSelected}
             onPress={() => onSelect(icon.id)}

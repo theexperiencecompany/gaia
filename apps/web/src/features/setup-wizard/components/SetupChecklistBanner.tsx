@@ -12,9 +12,8 @@
 import { Button } from "@heroui/react";
 import { ArrowDown01Icon, Cancel01Icon, Wrench01Icon } from "@icons";
 import * as m from "motion/react-m";
-import Link from "next/link";
-import type { ComponentProps } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
 import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
@@ -28,16 +27,14 @@ import { useSetupChecklistStore } from "@/stores/setupChecklistStore";
 
 function ChecklistAction({ item }: { item: SetupChecklistItem }) {
   return (
-    <Button
-      render={(props) => (
-        <Link {...(props as unknown as ComponentProps<"a">)} href={item.href} />
-      )}
+    <LinkButton
+      href={item.href}
       size="sm"
       variant="tertiary"
       className="shrink-0 font-medium"
     >
       {item.actionLabel}
-    </Button>
+    </LinkButton>
   );
 }
 
@@ -52,7 +49,7 @@ function DismissButton({
     <Button
       isIconOnly
       size="sm"
-      variant="tertiary"
+      variant="ghost"
       aria-label={label}
       onPress={onDismiss}
       className="shrink-0 rounded-full text-zinc-500"

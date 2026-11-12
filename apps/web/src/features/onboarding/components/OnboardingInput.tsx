@@ -19,7 +19,7 @@ import {
 } from "@heroui/react";
 import { SparklesIcon } from "@icons";
 import * as m from "motion/react-m";
-import { type ButtonHTMLAttributes, memo } from "react";
+import { memo } from "react";
 
 import {
   isListedProfession,
@@ -281,17 +281,12 @@ function OptionChips({
         const note = personalisedNote?.(option.value) ?? null;
         const { icon: Icon, tint } = OPTION_STYLE[option.value];
         const chip = (
-          <Chip
+          <Chip<"button">
             size="lg"
             variant="tertiary"
             aria-pressed={selected}
             aria-disabled={disabled}
-            render={(props) => (
-              <button
-                type="button"
-                {...(props as unknown as ButtonHTMLAttributes<HTMLButtonElement>)}
-              />
-            )}
+            render={(props) => <button type="button" {...props} />}
             onClick={() => {
               if (!disabled) onSelect(option.value);
             }}

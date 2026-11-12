@@ -70,7 +70,7 @@ export function CopyableContentView(
         <Button
           isIconOnly
           size="sm"
-          variant="tertiary"
+          variant="ghost"
           onPress={copy}
           aria-label={copied ? "Copied" : "Copy content"}
           className={cn(

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, buttonVariants, Tooltip } from "@heroui/react";
+import { Button, Tooltip } from "@heroui/react";
 import {
   AiWebBrowsingIcon,
   Cancel01Icon,
@@ -9,11 +9,12 @@ import {
 } from "@icons";
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { Focusable } from "react-aria-components";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { BrowserStatusChip } from "@/features/browser/components/BrowserStatusChip";
 import { useLiveBrowser } from "@/features/browser/hooks/useLiveBrowser";
 import { useLiveView } from "@/features/browser/hooks/useLiveView";
 import type { BrowserCardPhase } from "@/features/browser/types";
-import { cn } from "@/lib/utils";
 import type { BrowserHandoffSnapshot } from "@/types/features/browserTaskTypes";
 import { HandoffPrompt } from "../bubbles/bot/HandoffPrompt";
 import { LiveScreen } from "../bubbles/bot/LiveScreen";
@@ -202,24 +203,20 @@ function Omnibox({
       </div>
       {pageUrl && (
         <Tooltip delay={400}>
-          <Tooltip.Trigger>
-            <a
+          <Focusable>
+            <LinkButton
               href={pageUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className={cn(
-                buttonVariants({
-                  variant: "tertiary",
-                  size: "sm",
-                  isIconOnly: true,
-                }),
-                "shrink-0 text-zinc-400",
-              )}
+              variant="tertiary"
+              size="sm"
+              isIconOnly
+              className="shrink-0 text-zinc-400"
               aria-label="Open the live browser in a new tab"
             >
               <SquareArrowUpRight02Icon className="size-4" />
-            </a>
-          </Tooltip.Trigger>
+            </LinkButton>
+          </Focusable>
           <Tooltip.Content>Open in a new tab</Tooltip.Content>
         </Tooltip>
       )}

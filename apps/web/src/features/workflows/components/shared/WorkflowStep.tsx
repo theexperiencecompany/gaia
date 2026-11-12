@@ -52,7 +52,7 @@ export default function WorkflowStep({
       <div className="flex-1 space-y-2">
         <div className="flex items-center gap-2">
           <Chip
-            variant="tertiary"
+            variant="soft"
             title={categoryLabel}
             aria-label={categoryLabel}
             className={`${chipPadding} pl-2 space-x-1 truncate ${chipTextSize}`}

@@ -36,7 +36,7 @@ export default function WorkflowLoadingState({
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="tertiary" onPress={onClose}>
+          <Button variant="ghost" onPress={onClose}>
             Cancel
           </Button>
           <Button onPress={onRetry} variant="primary">

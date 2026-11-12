@@ -44,7 +44,7 @@ export const PermissionToolList = ({
         permissions.deviations > 0 && (
           <Button
             size="sm"
-            variant="tertiary"
+            variant="ghost"
             className="-mr-1 h-7 shrink-0 px-2 text-xs text-zinc-400"
             isPending={permissions.isSavingTools}
             onPress={permissions.resetToDefaults}

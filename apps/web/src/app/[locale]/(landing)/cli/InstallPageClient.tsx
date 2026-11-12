@@ -1,11 +1,12 @@
 "use client";
 
-import { Button, Tabs, Tooltip } from "@heroui/react";
+import { Tabs, Tooltip } from "@heroui/react";
 import { CLI_INSTALL_COMMANDS } from "@shared/cli/command-manifest";
 import Image from "next/image";
 import Link from "next/link";
-import { type ComponentProps, type ReactNode, useState } from "react";
+import { type ReactNode, useState } from "react";
 import FAQAccordion from "@/components/seo/FAQAccordion";
+import { LinkButton } from "@/components/shared/LinkButton";
 import CopyButton from "@/components/ui/CopyButton";
 import InlineCode from "@/components/ui/InlineCode";
 import SectionHeader from "@/features/landing/components/demo/founders-demo/SectionHeader";
@@ -220,43 +221,25 @@ export function InstallPageClient() {
       </section>
 
       <div className="relative z-10 flex flex-wrap justify-center gap-4 px-6 pb-24 pt-12">
-        <Button
-          render={(props) => (
-            <Link
-              {...(props as unknown as ComponentProps<"a">)}
-              href={SELFHOST_DOCS_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-            />
-          )}
+        <LinkButton
+          href={SELFHOST_DOCS_URL}
+          target="_blank"
+          rel="noopener noreferrer"
           variant="primary"
         >
           Read the self-hosting guide
-        </Button>
-        <Button
-          render={(props) => (
-            <Link
-              {...(props as unknown as ComponentProps<"a">)}
-              href={siteConfig.links.repo}
-              target="_blank"
-              rel="noopener noreferrer"
-            />
-          )}
+        </LinkButton>
+        <LinkButton
+          href={siteConfig.links.repo}
+          target="_blank"
+          rel="noopener noreferrer"
           variant="secondary"
         >
           View on GitHub
-        </Button>
-        <Button
-          render={(props) => (
-            <Link
-              {...(props as unknown as ComponentProps<"a">)}
-              href="/open-source-ai-assistant"
-            />
-          )}
-          variant="tertiary"
-        >
+        </LinkButton>
+        <LinkButton href="/open-source-ai-assistant" variant="ghost">
           Why self-host GAIA
-        </Button>
+        </LinkButton>
       </div>
     </div>
   );

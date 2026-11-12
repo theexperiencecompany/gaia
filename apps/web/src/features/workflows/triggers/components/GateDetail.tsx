@@ -73,7 +73,7 @@ export function GateDetail({
               {editable && (
                 <Button
                   size="sm"
-                  variant="tertiary"
+                  variant="ghost"
                   aria-label={GATE_EDIT_LABEL}
                   className="h-6 min-w-0 px-2 text-xs text-zinc-400 data-[hover=true]:text-zinc-200"
                   onPress={() => setDraft(condition)}
@@ -98,7 +98,7 @@ export function GateDetail({
             className="bg-zinc-800 text-sm hover:bg-zinc-800"
           />
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="tertiary" onPress={() => setDraft(null)}>
+            <Button size="sm" variant="ghost" onPress={() => setDraft(null)}>
               Cancel
             </Button>
             <Button

@@ -52,7 +52,7 @@ export default function ProductManagerClient() {
           transition={{ duration: 0.5, ease }}
           className="relative z-10 mb-6"
         >
-          <Chip variant="tertiary" color="accent" size="md">
+          <Chip variant="soft" color="accent" size="md">
             For Product Managers
           </Chip>
         </m.div>

@@ -76,7 +76,7 @@ export function SkillPreviewModal({
                 </Modal.Body>
                 <Modal.Footer>
                   <Button
-                    variant="tertiary"
+                    variant="ghost"
                     className="rounded-xl"
                     onPress={onClose}
                   >

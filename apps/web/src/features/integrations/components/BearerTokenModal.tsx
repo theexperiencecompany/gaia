@@ -130,7 +130,7 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
 
             <Modal.Footer>
               <Button
-                variant="tertiary"
+                variant="ghost"
                 onPress={handleClose}
                 isDisabled={isLoading}
               >

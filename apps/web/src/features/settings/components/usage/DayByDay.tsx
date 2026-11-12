@@ -190,7 +190,7 @@ function TokenScaleLine({ tokens }: { tokens: number }) {
         <Button
           isIconOnly
           size="sm"
-          variant="tertiary"
+          variant="ghost"
           className="size-6 min-w-6 shrink-0 text-zinc-500 data-[hover=true]:text-zinc-200"
           aria-label="Show another comparison"
           onPress={next}

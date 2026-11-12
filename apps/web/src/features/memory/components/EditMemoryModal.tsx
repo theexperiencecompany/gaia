@@ -81,11 +81,7 @@ export function EditMemoryModal({
               </TextField>
             </Modal.Body>
             <Modal.Footer>
-              <Button
-                variant="tertiary"
-                className="rounded-xl"
-                onPress={onClose}
-              >
+              <Button variant="ghost" className="rounded-xl" onPress={onClose}>
                 Cancel
               </Button>
               <Button

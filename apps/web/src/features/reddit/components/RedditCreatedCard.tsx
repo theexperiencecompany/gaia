@@ -43,7 +43,7 @@ export default function RedditCreatedCard({
               </span>
               <Chip
                 size="sm"
-                variant="tertiary"
+                variant="soft"
                 className="ml-auto bg-green-900/30 text-xs text-green-300"
               >
                 Just now

@@ -92,7 +92,7 @@ interface ToolbarButtonProps {
 function ToolbarButton({ active, onClick, children }: ToolbarButtonProps) {
   return (
     <Button
-      variant="tertiary"
+      variant="ghost"
       size="sm"
       onPress={() => onClick()}
       className={[
@@ -188,7 +188,7 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
           {/* Main copy button — copies as markdown */}
           <Button
             isIconOnly
-            variant="tertiary"
+            variant="ghost"
             size="sm"
             onPress={copyAsMarkdown}
             aria-label={copied ? "Copied" : "Copy as Markdown"}
@@ -210,7 +210,7 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
             <DropdownTrigger>
               <Button
                 isIconOnly
-                variant="tertiary"
+                variant="ghost"
                 size="sm"
                 aria-label="Copy options"
                 className={copied ? "text-emerald-400" : "text-zinc-400"}

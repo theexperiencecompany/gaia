@@ -85,6 +85,16 @@
         "foreground": "default",
         "danger": "danger"
       }
+    },
+    "button": {
+      "variant": {
+        "light": "ghost"
+      }
+    },
+    "chip": {
+      "variant": {
+        "flat": "soft"
+      }
     }
   },
   "v3dims": {

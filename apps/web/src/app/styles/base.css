@@ -5,23 +5,14 @@
 @layer theme, base, openui, components, utilities;
 @import "tailwindcss" source(none);
 @import "@heroui/styles/themes/default" layer(theme);
+@import "@heroui/styles/base" layer(base);
 @import "./theme.css";
 @import "@heroui/styles/utilities";
 @import "@heroui/styles/variants";
 
-
-
-
-
-
-
-
-
-
 /* HeroUI */
 
 /* Streamdown — markdown renderer; scan its dist so Tailwind emits the utilities its components use */
-
 
 @source "../not-found.tsx";
 @source inline("row-span-2 row-span-3 row-span-4");
@@ -29,7 +20,6 @@
 @source inline("grid-rows-3 grid-rows-4 grid-cols-3 grid-cols-4");
 @custom-variant dark (&:is(.dark *));
 @plugin "tailwindcss-animate";
-@plugin "@tailwindcss/typography";
 
 /* Global rather than in openui.css: it matches every recharts bar, not only react-ui's. */
 @layer openui {
@@ -121,8 +111,6 @@
   /* biome-ignore lint/complexity/noImportantStyles: override sileo's runtime-injected z-50 */
   z-index: 1000 !important;
 }
-
-
 
 @keyframes shine {
   0% {
@@ -444,11 +432,6 @@
   :root {
     /* HeroUI theme variables */
 
-    --foreground: 222.2 47.4% 11.2%;
-
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 47.4% 11.2%;
 
@@ -463,9 +446,6 @@
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-
     --destructive: 0 100% 50%;
     --destructive-foreground: 210 40% 98%;
 
@@ -475,14 +455,6 @@
 
   .dark {
     /* HeroUI theme variables */
-
-    --foreground: 213 31% 91%;
-
-    --muted: 223 47% 11%;
-    --muted-foreground: 215.4 16.3% 56.9%;
-
-    --accent: 216 34% 17%;
-    --accent-foreground: 210 40% 98%;
 
     --popover: 224 71% 4%;
     --popover-foreground: 215 20.2% 65.1%;
@@ -1267,6 +1239,9 @@
 :root {
   --background: #ffffff;
   --surface: #ffffff;
+  /* v2 foreground and its muted step (foreground-500): text, placeholders, soft-chip text */
+  --foreground: #11181c;
+  --muted: #71717a;
   --border: hsl(214.3 31.8% 91.4%);
   --separator: hsl(0 0% 90%);
 }
@@ -1274,12 +1249,42 @@
 .dark {
   /* v2 --heroui-background: 0 0% 0% */
   --background: #000000;
+  --foreground: #ecedee;
+  --muted: #a1a1aa;
   /* v2 --heroui-content1: 240 5.88% 10% (zinc-900) */
   --surface: hsl(240 5.88% 10%);
   /* v2 --border: 216 34% 17% (subtle blue-grey hairline, not white) */
   --border: hsl(216 34% 17%);
   /* v2's accordion/dividers rendered as a #262626 hairline on black */
   --separator: hsl(0 0% 15%);
+}
+
+/* v2 semantic colours and its `flat` tint: v2 painted a flat chip or button as
+   the colour at 20% behind the colour itself, where v3's soft step is 12-15%
+   with the text mixed toward --foreground. --default-soft is v2's flat default,
+   its zinc-700 default at 40%. */
+:root,
+.dark {
+  --success: #17c964;
+  --warning: #f5a524;
+  --danger: #f31260;
+  --accent-soft: color-mix(in oklab, var(--accent) 20%, transparent);
+  --accent-soft-foreground: var(--accent);
+  --accent-soft-hover: color-mix(in oklab, var(--accent) 30%, transparent);
+  --success-soft: color-mix(in oklab, var(--success) 20%, transparent);
+  --success-soft-foreground: var(--success);
+  --success-soft-hover: color-mix(in oklab, var(--success) 30%, transparent);
+  --warning-soft: color-mix(in oklab, var(--warning) 20%, transparent);
+  --warning-soft-foreground: var(--warning);
+  --warning-soft-hover: color-mix(in oklab, var(--warning) 30%, transparent);
+  --danger-soft: color-mix(in oklab, var(--danger) 20%, transparent);
+  --danger-soft-foreground: var(--danger);
+  --danger-soft-hover: color-mix(in oklab, var(--danger) 30%, transparent);
+}
+
+.dark {
+  --default-soft: color-mix(in oklab, #3f3f46 40%, transparent);
+  --default-soft-hover: color-mix(in oklab, #3f3f46 60%, transparent);
 }
 
 html {

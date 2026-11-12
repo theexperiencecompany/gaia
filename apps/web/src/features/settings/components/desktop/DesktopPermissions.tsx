@@ -46,7 +46,7 @@ const PERMISSION_ROWS: PermissionRowConfig[] = [
 function statusChip(granted: boolean, known: boolean) {
   if (!known) {
     return (
-      <Chip size="sm" variant="tertiary" className="text-xs">
+      <Chip size="sm" variant="soft" className="text-xs">
         Unknown
       </Chip>
     );
@@ -54,7 +54,7 @@ function statusChip(granted: boolean, known: boolean) {
   return granted ? (
     <Chip
       size="sm"
-      variant="tertiary"
+      variant="soft"
       color="success"
       className="bg-success/15 text-xs text-emerald-400"
     >
@@ -63,7 +63,7 @@ function statusChip(granted: boolean, known: boolean) {
   ) : (
     <Chip
       size="sm"
-      variant="tertiary"
+      variant="soft"
       color="danger"
       className="bg-red-500/15 text-xs text-red-400"
     >

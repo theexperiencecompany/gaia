@@ -264,7 +264,7 @@ export default function DemoBody() {
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {ANIMATION_CONFIG.map(([label, value]) => (
-            <Chip key={label} size="sm" variant="tertiary">
+            <Chip key={label} size="sm" variant="soft">
               <span className="text-zinc-500">{label}:</span>{" "}
               <span className="text-zinc-200">{value}</span>
             </Chip>

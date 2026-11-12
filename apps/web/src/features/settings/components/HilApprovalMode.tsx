@@ -42,7 +42,7 @@ export function HilApprovalMode() {
     <SettingsSection
       title="Approvals"
       titleAccessory={
-        <Chip size="sm" variant="tertiary" color="success">
+        <Chip size="sm" variant="soft" color="success">
           Beta
         </Chip>
       }

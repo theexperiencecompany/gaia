@@ -44,7 +44,7 @@ export function SkillRow({
           {showTarget && isScoped && targetMeta && (
             <Chip
               size="sm"
-              variant="tertiary"
+              variant="soft"
               className="h-5 shrink-0 gap-1 bg-zinc-800 pl-1.5"
             >
               <SkillTargetIcon
@@ -70,7 +70,7 @@ export function SkillRow({
           <a href={skill.source_url} target="_blank" rel="noopener noreferrer">
             <Chip
               size="sm"
-              variant="tertiary"
+              variant="soft"
               className="h-6 shrink-0 cursor-pointer gap-1 bg-zinc-800 pl-2 data-[hover=true]:bg-zinc-700"
             >
               {skill.source === "github" ? (
@@ -95,7 +95,7 @@ export function SkillRow({
           <Button
             isIconOnly
             size="sm"
-            variant="tertiary"
+            variant="ghost"
             aria-label={`Edit ${skill.name}`}
             onPress={() => onEdit(skill)}
           >

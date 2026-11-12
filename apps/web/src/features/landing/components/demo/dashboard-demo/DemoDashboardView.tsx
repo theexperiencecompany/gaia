@@ -201,19 +201,11 @@ function DemoTodosCard() {
                 </p>
               )}
               <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                <Chip
-                  size="sm"
-                  variant="tertiary"
-                  className="text-zinc-400 px-1"
-                >
+                <Chip size="sm" variant="soft" className="text-zinc-400 px-1">
                   {todo.priority}
                 </Chip>
                 {todo.due_date && (
-                  <Chip
-                    size="sm"
-                    variant="tertiary"
-                    className="text-zinc-400 px-1"
-                  >
+                  <Chip size="sm" variant="soft" className="text-zinc-400 px-1">
                     {new Date(todo.due_date).toDateString() ===
                     new Date().toDateString()
                       ? "Today"
@@ -339,7 +331,7 @@ function DemoGoalsCard() {
                           : "warning"
                     }
                     size="sm"
-                    variant="tertiary"
+                    variant="soft"
                   >
                     {goal.progress === 100
                       ? "Completed"
@@ -350,7 +342,7 @@ function DemoGoalsCard() {
                   {hasSteps && (
                     <Chip
                       size="sm"
-                      variant="tertiary"
+                      variant="soft"
                       className="text-zinc-400 px-1"
                     >
                       <CheckmarkCircle02Icon
@@ -406,11 +398,7 @@ function DemoConversationsCard() {
                 )}
               </div>
               <div className="mt-2 flex items-center gap-1">
-                <Chip
-                  size="sm"
-                  variant="tertiary"
-                  className="text-zinc-400 px-1"
-                >
+                <Chip size="sm" variant="soft" className="text-zinc-400 px-1">
                   <MessageMultiple02Icon
                     width={15}
                     height={15}
@@ -421,11 +409,7 @@ function DemoConversationsCard() {
                     {conversation.messageCount === 1 ? "message" : "messages"}
                   </Chip.Label>
                 </Chip>
-                <Chip
-                  size="sm"
-                  variant="tertiary"
-                  className="text-zinc-400 px-1"
-                >
+                <Chip size="sm" variant="soft" className="text-zinc-400 px-1">
                   <Calendar03Icon width={15} height={15} className="mx-1" />
                   <Chip.Label>
                     {new Date(conversation.updated_at).toLocaleDateString()}

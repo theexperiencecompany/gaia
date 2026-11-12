@@ -92,7 +92,7 @@ export function FirstStepsWidget() {
           <Button
             isIconOnly
             size="sm"
-            variant="tertiary"
+            variant="ghost"
             className="ml-auto cursor-pointer"
             aria-expanded
             aria-label="Collapse first steps"

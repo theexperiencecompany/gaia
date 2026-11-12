@@ -56,7 +56,7 @@ export function ChatChannelSettings({
               <Button
                 isIconOnly
                 size="sm"
-                variant="tertiary"
+                variant="ghost"
                 aria-label={`Move ${label} up`}
                 isDisabled={index === 0 || saving}
                 onPress={() => move(index, "up")}
@@ -66,7 +66,7 @@ export function ChatChannelSettings({
               <Button
                 isIconOnly
                 size="sm"
-                variant="tertiary"
+                variant="ghost"
                 aria-label={`Move ${label} down`}
                 isDisabled={index === linkedOrder.length - 1 || saving}
                 onPress={() => move(index, "down")}

@@ -4,9 +4,10 @@ import { Button, ButtonGroup, Chip, Dropdown, Menu } from "@heroui/react";
 import { ArrowRight02Icon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
-import type { ComponentProps, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "@/components/shared/icons";
+import { LinkButton } from "@/components/shared/LinkButton";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import { appConfig } from "@/config/appConfig";
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
@@ -166,17 +167,12 @@ function DesktopDownloadButton({
 
   if (available.length === 0) {
     return (
-      <Button
-        render={(props) => (
-          <Link
-            {...(props as unknown as ComponentProps<"a">)}
-            href={GITHUB_RELEASES_BASE}
-            target="_blank"
-            rel="noopener noreferrer"
-          />
-        )}
+      <LinkButton
+        href={GITHUB_RELEASES_BASE}
+        target="_blank"
+        rel="noopener noreferrer"
         variant={buttonVariant}
-        onPress={() => {
+        onClick={() => {
           track("navigation:cta_clicked", {
             destination: "github_releases",
             os,
@@ -185,7 +181,7 @@ function DesktopDownloadButton({
       >
         {icon}
         {baseLabel}
-      </Button>
+      </LinkButton>
     );
   }
 
@@ -206,17 +202,12 @@ function DesktopDownloadButton({
     available.length > 1 ? `${baseLabel} (${selected.label})` : baseLabel;
 
   const mainButton = (
-    <Button
-      render={(props) => (
-        <Link
-          {...(props as unknown as ComponentProps<"a">)}
-          href={selected.downloadUrl ?? "#"}
-          target="_blank"
-          rel="noopener noreferrer"
-        />
-      )}
+    <LinkButton
+      href={selected.downloadUrl ?? "#"}
+      target="_blank"
+      rel="noopener noreferrer"
       variant={buttonVariant}
-      onPress={() => {
+      onClick={() => {
         track("navigation:cta_clicked", {
           destination: "download",
           os,
@@ -225,7 +216,7 @@ function DesktopDownloadButton({
     >
       {icon}
       {label}
-    </Button>
+    </LinkButton>
   );
 
   if (available.length === 1) {
@@ -285,7 +276,7 @@ function DesktopSection() {
       imagePriority={false}
       title="Download for Desktop"
       chip={
-        <Chip variant="tertiary" color="success">
+        <Chip variant="soft" color="success">
           Beta
         </Chip>
       }
@@ -340,7 +331,7 @@ function MobileSection() {
       imageHeight={288}
       imageSizes={null}
       chip={
-        <Chip variant="tertiary" color="warning">
+        <Chip variant="soft" color="warning">
           Waitlist
         </Chip>
       }
@@ -348,21 +339,16 @@ function MobileSection() {
       description="GAIA for iOS and Android is currently in development."
       actions={
         <div className="flex flex-col gap-3">
-          <Button
-            render={(props) => (
-              <Link
-                {...(props as unknown as ComponentProps<"a">)}
-                href={appConfig.site.mobileWaitlist}
-                target="_blank"
-                rel="noopener noreferrer"
-              />
-            )}
-            onPress={() => {
+          <LinkButton
+            href={appConfig.site.mobileWaitlist}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => {
               track("cta:get_started_clicked", {});
             }}
           >
             Sign up for waitlist <ChevronRight width={17} height={17} />
-          </Button>
+          </LinkButton>
           <div className="flex flex-wrap gap-2">
             <Button variant="tertiary" isDisabled>
               <div className="relative h-4 w-4">

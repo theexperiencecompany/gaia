@@ -29,12 +29,7 @@ export function SubscriptionUpsell({
               {copy.planLabel}
             </p>
           </div>
-          <Chip
-            color="warning"
-            variant="tertiary"
-            size="sm"
-            className="text-xs"
-          >
+          <Chip color="warning" variant="soft" size="sm" className="text-xs">
             Inactive
           </Chip>
         </div>

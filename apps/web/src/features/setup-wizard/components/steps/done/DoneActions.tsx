@@ -1,10 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { ArrowRight02Icon } from "@icons";
 import * as m from "motion/react-m";
-import Link from "next/link";
-import type { ComponentProps } from "react";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { PROVIDERS_SETTINGS_PATH } from "@/features/settings/components/providers/providerRows";
 import { CARD_TRANSITION, CARD_VARIANTS } from "./doneMotion";
 
@@ -16,10 +14,8 @@ export function DoneActions({ hasLlm }: DoneActionsProps) {
   return (
     <m.div variants={CARD_VARIANTS} transition={CARD_TRANSITION}>
       {hasLlm ? (
-        <Button
-          render={(props) => (
-            <Link {...(props as unknown as ComponentProps<"a">)} href="/c" />
-          )}
+        <LinkButton
+          href="/c"
           variant="primary"
           fullWidth
           size="lg"
@@ -27,16 +23,11 @@ export function DoneActions({ hasLlm }: DoneActionsProps) {
         >
           Start chatting
           <ArrowRight02Icon size={18} />
-        </Button>
+        </LinkButton>
       ) : (
         <div className="flex flex-col gap-2">
-          <Button
-            render={(props) => (
-              <Link
-                {...(props as unknown as ComponentProps<"a">)}
-                href={PROVIDERS_SETTINGS_PATH}
-              />
-            )}
+          <LinkButton
+            href={PROVIDERS_SETTINGS_PATH}
             variant="primary"
             fullWidth
             size="lg"
@@ -44,18 +35,16 @@ export function DoneActions({ hasLlm }: DoneActionsProps) {
           >
             Go to Providers &amp; Tools
             <ArrowRight02Icon size={18} />
-          </Button>
-          <Button
-            render={(props) => (
-              <Link {...(props as unknown as ComponentProps<"a">)} href="/c" />
-            )}
+          </LinkButton>
+          <LinkButton
+            href="/c"
             variant="ghost"
             fullWidth
             size="sm"
             className="text-zinc-400"
           >
             Continue to chat anyway
-          </Button>
+          </LinkButton>
         </div>
       )}
     </m.div>

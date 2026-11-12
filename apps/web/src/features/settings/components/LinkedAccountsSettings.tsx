@@ -279,7 +279,7 @@ export default function LinkedAccountsSettings() {
             >
               <div className="flex items-center gap-3">
                 {isLockedBehindPro(platform) && (
-                  <Chip size="sm" variant="tertiary" color="warning">
+                  <Chip size="sm" variant="soft" color="warning">
                     Pro
                   </Chip>
                 )}

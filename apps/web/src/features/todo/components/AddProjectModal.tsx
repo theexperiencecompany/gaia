@@ -145,7 +145,7 @@ export default function AddProjectModal({
               </div>
             </Modal.Body>
             <Modal.Footer>
-              <Button variant="tertiary" onPress={() => onOpenChange(false)}>
+              <Button variant="ghost" onPress={() => onOpenChange(false)}>
                 Cancel
               </Button>
               <Button

@@ -63,15 +63,22 @@ const WEB_DIR = path.resolve(__dirname, "../..");
 describe("area bundles come from the import graph", () => {
   it("the committed generated/<area>.css files match the routes that import each area", () => {
     // Throws with the generator's stderr when a route's reach changed without `pnpm area-css`.
-    execFileSync(process.execPath, ["scripts/generate-area-css.mjs", "--check"], {
-      cwd: WEB_DIR,
-      stdio: "pipe",
-    });
+    execFileSync(
+      process.execPath,
+      ["scripts/generate-area-css.mjs", "--check"],
+      {
+        cwd: WEB_DIR,
+        stdio: "pipe",
+      },
+    );
   });
 
   for (const area of AREAS) {
     it(`${area}.css styles its routes through generated/${area}.css only`, () => {
-      const css = readFileSync(path.join(WEB_DIR, `src/app/styles/${area}.css`), "utf8");
+      const css = readFileSync(
+        path.join(WEB_DIR, `src/app/styles/${area}.css`),
+        "utf8",
+      );
       expect(css).toContain(`@import "./generated/${area}.css";`);
       expect(css).not.toMatch(SOURCE_PATH);
       expect(css).not.toContain("@heroui/styles/components/");
@@ -79,9 +86,13 @@ describe("area bundles come from the import graph", () => {
 
     // Tailwind 4.3 drops a file @source when a later one sits in an ancestor directory.
     it(`generated/${area}.css lists no file after one in a deeper directory`, () => {
-      const dirs = declaredSources(generated(area)).map((file) => path.dirname(file));
+      const dirs = declaredSources(generated(area)).map((file) =>
+        path.dirname(file),
+      );
       dirs.forEach((dir, i) => {
-        const shadowed = dirs.slice(0, i).find((earlier) => earlier.startsWith(`${dir}${path.sep}`));
+        const shadowed = dirs
+          .slice(0, i)
+          .find((earlier) => earlier.startsWith(`${dir}${path.sep}`));
         expect(shadowed, `${dir} is listed after ${shadowed}`).toBeUndefined();
       });
     });

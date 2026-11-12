@@ -109,13 +109,13 @@ export default function CalendarHeader() {
           <Button
             isIconOnly
             size="sm"
-            variant="tertiary"
+            variant="ghost"
             onPress={goToPreviousDay}
           >
             <ArrowLeft01Icon className="h-5 w-5 text-zinc-400" />
           </Button>
 
-          <Button isIconOnly size="sm" variant="tertiary" onPress={goToNextDay}>
+          <Button isIconOnly size="sm" variant="ghost" onPress={goToNextDay}>
             <ArrowRight01Icon className="h-5 w-5 text-zinc-400" />
           </Button>
           <Button

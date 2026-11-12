@@ -97,11 +97,7 @@ export function ComposioAuthConfigRow({
             <Input placeholder="ac_..." />
           </TextField>
         )}
-        <Chip
-          size="sm"
-          variant="tertiary"
-          color={isSetUp ? "success" : "default"}
-        >
+        <Chip size="sm" variant="soft" color={isSetUp ? "success" : "default"}>
           {isSetUp ? "Set up" : "Not set up"}
         </Chip>
       </div>

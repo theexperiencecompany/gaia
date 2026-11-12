@@ -140,6 +140,7 @@
 @source "../../../components/shared/icons.tsx";
 @source "../../../components/shared/IntegrationConnectCard.tsx";
 @source "../../../components/shared/KeyboardShortcutsModal.tsx";
+@source "../../../components/shared/LinkButton.tsx";
 @source "../../../components/shared/LogoWithContextMenu.tsx";
 @source "../../../components/shared/PanelRow.tsx";
 @source "../../../components/shared/panelRowButtonProps.ts";

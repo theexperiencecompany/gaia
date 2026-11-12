@@ -328,7 +328,7 @@ function ControlBar({
       <div className="flex items-center gap-2">
         <Tooltip>
           <Chip
-            variant="tertiary"
+            variant="soft"
             color={state === "listening" ? "success" : "default"}
             size="sm"
           >
@@ -338,13 +338,13 @@ function ControlBar({
         </Tooltip>
 
         {state === "listening" && (
-          <Chip variant="tertiary" color="accent" size="sm">
+          <Chip variant="soft" color="accent" size="sm">
             threshold 0.60
           </Chip>
         )}
 
         {error && (
-          <Chip variant="tertiary" color="danger" size="sm">
+          <Chip variant="soft" color="danger" size="sm">
             {error.message}
           </Chip>
         )}

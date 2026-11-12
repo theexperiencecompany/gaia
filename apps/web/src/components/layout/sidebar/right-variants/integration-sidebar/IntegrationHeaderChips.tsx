@@ -36,7 +36,7 @@ export function IntegrationHeaderChips({
   return (
     <div className="flex items-center gap-2 flex-row mb-2">
       {isConnected && (
-        <Chip size="sm" variant="tertiary" color="success">
+        <Chip size="sm" variant="soft" color="success">
           Connected
         </Chip>
       )}
@@ -45,7 +45,7 @@ export function IntegrationHeaderChips({
           {isForkedIntegration && integration.creator && (
             <Chip
               size="sm"
-              variant="tertiary"
+              variant="soft"
               className="text-xs font-light relative text-foreground-500"
             >
               {integration.creator.picture ? (
@@ -70,7 +70,7 @@ export function IntegrationHeaderChips({
           {isOwnIntegration && (
             <Chip
               size="sm"
-              variant="tertiary"
+              variant="soft"
               color="default"
               className="text-xs text-zinc-400 font-light relative right-1"
             >

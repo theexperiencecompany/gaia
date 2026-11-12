@@ -30,7 +30,7 @@ export default function CopyLinkButton({
   return (
     <Button
       onPress={handleCopyLink}
-      variant="tertiary"
+      variant="ghost"
       size="sm"
       className={className}
       aria-label="Copy link to this post"

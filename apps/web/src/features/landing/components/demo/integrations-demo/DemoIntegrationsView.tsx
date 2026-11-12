@@ -50,7 +50,7 @@ function DemoIntegrationRow({
           <div className="flex items-center gap-2">
             <span className="font-medium">{integration.name}</span>
             {isPublic && (
-              <Chip size="sm" variant="tertiary" color="accent">
+              <Chip size="sm" variant="soft" color="accent">
                 Community
               </Chip>
             )}
@@ -62,7 +62,7 @@ function DemoIntegrationRow({
       </button>
       <div className="shrink-0">
         {isConnected ? (
-          <Chip size="sm" variant="tertiary" color="success">
+          <Chip size="sm" variant="soft" color="success">
             Connected
           </Chip>
         ) : (
@@ -104,7 +104,7 @@ function DemoIntegrationSidebar({
       <div className="flex w-full items-end justify-end px-6 pt-4 pb-0">
         <Button
           onPress={onClose}
-          variant="tertiary"
+          variant="ghost"
           isIconOnly
           size="sm"
           aria-label="Close"
@@ -128,19 +128,19 @@ function DemoIntegrationSidebar({
           {/* Status chips */}
           <div className="flex items-center gap-2">
             {isConnected && (
-              <Chip size="sm" variant="tertiary" color="success">
+              <Chip size="sm" variant="soft" color="success">
                 Connected
               </Chip>
             )}
             {!isConnected && (
-              <Chip size="sm" variant="tertiary" color="default">
+              <Chip size="sm" variant="soft" color="default">
                 Not Connected
               </Chip>
             )}
             {isCustom && (
               <Chip
                 size="sm"
-                variant="tertiary"
+                variant="soft"
                 className="text-xs font-light text-zinc-400"
               >
                 Custom
@@ -220,7 +220,7 @@ function DemoIntegrationSidebar({
                 {integration.tools.map((tool) => (
                   <Chip
                     key={tool}
-                    variant="tertiary"
+                    variant="soft"
                     size="sm"
                     className="font-light text-zinc-300"
                   >
@@ -392,7 +392,7 @@ export default function DemoIntegrationsView({
               <div className="mb-8">
                 <div className="mb-4 flex items-center gap-3 pl-4">
                   <h2 className="text-base font-semibold">Featured</h2>
-                  <Chip size="sm" variant="tertiary" color="accent">
+                  <Chip size="sm" variant="soft" color="accent">
                     {featuredIntegrations.length}
                   </Chip>
                 </div>
@@ -415,7 +415,7 @@ export default function DemoIntegrationsView({
                   <h2 className="text-base font-semibold">
                     {CATEGORY_LABELS[category] || category}
                   </h2>
-                  <Chip size="sm" variant="tertiary" color="default">
+                  <Chip size="sm" variant="soft" color="default">
                     {items.length}
                   </Chip>
                 </div>
@@ -437,7 +437,7 @@ export default function DemoIntegrationsView({
               <h2 className="text-base font-semibold">
                 {CATEGORY_LABELS[selectedCategory] || selectedCategory}
               </h2>
-              <Chip size="sm" variant="tertiary" color="default">
+              <Chip size="sm" variant="soft" color="default">
                 {filteredIntegrations.length}
               </Chip>
             </div>

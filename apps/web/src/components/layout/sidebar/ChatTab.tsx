@@ -1,8 +1,7 @@
 "use client";
-import { Button } from "@heroui/react";
 import { ChatBotIcon, Mail01Icon, StarIcon } from "@icons";
-import Link from "next/link";
 import React, { type FC, useState } from "react";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import { usePathname } from "@/i18n/navigation";
 import {
@@ -82,17 +81,12 @@ export const ChatTab: FC<ChatTabProps> = ({
       onFocus={() => setButtonHovered(true)}
       onBlur={() => setButtonHovered(false)}
     >
-      <Button
+      <LinkButton
+        href={`/c/${id}`}
         className={`w-full justify-start px-2 font-light text-sm ${isUnread ? "text-white font-normal" : isActive ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
         size="sm"
-        render={(props) => (
-          <Link
-            {...(props as unknown as React.ComponentProps<"a">)}
-            href={`/c/${id}`}
-          />
-        )}
         variant={isActive ? "secondary" : "ghost"}
-        onPress={() => setButtonHovered(false)}
+        onClick={() => setButtonHovered(false)}
       >
         {getIcon() &&
           React.cloneElement(getIcon()!, {
@@ -118,7 +112,7 @@ export const ChatTab: FC<ChatTabProps> = ({
               squeezing the fixed-size indicator dot out of view. */}
           <span className="min-w-0 truncate">{name.replace('"', "")}</span>
         </div>
-      </Button>
+      </LinkButton>
 
       <div className={`absolute right-0`}>
         <ChatOptionsDropdown
