@@ -26,6 +26,7 @@ from app.services.hil.intent import (
     IntentDecision,
     JudgedCall,
     judge_intent,
+    ungrounded_targets,
 )
 from app.services.hil.jev_judge import (
     JevCase,
@@ -35,7 +36,6 @@ from app.services.hil.jev_judge import (
     decide_from_verdict,
     forbid_tripwire,
     map_jev_choice,
-    ungrounded_targets,
 )
 from app.services.hil.utils import PriorCall
 from app.services.providers.provider_credentials_service import ProviderConfig

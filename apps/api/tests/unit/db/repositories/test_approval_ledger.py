@@ -82,7 +82,7 @@ class TestRegister:
     async def test_inserts_pending_and_returns_new_id(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:
-        ap_id = await repo.register(_PROPOSAL)
+        ap_id = (await repo.register(_PROPOSAL)).approval_id
 
         assert re.fullmatch(r"ap_[0-9a-f]{12}", ap_id)
         inserted = collection.insert_one.await_args.args[0]
@@ -97,7 +97,7 @@ class TestRegister:
         cursor.to_list = AsyncMock(return_value=[_doc(state="approved")])
         collection.find = MagicMock(return_value=cursor)
 
-        ap_id = await repo.register(_PROPOSAL)
+        ap_id = (await repo.register(_PROPOSAL)).approval_id
 
         assert ap_id == "ap_1"
         collection.insert_one.assert_not_awaited()
@@ -113,7 +113,7 @@ class TestRegister:
         _find_returns(collection, [], [_doc(approval_id="ap_winner")])
         collection.insert_one = AsyncMock(side_effect=DuplicateKeyError("dup"))
 
-        ap_id = await repo.register(_PROPOSAL)
+        ap_id = (await repo.register(_PROPOSAL)).approval_id
 
         assert ap_id == "ap_winner"
         lookups = [c.args[0] for c in collection.find.call_args_list]
@@ -139,7 +139,7 @@ class TestRegister:
         cursor.to_list = AsyncMock(return_value=[_doc(state="revoked")])
         collection.find = MagicMock(return_value=cursor)
 
-        ap_id = await repo.register(_PROPOSAL)
+        ap_id = (await repo.register(_PROPOSAL)).approval_id
 
         assert ap_id != "ap_1"
         collection.insert_one.assert_awaited_once()

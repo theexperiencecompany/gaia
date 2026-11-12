@@ -21,8 +21,7 @@ from app.constants.log_tags import LogTag
 from app.core.exception_handlers import register_exception_handlers
 from app.core.lifespan import lifespan
 from app.core.middleware import configure_middleware
-from app.core.openapi import StreamFrameFastAPI, api_operation_id
-from app.models.stream_events import PendingApprovalCardData, SettledApprovalCardData
+from app.core.openapi import api_operation_id
 from app.schemas.errors import ERROR_RESPONSES
 from app.services import latency_metrics as _latency_metrics  # noqa: F401 -- side effects
 
@@ -31,13 +30,6 @@ from app.services import latency_metrics as _latency_metrics  # noqa: F401 -- si
 # until the first FS-shaped operation runs.
 from app.services.storage import metrics as _fs_metrics  # noqa: F401 -- side effects
 from shared.py.wide_events import log as wide_log
-
-
-class GaiaFastAPI(StreamFrameFastAPI):
-    """The API app; its document also types the SSE frames clients render."""
-
-    stream_frame_models = (PendingApprovalCardData, SettledApprovalCardData)
-
 
 _metrics_bearer = HTTPBearer(auto_error=True)
 
@@ -62,7 +54,7 @@ def create_app() -> FastAPI:
     # and interactive docs so endpoint listings don't leak. Only development
     # gets an unauthenticated /metrics; elsewhere METRICS_TOKEN is required.
     is_dev = settings.deployment.dev_tools
-    app = GaiaFastAPI(
+    app = FastAPI(
         lifespan=lifespan,
         title="GAIA API",
         description="Backend for General-purpose AI assistant (GAIA)",

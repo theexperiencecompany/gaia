@@ -5,6 +5,7 @@ real (fake) Redis keys; only the Mongo-backed stores and the client broadcast ar
 """
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -62,8 +63,15 @@ def _pending_row() -> ApprovalLedgerDocument:
     )
 
 
+@dataclass(frozen=True)
+class _Seams:
+    ledger: _Ledger
+    conversations: MagicMock
+    broadcast: AsyncMock
+
+
 @pytest.fixture
-def seams() -> Iterator[dict[str, MagicMock]]:
+def seams() -> Iterator[_Seams]:
     ledger = _Ledger([_pending_row()])
     conversations = MagicMock()
     conversations.set_message_approval_status = AsyncMock(return_value=True)
@@ -83,11 +91,11 @@ def seams() -> Iterator[dict[str, MagicMock]]:
         patch("app.services.hil.ledger_decide.capture"),
         patch("app.services.conversation_stop_service.capture"),
     ):
-        yield {"ledger": ledger, "conversations": conversations, "broadcast": broadcast}
+        yield _Seams(ledger=ledger, conversations=conversations, broadcast=broadcast)
 
 
 async def test_stop_settles_a_pending_approval_as_cancelled_after_its_run_ended(
-    seams: dict[str, MagicMock],
+    seams: _Seams,
 ) -> None:
     """The ledger's run ends before its card shows, so Stop must close the card with no run alive."""
     await stream_manager.start_stream(STREAM_ID, CONVERSATION_ID, USER_ID)
@@ -95,12 +103,12 @@ async def test_stop_settles_a_pending_approval_as_cancelled_after_its_run_ended(
     response = await cancel_stream_endpoint(STREAM_ID, user_id=USER_ID)
 
     assert response.success is True
-    assert seams["ledger"].rows["ap_pending"].state is LedgerState.CANCELLED
-    seams["conversations"].set_message_approval_status.assert_awaited_once_with(
+    assert seams.ledger.rows["ap_pending"].state is LedgerState.CANCELLED
+    seams.conversations.set_message_approval_status.assert_awaited_once_with(
         CONVERSATION_ID, user_id=USER_ID, approval_id="ap_pending", status="cancelled"
     )
     messages = [
-        call.kwargs.get("message") or call.args[-1] for call in seams["broadcast"].await_args_list
+        call.kwargs.get("message") or call.args[-1] for call in seams.broadcast.await_args_list
     ]
     decided = [m["data"]["status"] for m in messages if m["type"] == "hil_approval_decided"]
     assert decided == ["cancelled"]

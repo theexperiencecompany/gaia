@@ -311,7 +311,9 @@ class TestFlushHeldCards:
         try:
             with (
                 patch.object(bridge, "approval_ledger_repository") as repo,
-                patch.object(bridge.stream_manager, "publish_chunk", new=AsyncMock()) as chunk,
+                patch(
+                    "app.services.hil.bridge.stream_manager.publish_chunk", new=AsyncMock()
+                ) as chunk,
                 patch.object(bridge, "_schedule_pending_notification") as notify,
             ):
                 repo.get_by_approval_id = AsyncMock(return_value=row)
@@ -332,7 +334,9 @@ class TestFlushHeldCards:
         try:
             with (
                 patch.object(bridge, "approval_ledger_repository") as repo,
-                patch.object(bridge.stream_manager, "publish_chunk", new=AsyncMock()) as chunk,
+                patch(
+                    "app.services.hil.bridge.stream_manager.publish_chunk", new=AsyncMock()
+                ) as chunk,
                 patch.object(bridge, "_schedule_pending_notification") as notify,
             ):
                 repo.get_by_approval_id = AsyncMock(return_value=row)

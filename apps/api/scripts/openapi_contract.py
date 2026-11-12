@@ -6,7 +6,10 @@ module from a test would switch every later test in the process to self-host.
 """
 
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
+
+from pydantic import BaseModel
+from pydantic.json_schema import models_json_schema
 
 # A generated name carries ``__`` only when pydantic built it from something
 # other than the class name: a module path for two models sharing one name
@@ -26,6 +29,21 @@ def _identifier(name: str) -> str:
     component name carries, and dropping it keeps the name readable.
     """
     return name.replace("-", "")
+
+
+def with_stream_frame_schemas(schema: dict, models: Iterable[type[BaseModel]]) -> dict:
+    """Add SSE frame models no route returns as components, so clients get generated types.
+
+    A model a route already returns keeps the route's component: the export refuses
+    two models sharing a class name, so one name is one model.
+    """
+    _, frames = models_json_schema(
+        [(model, "serialization") for model in models], ref_template=_REF_PREFIX + "{model}"
+    )
+    components = schema["components"]["schemas"]
+    for name, body in frames.get("$defs", {}).items():
+        components.setdefault(name, body)
+    return schema
 
 
 def with_identifier_component_names(schema: dict) -> dict:

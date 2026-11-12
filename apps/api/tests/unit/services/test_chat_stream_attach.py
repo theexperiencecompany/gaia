@@ -22,7 +22,7 @@ import pytest
 
 from app.agents.core.agent import AgentRunOptions, StreamMessageIds
 from app.agents.core.background.session import RunKind, create_session, get_session
-from app.models.message_models import FileData, MessageRequestWithHistory
+from app.models.message_models import FileData, MessageDict, MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from app.services.chat.stream import (
@@ -177,7 +177,6 @@ class TestFinalizeStreamBackstop:
             [
                 {"tool_name": "search", "data": {}},
                 {"tool_name": "search", "data": {}},
-                {"data": {}},
             ]
         )
 
@@ -192,7 +191,7 @@ class TestFinalizeStreamBackstop:
             )
 
         assert log.set.call_args.kwargs["tool_types"] == ["search"]
-        assert log.set.call_args.kwargs["tool_calls_count"] == 3
+        assert log.set.call_args.kwargs["tool_calls_count"] == 2
 
     async def test_saved_turn_is_not_resaved_or_reattached(self) -> None:
         """The backstop must never double-persist or double-attach a turn already saved and attached."""
@@ -219,7 +218,7 @@ class TestFinalizeStreamBackstop:
 
 class TestRecentHistory:
     def test_a_trailing_user_turn_is_dropped_from_the_prior_context(self) -> None:
-        messages = [
+        messages: list[MessageDict] = [
             {"role": "user", "content": "draft it"},
             {"role": "assistant", "content": "drafted"},
             {"role": "user", "content": "send it"},
@@ -228,7 +227,7 @@ class TestRecentHistory:
         assert _recent_history(messages) == messages[:2]
 
     def test_a_trailing_assistant_turn_is_kept(self) -> None:
-        messages = [
+        messages: list[MessageDict] = [
             {"role": "user", "content": "draft it"},
             {"role": "assistant", "content": "drafted"},
         ]
@@ -552,9 +551,9 @@ class TestRunChatStreamTurnDerivations:
             patch.object(chat_stream, "capture"),
             patch.object(chat_stream, "_finalize_stream", AsyncMock()),
             patch.object(chat_stream, "_wait_for_artifact_forwarder", AsyncMock()),
-            patch.object(chat_stream.conversation_repository, "get_todo_id", get_todo_id),
-            patch.object(
-                chat_stream.FileService, "attach_uploads", new_callable=AsyncMock
+            patch("app.services.chat.stream.conversation_repository.get_todo_id", get_todo_id),
+            patch(
+                "app.services.chat.stream.FileService.attach_uploads", new_callable=AsyncMock
             ) as attach_uploads,
         ):
             sm.publish_chunk = AsyncMock()
