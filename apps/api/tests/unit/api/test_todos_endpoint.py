@@ -39,7 +39,7 @@ from app.models.trigger_subscription_models import (
 from app.services.todos.errors import ExternalRefTakenError, TrackedTodoWorkflowError
 from app.utils.log_identifiers import user_text_shape
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.todos import TodosChatOpened, TodosToggled, TodosUpdated
+from shared.py.analytics.catalog.todos import TodosChatOpened, TodosToggled
 from shared.py.analytics.catalog.triggers import TriggerGateEdited
 from tests.conftest import FAKE_USER
 
@@ -164,12 +164,14 @@ class TestListTodos:
 class TestTodoAnalytics:
     """Analytics captures on todo endpoints without a service-layer capture.
 
-    Single-todo mutations are captured inside TodoService (covered by
-    test_todo_service.py); these assert the endpoint-only bulk and subtask
-    captures.
+    Single and bulk todo edits are captured inside TodoService (covered by
+    test_todo_service.py); these assert the endpoint-only bulk move and subtask
+    captures, and that the bulk edits leave theirs to the service.
     """
 
-    async def test_bulk_complete_captures_todo_completed(self, client: AsyncClient) -> None:
+    async def test_bulk_complete_leaves_the_capture_to_the_service(
+        self, client: AsyncClient
+    ) -> None:
         with (
             patch(
                 f"{TODOS_ENDPOINT}.TodoService.bulk_update_todos",
@@ -189,7 +191,8 @@ class TestTodoAnalytics:
             user={"id": "507f1f77bcf86cd799439011"},
             todo={"operation": "bulk_complete", "bulk_count": 2},
         )
-        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), TodosToggled(bulk_count=2))
+        # TodoService.bulk_update_todos captures what it wrote; the endpoint emits nothing.
+        mock_capture.assert_not_called()
         mock_bulk.assert_awaited_once_with(
             BulkUpdateRequest(
                 todo_ids=["todo-1", "todo-2"],
@@ -198,9 +201,7 @@ class TestTodoAnalytics:
             "507f1f77bcf86cd799439011",
         )
 
-    async def test_bulk_update_captures_todos_updated_on_the_caller(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_bulk_update_leaves_the_capture_to_the_service(self, client: AsyncClient) -> None:
         with (
             patch(
                 f"{TODOS_ENDPOINT}.TodoService.bulk_update_todos",
@@ -215,7 +216,7 @@ class TestTodoAnalytics:
             )
 
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), TodosUpdated(bulk_count=2))
+        mock_capture.assert_not_called()
 
     async def test_toggle_subtask_captures_todo_completed(self, client: AsyncClient) -> None:
         doc = TodoDocument(
