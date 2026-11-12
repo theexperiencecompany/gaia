@@ -8,7 +8,6 @@ import JsonLd from "@/components/seo/JsonLd";
 import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
 import { SiteLink } from "@/components/seo/SiteLink";
-import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternativesData";
 import {
   getTranslatedAlternative,
   getTranslatedAlternatives,
@@ -24,7 +23,6 @@ import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { isRedirectedPath } from "@/lib/canonicalLinks";
 import { ALTERNATIVE_DOCS_LINKS, type DocsGuideLink } from "@/lib/docs-links";
 import { relatedInGroup } from "@/lib/relatedInGroup";
-import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -39,15 +37,6 @@ interface PageProps {
     readonly locale: string;
     readonly slug: string;
   }>;
-}
-
-async function allStaticParams() {
-  const slugs = await getAllAlternativeSlugs();
-  return slugs.map((slug) => ({ slug }));
-}
-
-export function generateStaticParams() {
-  return prerenderedMarketingParams(allStaticParams);
 }
 
 export async function generateMetadata({

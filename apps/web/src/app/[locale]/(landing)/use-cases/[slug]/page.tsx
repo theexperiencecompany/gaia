@@ -5,12 +5,10 @@ import UseCaseDetailClient from "@/app/[locale]/(landing)/use-cases/[slug]/clien
 import JsonLd from "@/components/seo/JsonLd";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import {
-  getAllCommunityWorkflowsServer,
   getExploreWorkflowsServer,
   getPublicWorkflowServer,
 } from "@/features/workflows/lib/serverWorkflowsApi";
 import { findCopiedTemplate } from "@/features/workflows/lib/templateCopies";
-import { prerenderedMarketingParams } from "@/lib/selfhost";
 import { generateBreadcrumbSchema, siteConfig } from "@/lib/seo";
 import type { UseCase } from "@/types/features/workflowTypes";
 import {
@@ -27,22 +25,6 @@ interface PageProps {
 }
 
 export const revalidate = 3600; // Revalidate every hour
-
-async function allStaticParams() {
-  const [explore, community] = await Promise.all([
-    getExploreWorkflowsServer(1000),
-    getAllCommunityWorkflowsServer(),
-  ]);
-  return [...explore, ...community].flatMap((w) =>
-    w.slug ? [{ slug: w.slug }] : [],
-  );
-}
-
-export function generateStaticParams() {
-  return prerenderedMarketingParams(allStaticParams);
-}
-
-export const dynamicParams = true;
 
 export async function generateMetadata({
   params,

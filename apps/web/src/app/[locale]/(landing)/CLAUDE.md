@@ -114,16 +114,19 @@ import { generateBreadcrumbSchema, generateWebPageSchema } from "@/lib/seo";
 
 ---
 
-## Programmatic SEO Pages (`generateStaticParams` + `generateMetadata`)
+## Programmatic SEO Pages (`generateMetadata`, build-time params only from repo data)
 
-Every `[slug]` route must implement both:
+The build reads no API: `serverFetch` (`src/lib/api/server.ts`) throws during `next build`. Where a page's data comes from decides how it renders:
+
+- **Only repo data** (glossary, blog, learn: `public/data/**` JSON, no API read anywhere on the page): `generateStaticParams` lists the slugs, wrapped in `prerenderedMarketingParams`, and the build prerenders every path.
+- **The page reads the API** (marketplace, use cases, and the automate / compare / alternative-to / for families, which resolve marketplace links): no `generateStaticParams`. Each path renders on its first request and is then served from the ISR cache (R2 on Cloudflare), so crawlers still get full HTML. An unknown slug calls `notFound()`; leave `dynamicParams` at its default.
+- **No dynamic segment of its own, and reads the API** (`/marketplace`, `/use-cases`, `/pricing`): `await connection()` before the first read, and the read uses `serverApi({ revalidate })` so it is served from the data cache.
+
+A failed API read throws: the visitor gets the error page and nothing is cached, while a failed ISR revalidation keeps serving the last good render. Never catch it into an empty list.
+
+Every `[slug]` route implements `generateMetadata`:
 
 ```typescript
-export async function generateStaticParams() {
-  const items = await fetchAllItems();
-  return items.map((item) => ({ slug: item.slug }));
-}
-
 export async function generateMetadata({ params }): Promise<Metadata> {
   const item = await getItem(params.slug);
   if (!item) return {};
@@ -138,7 +141,6 @@ export async function generateMetadata({ params }): Promise<Metadata> {
 
 **For integration/marketplace pages:**
 - Use `revalidate = 60` (ISR) since content is API-driven
-- Set `dynamicParams = true` to allow fallback rendering for new slugs
 - Generate category-specific title and description templates (see `marketplace/[slug]/page.tsx` for the pattern)
 - Always include a `SoftwareApplication` schema, HowTo schema, and FAQ schema
 

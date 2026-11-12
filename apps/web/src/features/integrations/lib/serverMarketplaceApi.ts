@@ -12,6 +12,8 @@ import type { CommunityWorkflow } from "@/types/features/workflowTypes";
 const SLUG_INDEX_TTL_MS = 3600 * 1000;
 /** The community endpoint caps `limit` at 100. */
 const COMMUNITY_PAGE_SIZE = 100;
+/** How long a marketplace listing serves from the data cache, the marketplace index's old ISR window. */
+const LISTING_REVALIDATE_S = 3600;
 
 type CommunitySort = "popular" | "recent" | "name";
 
@@ -33,7 +35,7 @@ export const getPublicIntegration = cache(
 /** GAIA's first-party integrations, highest display priority first, as marketplace cards. */
 export const getNativeIntegrations = cache(
   async (): Promise<CommunityIntegration[]> => {
-    const client = serverApi();
+    const client = serverApi({ revalidate: LISTING_REVALIDATE_S });
     if (!client) return [];
     const config = serverData(
       await client.GET("/api/v1/integrations/config", {}),
@@ -65,7 +67,7 @@ export async function getCommunityIntegrations(options: {
   readonly offset?: number;
   readonly category?: string;
 }): Promise<CommunityIntegrationsResponse> {
-  const client = serverApi();
+  const client = serverApi({ revalidate: LISTING_REVALIDATE_S });
   if (!client) return { integrations: [], total: 0, has_more: false };
   const result = await client.GET("/api/v1/integrations/community", {
     params: {

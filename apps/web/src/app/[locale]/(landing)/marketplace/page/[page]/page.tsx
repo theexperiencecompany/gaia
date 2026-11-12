@@ -12,8 +12,7 @@ import {
   getNativeIntegrations,
 } from "@/features/integrations/lib/serverMarketplaceApi";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { hubPagePath, laterHubPageParams } from "@/lib/hubPagination";
-import { prerenderedMarketingParams } from "@/lib/selfhost";
+import { hubPagePath } from "@/lib/hubPagination";
 import {
   generateBreadcrumbSchema,
   generatePageMetadata,
@@ -34,15 +33,6 @@ async function loadDirectoryPages() {
   ]);
   return marketplaceDirectoryPages(native, community);
 }
-
-export function generateStaticParams() {
-  return prerenderedMarketingParams(async () =>
-    laterHubPageParams(await loadDirectoryPages()),
-  );
-}
-
-// The directory grows with the marketplace, so a page added since the build renders on demand.
-export const dynamicParams = true;
 
 function pageTitle(page: number, total: number): string {
   return `AI Integration Marketplace: Page ${page} of ${total}`;

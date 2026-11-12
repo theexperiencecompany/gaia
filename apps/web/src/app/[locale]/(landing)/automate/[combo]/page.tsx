@@ -8,7 +8,6 @@ import JsonLd from "@/components/seo/JsonLd";
 import { RelatedAutomationsGrid } from "@/components/seo/RelatedAutomationsGrid";
 import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternativesData";
 import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
-import { getAllComboSlugs } from "@/features/integrations/data/combosData";
 import {
   getTranslatedCombo,
   getTranslatedCombos,
@@ -19,7 +18,6 @@ import { getMarketplacePath } from "@/features/integrations/lib/serverMarketplac
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { getAutomateDocsLinks } from "@/lib/docs-links";
-import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -39,17 +37,6 @@ interface PageProps {
     readonly combo: string;
   }>;
 }
-
-async function allStaticParams() {
-  const slugs = await getAllComboSlugs();
-  return slugs.map((slug) => ({ combo: slug }));
-}
-
-export function generateStaticParams() {
-  return prerenderedMarketingParams(allStaticParams);
-}
-
-export const dynamicParams = false;
 
 export async function generateMetadata({
   params,

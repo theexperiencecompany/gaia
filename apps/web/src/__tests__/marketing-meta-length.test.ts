@@ -31,6 +31,16 @@ const FAMILIES = [
 const OVERLAY_DIR: Partial<Record<(typeof FAMILIES)[number], string>> = {
   combos: "integrations",
 };
+/** Routes that read the API, so they have no build-time params, but whose pages are a repo family's slugs. */
+const FAMILY_ROUTES: Record<
+  string,
+  { readonly family: (typeof FAMILIES)[number]; readonly param: string }
+> = {
+  "automate/[combo]": { family: "combos", param: "combo" },
+  "compare/[slug]": { family: "comparisons", param: "slug" },
+  "alternative-to/[slug]": { family: "alternatives", param: "slug" },
+  "for/[persona]": { family: "personas", param: "persona" },
+};
 /** Pages built from live API data; integrationMeta and useCaseMeta tests pin their description templates. */
 const API_BACKED = new Set([
   "marketplace/[slug]",
@@ -141,6 +151,16 @@ interface RenderedPage {
   readonly ogUrl: string | undefined;
 }
 
+/** The params a route renders: its build-time params, else its family's slugs, else the route alone. */
+async function paramSetsOf(route: string, page: PageModule): Promise<Params[]> {
+  if (page.generateStaticParams) return page.generateStaticParams();
+  const familyRoute = FAMILY_ROUTES[route];
+  if (!familyRoute) return [{}];
+  return readJson<string[]>(
+    path.join(DATA_DIR, familyRoute.family, "_slugs.json"),
+  ).map((slug) => ({ [familyRoute.param]: slug }));
+}
+
 /** Every indexable page's metadata as generateMetadata renders it, in every locale. */
 async function renderAllPages(): Promise<RenderedPage[]> {
   const pages: RenderedPage[] = [];
@@ -148,7 +168,7 @@ async function renderAllPages(): Promise<RenderedPage[]> {
     const route = routeOf(modulePath);
     if (API_BACKED.has(route)) continue;
     const page = await load();
-    const paramSets = (await page.generateStaticParams?.()) ?? [{}];
+    const paramSets = await paramSetsOf(route, page);
     // Untranslated routes redirect to English, and a static export reads the same in every locale.
     const servedIn =
       page.metadata || !isTranslatedPath(`/${route}`) ? ["en"] : locales;

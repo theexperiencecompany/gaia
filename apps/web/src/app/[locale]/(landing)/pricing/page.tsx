@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 
 import JsonLd from "@/components/seo/JsonLd";
-import type { Plan } from "@/features/pricing/api/pricingApi";
 import PricingPage from "@/features/pricing/components/PricingPage";
 import { getPlansServer } from "@/features/pricing/lib/serverPricingApi";
 import { faqData } from "@/lib/faq";
@@ -32,9 +32,9 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
-export const revalidate = 86400; // Revalidate every 24 hours (ISR)
-
 export default async function Pricing() {
+  // Rendered per request from the cached plan list, so the build never reads the API.
+  await connection();
   const productSchema = generateProductSchema();
   const webPageSchema = generateWebPageSchema(
     "Pricing",
@@ -52,14 +52,7 @@ export default async function Pricing() {
 
   const combinedFaqSchema = generateFAQSchema([...pricingFAQs, ...faqData]);
 
-  // Fetch plans data server-side for SSR + ISR
-  let initialPlans: Plan[] = [];
-  try {
-    initialPlans = await getPlansServer();
-  } catch (error) {
-    console.error("Failed to fetch plans server-side:", error);
-    // Component will fallback to client-side fetching
-  }
+  const initialPlans = await getPlansServer();
 
   return (
     <>

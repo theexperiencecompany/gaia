@@ -10,7 +10,6 @@ import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { getTranslatedAlternative } from "@/features/alternatives/data/getTranslatedAlternative";
 import { comparisonCategoryOf } from "@/features/comparisons/data/comparisonCategories";
-import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import {
   getTranslatedComparison,
   getTranslatedComparisons,
@@ -22,7 +21,6 @@ import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { isRedirectedPath } from "@/lib/canonicalLinks";
 import { COMPARE_DOCS_LINKS } from "@/lib/docs-links";
 import { relatedInGroup } from "@/lib/relatedInGroup";
-import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -41,17 +39,6 @@ interface PageProps {
     readonly slug: string;
   }>;
 }
-
-async function allStaticParams() {
-  const slugs = await getAllComparisonSlugs();
-  return slugs.map((slug) => ({ slug }));
-}
-
-export function generateStaticParams() {
-  return prerenderedMarketingParams(allStaticParams);
-}
-
-export const dynamicParams = false;
 
 export async function generateMetadata({
   params,

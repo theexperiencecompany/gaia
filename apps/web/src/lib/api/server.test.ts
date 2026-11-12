@@ -16,61 +16,45 @@ describe("serverFetch", () => {
   const fetchMock = vi.fn<typeof fetch>();
 
   beforeEach(() => {
-    vi.useFakeTimers();
     vi.stubGlobal("fetch", fetchMock);
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
     fetchMock.mockReset();
   });
 
-  it("retries a build-time timeout and returns the response that arrives", async () => {
+  it("refuses to read the API during the build", async () => {
     vi.stubEnv("NEXT_PHASE", PHASE_PRODUCTION_BUILD);
-    fetchMock
-      .mockRejectedValueOnce(timeout())
-      .mockRejectedValueOnce(timeout())
-      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
 
-    const pending = serverFetch(new Request(CONFIG_URL));
-    await vi.runAllTimersAsync();
-
-    expect((await pending).status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await expect(serverFetch(new Request(CONFIG_URL))).rejects.toThrow(
+      "ran during the build",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("fails the build when the API stays down past every retry", async () => {
-    vi.stubEnv("NEXT_PHASE", PHASE_PRODUCTION_BUILD);
+  it("gives a visitor's request one attempt, bounded by the request timeout", async () => {
     fetchMock.mockRejectedValue(timeout());
-
-    const pending = serverFetch(new Request(CONFIG_URL));
-    const outcome = expect(pending).rejects.toThrow("timeout");
-    await vi.runAllTimersAsync();
-
-    await outcome;
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-  });
-
-  it("gives a visitor's request one attempt", async () => {
-    fetchMock.mockRejectedValue(timeout());
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
 
     await expect(serverFetch(new Request(CONFIG_URL))).rejects.toThrow(
       "timeout",
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(timeoutSpy.mock.calls).toEqual([[10_000]]);
   });
 
-  it("bounds each attempt with a longer timeout at build time than at request time", async () => {
+  it("caches a read in the data cache only when it names a revalidate window", async () => {
     fetchMock.mockResolvedValue(new Response("{}"));
-    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
 
     await serverFetch(new Request(CONFIG_URL));
-    vi.stubEnv("NEXT_PHASE", PHASE_PRODUCTION_BUILD);
-    await serverFetch(new Request(CONFIG_URL));
+    await serverFetch(new Request(CONFIG_URL), { revalidate: 3600 });
 
-    expect(timeoutSpy.mock.calls).toEqual([[10_000], [30_000]]);
+    expect(fetchMock.mock.calls[0]?.[1]).not.toHaveProperty("next");
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      next: { revalidate: 3600 },
+    });
   });
 });

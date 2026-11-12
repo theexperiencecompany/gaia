@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { Suspense } from "react";
 
 import JsonLd from "@/components/seo/JsonLd";
@@ -44,11 +45,11 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
-export const revalidate = 3600;
-
 const TOP_INTEGRATIONS_IN_SCHEMA = 10;
 
 export default async function MarketplacePage() {
+  // Rendered per request from cached listings, so the build never reads the API.
+  await connection();
   const [native, community] = await Promise.all([
     getNativeIntegrations(),
     getAllCommunityIntegrations(),
