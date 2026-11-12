@@ -331,7 +331,7 @@ _COMMS_LOOKUP = (
 
 
 def _fence(paths: list[Path], allowlist: frozenset[str] = frozenset()) -> list[str]:
-    with patch.object(comms_graph_owner, "ALLOWLIST", allowlist):
+    with patch.object(comms_graph_owner, "LEGACY_CALLERS", allowlist):
         return [f"{v.path.name}:{v.line} {v.detail}" for v in comms_graph_owner.check(paths)]
 
 
@@ -399,10 +399,26 @@ def test_executor_thread_code_is_not_flagged(tmp_path: Path) -> None:
     assert _fence([path]) == []
 
 
-def test_graph_builder_and_step_own_the_comms_graph(tmp_path: Path) -> None:
+def test_graph_builder_and_the_comms_runner_own_the_comms_graph(tmp_path: Path) -> None:
     builder = _write(tmp_path, "app/agents/core/graph_builder/build_graph.py", _COMMS_LOOKUP)
+    runner = _write(tmp_path, "app/services/conversation/comms_runner.py", _COMMS_LOOKUP)
+    assert _fence([builder, runner]) == []
+
+
+def test_the_step_drives_the_runner_and_may_not_run_the_graph_itself(tmp_path: Path) -> None:
     step = _write(tmp_path, "app/services/conversation/step.py", _COMMS_LOOKUP)
-    assert _fence([builder, step]) == []
+    assert _fence([step]) == [
+        "step.py:3 names the comms graph (GraphName.COMMS)",
+        "step.py:4 calls .aupdate_state() in a module that holds the comms graph",
+    ]
+
+
+def test_the_owner_is_never_a_legacy_caller() -> None:
+    assert comms_graph_owner.OWNER not in comms_graph_owner.LEGACY_CALLERS
+    assert not any(
+        entry.startswith(comms_graph_owner.GRAPH_BUILDERS)
+        for entry in comms_graph_owner.LEGACY_CALLERS
+    )
 
 
 def test_comms_graph_rule_skips_tests(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

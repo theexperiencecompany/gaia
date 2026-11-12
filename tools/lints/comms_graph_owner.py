@@ -2,11 +2,12 @@
 
 The comms graph checkpoints each conversation on a thread whose id is the
 conversation id. Two writers on that thread at once fork it, and one side's
-messages drop out of the model's memory. The conversation runtime step
-(``app/services/conversation/step.py``) is the one owner; until every caller has
-moved there, the callers that predate it sit in a shrink-only ``ALLOWLIST``.
+messages drop out of the model's memory. The conversation runtime's comms runner
+(``OWNER``, which the step drives) is the one owner; until every caller has moved
+there, the callers that predate it sit in a shrink-only ``LEGACY_CALLERS``.
 
-Outside the builder package and the step, three checks:
+Outside the owner and the builder package (``GRAPH_BUILDERS``, which constructs and
+registers the graph but runs no conversation on it), three checks:
 
 1. R1: no reference to ``GraphName.COMMS``, and no ``"comms_agent"`` string passed
    to a graph lookup (``GraphManager.get_graph`` / ``providers.get`` / ``providers.aget``).
@@ -15,8 +16,8 @@ Outside the builder package and the step, three checks:
    write call (``GRAPH_THREAD_METHODS``). Syntactic, not data flow: a graph handed to
    a module that names neither the symbol nor a wrapper is not seen.
 
-An allowlisted file that no longer trips any check is reported as removable, as
-is an entry whose file no longer exists.
+A legacy caller that no longer trips any check is reported as removable, as is an
+entry whose file no longer exists.
 """
 
 from __future__ import annotations
@@ -67,15 +68,15 @@ GRAPH_THREAD_METHODS = frozenset(
     }
 )
 
-# Paths relative to app/; a prefix ending in "/" allows a whole package.
-_OWNERS = (
-    "agents/core/graph_builder/",
-    "services/conversation/step.py",
-)
+# Paths relative to app/. The one module that runs and writes the comms thread.
+OWNER = "services/conversation/comms_runner.py"
+# The package that constructs and registers the comms graph; it runs no conversation.
+GRAPH_BUILDERS = "agents/core/graph_builder/"
+_FIX = f"run or write the conversation through app/{OWNER}, driven by the conversation step"
 
-# Ratchet allowlist: the comms-thread callers that predate the conversation runtime
-# step. Entries are only ever removed; a new caller goes through the step.
-ALLOWLIST: frozenset[str] = frozenset(
+# Shrink-only: the comms-thread callers that predate the owner. Entries are only
+# ever removed; a new caller goes through the owner.
+LEGACY_CALLERS: frozenset[str] = frozenset(
     {
         # Fetches the comms graph and runs it for call_agent and call_agent_silent;
         # removed when the step takes this over (plan PR 7 for call_agent, PR 9 deletes call_agent_silent).
@@ -112,7 +113,7 @@ def _app_split(path: Path) -> tuple[Path, str] | None:
 
 
 def _is_owner(app_rel: str) -> bool:
-    return any(app_rel.startswith(o) if o.endswith("/") else app_rel == o for o in _OWNERS)
+    return app_rel == OWNER or app_rel.startswith(GRAPH_BUILDERS)
 
 
 def _is_comms_member(node: ast.Attribute) -> bool:
@@ -198,7 +199,7 @@ def _module_hits(tree: ast.Module) -> list[tuple[int, str]]:
     return sorted([*ownership, *_thread_method_hits(tree)])
 
 
-def _allowlist_line(entry: str) -> int:
+def _entry_line(entry: str) -> int:
     for number, text in enumerate(Path(__file__).read_text(encoding="utf-8").splitlines(), 1):
         if f'"{entry}"' in text:
             return number
@@ -208,14 +209,14 @@ def _allowlist_line(entry: str) -> int:
 def _stale(entry: str, reason: str) -> Violation:
     return Violation(
         path=Path(__file__),
-        line=_allowlist_line(entry),
-        detail=f"ALLOWLIST entry '{entry}' {reason}",
-        fix="delete the entry; the allowlist only shrinks",
+        line=_entry_line(entry),
+        detail=f"LEGACY_CALLERS entry '{entry}' {reason}",
+        fix="delete the entry; the legacy callers only shrink",
     )
 
 
 def check(files: list[Path]) -> list[Violation]:
-    """Flag comms-thread runs and writes outside the owners, plus allowlist entries that went stale."""
+    """Flag comms-thread runs and writes outside the owner, plus legacy callers that went stale."""
     violations: list[Violation] = []
     scanned: set[str] = set()
     app_roots: set[Path] = set()
@@ -228,7 +229,7 @@ def check(files: list[Path]) -> list[Violation]:
         if _is_owner(app_rel):
             continue
         hits = _module_hits(ast.parse(path.read_text(encoding="utf-8")))
-        if app_rel in ALLOWLIST:
+        if app_rel in LEGACY_CALLERS:
             scanned.add(app_rel)
             if not hits:
                 violations.append(_stale(app_rel, "no longer runs or writes the comms thread"))
@@ -238,11 +239,11 @@ def check(files: list[Path]) -> list[Violation]:
                 path=path,
                 line=line,
                 detail=detail,
-                fix="run or write the conversation through app/services/conversation/step.py",
+                fix=_FIX,
             )
             for line, detail in hits
         )
-    for entry in sorted(ALLOWLIST - scanned):
+    for entry in sorted(LEGACY_CALLERS - scanned):
         if app_roots and not any((root / entry).is_file() for root in app_roots):
             violations.append(_stale(entry, "names a file that no longer exists"))
     return violations

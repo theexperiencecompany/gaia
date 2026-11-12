@@ -166,9 +166,10 @@ has no allowlist (the layer is new — it starts clean).
 
 ## comms-graph-owner
 
-**Rule:** outside `app/agents/core/graph_builder/` (which builds and registers
-the graph) and `app/services/conversation/step.py` (the conversation runtime
-step), a module under `app/` must not:
+**Rule:** outside `app/services/conversation/comms_runner.py` (the owner: the
+conversation runtime's comms runner, which the step drives) and
+`app/agents/core/graph_builder/` (which builds and registers the graph but runs
+no conversation on it), a module under `app/` must not:
 
 1. name the comms graph: `GraphName.COMMS`, or the string `"comms_agent"` passed
    to `GraphManager.get_graph` / `providers.get` / `providers.aget`;
@@ -180,19 +181,21 @@ step), a module under `app/` must not:
 
 **Why:** the comms graph checkpoints each conversation on a thread whose id is
 the conversation id. Two pieces of code running or writing that thread at once
-fork it, and one side's messages vanish from the model's memory. The step is
-the one owner; this rule stops a new writer appearing while the old ones move
-there.
+fork it, and one side's messages vanish from the model's memory. The runner is
+the one owner, and only the step starts it; this rule stops a new writer
+appearing while the old ones move there.
 
-**Fix:** run or write the conversation through the step. Executor and subagent
-threads (prefixed thread ids, `GraphName.EXECUTOR`) are not in scope.
+**Fix:** run or write the conversation through the comms runner, driven by the
+conversation step. Executor and subagent threads (prefixed thread ids,
+`GraphName.EXECUTOR`) are not in scope.
 
 **Limitation:** check 3 is syntactic, not data flow: a graph handed to a module
 that names neither the symbol nor a wrapper is not seen.
 
-**Allowlist:** the callers that predate the step, each with the plan PR that
-moves it. Entries are only removed. An entry whose file no longer trips the
-rule, or no longer exists, is reported as removable and fails the run.
+**Legacy callers** (`LEGACY_CALLERS`): the callers that predate the owner, each
+with the plan PR that moves it. They are not owners; entries are only removed.
+An entry whose file no longer trips the rule, or no longer exists, is reported
+as removable and fails the run.
 
 ---
 
