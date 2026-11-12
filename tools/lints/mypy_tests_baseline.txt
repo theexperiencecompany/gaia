@@ -18,7 +18,6 @@ apps/api/tests/composio/test_connection_expiry_live.py	call-arg
 apps/api/tests/composio/test_connection_expiry_live.py	call-overload
 apps/api/tests/contracts/test_blog_repository.py	misc
 apps/api/tests/contracts/test_browser_profiles_repository.py	misc
-apps/api/tests/contracts/test_folded_cards.py	list-item
 apps/api/tests/contracts/test_notifications_repository.py	arg-type
 apps/api/tests/contracts/test_user_instructions_repository.py	assignment
 apps/api/tests/contracts/test_user_integrations_repository.py	arg-type
@@ -47,7 +46,6 @@ apps/api/tests/e2e/test_voice_device_realtime_e2e.py	arg-type
 apps/api/tests/e2e/test_voice_device_realtime_e2e.py	attr-defined
 apps/api/tests/e2e/test_webhook_fanout_e2e.py	arg-type
 apps/api/tests/e2e/test_webhook_fanout_e2e.py	func-returns-value
-apps/api/tests/factories.py	arg-type
 apps/api/tests/integration/agents/conftest.py	attr-defined
 apps/api/tests/integration/agents/test_browser_job_delivery.py	attr-defined
 apps/api/tests/integration/agents/test_browser_job_relay.py	attr-defined
@@ -93,8 +91,6 @@ apps/api/tests/meta/conftest.py	attr-defined
 apps/api/tests/meta/test_route_contract.py	arg-type
 apps/api/tests/meta/test_route_contract.py	attr-defined
 apps/api/tests/model_onboarding/test_tool_media_support.py	arg-type
-apps/api/tests/stress/test_arq_idempotency.py	arg-type
-apps/api/tests/stress/test_arq_idempotency.py	misc
 apps/api/tests/stress/test_link_code_race.py	call-arg
 apps/api/tests/unit/agents/context/test_context_harness.py	attr-defined
 apps/api/tests/unit/agents/context/test_todo_feedback_context.py	arg-type
@@ -189,7 +185,6 @@ apps/api/tests/unit/config/test_settings_hermetic.py	attr-defined
 apps/api/tests/unit/config/test_token_repository.py	arg-type
 apps/api/tests/unit/config/test_workos.py	attr-defined
 apps/api/tests/unit/core/test_lazy_loader.py	var-annotated
-apps/api/tests/unit/db/repositories/test_base_repository.py	unused-ignore
 apps/api/tests/unit/db/repositories/test_playbooks.py	call-overload
 apps/api/tests/unit/db/test_chroma_store.py	arg-type
 apps/api/tests/unit/db/test_chroma_store.py	attr-defined
@@ -347,9 +342,6 @@ apps/api/tests/unit/services/test_artifact_events.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	attr-defined
 apps/api/tests/unit/services/test_canvas_storage_atomic.py	arg-type
-apps/api/tests/unit/services/test_chat_stream_attach.py	arg-type
-apps/api/tests/unit/services/test_chat_stream_attach.py	attr-defined
-apps/api/tests/unit/services/test_chat_stream_attach.py	typeddict-item
 apps/api/tests/unit/services/test_composio_service.py	assignment
 apps/api/tests/unit/services/test_connect_link_service.py	attr-defined
 apps/api/tests/unit/services/test_desktop_releases.py	attr-defined
@@ -377,7 +369,6 @@ apps/api/tests/unit/services/test_provider_credentials_service.py	assignment
 apps/api/tests/unit/services/test_provider_credentials_service.py	index
 apps/api/tests/unit/services/test_publish_service.py	arg-type
 apps/api/tests/unit/services/test_s3_blob_store.py	union-attr
-apps/api/tests/unit/services/test_search_service.py	arg-type
 apps/api/tests/unit/services/test_share_fetcher_compat.py	attr-defined
 apps/api/tests/unit/services/test_share_fetcher_compat.py	misc
 apps/api/tests/unit/services/test_share_fetcher_compat.py	str-bytes-safe

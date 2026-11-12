@@ -24,7 +24,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections import Counter
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from datetime import datetime
 
 from app.db.repositories.conversation_entries_migration import (
@@ -47,7 +47,9 @@ async def _heads(
             yield ref
         seen += len(batch)
         after = batch[-1].head_id
+        # pragma: no mutate start — flush only paces the progress output
         print(f"... {seen} conversations scanned (resume after _id {after})", flush=True)
+        # pragma: no mutate end
 
 
 async def _migrate(args: argparse.Namespace) -> int:
@@ -150,29 +152,39 @@ async def _run(args: argparse.Namespace) -> int:
     return await _migrate(args)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--apply", action="store_true", help="Write (otherwise dry run).")
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)  # pragma: no mutate — help text only
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Write (otherwise dry run).",  # pragma: no mutate — help text only
+    )
     parser.add_argument(
         "--since",
         type=datetime.fromisoformat,
-        help="Second pass: only conversations whose updatedAt is at or after this ISO datetime.",
+        help="Second pass: only conversations whose updatedAt is at or after this ISO datetime.",  # pragma: no mutate
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
-        "--verify", action="store_true", help="Compare entries with each embedded array."
+        "--verify",
+        action="store_true",
+        help="Compare entries with each embedded array.",  # pragma: no mutate — help text only
     )
     mode.add_argument(
         "--drop-embedded",
         action="store_true",
-        help="Unset each embedded array that --verify passes.",
+        help="Unset each embedded array that --verify passes.",  # pragma: no mutate — help text only
     )
     mode.add_argument(
         "--rebuild-embedded",
         action="store_true",
-        help="Rollback: rebuild embedded arrays from entries.",
+        help="Rollback: rebuild embedded arrays from entries.",  # pragma: no mutate — help text only
     )
-    raise SystemExit(asyncio.run(_run(parser.parse_args())))
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    raise SystemExit(asyncio.run(_run(_parser().parse_args(argv))))
 
 
 if __name__ == "__main__":

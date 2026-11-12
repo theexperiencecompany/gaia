@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from typing import TypedDict
 from uuid import uuid4
 
 from pymongo import MongoClient
@@ -43,12 +44,19 @@ def db(mongodb_url: str) -> Iterator[Database[Document]]:
     client.close()
 
 
-def _seed(db: Database[Document], conversations: list[Document]) -> None:
+class _SeededConversation(TypedDict, total=False):
+    source: str
+    is_system_generated: bool
+    messages: list[Document]
+
+
+def _seed(db: Database[Document], conversations: list[_SeededConversation]) -> None:
     """Store each conversation as the app does: a head, and one entry per message in order."""
     for n, conversation in enumerate(conversations):
-        head = {k: v for k, v in conversation.items() if k != "messages"}
+        head: Document = {k: v for k, v in conversation.items() if k != "messages"}
         head.update(conversation_id=f"c{n}-{uuid4().hex}", user_id="u1", log_head=0)
-        entries = [
+        messages = conversation.get("messages", [])
+        entries: list[Document] = [
             {
                 **message,
                 "conversation_id": head["conversation_id"],
@@ -56,7 +64,7 @@ def _seed(db: Database[Document], conversations: list[Document]) -> None:
                 "seq": seq,
                 "id": f"m{seq}",
             }
-            for seq, message in enumerate(conversation.get("messages", []), 1)
+            for seq, message in enumerate(messages, 1)
         ]
         head["log_head"] = len(entries)
         db.conversations.insert_one(head)

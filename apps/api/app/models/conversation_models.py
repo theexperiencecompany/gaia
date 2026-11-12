@@ -203,6 +203,95 @@ class _ConversationOwnerRow(_ConversationIdRow):
     user_id: str
 
 
+class StoredEntry(BaseModel):
+    """One conversation_entries document, or one value of a head's outbox: its keys, then the message as stored."""
+
+    model_config = ConfigDict(extra="allow")
+
+    conversation_id: str
+    user_id: str
+    seq: int
+    id: str
+    at: datetime | None = None
+    migration_hash: str | None = None
+
+    def message_fields(self) -> dict[str, object]:
+        """Return the stored message's own fields: everything but the entry's keys and Mongo's _id."""
+        return {key: value for key, value in (self.model_extra or {}).items() if key != "_id"}
+
+    def document(self) -> dict[str, object]:
+        """Return the entry exactly as it was read, to write it elsewhere unchanged."""
+        return {
+            key: value for key, value in self.model_dump(exclude_unset=True).items() if key != "_id"
+        }
+
+
+class EntryKey(BaseModel):
+    """Which entry holds a seq: the id and seq of a stored entry, projected."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    seq: int
+
+
+class EmbeddedState(BaseModel):
+    """What a head read reports of the embedded messages array without shipping it."""
+
+    count: int = 0
+    last_id: str | None = None
+
+
+class LegacyMessage(BaseModel):
+    """One element of the embedded messages array the entries migration copies, in whatever shape the old build wrote."""
+
+    model_config = ConfigDict(extra="allow")
+
+    message_id: str | None = None
+    date: object = None
+
+    def stored(self) -> dict[str, object]:
+        """Return the element exactly as it is stored in the array."""
+        return self.model_dump(exclude_unset=True)
+
+
+class RetiredAckFields(BaseModel):
+    """What the entries migration reads of a message stored as a retired emoji_ack, to fold it into a reaction."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    kind: str | None = None
+    response: str | None = None
+    reacts_to_message_id: str | None = None
+    tool_data: list[object] | None = None
+
+
+class ConversationHead(BaseModel):
+    """A conversations document as the entry log reads it: identity, log_head, outbox and migration state."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    conversation_id: str
+    user_id: str
+    log_head: int | None = None
+    outbox: dict[int, StoredEntry] = Field(default_factory=dict)
+    migrated_last_id: str | None = None
+    migration_folded_acks: list[str] = Field(default_factory=list)
+    embedded: EmbeddedState | None = Field(default=None, alias="_embedded")
+    existing: list[EntryKey] = Field(default_factory=list)
+    messages: list[LegacyMessage] = Field(default_factory=list)
+
+
+class HeadRefRow(BaseModel):
+    """A head as a migration scan lists it: its _id as text, and identity."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    head_id: str
+    conversation_id: str
+    user_id: str
+
+
 # ---------------------------------------------------------------------------
 # Conversation endpoint responses
 # ---------------------------------------------------------------------------
