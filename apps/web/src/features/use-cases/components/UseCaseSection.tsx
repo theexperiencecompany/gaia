@@ -282,7 +282,7 @@ export default function UseCaseSection({
               size="sm"
               variant="default-soft"
               onPress={() => setShowUseCases(false)}
-              className="text-zinc-300"
+              tone="dim"
             >
               <ChevronUp />
             </GaiaButton>

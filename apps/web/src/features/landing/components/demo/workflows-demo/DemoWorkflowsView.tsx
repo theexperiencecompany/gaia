@@ -147,7 +147,7 @@ function DemoWorkflowCard({
               <GaiaButton
                 size="sm"
                 variant="accent-soft"
-                className="font-medium rounded-xl"
+                className="font-medium"
               >
                 Run
               </GaiaButton>

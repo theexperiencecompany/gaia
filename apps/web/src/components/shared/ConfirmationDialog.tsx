@@ -85,12 +85,12 @@ export function ConfirmationDialog({
             </Modal.Body>
             <Modal.Footer>
               <GaiaButton
-                variant="default-soft"
+                variant="tertiary"
+                tone="dim"
                 onPress={() => {
                   onCancel();
                   handleOpenChange(false);
                 }}
-                className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
                 isDisabled={isLoading}
               >
                 {cancelText}

@@ -69,11 +69,7 @@ function DemoIntegrationRow({
             Connected
           </Chip>
         ) : (
-          <GaiaButton
-            variant="accent-soft"
-            size="sm"
-            className="text-sm text-primary"
-          >
+          <GaiaButton variant="accent-soft" size="sm" className="text-sm">
             Connect
           </GaiaButton>
         )}

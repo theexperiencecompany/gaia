@@ -86,7 +86,8 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
           variant="ghost"
           size="sm"
           onPress={() => setShowResetHelp(true)}
-          className="text-xs text-zinc-400"
+          tone="muted"
+          className="text-xs"
         >
           Forgot password?
           <ArrowRight02Icon size={14} />

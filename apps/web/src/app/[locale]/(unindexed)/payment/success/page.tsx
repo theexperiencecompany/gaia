@@ -227,7 +227,7 @@ export default function PaymentSuccessPage() {
             </RaisedButton>
             <GaiaButton
               variant="default-soft"
-              className="w-full rounded-xl"
+              className="w-full"
               onPress={() => router.push("/pricing")}
             >
               Back to pricing

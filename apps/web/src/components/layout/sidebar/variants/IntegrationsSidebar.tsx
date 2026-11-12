@@ -117,7 +117,7 @@ export default function IntegrationsSidebar() {
       <Tooltip>
         <GaiaButton
           variant="accent-soft"
-          className="w-full justify-start text-sm text-primary"
+          className="w-full justify-start text-sm"
           size="sm"
           onPress={openIntegrationModal}
           data-keyboard-shortcut="create-integration"

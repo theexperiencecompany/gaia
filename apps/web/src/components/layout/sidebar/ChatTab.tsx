@@ -83,8 +83,9 @@ export const ChatTab: FC<ChatTabProps> = ({
     >
       <LinkButton
         href={`/c/${id}`}
-        className={`w-full justify-start px-2 font-light text-sm ${isUnread ? "text-white font-normal" : isActive ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
+        className={`w-full justify-start font-light text-sm ${isUnread ? "font-normal" : ""}`}
         size="sm"
+        tone={isUnread ? "default" : isActive ? "dim" : "muted"}
         variant={isActive ? "secondary" : "ghost"}
         onClick={() => setButtonHovered(false)}
       >

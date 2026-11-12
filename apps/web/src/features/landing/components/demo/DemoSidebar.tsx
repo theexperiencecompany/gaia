@@ -468,7 +468,7 @@ const DemoSidebar = memo(function DemoSidebar({
                 variant="accent-soft"
                 size="sm"
                 fullWidth
-                className="mt-1 mb-4 flex justify-start text-sm font-medium text-primary"
+                className="mt-1 mb-4 flex justify-start text-sm font-medium"
               >
                 {primaryAction.icon}
                 {primaryAction.label}

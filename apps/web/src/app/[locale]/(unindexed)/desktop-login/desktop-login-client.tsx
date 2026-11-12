@@ -251,7 +251,7 @@ export function DesktopLoginClient({
                     shape="pill"
                     variant="ghost"
                     size="sm"
-                    className="text-zinc-400"
+                    tone="muted"
                     onPress={() => setShowServerForm(true)}
                   >
                     Use my own server

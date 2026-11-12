@@ -80,7 +80,8 @@ export default function SidebarTopButtons() {
         href="/c"
         size="sm"
         variant="ghost"
-        className="w-full justify-start gap-2 text-sm text-zinc-400 hover:text-zinc-300"
+        tone="muted"
+        className="w-full justify-start gap-2 text-sm"
       >
         <ChevronLeft className="size-4" />
         Back to chats
@@ -126,7 +127,8 @@ export default function SidebarTopButtons() {
                   href={route}
                   size="sm"
                   variant={isRouteActive(route) ? "secondary" : "ghost"}
-                  className={`group-topbtns focus-visible:outline-none w-full justify-start text-sm ${isRouteActive(route) ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
+                  tone={isRouteActive(route) ? "dim" : "muted"}
+                  className="group-topbtns focus-visible:outline-none w-full justify-start text-sm"
                   onClick={() => {
                     track("navigation:sidebar_clicked", {
                       destination: route,

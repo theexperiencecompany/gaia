@@ -32,30 +32,30 @@ export function MapBlockControls({
       <GaiaButton
         isIconOnly
         size="sm"
-        variant="default-soft"
+        variant="tertiary"
         onPress={handleZoomIn}
         aria-label="Zoom in"
-        className="bg-zinc-800/90 text-zinc-200 backdrop-blur-md data-[hover=true]:bg-zinc-700"
+        className="backdrop-blur-md"
       >
         <PlusSignIcon className="size-3.5" />
       </GaiaButton>
       <GaiaButton
         isIconOnly
         size="sm"
-        variant="default-soft"
+        variant="tertiary"
         onPress={handleZoomOut}
         aria-label="Zoom out"
-        className="bg-zinc-800/90 text-zinc-200 backdrop-blur-md data-[hover=true]:bg-zinc-700"
+        className="backdrop-blur-md"
       >
         <MinusSignIcon className="size-3.5" />
       </GaiaButton>
       <GaiaButton
         isIconOnly
         size="sm"
-        variant="default-soft"
+        variant="tertiary"
         onPress={handleReset}
         aria-label="Reset view"
-        className="bg-zinc-800/90 text-zinc-200 backdrop-blur-md data-[hover=true]:bg-zinc-700"
+        className="backdrop-blur-md"
       >
         <RefreshIcon className="size-3.5" />
       </GaiaButton>

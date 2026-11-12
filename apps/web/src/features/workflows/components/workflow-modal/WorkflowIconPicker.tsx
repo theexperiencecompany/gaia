@@ -111,12 +111,9 @@ export default function WorkflowIconPicker({
     >
       <GaiaButton
         isIconOnly
-        variant="default-soft"
+        variant={selected ? "default-soft" : "tertiary"}
         aria-label={selected ? "Change workflow icon" : "Add workflow icon"}
-        className={cn(
-          "-mt-0.5 size-10 min-w-10 shrink-0",
-          !selected && "bg-zinc-800",
-        )}
+        className="-mt-0.5 size-10 min-w-10 shrink-0"
         style={selected ? tintedBg : undefined}
       >
         {selected ? (
