@@ -293,7 +293,7 @@ export const SHARE_DOMAIN_KINDS: readonly ShareDomainKind[] = [
 ];
 
 /** The compose env file key holding each share domain (the Caddyfile reads them). */
-export const SHARE_DOMAIN_ENV_KEYS: Record<ShareDomainKind, string> = {
+const SHARE_DOMAIN_ENV_KEYS: Record<ShareDomainKind, string> = {
   link: "GAIA_LINK_DOMAIN",
   usercontent: "GAIA_USERCONTENT_DOMAIN",
 };

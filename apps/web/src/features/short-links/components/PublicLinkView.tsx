@@ -39,6 +39,7 @@ function LinkPage<T extends ShortLinkTargetType>({
             <ShareLinkControls
               targetType={targetType}
               targetId={ownerTargetId}
+              stopWarning={entry.stopWarning}
             />
           )}
           {Actions && <Actions slug={slug} />}

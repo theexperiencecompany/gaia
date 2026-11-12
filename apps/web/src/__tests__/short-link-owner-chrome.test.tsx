@@ -13,12 +13,19 @@ vi.mock("@/features/short-links/components/ShareLinkControls", () => ({
   ShareLinkControls: ({
     targetType,
     targetId,
+    stopWarning,
   }: {
     targetType: string;
     targetId: string;
-  }) => <span data-testid="share">{`${targetType}:${targetId}`}</span>,
+    stopWarning?: string;
+  }) => (
+    <span data-testid="share" data-warning={stopWarning ?? ""}>
+      {`${targetType}:${targetId}`}
+    </span>
+  ),
 }));
 
+import { BRIEF_STOP_WARNING } from "@/features/briefing";
 import { PublicLinkView } from "@/features/short-links/components/PublicLinkView";
 import type { LinkEnvelope } from "@/types/features/shortLinkTypes";
 
@@ -45,6 +52,36 @@ describe("PublicLinkView chrome", () => {
 
     expect(screen.getByTestId("share").textContent).toBe(
       "todo_deliverable:todo-123",
+    );
+  });
+
+  it("warns the owner of a brief what stopping cannot take back", () => {
+    const brief: LinkEnvelope = {
+      ...envelope(true),
+      target_type: "briefing",
+      owner_target_id: "brief-1",
+      view: {
+        target_type: "briefing",
+        kind: "daily",
+        edition_image_url: null,
+        payload: {
+          kicker: "Friday",
+          date: "Nov 13",
+          headline: "A clear Friday",
+          lede: "",
+          stats: [],
+          sections: [],
+          mood: "clear",
+          caption: "",
+          hue: 0,
+          calendar: [],
+        },
+      },
+    };
+    render(<PublicLinkView slug="abcdefghijk" envelope={brief} />);
+
+    expect(screen.getByTestId("share").dataset.warning).toBe(
+      BRIEF_STOP_WARNING,
     );
   });
 

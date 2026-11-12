@@ -20,6 +20,7 @@ from app.constants.short_links import (
 )
 from app.models.short_link_models import (
     LinkAccess,
+    LinkSnapshot,
     PublishRejection,
     RenderMode,
     ShortLink,
@@ -112,8 +113,9 @@ def store(tmp_path: Path):
 
 @pytest.fixture
 def no_takedowns():
-    with patch.object(
-        content.short_link_repository, "count_takedowns", AsyncMock(return_value=0)
+    with patch(
+        "app.services.links.content.short_link_repository.count_takedowns",
+        AsyncMock(return_value=0),
     ) as count:
         yield count
 
@@ -284,14 +286,15 @@ class TestPublish:
         assert not unchanged(snapshot, _source("a.md", "text/markdown", b"two"))
 
 
+_STORED_BYTES = "app.services.links.content.short_link_repository.stored_snapshot_bytes"
+
+
 class TestQuota:
     @pytest.fixture(autouse=True)
     def enforced(self, monkeypatch: pytest.MonkeyPatch, fake_redis: object) -> None:
         monkeypatch.setattr(settings, "DEV_UNLIMITED_RATE_LIMITS", False)
         monkeypatch.setattr(settings, "ENV", "production")
-        monkeypatch.setattr(
-            content.short_link_repository, "stored_snapshot_bytes", AsyncMock(return_value=0)
-        )
+        monkeypatch.setattr(_STORED_BYTES, AsyncMock(return_value=0))
 
     async def test_a_day_admits_up_to_its_published_bytes(self) -> None:
         assert await content._within_quota(OWNER, MAX_PUBLISHED_BYTES_PER_DAY)
@@ -300,11 +303,7 @@ class TestQuota:
     async def test_stored_bytes_count_against_the_total(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            content.short_link_repository,
-            "stored_snapshot_bytes",
-            AsyncMock(return_value=2 * 1024 * 1024 * 1024),
-        )
+        monkeypatch.setattr(_STORED_BYTES, AsyncMock(return_value=2 * 1024 * 1024 * 1024))
         assert not await content._within_quota(OWNER, 1)
 
 
@@ -366,7 +365,7 @@ class TestContentTokens:
         assert not token_valid(LINK, CID, token, NOW)
 
 
-def _snapshot(render: RenderMode, **overrides: object) -> content.LinkSnapshot:
+def _snapshot(render: RenderMode, **overrides: object) -> LinkSnapshot:
     data: dict[str, object] = {
         "filename": "f",
         "mime": "text/html",
@@ -375,7 +374,7 @@ def _snapshot(render: RenderMode, **overrides: object) -> content.LinkSnapshot:
         "content_id": CID,
     }
     data.update(overrides)
-    return content.LinkSnapshot.model_validate(data)
+    return LinkSnapshot.model_validate(data)
 
 
 class TestPresentation:

@@ -35,7 +35,3 @@ class LinkDeniedError(AppError):
         status, message = _DENIALS[denial]
         public: dict[str, object] = {"signed_in_as": signed_in_as} if signed_in_as else {}
         return cls(message=message, status_code=status, code=denial.value, public=public)
-
-
-def denial_status(denial: LinkDenial) -> int:
-    return _DENIALS[denial][0]
