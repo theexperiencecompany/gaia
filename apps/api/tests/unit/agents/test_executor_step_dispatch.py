@@ -1,0 +1,78 @@
+"""call_executor on a conversation the step runs: WorkStarted is logged before the run spawns, or nothing runs."""
+
+from collections.abc import Coroutine
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from app.agents.tools import executor_tool as et
+from app.models.agent_config import StepTurnRef
+from app.models.agent_models import AgentConfigurable
+
+pytestmark = pytest.mark.usefixtures("fake_redis")
+
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+STEP: StepTurnRef = {"epoch": 3, "batch_start": 4, "cause_through": 5, "answers": ["m4", "m5"]}
+
+
+def _configurable() -> AgentConfigurable:
+    return {"user_id": USER_ID, "thread_id": "conv-1", "conversation_step": STEP}
+
+
+async def _dispatch() -> str:
+    return await et._dispatch_executor(
+        task="do the thing",
+        task_id="task-1",
+        configurable=_configurable(),
+        conversation_id="conv-1",
+    )
+
+
+async def test_a_refused_work_started_dispatches_nothing_and_frees_the_lock() -> None:
+    release = AsyncMock()
+    with (
+        patch.object(et, "try_acquire_lock", AsyncMock(return_value=True)),
+        patch.object(et, "record_work_started", AsyncMock(return_value=False)) as record,
+        patch.object(et, "release_lock_if_owned", release),
+        patch.object(et, "spawn_background_task") as spawn,
+    ):
+        result = await _dispatch()
+    record.assert_awaited_once_with(STEP, "conv-1", USER_ID, "task-1")
+    spawn.assert_not_called()
+    release.assert_awaited_once_with("conv-1", None, "task-1")
+    assert result == et._NOT_STARTED_STOPPED
+
+
+async def test_work_started_is_logged_before_the_run_spawns() -> None:
+    order: list[str] = []
+
+    async def logged(*_: object) -> bool:
+        order.append("logged")
+        return True
+
+    def spawned(coro: Coroutine[object, object, object], **_: object) -> MagicMock:
+        order.append("spawned")
+        coro.close()
+        return MagicMock()
+
+    with (
+        patch.object(et, "try_acquire_lock", AsyncMock(return_value=True)),
+        patch.object(et, "record_work_started", side_effect=logged),
+        patch.object(et, "spawn_background_task", side_effect=spawned),
+    ):
+        result = await _dispatch()
+    assert order == ["logged", "spawned"]
+    assert "Handed to the executor (task_id: task-1)" in result
+
+
+async def test_a_legacy_run_dispatches_without_touching_the_log() -> None:
+    configurable: AgentConfigurable = {"user_id": USER_ID, "thread_id": "conv-1"}
+    with (
+        patch.object(et, "try_acquire_lock", AsyncMock(return_value=True)),
+        patch.object(et, "record_work_started") as record,
+        patch.object(et, "spawn_background_task", side_effect=lambda coro, **_: coro.close()),
+    ):
+        await et._dispatch_executor(
+            task="do it", task_id="task-1", configurable=configurable, conversation_id="conv-1"
+        )
+    record.assert_not_called()

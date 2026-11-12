@@ -171,3 +171,11 @@ def selfhost_credential_store(monkeypatch: pytest.MonkeyPatch) -> Iterator[InMem
     provider_credentials_service._cache.clear()
     provider_credentials_service.resolved_configs.clear()
     provider_credentials_service.resolved_configs.update(saved_snapshot)
+
+
+@pytest.fixture
+def logged_stops(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """Stand in for the conversation log a Stop is appended to; the runtime suite drives the real one."""
+    record = AsyncMock()
+    monkeypatch.setattr("app.services.conversation_stop_service.record_user_stop", record)
+    return record

@@ -27,7 +27,7 @@ from tests.work_cancel_fakes import (
     seed_live_work,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis")]
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis", "logged_stops")]
 
 CONVERSATION = "conv-stop"
 TURN = "turn-stream"
@@ -56,6 +56,14 @@ def owned(owned_conversations: set[tuple[str, str]]) -> None:
 
 @pytest.mark.usefixtures("owned")
 class TestStopConversation:
+    async def test_the_stop_is_logged_on_the_conversation_before_the_work_is_cancelled(
+        self, client: AsyncClient, no_approvals: ApprovalSeams, logged_stops: AsyncMock
+    ) -> None:
+        response = await client.post(STOP_URL)
+        assert response.status_code == 200, response.text
+        logged_stops.assert_awaited_once()
+        assert logged_stops.await_args.args[:2] == (CONVERSATION, FAKE_USER.user_id)
+
     async def test_the_stop_cancels_the_turn_and_the_full_set_of_work(
         self, client: AsyncClient, pending_approvals: ApprovalSeams
     ) -> None:

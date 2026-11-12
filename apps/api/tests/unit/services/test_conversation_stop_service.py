@@ -24,7 +24,10 @@ from tests.work_cancel_fakes import (
     seed_live_work,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis", "no_approvals")]
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.usefixtures("fake_redis", "no_approvals", "logged_stops"),
+]
 
 CONVERSATION = "conv-stop"
 OTHER_CONVERSATION = "conv-other"

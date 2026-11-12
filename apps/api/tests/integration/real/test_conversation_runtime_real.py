@@ -28,7 +28,9 @@ from app.models.agent_config import StepTurnRef
 from app.models.agent_models import AgentRunnableConfig
 from app.models.conversation_frame_models import EntryFrame
 from app.models.conversation_log_models import (
+    ApprovalDecided,
     Batch,
+    DisplayState,
     IntegrationConnected,
     LoggedEntry,
     Reply,
@@ -56,6 +58,8 @@ from app.services.conversation.send import send_message
 from app.services.conversation.step import advance
 from app.services.conversation.sweeper import sweep_conversations
 from app.services.conversation.work_log import (
+    record_approval_decided,
+    record_approval_requested,
     record_user_stop,
     record_work_finished,
     record_work_started,
@@ -447,3 +451,23 @@ async def test_connecting_an_integration_continues_the_work_waiting_on_it(
     assert len(await rig.of(IntegrationConnected)) == 1
     assert any("just connected Gmail" in text for text in humans(model.prompts[1]))
     assert [reply.text for reply in await rig.of(Reply)][-1] == "done, the email is sent"
+
+
+@pytest.mark.service
+async def test_an_approval_holds_the_work_until_the_user_decides(
+    rig_for: Callable[[GatedModel], Awaitable[Rig]],
+) -> None:
+    model = gated("on it")
+    rig = await rig_for(model)
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "send the invoice")
+    await rig.settle()
+    await record_approval_requested(rig.conversation_id, rig.user_id, "t1", "a1")
+    waiting = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+    await record_approval_decided(rig.conversation_id, rig.user_id, "a1", "approve")
+    await record_approval_decided(rig.conversation_id, rig.user_id, "a1", "approve")
+    decided = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+    assert [work.pending_approvals for work in waiting.work] == [frozenset({"a1"})]
+    assert waiting.display is DisplayState.AWAITING_APPROVAL
+    assert [work.pending_approvals for work in decided.work] == [frozenset()]
+    assert len(await rig.of(ApprovalDecided)) == 1

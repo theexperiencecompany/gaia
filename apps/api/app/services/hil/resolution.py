@@ -340,7 +340,8 @@ async def _resolve_record(
         }
     )
     _observe_hil_user_wait(record)
-    await record_approval_decided(record.conversation_id, user_id, record.approval_id, kind)
+    if _dispatched_by_step(record):
+        await record_approval_decided(record.conversation_id, user_id, record.approval_id, kind)
 
     log.set(hil={"approval_id": record.approval_id, "decision": kind, "tool": record.tool_name})
     if record.resume_item is None and record.subagent_resume is None:
@@ -352,6 +353,12 @@ async def _resolve_record(
         return record
     await _dispatch_decided(record)
     return record
+
+
+def _dispatched_by_step(record: HILApprovalRecord) -> bool:
+    """Return whether the paused run was dispatched by the conversation step, which logs its approvals."""
+    configurable = (record.resume_item or {}).get("configurable")
+    return isinstance(configurable, dict) and configurable.get("conversation_step") is not None
 
 
 async def _dispatch_decided(record: HILApprovalRecord) -> None:

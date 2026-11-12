@@ -73,8 +73,6 @@ async def record_approval_decided(
     conversation_id: str, user_id: str, approval_id: str, decision: ApprovalResolution
 ) -> None:
     """Append ApprovalDecided when the conversation's live work is waiting on approval_id; else nothing."""
-    if not await runs_on_step(conversation_id, user_id):
-        return
     ports = runtime_ports()
     state = await ports.log.state(conversation_id, user_id)
     if not any(approval_id in work.pending_approvals for work in state.work):

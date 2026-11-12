@@ -16,7 +16,7 @@ from app.services.bot_session_stop import reset_bot_session, stop_bot_session
 from app.services.browser.job_stop import RequesterChat
 from shared.py.analytics.catalog.chat import ChatWorkStopped
 
-pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis")]
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis", "logged_stops")]
 
 USER = AuthenticatedUser(user_id="507f1f77bcf86cd799439011", email="t@example.com", name="T")
 
