@@ -447,7 +447,7 @@ def _commit_quietly(attempt: _Attempt) -> None:
 async def _show(ports: RuntimePorts, attempt: _Attempt, payload: StreamPayload) -> None:
     """Open the reply on the first visible delta, then stream the delta into it."""
     if not isinstance(attempt.progress, _Showing):
-        reply = _empty_reply(attempt)
+        reply = await _opening_reply(ports, attempt, _empty_reply(attempt))
         opened = await _append(ports, attempt.claim, reply)
         attempt.progress = _Showing(reply=reply, seq=opened.seq)
     shown = attempt.progress
@@ -683,7 +683,14 @@ def _base_reply(attempt: _Attempt) -> Reply:
 async def _put_reply(ports: RuntimePorts, attempt: _Attempt, reply: Reply) -> LoggedEntry:
     if isinstance(attempt.progress, _Showing):
         return await _amend(ports, attempt.claim, reply)
-    return await _append(ports, attempt.claim, reply)
+    return await _append(ports, attempt.claim, await _opening_reply(ports, attempt, reply))
+
+
+async def _opening_reply(ports: RuntimePorts, attempt: _Attempt, reply: Reply) -> Reply:
+    """Stamp the reply about to open with the message it quotes, as if it took the next seq."""
+    state = await ports.log.state(attempt.claim.conversation_id, attempt.claim.user_id)
+    _, quote = await _answers_and_quote(ports, attempt, state.head + 1)
+    return reply.model_copy(update={"quote_target": quote})
 
 
 async def _append(ports: RuntimePorts, claim: StepClaim, entry: Entry) -> LoggedEntry:

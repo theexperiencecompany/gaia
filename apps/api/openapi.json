@@ -16406,6 +16406,17 @@
             "title": "Kind",
             "type": "string"
           },
+          "quote_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote Target"
+          },
           "reply_id": {
             "title": "Reply Id",
             "type": "string"

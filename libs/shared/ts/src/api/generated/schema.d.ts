@@ -13604,6 +13604,8 @@ export interface components {
              * @enum {string}
              */
             kind: "reply";
+            /** Quote Target */
+            quote_target?: string | null;
             /** Reply Id */
             reply_id: string;
             /**

@@ -227,6 +227,8 @@ class Reply(_Entry):
     text: str = ""
     tool_data: tuple[ToolDataEntry, ...] = ()
     follow_up_actions: tuple[str, ...] = ()
+    # The user message the reply quotes, known when it opens so a first bubble can quote it.
+    quote_target: str | None = None
     # Characters of the reply the user heard before a voice barge-in.
     heard_through: int | None = Field(default=None, ge=0)
     # Bumped on each in-place fill; a client applies an update only when it is newer.

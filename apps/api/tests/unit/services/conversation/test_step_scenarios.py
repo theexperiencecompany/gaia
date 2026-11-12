@@ -8,7 +8,12 @@ import pytest
 from app.constants.chat import EMPTY_RESPONSE_FALLBACK, ConversationSource
 from app.constants.hil import HIL_ACK_APPROVED
 from app.models.chat_models import ReactionBy
-from app.models.conversation_frame_models import ResponseEvent, RetractFrame, ToolDataEvent
+from app.models.conversation_frame_models import (
+    EntryFrame,
+    ResponseEvent,
+    RetractFrame,
+    ToolDataEvent,
+)
 from app.models.conversation_log_models import (
     ApprovalDecided,
     CommsPhase,
@@ -284,7 +289,25 @@ class StepScenarios:
         last = (await settles(rt))[-1]
         # The late result quotes the original request: the side question sits between them.
         assert (last.reply_id, last.answers, last.quote_target) == ("t1", ("f", "u0"), "u0")
+        assert [(r.reply_id, r.quote_target) for r in await replies(rt)][-1] == ("t1", "u0")
         await assert_quiet(rt)
+
+    async def test_a_streamed_late_result_quotes_the_request_from_its_first_frame(
+        self, rt: Runtime
+    ) -> None:
+        await start_work(rt)
+        rt.runner.script([Finished(Replied("it is 3pm"))])
+        await send(rt, user("u5"))
+        await run(rt)
+        rt.runner.script([text("here is"), Finished(Replied("here is"))])
+        await send(rt, finished("f", "t1"))
+        await run(rt)
+        opened = [
+            f.entry
+            for f in rt.frames.published
+            if isinstance(f, EntryFrame) and isinstance(f.entry, Reply) and f.entry.reply_id == "t1"
+        ]
+        assert [reply.quote_target for reply in opened][:1] == ["u0"]
 
     async def test_an_addition_during_work_answered_by_a_reaction_leaves_no_bubble(
         self, rt: Runtime
