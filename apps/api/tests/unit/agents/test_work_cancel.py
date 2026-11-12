@@ -61,7 +61,7 @@ async def test_one_stop_cancels_the_run_its_inbox_subagents_approvals_and_browse
     pending_approvals: ApprovalSeams,
     broadcast: AsyncMock,
 ) -> None:
-    await seed_live_work(CONVERSATION, USER)
+    await seed_live_work(CONVERSATION)
 
     work = await cancel_all_work(CONVERSATION, USER, None)
 
@@ -85,7 +85,7 @@ async def test_one_stop_cancels_the_run_its_inbox_subagents_approvals_and_browse
 async def test_the_next_run_is_told_the_work_was_stopped_and_what_to_do_instead(
     no_approvals: ApprovalSeams, broadcast: AsyncMock
 ) -> None:
-    await seed_live_work(CONVERSATION, USER)
+    await seed_live_work(CONVERSATION)
 
     await cancel_all_work(CONVERSATION, USER, None, redirect="do gmail instead")
 
@@ -125,7 +125,7 @@ async def test_an_idle_conversation_returns_an_empty_summary_and_touches_nothing
 async def test_a_second_stop_finds_nothing_left(
     no_approvals: ApprovalSeams, broadcast: AsyncMock
 ) -> None:
-    await seed_live_work(CONVERSATION, USER)
+    await seed_live_work(CONVERSATION)
     await cancel_all_work(CONVERSATION, USER, None)
 
     again = await cancel_all_work(CONVERSATION, USER, None)

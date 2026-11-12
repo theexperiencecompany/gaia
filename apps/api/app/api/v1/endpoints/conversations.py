@@ -24,6 +24,7 @@ from app.models.conversation_models import (
     UpdateMessagesResponse,
 )
 from app.models.user_models import AuthenticatedUser
+from app.models.work_cancel_models import ConversationStopResponse
 from app.services.conversation_service import (
     batch_sync_conversations,
     create_conversation_service,
@@ -35,10 +36,12 @@ from app.services.conversation_service import (
     mark_conversation_as_read,
     mark_conversation_as_unread,
     pin_message,
+    require_owned_conversation,
     star_conversation,
     update_conversation_description,
     update_messages,
 )
+from app.services.conversation_stop_service import stop_conversation
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -168,6 +171,26 @@ async def star_conversation_endpoint(
         },
     )
     return await star_conversation(conversation_id, body.starred, user)
+
+
+@router.post("/conversations/{conversation_id}/stop")
+async def stop_conversation_endpoint(
+    conversation_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> ConversationStopResponse:
+    """Stop everything running for a conversation: its live turn, executor, subagents, approvals and browser job."""
+    log.set(
+        user={"id": user.user_id},
+        conversation={"operation": "stop", "id": conversation_id},
+    )
+    await require_owned_conversation(conversation_id, user.user_id)
+    result = await stop_conversation(conversation_id, user.user_id, None)
+    log.set_ns(
+        "conversation",
+        stopped_streams=len(result.stream_ids),
+        stopped_work=result.work.stopped_anything,
+    )
+    return result
 
 
 @router.delete("/conversations")

@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, patch
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.running_registry import RunningSubagents
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_BUSY_TTL
-from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import RunningSubagent
 from app.schemas.browser_job import BrowserJobStatus
@@ -48,9 +47,8 @@ def approval_seams(*, pending: bool) -> Iterator[ApprovalSeams]:
         yield ApprovalSeams(barrier=barrier, ledger=ledger)
 
 
-async def seed_live_work(conversation_id: str, user_id: str) -> None:
+async def seed_live_work(conversation_id: str) -> None:
     """Start an executor run with a queued request, a subagent of its own and a browser job."""
-    await stream_manager.start_stream(EXECUTOR_STREAM, conversation_id, user_id)
     await redis_cache.client.set(
         f"{EXECUTOR_BUSY_PREFIX}{conversation_id}",
         f"{EXECUTOR_STREAM}:{EXECUTOR_TASK}",

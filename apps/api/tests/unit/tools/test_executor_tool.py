@@ -979,7 +979,7 @@ class TestCancelEverythingIsTheConversationStop:
         closed_approvals: AsyncMock,
         closed_ledger_approvals: AsyncMock,
     ) -> None:
-        await seed_live_work(CONVERSATION_ID, "user-1")
+        await seed_live_work(CONVERSATION_ID)
 
         response = await run_cancel_executor(config=config_for(), task_ids=[])
 
