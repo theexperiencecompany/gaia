@@ -43,6 +43,7 @@ from shared.py.analytics.catalog.chat import (
     ChatConversationRenamed,
     ChatMessageCompleted,
     ChatMessageSubmitted,
+    ChatWorkStopped,
 )
 from shared.py.analytics.catalog.notifications import NotificationAgentSent
 from shared.py.analytics.catalog.onboarding import (
@@ -249,6 +250,8 @@ def build_journeys(transcript: Path) -> list[Journey]:
                 # The agent titles the conversation.
                 Expect(ChatConversationRenamed.event, BROWSER_AGENT, True),
                 *_agent_turn(BROWSER, True, web),
+                # The journey presses Stop once the turn is done.
+                Expect(ChatWorkStopped.event, BROWSER, True),
             ),
         ),
         Journey(
