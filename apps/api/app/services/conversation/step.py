@@ -197,6 +197,7 @@ async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool
     conversation_id = claim.conversation_id
     state = await ports.log.state(conversation_id, claim.user_id)
     entries = await ports.log.read_after(conversation_id, claim.user_id, state.settled_through)
+    entries = await _cut_spoken_over(ports, claim, entries)
     pending = [logged for logged in entries if logged.seq in state.unsettled_waking]
     if not pending:
         return await ports.log.release_if_caught_up(claim)
@@ -234,9 +235,7 @@ def _batch(pending: Sequence[LoggedEntry]) -> Batch:
 
 def _waking(logged: LoggedEntry) -> WakingEntry:
     entry = logged.entry
-    if isinstance(
-        entry, UserMessage | BargeIn | WorkflowFired | WorkFinished | IntegrationConnected
-    ):
+    if isinstance(entry, UserMessage | WorkflowFired | WorkFinished | IntegrationConnected):
         return entry
     raise TypeError(f"seq {logged.seq} is a {entry.kind}, not a waking entry")
 
@@ -529,9 +528,38 @@ async def _truncate(ports: RuntimePorts, attempt: _Attempt) -> None:
         if isinstance(logged.entry, BargeIn) and logged.entry.reply_id == attempt.reply_id
     ]
     shown = progress.reply.text
-    heard = min(len(barges[-1].heard_text), len(shown)) if barges else len(shown)
-    cut = progress.reply.model_copy(update={"text": shown[:heard], "heard_through": heard})
-    await _conclude(ports, attempt, cut, ReplyOutcome.STOPPED)
+    heard = min(barges[-1].heard_through, len(shown)) if barges else len(shown)
+    await _conclude(ports, attempt, _heard_part(progress.reply, heard), ReplyOutcome.TRUNCATED)
+
+
+def _heard_part(reply: Reply, heard_through: int) -> Reply:
+    return reply.model_copy(
+        update={"text": reply.text[:heard_through], "heard_through": heard_through}
+    )
+
+
+async def _cut_spoken_over(
+    ports: RuntimePorts, claim: StepClaim, entries: Sequence[LoggedEntry]
+) -> list[LoggedEntry]:
+    """Cut each settled reply the user spoke over to what they heard; a barge-in that cut nothing off is ignored."""
+    replies = {
+        logged.entry.reply_id: logged for logged in entries if isinstance(logged.entry, Reply)
+    }
+    for logged in entries:
+        barge = logged.entry
+        if not isinstance(barge, BargeIn) or barge.reply_id not in replies:
+            continue
+        reply = replies[barge.reply_id].entry
+        if (
+            isinstance(reply, Reply)
+            and reply.heard_through is None
+            and barge.heard_through < len(reply.text)
+        ):
+            replies[barge.reply_id] = await _amend(
+                ports, claim, _heard_part(reply, barge.heard_through)
+            )
+    cut = {logged.seq: logged for logged in replies.values()}
+    return [cut.get(logged.seq, logged) for logged in entries]
 
 
 async def _lose(ports: RuntimePorts, attempt: _Attempt) -> None:
@@ -577,7 +605,7 @@ def _final_reply(attempt: _Attempt, outcome: RunOutcome) -> tuple[Reply, ReplyOu
 
 
 def _asked(attempt: _Attempt) -> bool:
-    return any(isinstance(logged.entry, UserMessage | BargeIn) for logged in attempt.covers)
+    return any(isinstance(logged.entry, UserMessage) for logged in attempt.covers)
 
 
 async def _react(ports: RuntimePorts, attempt: _Attempt, emoji: str) -> None:

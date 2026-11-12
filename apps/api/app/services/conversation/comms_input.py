@@ -27,11 +27,11 @@ from app.constants.conversation import (
 )
 from app.models.chat_models import ReactionBy
 from app.models.conversation_log_models import (
-    BargeIn,
     Batch,
     IntegrationConnected,
     LoggedEntry,
     Notice,
+    Reply,
     ReplyOutcome,
     ReplySettled,
     StopRequested,
@@ -113,7 +113,7 @@ def _note_text(logged: LoggedEntry) -> str | None:
             note = WORKFLOW_FIRED_NOTE.format(
                 workflow_id=workflow_id, context=json.dumps(context, default=str)
             )
-        case BargeIn(heard_text=heard):
+        case Reply(heard_through=int(), text=heard):
             note = BARGE_IN_NOTE.format(heard=heard)
         case Notice(text=text):
             note = NOTICE_DELIVERED_NOTE.format(text=text)

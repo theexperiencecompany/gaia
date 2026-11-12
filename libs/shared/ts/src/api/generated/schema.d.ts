@@ -6428,11 +6428,11 @@ export interface components {
         };
         /**
          * BargeIn
-         * @description The user spoke over a voice reply, having heard only heard_text of it.
+         * @description The user spoke over a voice reply, having heard its text only up to heard_through characters.
          */
         BargeIn: {
-            /** Heard Text */
-            heard_text: string;
+            /** Heard Through */
+            heard_through: number;
             /**
              * Id
              * @description Producer-minted idempotency key
@@ -13694,7 +13694,7 @@ export interface components {
          * @description How a finished reply ended.
          * @enum {string}
          */
-        ReplyOutcome: "answered" | "stopped" | "failed" | "silent";
+        ReplyOutcome: "answered" | "stopped" | "truncated" | "failed" | "silent";
         /**
          * ReplySettled
          * @description The open reply's attempt ended; through is the newest seq it answered.

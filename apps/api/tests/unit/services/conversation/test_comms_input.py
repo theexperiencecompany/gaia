@@ -4,6 +4,7 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 
 from app.agents.core.interruption import INTERRUPTION_MARKER, INTERRUPTION_SOURCE
 from app.constants.conversation import (
+    BARGE_IN_NOTE,
     LOG_SEQ,
     NOTICE_DELIVERED_NOTE,
     REACTION_NOTE,
@@ -16,6 +17,7 @@ from app.models.conversation_log_models import (
     Batch,
     LoggedEntry,
     Reaction,
+    Reply,
     ReplyOutcome,
     WorkOutcome,
 )
@@ -26,6 +28,7 @@ from app.services.conversation.comms_input import (
     entry_messages,
 )
 from tests.unit.services.conversation.log_helpers import (
+    barge,
     finished,
     logged,
     notice,
@@ -93,6 +96,13 @@ def test_a_settled_answer_and_an_open_reply_show_the_model_nothing() -> None:
     opened, answered = replied("r1", ("u1",), 1)
     assert entry_messages(logged(2, opened)) == []
     assert entry_messages(logged(3, answered)) == []
+
+
+def test_a_reply_the_user_spoke_over_tells_the_model_only_its_heard_part_was_heard() -> None:
+    cut = Reply(id="o", reply_id="r1", attempt_id="a1", text="Your flight", heard_through=11)
+    [note] = entry_messages(logged(2, cut))
+    assert (note.id, note.content) == ("log:o", BARGE_IN_NOTE.format(heard="Your flight"))
+    assert entry_messages(logged(3, barge("b", "r1", 11))) == []
 
 
 def test_context_and_batch_render_in_seq_order() -> None:

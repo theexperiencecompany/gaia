@@ -16,6 +16,7 @@ from app.models.conversation_frame_models import (
 )
 from app.models.conversation_log_models import (
     ApprovalDecided,
+    BargeIn,
     CommsPhase,
     Entry,
     FailureReason,
@@ -65,6 +66,7 @@ from tests.unit.services.conversation.runtime_doubles import (
 RESTART = Cancelled(CancelReason.RESTART)
 STOP = Cancelled(CancelReason.STOP)
 LOST = Cancelled(CancelReason.LOST)
+TRUNCATE = Cancelled(CancelReason.TRUNCATE)
 
 
 CARD: ToolDataEntry = {"tool_name": "search", "data": {"query": "flights"}}
@@ -200,8 +202,8 @@ class StepScenarios:
             (ReplyOutcome.ANSWERED, ("u1",)),
             (ReplyOutcome.ANSWERED, ("u2",)),
         ]
-        assert [settled.quote_target for settled in await settles(rt)] == [None, None]
         await assert_quiet(rt)
+        assert [settled.quote_target for settled in await settles(rt)] == [None, None]
 
     async def test_second_message_while_a_tool_call_is_pending_is_absorbed_into_one_reply(
         self, rt: Runtime
@@ -469,25 +471,60 @@ class StepScenarios:
         assert rt.runner.calls == [Started(batch=(1,), context=())]
         assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1",))]
 
-    async def test_a_barge_in_cuts_the_reply_to_what_was_heard_and_is_answered_next(
+    async def test_a_barge_in_mid_reply_keeps_only_the_heard_part_and_waits_for_the_words(
         self, rt: Runtime
     ) -> None:
         rt.runner.script(
-            [text("hello there friend"), Pause((arrive(rt, barge("b", "r1.1")),))],
+            [text("hello there friend"), Pause((arrive(rt, barge("b", "r1.1", 5)),))],
             [Finished(Replied("go on"))],
         )
         await send(rt, user("u1", voice=True))
         await run(rt)
-        assert rt.runner.calls[:2] == [
-            Started(batch=(1,), context=()),
-            Cancelled(CancelReason.TRUNCATE),
-        ]
+        assert rt.runner.calls == [Started(batch=(1,), context=()), TRUNCATE]
         cut = (await replies(rt))[0]
         assert (cut.text, cut.heard_through) == ("hello", 5)
+        assert await answered(rt) == [(ReplyOutcome.TRUNCATED, ("u1",))]
+        assert (await rt.log.state(CONVERSATION, USER)).unsettled_waking == ()
+        await send(rt, user("u2", voice=True))
+        await run(rt)
+        # The cut reply rides in the next attempt's context, where it reads as only its heard part.
+        assert rt.runner.calls[2] == Started(batch=(5,), context=(2, 3, 4))
         assert await answered(rt) == [
-            (ReplyOutcome.STOPPED, ("u1",)),
-            (ReplyOutcome.ANSWERED, ("b",)),
+            (ReplyOutcome.TRUNCATED, ("u1",)),
+            (ReplyOutcome.ANSWERED, ("u2",)),
         ]
+        await assert_quiet(rt)
+
+    async def test_a_barge_in_on_a_reply_already_settled_cuts_it_to_the_heard_part(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script([text("hello there friend"), Finished(Replied("hello there friend"))])
+        await send(rt, user("u1", voice=True))
+        await run(rt)
+        await send(rt, barge("b", "r1.1", 5))
+        await run(rt)
+        cut = (await replies(rt))[0]
+        assert (cut.text, cut.heard_through) == ("hello", 5)
+        assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1",))]
+        assert rt.runner.calls == [Started(batch=(1,), context=())]
+        await assert_quiet(rt)
+
+    @pytest.mark.parametrize(
+        "spoken_over",
+        [barge("b", "r1.1", len("hello there friend")), barge("b", "r-unknown", 5)],
+        ids=["heard-to-the-end", "names-no-reply"],
+    )
+    async def test_a_barge_in_that_cut_nothing_off_changes_nothing(
+        self, rt: Runtime, spoken_over: BargeIn
+    ) -> None:
+        rt.runner.script([text("hello there friend"), Finished(Replied("hello there friend"))])
+        await send(rt, user("u1", voice=True))
+        await run(rt)
+        await send(rt, spoken_over)
+        await run(rt)
+        reply = (await replies(rt))[0]
+        assert (reply.text, reply.heard_through) == ("hello there friend", None)
+        assert rt.runner.calls == [Started(batch=(1,), context=())]
         await assert_quiet(rt)
 
     async def test_a_ten_message_burst_gets_one_reply(self, rt: Runtime) -> None:

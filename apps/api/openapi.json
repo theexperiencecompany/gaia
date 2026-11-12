@@ -1167,11 +1167,12 @@
       },
       "BargeIn": {
         "additionalProperties": false,
-        "description": "The user spoke over a voice reply, having heard only heard_text of it.",
+        "description": "The user spoke over a voice reply, having heard its text only up to heard_through characters.",
         "properties": {
-          "heard_text": {
-            "title": "Heard Text",
-            "type": "string"
+          "heard_through": {
+            "minimum": 0.0,
+            "title": "Heard Through",
+            "type": "integer"
           },
           "id": {
             "description": "Producer-minted idempotency key",
@@ -1193,7 +1194,7 @@
         "required": [
           "id",
           "reply_id",
-          "heard_text"
+          "heard_through"
         ],
         "title": "BargeIn",
         "type": "object"
@@ -16599,6 +16600,7 @@
         "enum": [
           "answered",
           "stopped",
+          "truncated",
           "failed",
           "silent"
         ],
