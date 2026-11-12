@@ -19,8 +19,8 @@
 @import "@heroui/styles/components/menu-item.css" layer(components);
 @import "@heroui/styles/components/menu-section.css" layer(components);
 @import "@heroui/styles/components/modal.css" layer(components);
+@import "@heroui/styles/components/pagination.css" layer(components);
 @import "@heroui/styles/components/scroll-shadow.css" layer(components);
-@import "@heroui/styles/components/search-field.css" layer(components);
 @import "@heroui/styles/components/select.css" layer(components);
 @import "@heroui/styles/components/skeleton.css" layer(components);
 @import "@heroui/styles/components/spinner.css" layer(components);
@@ -137,6 +137,7 @@
 @source "../../../components/shared/controlVariants.ts";
 @source "../../../components/shared/fieldVariants.ts";
 @source "../../../components/shared/GaiaButton.tsx";
+@source "../../../components/shared/GaiaSelectValue.tsx";
 @source "../../../components/shared/icons.tsx";
 @source "../../../components/shared/LinkButton.tsx";
 @source "../../../components/shared/LogoWithContextMenu.tsx";
@@ -176,6 +177,7 @@
 @source "../../../lib/docs-links/automate-links.ts";
 @source "../../../lib/docs-links/index.ts";
 @source "../../../lib/electron/api.ts";
+@source "../../../lib/heroui/accordionParity.ts";
 @source "../../../lib/heroui/tabsParity.ts";
 @source "../../../types/features/toolDataTypes.ts";
 @source "../../../utils/date/dateUtils.ts";
