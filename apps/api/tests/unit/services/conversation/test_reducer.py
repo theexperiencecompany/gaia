@@ -8,6 +8,7 @@ from app.models.conversation_log_models import (
     ConversationDisplay,
     ConversationState,
     Entry,
+    FinishedWork,
     KickStep,
     LiveWork,
     Preempt,
@@ -18,6 +19,7 @@ from app.models.conversation_log_models import (
     StopBy,
     Transition,
     WorkOutcome,
+    WorkStarted,
 )
 from app.services.conversation.reducer import reduce, with_comms
 from tests.unit.services.conversation.log_helpers import (
@@ -565,3 +567,33 @@ def test_wake_up_entry_in_the_middle_of_work_changes_nothing_until_the_work_fini
     assert len(effects) == 2
     state, effects = fold([*log, finished("f", "t1")])
     assert (state.work, state.unsettled_waking, effects[-1]) == ((), (6,), KickStep())
+
+
+# ---- causes of finished work, kept until a reply answers it ----
+
+
+def test_finished_work_keeps_the_messages_that_caused_it_until_a_reply_settles_it() -> None:
+    work_started = WorkStarted(id="w", task_id="t1", cause_through=1, answers=("u1",))
+    log: list[Entry] = [user("u1"), work_started, *replied("r", ["u1"], 1), finished("f", "t1")]
+    during, _ = fold(log)
+    assert during.finished_work == (FinishedWork(seq=5, task_id="t1", answers=("u1",)),)
+    state, _ = fold([*log, *replied("r2", ["f", "u1"], 5, reply_id="r2")])
+    assert state.finished_work == ()
+
+
+def test_cancelled_work_leaves_no_finished_work_to_answer() -> None:
+    log: list[Entry] = [user("u1"), started("w", "t1", 1), *replied("r", ["u1"], 1)]
+    state, _ = fold([*log, finished("f", "t1", WorkOutcome.CANCELLED)])
+    assert state.finished_work == ()
+
+
+def test_a_stop_drops_the_finished_work_it_covers() -> None:
+    log: list[Entry] = [user("u1"), started("w", "t1", 1), *replied("r", ["u1"], 1)]
+    state, _ = fold([*log, finished("f", "t1"), stop("s")])
+    assert (state.finished_work, state.unsettled_waking) == ((), ())
+
+
+def test_a_recovered_reply_fails_without_settling_its_inputs() -> None:
+    recovered = settled("s", [], 0, outcome=ReplyOutcome.FAILED)
+    state, _ = fold([user("u1"), opened("o"), recovered])
+    assert (state.open_reply, state.settled_through, state.unsettled_waking) == (None, 0, (1,))

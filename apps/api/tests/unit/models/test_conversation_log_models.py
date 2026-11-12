@@ -17,8 +17,11 @@ from app.models.conversation_log_models import (
     Entry,
     LiveWork,
     LoggedEntry,
+    Reaction,
+    ReactionBy,
     ReplyOutcome,
     ReplySettled,
+    UserMessage,
     WorkPhase,
 )
 from app.models.hil_models import HILApprovalStatus
@@ -224,3 +227,10 @@ def test_every_delta_payload_round_trips_as_its_own_type(payload: DeltaPayload) 
 )
 def test_output_frames_round_trip_on_their_kind(frame: BaseModel) -> None:
     assert TypeAdapter(OutputFrame).validate_json(frame.model_dump_json()) == frame
+
+
+def test_a_user_message_carries_the_chat_models_reaction() -> None:
+    reaction = Reaction(emoji="+1", by=ReactionBy.CHAT_MODEL)
+    reacted = user("u").model_copy(update={"reaction": reaction})
+    assert user("u").reaction is None
+    assert UserMessage.model_validate_json(reacted.model_dump_json()) == reacted

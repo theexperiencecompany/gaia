@@ -9,6 +9,7 @@ from app.models.conversation_log_models import (
     ConversationState,
     Effect,
     Entry,
+    FinishedWork,
     KickStep,
     LiveWork,
     LoggedEntry,
@@ -92,12 +93,9 @@ def _stop(state: ConversationState, seq: int, entry: StopRequested) -> Transitio
     if covers >= seq:
         return Rejected(reason=RejectReason.STOP_COVERS_FUTURE)
     cancelled = tuple(item.task_id for item in state.work if item.cause_through <= covers)
-    stopped = state.model_copy(
+    stopped = _drop_waking_through(state, covers).model_copy(
         update={
             "stopped_through": max(state.stopped_through, covers),
-            "unsettled_waking": tuple(
-                waking for waking in state.unsettled_waking if waking > covers
-            ),
             "work": tuple(item for item in state.work if item.cause_through > covers),
         }
     )
@@ -134,14 +132,17 @@ def _request_approval(state: ConversationState, entry: ApprovalRequested) -> Tra
 
 
 def _finish_work(state: ConversationState, seq: int, entry: WorkFinished) -> Transition:
-    if _live(state, entry.task_id) is None:
+    live = _live(state, entry.task_id)
+    if live is None:
         return Transition(state=state, effects=())
     remaining = state.model_copy(
         update={"work": tuple(item for item in state.work if item.task_id != entry.task_id)}
     )
     if entry.outcome is WorkOutcome.CANCELLED:
         return Transition(state=remaining, effects=())
-    return Transition(state=_wake(remaining, seq), effects=(KickStep(),))
+    result = FinishedWork(seq=seq, task_id=entry.task_id, answers=live.answers)
+    awaiting = remaining.model_copy(update={"finished_work": (*state.finished_work, result)})
+    return Transition(state=_wake(awaiting, seq), effects=(KickStep(),))
 
 
 def _open_reply(state: ConversationState, entry: Reply) -> Transition | Rejected:
@@ -157,17 +158,19 @@ def _settle_reply(state: ConversationState, seq: int, entry: ReplySettled) -> Tr
     if entry.through >= seq:
         return Rejected(reason=RejectReason.REPLY_ANSWERS_FUTURE)
     settled = max(state.settled_through, entry.through)
-    finished = state.model_copy(
-        update={
-            "comms": CommsPhase.IDLE,
-            "open_reply": None,
-            "settled_through": settled,
-            "unsettled_waking": tuple(
-                waking for waking in state.unsettled_waking if waking > settled
-            ),
-        }
+    finished = _drop_waking_through(state, settled).model_copy(
+        update={"comms": CommsPhase.IDLE, "open_reply": None, "settled_through": settled}
     )
     return Transition(state=finished, effects=())
+
+
+def _drop_waking_through(state: ConversationState, seq: int) -> ConversationState:
+    return state.model_copy(
+        update={
+            "unsettled_waking": tuple(waking for waking in state.unsettled_waking if waking > seq),
+            "finished_work": tuple(item for item in state.finished_work if item.seq > seq),
+        }
+    )
 
 
 def _live(state: ConversationState, task_id: str) -> LiveWork | None:

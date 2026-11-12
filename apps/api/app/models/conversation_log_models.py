@@ -64,6 +64,22 @@ class _Entry(BaseModel):
     id: str = Field(min_length=1, description="Producer-minted idempotency key")
 
 
+class ReactionBy(StrEnum):
+    """Who set a reaction on a user message."""
+
+    JEV = "jev"
+    CHAT_MODEL = "chat_model"
+
+
+class Reaction(BaseModel):
+    """An emoji set on a user message; a field of the message, never an entry."""
+
+    model_config = _FROZEN
+
+    emoji: str = Field(min_length=1)
+    by: ReactionBy
+
+
 class UserMessage(_Entry):
     """A message the user sent from any surface."""
 
@@ -75,6 +91,7 @@ class UserMessage(_Entry):
     retry_of: str | None = None
     file_ids: tuple[str, ...] = ()
     voice: bool = False
+    reaction: Reaction | None = None
 
 
 class StopRequested(_Entry):
@@ -174,7 +191,8 @@ class ReplySettled(_Entry):
     reply_id: str
     outcome: ReplyOutcome
     answers: tuple[str, ...]
-    through: int = Field(ge=1)
+    # A recovered reply fails through the old settled_through, which is 0 before any reply.
+    through: int = Field(ge=0)
 
     @model_validator(mode="after")
     def _answers_unless_cut_short(self) -> "ReplySettled":
@@ -248,6 +266,16 @@ class LiveWork(BaseModel):
     pending_approvals: frozenset[str]
 
 
+class FinishedWork(BaseModel):
+    """A finished task's waking result and the user messages that caused it, until a reply answers it."""
+
+    model_config = _FROZEN
+
+    seq: int = Field(ge=1)
+    task_id: str
+    answers: tuple[str, ...]
+
+
 class ConversationState(BaseModel):
     """The fold of a conversation's log; only reduce changes it."""
 
@@ -262,6 +290,8 @@ class ConversationState(BaseModel):
     # The reply whose attempt has not settled yet: set by its Reply, cleared by its ReplySettled.
     open_reply: str | None
     work: tuple[LiveWork, ...]
+    # One per WorkFinished seq in unsettled_waking.
+    finished_work: tuple[FinishedWork, ...] = ()
 
     @classmethod
     def empty(cls) -> "ConversationState":
