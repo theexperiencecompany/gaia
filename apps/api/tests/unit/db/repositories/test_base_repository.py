@@ -42,7 +42,7 @@ def _concrete(**overrides: Any) -> type[_BaseRepository]:
         "uses_object_id": False,
     }
     classvars.update(overrides)
-    return type("ThingRepository", (_BaseRepository,), classvars)  # type: ignore[return-value]  # test builds an untyped dynamic subclass
+    return type("ThingRepository", (_BaseRepository,), classvars)
 
 
 def test_a_complete_concrete_repository_is_accepted() -> None:

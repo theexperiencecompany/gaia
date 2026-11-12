@@ -15,7 +15,7 @@ import pytest
 from app.db.repositories import conversations as conversations_module
 from app.db.repositories.conversation_entries import EntryWindow
 from app.db.repositories.conversations import ConversationRepository
-from app.models.chat_models import MessageModel
+from app.models.chat_models import MessageModel, ToolDataEntry
 from app.models.conversation_models import ConversationDocument
 from app.utils.errors import (
     ConversationNotFoundError,
@@ -221,7 +221,10 @@ async def test_settling_an_approval_reaches_every_message_holding_it_flushed_or_
     repo: ConversationRepository, conversation: ConversationDocument, held: _HeldFlushes
 ) -> None:
     cid, uid = conversation.conversation_id, conversation.user_id
-    frame = {"tool_name": "approval_request", "data": {"approval_id": "a1", "status": "pending"}}
+    frame: ToolDataEntry = {
+        "tool_name": "approval_request",
+        "data": {"approval_id": "a1", "status": "pending"},
+    }
 
     def card(message_id: str) -> MessageModel:
         return MessageModel(type="bot", response="", message_id=message_id, tool_data=[frame])

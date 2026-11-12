@@ -17,6 +17,7 @@ from app.db.repositories.conversation_entries_migration import (
     MigrationAction,
     MigrationOutcome,
     VerifyReport,
+    conversation_entries_migration,
     element_hash,
     entry_at,
 )
@@ -550,7 +551,7 @@ async def test_drop_refuses_a_head_written_after_its_verify_and_drops_only_once(
 async def test_rebuild_restores_an_element_without_an_id_and_a_dry_run_writes_nothing(
     migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
 ) -> None:
-    unnamed = {"type": "user", "response": "old"}
+    unnamed: dict[str, object] = {"type": "user", "response": "old"}
     ref = await _legacy(raw_collection, [unnamed, _message(2)])
     await migration.migrate(ref, apply=True)
     assert await migration.drop_embedded(ref)
@@ -663,7 +664,7 @@ async def test_the_script_exits_nonzero_on_a_raced_pass(
     ref = await _legacy(raw_collection, [_message(1)])
     _after_the_read(
         monkeypatch,
-        script.conversation_entries_migration,
+        conversation_entries_migration,
         lambda: raw_collection.update_one(_head(ref), {"$push": {"messages": _message(2)}}),
     )
 
@@ -746,7 +747,10 @@ async def test_the_entrypoint_parses_every_mode_and_exits_with_the_runs_code(
 async def test_a_conversation_whose_elements_all_lack_ids_migrates_and_reads(
     migration: ConversationEntriesMigration, raw_collection: Any
 ) -> None:
-    unnamed = [{"type": "user", "response": "a"}, {"type": "bot", "response": "b"}]
+    unnamed: list[dict[str, object]] = [
+        {"type": "user", "response": "a"},
+        {"type": "bot", "response": "b"},
+    ]
     ref = await _legacy(raw_collection, unnamed)
 
     assert (await migration.migrate(ref, apply=True)).action is MigrationAction.COPIED
