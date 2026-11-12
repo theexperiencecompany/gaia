@@ -17,11 +17,8 @@ from pydantic.alias_generators import to_camel
 from app.constants.integrations import INTEGRATION_ACCOUNT_ID_PREFIX, ConnectMode
 from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.helpers.slug_helpers import generate_integration_slug
-from app.models.mcp_config import MCPConfig
+from app.models.mcp_config import AuthType, MCPConfig
 from app.models.oauth_models import IntegrationContent, ManagedBy, OAuthIntegration
-
-# Type alias for auth_type
-AuthType = Literal["none", "oauth", "bearer"]
 
 # Connection state of a user's integration. `expired` means "was connected and no
 # longer works" (revoked grant / dead refresh token) — distinct from `created`

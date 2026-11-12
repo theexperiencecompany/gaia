@@ -30,7 +30,6 @@ from app.models.agent_models import agent_configurable, current_stream_writer
 from app.models.device import Device
 from app.models.device_models import DeviceInfo, DeviceServerInfo, ListDevicesResult
 from app.models.integration_models import (
-    AuthType,
     ConnectStep,
     CreateCustomIntegrationRequest,
     Integration,
@@ -38,7 +37,7 @@ from app.models.integration_models import (
     ListIntegrationsResult,
     SuggestedIntegration,
 )
-from app.models.mcp_config import McpProbeResult
+from app.models.mcp_config import AuthType, McpProbeResult
 from app.models.oauth_models import OAuthIntegration
 from app.services.device.bridge import online_device_ids
 from app.services.device.device_service import (

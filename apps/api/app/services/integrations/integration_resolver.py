@@ -50,19 +50,6 @@ class IntegrationResolver:
         platform_integration = get_integration_by_id(integration_id)
 
         if platform_integration:
-            # Determine auth requirements
-            requires_auth = False
-            auth_type = None
-
-            if platform_integration.mcp_config:
-                requires_auth = platform_integration.mcp_config.requires_auth
-                auth_type = platform_integration.mcp_config.auth_type or (
-                    "oauth" if requires_auth else "none"
-                )
-            elif platform_integration.composio_config:
-                requires_auth = True
-                auth_type = "oauth"
-
             return ResolvedIntegration(
                 integration_id=integration_id,
                 name=platform_integration.name,
@@ -70,8 +57,8 @@ class IntegrationResolver:
                 category=platform_integration.category,
                 managed_by=platform_integration.managed_by,
                 source="platform",
-                requires_auth=requires_auth,
-                auth_type=auth_type,
+                requires_auth=platform_integration.requires_auth,
+                auth_type=platform_integration.auth_type,
                 mcp_config=platform_integration.mcp_config,
                 platform_integration=platform_integration,
                 custom_doc=None,

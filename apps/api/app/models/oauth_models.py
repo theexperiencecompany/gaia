@@ -7,6 +7,7 @@ from pydantic.alias_generators import to_camel
 from typing_extensions import TypedDict
 
 from app.models.mcp_config import (
+    AuthType,
     ComposioConfig,
     MCPConfig,
     OAuthScope,
@@ -120,6 +121,22 @@ class OAuthIntegration(BaseModel):
                 "set it from the Composio dashboard or keep available=False."
             )
         return self
+
+    @property
+    def requires_auth(self) -> bool:
+        """Whether connecting this integration makes the user authenticate."""
+        if self.mcp_config:
+            return self.mcp_config.requires_auth
+        return self.composio_config is not None
+
+    @property
+    def auth_type(self) -> AuthType | None:
+        """How a connection authenticates; None when there is nothing to connect."""
+        if self.mcp_config:
+            return self.mcp_config.auth_type or (
+                "oauth" if self.mcp_config.requires_auth else "none"
+            )
+        return "oauth" if self.composio_config else None
 
 
 class MobileLoginUrlResponse(BaseModel):

@@ -12,10 +12,12 @@ from app.models.integration_models import (
     StoredIntegrationTool,
     UserIntegrationDocument,
 )
+from app.models.mcp_config import ComposioConfig, MCPConfig
 from app.models.workflow_models import PublicWorkflowRow
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected
 from tests.conftest import FAKE_USER
+from tests.factories import make_oauth_integration
 
 # Base URL for integration public endpoints
 # routes.py: prefix="/integrations", public.py router has no extra prefix
@@ -23,6 +25,7 @@ from tests.conftest import FAKE_USER
 BASE = "/api/v1/integrations"
 
 _PUBLIC = "app.api.v1.endpoints.integrations.public"
+_MCP_URL = "https://mcp.example.com/mcp"
 _NO_SLUG = ParsedIntegrationSlug(name_part="bad-slug", category=None, shortid=None)
 _LEGACY_SLUG = ParsedIntegrationSlug(name_part="legacy", category=None, shortid="abc123")
 
@@ -66,14 +69,12 @@ class TestGetPublicIntegration:
     @pytest.mark.asyncio
     async def test_native_integration_found(self, client: AsyncClient) -> None:
         """Return native platform integration with tools."""
-        fake_native = MagicMock()
-        fake_native.id = "googlecalendar"
-        fake_native.name = "Google Calendar"
-        fake_native.description = "Calendar integration"
-        fake_native.category = "productivity"
-        fake_native.managed_by = "composio"
-        fake_native.mcp_config = None
-        fake_native.content = None
+        fake_native = make_oauth_integration(
+            integration_id="googlecalendar",
+            name="Google Calendar",
+            managed_by="composio",
+            composio_config=ComposioConfig(auth_config_id="ac_1", toolkit="GOOGLECALENDAR"),
+        )
 
         with (
             patch(
@@ -101,18 +102,21 @@ class TestGetPublicIntegration:
         assert body["toolCount"] == 1
         assert body["authType"] == "oauth"
 
+    @pytest.mark.parametrize(
+        ("mcp_config", "auth_type"),
+        [
+            (MCPConfig(server_url=_MCP_URL, requires_auth=True, auth_type="bearer"), "bearer"),
+            (MCPConfig(server_url=_MCP_URL, requires_auth=True), "oauth"),
+            (MCPConfig(server_url=_MCP_URL), "none"),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_native_integration_with_mcp_auth(self, client: AsyncClient) -> None:
-        """Native integration with mcp_config returns its auth_type."""
-        fake_native = MagicMock()
-        fake_native.id = "mcp_tool"
-        fake_native.name = "MCP Tool"
-        fake_native.description = "An MCP tool"
-        fake_native.category = "custom"
-        fake_native.managed_by = "mcp"
-        fake_native.mcp_config = MagicMock()
-        fake_native.mcp_config.auth_type = "bearer"
-        fake_native.content = None
+    async def test_native_mcp_integration_reports_its_auth(
+        self, client: AsyncClient, mcp_config: MCPConfig, auth_type: str
+    ) -> None:
+        fake_native = make_oauth_integration(
+            integration_id="mcp_tool", managed_by="mcp", mcp_config=mcp_config
+        )
 
         with (
             patch(
@@ -128,7 +132,7 @@ class TestGetPublicIntegration:
             resp = await client.get(f"{BASE}/public/mcp_tool")
 
         assert resp.status_code == 200
-        assert resp.json()["authType"] == "bearer"
+        assert resp.json()["authType"] == auth_type
 
     @pytest.mark.asyncio
     async def test_native_internal_integration_skipped(self, client: AsyncClient) -> None:

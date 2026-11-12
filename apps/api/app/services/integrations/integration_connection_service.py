@@ -1,7 +1,7 @@
 """Integration connection service - handles connect/disconnect logic."""
 
 from dataclasses import dataclass
-from typing import Literal, TypedDict, Unpack
+from typing import TypedDict, Unpack
 
 from mcp_use.client.exceptions import OAuthAuthenticationError
 from pydantic import BaseModel, ConfigDict
@@ -68,14 +68,6 @@ def build_integrations_config() -> IntegrationsConfigResponse:
         if integration.managed_by == "internal":
             continue
 
-        auth_type_literal: Literal["none", "oauth", "bearer"] | None = None
-        if integration.mcp_config:
-            # Honour an explicitly configured auth_type (e.g. "bearer" for
-            # API-key servers like Browserbase); otherwise derive from requires_auth.
-            auth_type_literal = integration.mcp_config.auth_type or (
-                "oauth" if integration.mcp_config.requires_auth else "none"
-            )
-
         integration_configs.append(
             IntegrationConfigItem(
                 id=integration.id,
@@ -89,10 +81,8 @@ def build_integrations_config() -> IntegrationsConfigResponse:
                 included_integrations=integration.included_integrations,
                 is_featured=integration.is_featured,
                 managed_by=integration.managed_by,
-                auth_type=auth_type_literal,
-                requires_auth=(
-                    integration.mcp_config.requires_auth if integration.mcp_config else False
-                ),
+                auth_type=integration.auth_type,
+                requires_auth=integration.requires_auth,
                 slug=integration.id,  # Platform integrations use ID as slug
                 origin=integration.origin,
                 icon_url=integration.icon_url,
