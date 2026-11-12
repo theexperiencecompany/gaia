@@ -1429,6 +1429,22 @@ html {
     font-weight: 400;
   }
 
+  /* ComboBoxInput (components/shared/ComboBoxInput.tsx): start/end content sits
+     in ComboBox's own input row, outside any InputGroup context. */
+  .combo-box__input-group > [data-slot="input-group-prefix"],
+  .combo-box__input-group > [data-slot="input-group-suffix"] {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    color: var(--field-placeholder);
+  }
+  .combo-box__input-group > [data-slot="input-group-prefix"] {
+    padding-inline-start: 0.75rem;
+  }
+  .combo-box__input-group > [data-slot="input-group-prefix"] + .input {
+    padding-inline-start: 0.5rem;
+  }
+
   /* labelPlacement="inside" (components/shared/fieldVariants.ts): v2's default
      field, the label small at the top-left inside a 56px field, the value below. */
   .gaia-field-inside {
