@@ -1,6 +1,6 @@
 {
   "name": "@gaia/usercontent-worker",
-  "description": "Cloudflare Worker on *.u.heygaia.link that forwards shared-file requests to the API's content origin",
+  "description": "Cloudflare Worker on *.heygaia.link that forwards shared-file requests to the API's content origin",
   "version": "0.1.0",
   "private": true,
   "type": "module",

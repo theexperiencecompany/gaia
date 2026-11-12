@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import worker, { type Env } from "./index.js";
 
 const CONTENT_ID = "abcdefghijklmnopqrstuvwxyz";
-const HOST = `${CONTENT_ID}.u.heygaia.link`;
+const HOST = `${CONTENT_ID}.heygaia.link`;
 const ENV: Env = {
   API_ORIGIN: "https://api.example.test",
   INTERNAL_API_TOKEN: "internal-token",
@@ -32,15 +32,15 @@ afterEach(() => {
 
 describe("host parsing", () => {
   it.each([
-    "u.heygaia.link",
-    `${CONTENT_ID}.heygaia.link`,
-    `abcdefghijklmnopqrstuvwxy0.u.heygaia.link`,
-    `abcdefghijklmnopqrstuvwxy-.u.heygaia.link`,
-    `${CONTENT_ID.slice(1)}.u.heygaia.link`,
-    `${CONTENT_ID}a.u.heygaia.link`,
-    `abcdefghijklmnopqrstuvwxy1.u.heygaia.link`,
-    `x.${CONTENT_ID}.u.heygaia.link`,
-    `${CONTENT_ID}.u.heygaia.link.evil.test`,
+    "heygaia.link",
+    `${CONTENT_ID}.u.heygaia.link`,
+    `abcdefghijklmnopqrstuvwxy0.heygaia.link`,
+    `abcdefghijklmnopqrstuvwxy-.heygaia.link`,
+    `${CONTENT_ID.slice(1)}.heygaia.link`,
+    `${CONTENT_ID}a.heygaia.link`,
+    `abcdefghijklmnopqrstuvwxy1.heygaia.link`,
+    `x.${CONTENT_ID}.heygaia.link`,
+    `${CONTENT_ID}.heygaia.link.evil.test`,
   ])("refuses %s with 404 and never calls the API", async (host) => {
     const fetchMock = upstreamReturning(new Response("leak"));
     const response = await worker.fetch(

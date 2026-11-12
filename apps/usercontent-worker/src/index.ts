@@ -1,5 +1,5 @@
 /**
- * The content origin's edge: <content_id>.u.heygaia.link forwarded to the API.
+ * The content origin's edge: <content_id>.heygaia.link forwarded to the API.
  *
  * The API's /api/v1/usercontent route owns every serving rule (headers, the
  * Sec-Fetch-Dest gate, tokens, liveness). This Worker only proves the host,
@@ -14,7 +14,7 @@ export interface Env {
   INTERNAL_API_TOKEN: string;
 }
 
-const CONTENT_HOST_SUFFIX = ".u.heygaia.link";
+const CONTENT_HOST_SUFFIX = ".heygaia.link";
 const CONTENT_ID_PATTERN = /^[a-z2-7]{26}$/;
 const CONTENT_ROUTE = "/api/v1/usercontent";
 const THUMBNAIL_PATH = "/thumb.jpg";

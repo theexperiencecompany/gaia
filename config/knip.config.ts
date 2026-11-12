@@ -444,7 +444,7 @@ const config: KnipConfig = {
       ignoreDependencies: ["@grpc/grpc-js", "nice-grpc", "nice-grpc-common"],
     },
 
-    // ── Usercontent Worker (*.u.heygaia.link) ─────────────────────────
+    // ── Usercontent Worker (*.heygaia.link) ─────────────────────────
     "apps/usercontent-worker": {
       entry: ["src/index.ts"],
       // Tests are not live references — see apps/bots note.

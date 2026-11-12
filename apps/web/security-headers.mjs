@@ -9,7 +9,7 @@
 import { FASTLANE_HOST, POSTHOG_HOST, RYBBIT_HOST } from "./third-party-origins.mjs";
 
 /** GAIA Cloud's content origin: a shared link's HTML, PDF and media frame from one host per snapshot. */
-const LINK_CONTENT_FRAME_ORIGIN = "https://*.u.heygaia.link";
+const LINK_CONTENT_FRAME_ORIGIN = "https://*.heygaia.link";
 
 /** The shared-link pages (heygaia.link/<slug> lands on /l/<slug>). */
 const LINK_PAGE_SOURCE = "/l/:slug*";

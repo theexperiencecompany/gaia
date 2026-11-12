@@ -1,6 +1,6 @@
 """The content origin: a shared file's bytes, served only to requests that arrived on its own host.
 
-GAIA Cloud's usercontent Worker (on *.u.heygaia.link) and a self-host's Caddy
+GAIA Cloud's usercontent Worker (on *.heygaia.link) and a self-host's Caddy
 site block forward here. A request is served only when the host it arrived on
 is its snapshot's content-origin host, so the same path reached on the API or
 app host (which carry the session cookie) serves nothing. The Worker cannot

@@ -1,6 +1,6 @@
 """The headers a link's bytes are served with, by render mode, on the content origin and as a download.
 
-The content origin (a per-snapshot host such as <content_id>.u.heygaia.link) is
+The content origin (a per-snapshot host such as <content_id>.heygaia.link) is
 cross-site from GAIA's app and carries no cookie, so active HTML can run there
 without reaching anything of the viewer's. The CSP sandbox still gives every
 document an opaque origin; frame-ancestors pins framing to the app; HTML is only

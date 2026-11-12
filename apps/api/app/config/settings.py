@@ -104,7 +104,7 @@ class Settings(BrowserHostSettings):
     # blob store; under cloudinary they go to this R2 bucket (R2_ACCOUNT_ID's keys).
     LINK_CONTENT_BUCKET: str | None = None
     # The content origin that serves snapshot bytes, with a {content_id}
-    # placeholder: https://{content_id}.u.heygaia.link on GAIA Cloud. Unset, HTML
+    # placeholder: https://{content_id}.heygaia.link on GAIA Cloud. Unset, HTML
     # shows as source and other files as downloads (no active link content).
     LINK_CONTENT_URL_TEMPLATE: str | None = None
     # Signs the short-lived content tokens that origin checks (min 32 chars).

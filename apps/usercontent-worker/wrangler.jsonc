@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  // Forwards <content_id>.u.heygaia.link to the API's /api/v1/usercontent route,
+  // Forwards <content_id>.heygaia.link to the API's /api/v1/usercontent route,
   // which owns every serving rule. Secret (wrangler secret put): INTERNAL_API_TOKEN.
   "name": "gaia-usercontent",
   "main": "src/index.ts",
@@ -10,7 +10,7 @@
   "preview_urls": false,
   "routes": [
     {
-      "pattern": "*.u.heygaia.link/*",
+      "pattern": "*.heygaia.link/*",
       "zone_name": "heygaia.link"
     }
   ],

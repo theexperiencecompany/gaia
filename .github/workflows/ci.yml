@@ -1593,7 +1593,7 @@ jobs:
       actions: read # IndexNow reads earlier runs' deploy jobs
     secrets: inherit # pragma: allowlist secret
 
-  # ── Master only: ship the usercontent Worker (*.u.heygaia.link) ──────────
+  # ── Master only: ship the usercontent Worker (*.heygaia.link) ──────────
   # Its build (a wrangler dry-run bundle) ran in ts-build-test behind the same
   # gate. Off until vars.USERCONTENT_WORKER_DEPLOY is 'true': the heygaia.link
   # zone, its *.u DNS record and the INTERNAL_API_TOKEN Worker secret must exist
