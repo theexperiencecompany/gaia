@@ -73,10 +73,11 @@ export default function Pins() {
             autoFocus
             aria-label="Filter pins"
             className="w-full"
+            variant="secondary"
             value={searchQuery}
             onChange={setSearchQuery}
           >
-            <SearchField.Group className="pr-1">
+            <SearchField.Group className="h-12 rounded-full border-2 border-default-200 pr-1 text-medium">
               <SearchField.Input placeholder="Enter a message to filter pins" />
               <SearchField.ClearButton />
             </SearchField.Group>
