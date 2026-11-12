@@ -32,7 +32,7 @@ const DummyIntegrationsCard: React.FC = () => {
           setIsExpanded(expanded);
         }}
       >
-        <Accordion.Item id="integrations" className="pb-1">
+        <Accordion.Item id="integrations">
           <Accordion.Heading>
             <Accordion.Trigger
               className={`cursor-pointer ${ACCORDION_TRIGGER_COMPACT}`}

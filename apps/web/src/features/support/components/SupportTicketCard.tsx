@@ -260,15 +260,16 @@ export default function SupportTicketCard({
             <div className="flex-1 text-lg font-semibold text-zinc-100">
               {editData.title}
             </div>
-            <Button
+            <GaiaButton
               isIconOnly
               size="sm"
               variant="ghost"
+              tone="faint"
               onPress={handleEditClick}
-              className="h-8 w-8 text-zinc-500 hover:text-zinc-200"
+              className="h-8 w-8"
             >
               <PencilEdit01Icon color="currentColor" width={16} height={16} />
-            </Button>
+            </GaiaButton>
           </div>
 
           <Separator className="my-1.5 bg-zinc-700" />
@@ -292,8 +293,8 @@ export default function SupportTicketCard({
           )}
 
           {/* Description */}
-          <ScrollShadow className="relative z-[1] overflow-y-auto pb-5 text-sm leading-relaxed whitespace-pre-line text-zinc-200">
-            {editData.description}
+          <ScrollShadow className="relative z-[1] overflow-y-auto text-sm leading-relaxed whitespace-pre-line">
+            <div className="pb-5">{editData.description}</div>
           </ScrollShadow>
         </div>
 

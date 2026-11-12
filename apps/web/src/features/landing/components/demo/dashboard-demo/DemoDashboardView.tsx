@@ -17,6 +17,7 @@ import {
 import { useInView } from "motion/react";
 import * as m from "motion/react-m";
 import { useRef } from "react";
+import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   DUMMY_CALENDARS,
@@ -201,11 +202,19 @@ function DemoTodosCard() {
                 </p>
               )}
               <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                <Chip size="sm" variant="soft" className="text-zinc-400 px-1">
+                <Chip
+                  size="sm"
+                  variant="soft"
+                  className={toneVariants({ tone: "muted" })}
+                >
                   {todo.priority}
                 </Chip>
                 {todo.due_date && (
-                  <Chip size="sm" variant="soft" className="text-zinc-400 px-1">
+                  <Chip
+                    size="sm"
+                    variant="soft"
+                    className={toneVariants({ tone: "muted" })}
+                  >
                     {new Date(todo.due_date).toDateString() ===
                     new Date().toDateString()
                       ? "Today"
@@ -343,7 +352,7 @@ function DemoGoalsCard() {
                     <Chip
                       size="sm"
                       variant="soft"
-                      className="text-zinc-400 px-1"
+                      className={toneVariants({ tone: "muted" })}
                     >
                       <CheckmarkCircle02Icon
                         width={15}
@@ -398,7 +407,11 @@ function DemoConversationsCard() {
                 )}
               </div>
               <div className="mt-2 flex items-center gap-1">
-                <Chip size="sm" variant="soft" className="text-zinc-400 px-1">
+                <Chip
+                  size="sm"
+                  variant="soft"
+                  className={toneVariants({ tone: "muted" })}
+                >
                   <MessageMultiple02Icon
                     width={15}
                     height={15}
@@ -409,7 +422,11 @@ function DemoConversationsCard() {
                     {conversation.messageCount === 1 ? "message" : "messages"}
                   </Chip.Label>
                 </Chip>
-                <Chip size="sm" variant="soft" className="text-zinc-400 px-1">
+                <Chip
+                  size="sm"
+                  variant="soft"
+                  className={toneVariants({ tone: "muted" })}
+                >
                   <Calendar03Icon width={15} height={15} className="mx-1" />
                   <Chip.Label>
                     {new Date(conversation.updated_at).toLocaleDateString()}

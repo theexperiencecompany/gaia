@@ -122,7 +122,7 @@ function InstallMethodTabs() {
         </Tabs.List>
       </Tabs.ListContainer>
       {installMethods.map((method) => (
-        <Tabs.Panel key={method.key} id={method.key} className="pt-3">
+        <Tabs.Panel key={method.key} id={method.key}>
           <InstallTab code={method.code} hint={method.hint} />
         </Tabs.Panel>
       ))}

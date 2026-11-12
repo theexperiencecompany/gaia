@@ -84,11 +84,7 @@ export default function PopupComposer({
         onChange={setText}
         isDisabled={disabled}
       >
-        <InputGroup
-          className="
-            bg-transparent shadow-none border-none outline-none ring-0 py-0 pl-0.5 pr-2
-          "
-        >
+        <InputGroup className="bg-transparent shadow-none border-none outline-none ring-0 pr-2">
           <InputGroup.Prefix>
             {/* Canvas is larger than the visible sphere (glow padding) — the
                 negative margins keep the optical size in line with the send
@@ -101,7 +97,7 @@ export default function PopupComposer({
             placeholder={
               disabled ? "Sign in from the GAIA window to chat" : "Ask GAIA…"
             }
-            className="px-1.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-400"
+            className="px-1.5 text-sm outline-none placeholder:text-zinc-400"
           />
           <InputGroup.Suffix>
             {/* The pill's capsule IS the window shape — a corner-overhanging

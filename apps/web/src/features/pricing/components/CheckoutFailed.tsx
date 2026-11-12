@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 import { CHECKOUT_DECLINED_COPY } from "../constants";
 
@@ -25,14 +25,14 @@ export function CheckoutFailed({ declined, onRetry }: CheckoutFailedProps) {
           ? CHECKOUT_DECLINED_COPY.body
           : "If you were charged, everything unlocks the moment it lands. You can also just try again."}
       </p>
-      <Button
+      <GaiaButton
         size="sm"
-        className="font-medium text-black"
+        className="font-medium"
         onPress={onRetry}
         variant="primary"
       >
         Try again
-      </Button>
+      </GaiaButton>
     </div>
   );
 }

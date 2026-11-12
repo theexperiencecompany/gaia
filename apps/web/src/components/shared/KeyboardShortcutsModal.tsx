@@ -73,13 +73,18 @@ export default function KeyboardShortcutsModal({
               </Modal.Heading>
             </Modal.Header>
 
-            <Modal.Body className="gap-6 pb-6">
-              <ShortcutCategory title="Create" shortcuts={createShortcuts} />
-              <ShortcutCategory
-                title="Navigation"
-                shortcuts={navigationShortcuts}
-              />
-              <ShortcutCategory title="General" shortcuts={generalShortcuts} />
+            <Modal.Body>
+              <div className="flex flex-col gap-6 pb-4">
+                <ShortcutCategory title="Create" shortcuts={createShortcuts} />
+                <ShortcutCategory
+                  title="Navigation"
+                  shortcuts={navigationShortcuts}
+                />
+                <ShortcutCategory
+                  title="General"
+                  shortcuts={generalShortcuts}
+                />
+              </div>
             </Modal.Body>
           </Modal.Dialog>
         </Modal.Container>

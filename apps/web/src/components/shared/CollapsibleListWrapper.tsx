@@ -42,16 +42,13 @@ export default function CollapsibleListWrapper({
   return (
     <div className="w-full">
       <Accordion
-        className="w-full max-w-(--breakpoint-sm) px-0"
+        className="w-full max-w-(--breakpoint-sm)"
         defaultExpandedKeys={defaultKeys}
         onExpandedChange={(keys) => {
           setIsExpanded(keys instanceof Set && keys.has("1"));
         }}
       >
-        <Accordion.Item
-          id="1"
-          className="w-screen max-w-(--breakpoint-sm) px-0"
-        >
+        <Accordion.Item id="1" className="w-screen max-w-(--breakpoint-sm)">
           <Accordion.Heading>
             <Accordion.Trigger
               className={`cursor-pointer ${ACCORDION_TRIGGER_COMPACT}`}
