@@ -6,6 +6,7 @@ URL flows through the resolved provider config into init_openrouter_llm;
 production is protected by the boot guard, not by a silent client-side drop.
 """
 
+import re
 from types import SimpleNamespace
 
 from pydantic import SecretStr, ValidationError
@@ -15,7 +16,7 @@ from app.agents.llm import client, dev_lane
 from app.config.browser_host_settings import BrowserHostSettings
 from app.config.capability_requirements import required_keys
 from app.config.deployment import AuthMode, DeploymentKind, baseline_profile, deployment_profile
-from app.config.settings import Settings, get_settings
+from app.config.settings import MIN_LINK_CONTENT_SIGNING_KEY_LENGTH, Settings, get_settings
 from app.config.settings_validator import settings_validator
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
 from app.constants.llm import (
@@ -30,8 +31,10 @@ from app.constants.llm import (
     DevLLMApi,
     LLMProviderName,
 )
+from app.constants.log_tags import LogTag
 from app.constants.providers import LLM_MODEL_PROFILES
 from app.services.providers.provider_credentials_service import ProviderConfig, resolved_configs
+from shared.py.wide_events import log
 
 
 @pytest.fixture(autouse=True)
@@ -623,9 +626,46 @@ def test_gaia_cloud_turns_off_a_content_origin_it_cannot_use(
     assert settings_obj.LINK_CONTENT_URL_TEMPLATE is None
 
 
-def test_a_selfhost_refuses_to_boot_with_a_content_origin_it_cannot_sign() -> None:
-    with pytest.raises(RuntimeError, match="LINK_CONTENT_SIGNING_KEY is missing"):
-        _selfhost_settings("local", LINK_CONTENT_URL_TEMPLATE=_ORIGIN)
+_NO_PLACEHOLDER = "LINK_CONTENT_URL_TEMPLATE must contain {content_id}"
+_COOKIE_HOST = "LINK_CONTENT_URL_TEMPLATE must name a host other than HOST and FRONTEND_URL"
+_NO_KEY = (
+    "LINK_CONTENT_URL_TEMPLATE is set but LINK_CONTENT_SIGNING_KEY is missing or "
+    f"shorter than {MIN_LINK_CONTENT_SIGNING_KEY_LENGTH} characters"
+)
+_UNUSABLE_ORIGINS = [
+    ("https://u.heygaia.test", "k" * 32, _NO_PLACEHOLDER),
+    ("https://heygaia.io/u/{content_id}", "k" * 32, _COOKIE_HOST),
+    (_ORIGIN, None, _NO_KEY),
+]
+
+
+@pytest.mark.parametrize(("template", "key", "problem"), _UNUSABLE_ORIGINS)
+def test_a_selfhost_refuses_to_boot_naming_what_is_wrong_with_its_content_origin(
+    template: str, key: str | None, problem: str
+) -> None:
+    with pytest.raises(RuntimeError, match=f"^{re.escape(problem)}$"):
+        _selfhost_settings(
+            "local",
+            LINK_CONTENT_URL_TEMPLATE=template,
+            LINK_CONTENT_SIGNING_KEY=key,
+            FRONTEND_URL="https://heygaia.io",
+        )
+
+
+@pytest.mark.parametrize(("template", "key", "problem"), _UNUSABLE_ORIGINS)
+def test_gaia_cloud_logs_why_it_turned_off_its_content_origin(
+    template: str, key: str | None, problem: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    errors: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(log, "error", lambda msg, **kw: errors.append((msg, kw)))
+
+    _prod_settings(
+        LINK_CONTENT_URL_TEMPLATE=template,
+        LINK_CONTENT_SIGNING_KEY=key,
+        FRONTEND_URL="https://heygaia.io",
+    )
+
+    assert (f"{LogTag.STARTUP} link content origin turned off", {"problem": problem}) in errors
 
 
 def test_a_blank_content_origin_reads_as_unset() -> None:

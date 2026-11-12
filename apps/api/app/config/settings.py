@@ -707,7 +707,7 @@ class Settings(BrowserHostSettings):
         problem = None
         if "{content_id}" not in template:
             problem = "LINK_CONTENT_URL_TEMPLATE must contain {content_id}"
-        elif urlsplit(template.format(content_id="x")).netloc.lower() in {
+        elif urlsplit(template).netloc.lower() in {
             urlsplit(self.HOST).netloc.lower(),
             urlsplit(self.FRONTEND_URL).netloc.lower(),
         }:
