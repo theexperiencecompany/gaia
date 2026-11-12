@@ -12,7 +12,12 @@ from zoneinfo import ZoneInfo
 import pytest
 from tests.factories import make_user_id
 
-from app.constants.briefing import BRIEFING_RHYTHM_WORKFLOW_KEYS, BriefAction, BriefOutcome
+from app.constants.briefing import (
+    BRIEFING_RHYTHM_WORKFLOW_KEYS,
+    NO_CALENDAR_CONNECTED,
+    BriefAction,
+    BriefOutcome,
+)
 from app.constants.desk_buckets import DeskBucket
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.email_verdicts import email_verdict_repository
@@ -52,6 +57,7 @@ CONTEXT = PoolContext(
     timezone="Asia/Kolkata",
     today=date(2026, 11, 11),
     calendar_events=2,
+    calendar_connected=True,
     calendar_span="today",
     recent_openings=[],
 )
@@ -305,6 +311,14 @@ class TestTheContextBlock:
         assert context_block(replace(CONTEXT, calendar_events=0)).splitlines() == [
             "Wednesday 11 November 2026, Asia/Kolkata.",
             "Nothing on the calendar today.",
+        ]
+
+    def test_with_no_calendar_connected_it_never_says_the_calendar_is_empty(self) -> None:
+        unconnected = replace(CONTEXT, calendar_events=0, calendar_connected=False)
+
+        assert context_block(unconnected).splitlines() == [
+            "Wednesday 11 November 2026, Asia/Kolkata.",
+            NO_CALENDAR_CONNECTED,
         ]
 
 

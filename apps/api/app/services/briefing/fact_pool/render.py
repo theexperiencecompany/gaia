@@ -2,6 +2,7 @@
 
 from datetime import date
 
+from app.constants.briefing import NO_CALENDAR_CONNECTED
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_pool_models import DataSeries, GoalState, QuoteSpan, SeriesShape
 from app.models.briefing_models import BRIEFING_ITEM_STATES
@@ -94,13 +95,22 @@ def pool_block(pool: FactPool) -> str:
     return "\n".join(parts)
 
 
+def _calendar_line(context: PoolContext) -> str:
+    if not context.calendar_connected:
+        return NO_CALENDAR_CONNECTED
+    if not context.calendar_events:
+        return f"Nothing on the calendar {context.calendar_span}."
+    return (
+        f"Calendar {context.calendar_span}: {context.calendar_events} event(s), "
+        "every one listed below."
+    )
+
+
 def context_block(context: PoolContext) -> str:
     """Say the day the pool sits in: the date, the calendar's load and how recent briefs opened."""
     lines = [
         f"{context.today.strftime('%A %-d %B %Y')}, {context.timezone}.",
-        f"Calendar {context.calendar_span}: {context.calendar_events} event(s), every one listed below."
-        if context.calendar_events
-        else f"Nothing on the calendar {context.calendar_span}.",
+        _calendar_line(context),
     ]
     if context.recent_openings:
         lines.append(

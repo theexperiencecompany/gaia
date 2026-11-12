@@ -301,6 +301,11 @@ def _to_event(event: GoogleCalendarEventResource, tz: ZoneInfo) -> BriefingEvent
     return None
 
 
+async def calendar_connected(user_id: str) -> bool:
+    """Report whether the user has a calendar connected, so an empty read means an empty day."""
+    return GOOGLE_CALENDAR_INTEGRATION_ID in await get_connected_integration_ids(user_id)
+
+
 async def read_calendar(
     user_id: str, start: datetime, end: datetime
 ) -> list[GoogleCalendarEventResource]:
@@ -308,7 +313,7 @@ async def read_calendar(
 
     Empty when no calendar is connected; a connected calendar that fails to answer raises.
     """
-    if GOOGLE_CALENDAR_INTEGRATION_ID not in await get_connected_integration_ids(user_id):
+    if not await calendar_connected(user_id):
         return []
     response = await get_calendar_events(
         user_id, time_min=start.isoformat(), time_max=end.isoformat(), fetch_all=True

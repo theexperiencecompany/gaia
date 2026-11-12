@@ -1,11 +1,12 @@
 """The facts the voice is shown: one line per item and event, the figures its prose may quote and its slots."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.constants.briefing import BriefAction
+from app.constants.briefing import NO_CALENDAR_CONNECTED, BriefAction
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import BriefBlock, ChartBlock, ChartKind, SectionBlock
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
@@ -53,6 +54,7 @@ def _sources(
         artifacts=artifacts or {},
         open_todos=open_todos,
         calendar=calendar or [],
+        calendar_connected=True,
         event_ids=event_ids or [],
         span=span,
         todos_note=None,
@@ -162,6 +164,14 @@ class TestTheCalendarAndTheCharts:
             "- fact 7 | [[fact:7.time]] (3:00 PM): Board call",
             "- fact 8 | all day: Offsite",
         ]
+
+    def test_with_no_calendar_connected_the_note_says_so_not_that_it_is_empty(self) -> None:
+        unconnected = replace(_sources(), calendar_connected=False)
+
+        facts = build_facts(Chosen(sections=[], picked=[]), unconnected, _CLOCK)
+
+        assert facts.block.splitlines()[-1] == NO_CALENDAR_CONNECTED
+        assert TODAY.empty not in facts.block
 
 
 class TestTheEmptyBriefAndTheLead:

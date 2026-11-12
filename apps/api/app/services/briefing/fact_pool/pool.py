@@ -44,6 +44,8 @@ class PoolContext:
     reader: str
     timezone: str
     today: date
+    #: Whether a calendar is connected: without one, no event count says anything about the day.
+    calendar_connected: bool
     #: The calendar events the brief's span holds, and the span: "today", "in the week ahead".
     calendar_events: int
     calendar_span: str
