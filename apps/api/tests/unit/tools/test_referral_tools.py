@@ -23,7 +23,7 @@ from app.models.referral_models import (
     ReferralInviteStatus,
     ReferralInviteSurface,
     ReferralSuggestionReason,
-    ReferredFriendStatus,
+    ReferredFriendStanding,
 )
 from app.schemas.referrals import (
     ReferralInviteRequest,
@@ -156,9 +156,17 @@ class TestGetReferralStatus:
             next_billing_date=datetime(2026, 12, 14, tzinfo=UTC),
             friends=[
                 ReferredFriend(
-                    first_name="Priya", status=ReferredFriendStatus.PAID, joined_at=NOW, paid_at=NOW
+                    first_name="Priya",
+                    status=ReferredFriendStanding.PAID,
+                    joined_at=NOW,
+                    paid_at=NOW,
                 ),
-                ReferredFriend(first_name=None, status=ReferredFriendStatus.JOINED, joined_at=NOW),
+                ReferredFriend(
+                    first_name=None, status=ReferredFriendStanding.JOINED, joined_at=NOW
+                ),
+                ReferredFriend(
+                    first_name="Sam", status=ReferredFriendStanding.REFUNDED, joined_at=NOW
+                ),
             ],
         )
         reader = _overview_returning(overview)
@@ -169,14 +177,15 @@ class TestGetReferralStatus:
         tool_log.set.assert_called_once_with(
             tool={"name": "get_referral_status"}, referral={"operation": "agent_status"}
         )
-        tool_log.set_ns.assert_called_once_with("referral", friends=2, months_earned=3)
+        tool_log.set_ns.assert_called_once_with("referral", friends=3, months_earned=3)
         assert result == (
             "Free months earned: 3 (2 already added to the billing date, "
             "1 saved for when they subscribe again)\n"
             "Next bill: 2026-12-14\n"
-            "Friends who joined (2):\n"
+            "Friends who joined (3):\n"
             "  - Priya: paid, earned a free month\n"
-            "  - (no name): joined, has not paid yet"
+            "  - (no name): joined, has not paid yet\n"
+            "  - Sam: paid, then refunded, so earned nothing"
         )
 
     async def test_nobody_yet(self) -> None:
