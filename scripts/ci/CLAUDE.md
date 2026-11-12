@@ -73,8 +73,8 @@ regenerate-and-diff gates behind `checks.mjs api-schema`, `analytics-catalog`,
 `cli-config-schema` and `deploy-templates`), `deploy_templates.py` (the Coolify and
 Render template generator behind `checks.mjs deploy-templates`; Python for
 PyYAML, run through the apps/api environment), `seo_audit.py` (the sitemap
-crawler behind `smoke-web.sh audit`), `squirrel.py` (squirrelscan's effective
-config, the pages a run audits, the one ignore list, and the per-page, per-check,
+crawler behind `smoke-web.sh audit`), `squirrel.py` (the pages a squirrelscan run
+audits, the one ignore list of squirrel's own bugs, `drop` for applying a run's fixes, and the per-page, per-check,
 per-item baseline in `baselines/squirrel-build.txt` and `squirrel-live.txt`, read
 from squirrel's own crawl database behind `smoke-web.sh squirrel`; it reuses
 `indexnow.py`'s diff mapping), `origin_proxy.py` (the HTTPS proxy that serves a local

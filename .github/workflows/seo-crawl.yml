@@ -1,7 +1,8 @@
 name: SEO crawl
 
-# squirrelscan over every page the live sitemap lists, with links to other sites
-# checked (`scripts/ci/smoke-web.sh squirrel`), held to
+# squirrelscan over the live site as a plain `squirrel audit --level full` sees it:
+# every sitemap page and every page they link to, squirrel's default rules, links
+# to other sites checked (`scripts/ci/smoke-web.sh squirrel`), held to
 # scripts/ci/baselines/squirrel-live.txt: any finding on a page, check and item
 # the baseline does not list, or a category scoring below its line, turns the run
 # red and posts a short alert to Slack and Discord. A crawl that fixed something
@@ -37,7 +38,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Crawl every sitemap page of the live site with squirrelscan
+      - name: Crawl the live site with squirrelscan as a plain full audit does
         id: squirrel
         run: bash scripts/ci/smoke-web.sh squirrel
 

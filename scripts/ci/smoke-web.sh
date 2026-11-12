@@ -9,13 +9,15 @@
 #           link that redirects or errors, a vanity short link that does not
 #           redirect.
 #   squirrel
-#           Audit every sitemap page with squirrelscan (pinned below, sha256-checked),
-#           every category, links to other sites included on the live site, and hold
+#           Audit the site as a plain `squirrel audit --level full` does, with squirrelscan
+#           (pinned below, sha256-checked): every sitemap page and every page they link
+#           to, every category at squirrel's defaults, links to other sites checked on
+#           the live site, and hold
 #           it to a baseline (scripts/ci/baselines/squirrel-live.txt by default): a
 #           finding on a page, check and item the baseline does not list, or a
 #           category scoring below its line, fails. A fixed finding or a raised score
 #           is dropped from the baseline file in place, for `tighten` to propose. The
-#           config is config/squirrel.toml plus seoSnippet.json's windows.
+#           config is config/squirrel.toml.
 #   audit-build
 #           Start this checkout's production web build (`next start` on a free port)
 #           and run audit and squirrel against it as https://heygaia.io, squirrel on
@@ -69,6 +71,8 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 # squirrelscan release assets, one sha256 per platform (the release's manifest.json).
 SQUIRREL_VERSION="0.0.133"
+# squirrel's own cap on --max-pages: a full crawl stops only when no unvisited link is left.
+SQUIRREL_MAX_PAGES=10000
 squirrel_sha256() {
   case "$1" in
     linux-x64) echo 218640f509db522b54d1d899aac0ebb6a4defb9b045836cf94f10f8b19435465 ;;
@@ -183,36 +187,41 @@ cmd_squirrel() {
   trap stop_squirrel EXIT
   # Its own HOME: squirrel keeps the crawl there, which the ratchet reads, and a pinned user agent.
   mkdir -p "$SQUIRREL_WORK/home"
-  python3 -I "$REPO_ROOT/scripts/ci/lib/squirrel.py" config --out "$SQUIRREL_WORK/squirrel.toml"
 
-  local -a ratchet_args=() proxy_args=()
+  local -a ratchet_args=() proxy_args=() audit_args=()
   if [ -n "${SMOKE_SQUIRREL_PAGES:-}" ]; then
     [ "$base" != "$site" ] || ci_die "smoke-web: SMOKE_SQUIRREL_PAGES needs SMOKE_BASE_URL: only the proxy can serve the list as the sitemap"
     pages="$SMOKE_SQUIRREL_PAGES"
     proxy_args=(--sitemap "$pages")
     ratchet_args+=(--sample)
+    count="$(grep -c . "$pages")"
+    # --level quick crawls the seed and the sitemap's URLs and follows no links, so
+    # with --max-pages at the list's length it audits exactly the listed pages.
+    audit_args=(--level quick --max-pages "$count")
   else
     pages="$SQUIRREL_WORK/pages.txt"
     python3 -I "$REPO_ROOT/scripts/ci/lib/squirrel.py" pages --all --site "$site" --base "$base" --out "$pages"
     [ -n "${SMOKE_SQUIRREL_UPDATE:-}" ] || ratchet_args+=(--tighten)
+    count="every linked page from $(grep -c . "$pages") sitemap"
+    # --level full follows every internal link, as a plain audit does; squirrel's page
+    # cap sits far above the sitemap, and the ratchet fails if a sitemap page was missed.
+    audit_args=(--level full --max-pages "$SQUIRREL_MAX_PAGES")
   fi
-  count="$(grep -c . "$pages")"
 
-  # --level quick crawls the seed and the sitemap's URLs and follows no links, so
-  # with --max-pages at the list's length it audits exactly the listed pages.
   local -a run_env=(HOME="$SQUIRREL_WORK/home" SQUIRREL_NO_UPDATE=1 NO_TELEMETRY=1)
-  local -a audit_args=(--no-publish --level quick --max-pages "$count" --format json -o "$SQUIRREL_WORK/report.json")
+  audit_args+=(--no-publish --format json -o "$SQUIRREL_WORK/report.json")
   if [ "$base" != "$site" ]; then
     start_origin_proxy "$site" "$base" ${proxy_args[@]+"${proxy_args[@]}"}
     run_env+=(HTTPS_PROXY="$PROXY_URL" HTTP_PROXY="$PROXY_URL" NODE_EXTRA_CA_CERTS="$SQUIRREL_WORK/certs/ca.pem")
-    # The proxy refuses every other host, so links to other sites cannot be checked through it.
-    audit_args+=(--offline)
+    # The proxy refuses every other host, so links to other sites cannot be checked
+    # through it, and a local server's response time measures the machine, not the site.
+    audit_args+=(--offline --rule-exclude perf/ttfb)
   else
     audit_args+=(--external-links)
   fi
 
   ci_group "squirrel $SQUIRREL_VERSION audit of $count pages of $site (served from $base)"
-  env -C "$SQUIRREL_WORK" "${run_env[@]}" "$bin" -c "$SQUIRREL_WORK/squirrel.toml" audit "$site" \
+  env -C "$SQUIRREL_WORK" "${run_env[@]}" "$bin" -c "$REPO_ROOT/config/squirrel.toml" audit "$site" \
     "${audit_args[@]}" || status=$?
   if [ -n "$PROXY_PID" ]; then cat "$SQUIRREL_WORK/proxy.log"; fi
   ci_endgroup
