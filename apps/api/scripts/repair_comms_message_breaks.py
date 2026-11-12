@@ -31,11 +31,11 @@ from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.constants.cache import STREAM_ACTIVE_PREFIX
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.graphs import GraphName
 from app.core.provider_registration import boot_process
 from app.db.redis import redis_cache
 from app.utils.message_breaks import normalize_message_breaks
 
-COMMS_GRAPH = "comms_agent"
 IDLE_BEFORE_REPAIR = timedelta(minutes=10)
 # Comms threads are keyed by the bare conversation uuid; executor/subagent threads carry a prefix.
 CANDIDATE_THREADS_SQL = """
@@ -141,7 +141,7 @@ async def _run(*, apply: bool) -> None:
     boot_process("arq_worker")
     manager = await get_checkpointer_manager()
     try:
-        graph = await GraphManager.get_graph(COMMS_GRAPH)
+        graph = await GraphManager.get_graph(GraphName.COMMS)
         now = datetime.now(UTC)
         print("APPLIED" if apply else "DRY RUN: nothing was written")
         live = await live_conversation_ids()

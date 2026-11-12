@@ -13,6 +13,7 @@ from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
 from app.agents.core.thread_writes import with_message_ids
 from app.agents.llm.lane import AgentRole
 from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.graphs import GraphName
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -43,7 +44,7 @@ async def narrate_executor_result(
     or an empty string on failure.
     """
     try:
-        comms_graph = await GraphManager.get_graph("comms_agent")
+        comms_graph = await GraphManager.get_graph(GraphName.COMMS)
     except GraphUnavailableError as e:
         # Degrade contract: background narration must never crash the executor
         # flow — drop the narration but log the real cause loudly.
@@ -125,7 +126,7 @@ async def record_executor_cancellation(
         name=BACKGROUND_EXECUTOR_NAME,
     )
     try:
-        comms_graph = await GraphManager.get_graph("comms_agent")
+        comms_graph = await GraphManager.get_graph(GraphName.COMMS)
         await comms_graph.aupdate_state(
             {"configurable": {"thread_id": conversation_id}},
             {"messages": with_message_ids([marker])},
@@ -171,7 +172,7 @@ async def record_exchange_in_thread(conversation_id: str, user_message: str, rep
 async def _append_to_thread(conversation_id: str, messages: list[BaseMessage]) -> None:
     """Write messages into the comms thread with a silent aupdate_state, no model call; never raises."""
     try:
-        comms_graph = await GraphManager.get_graph("comms_agent")
+        comms_graph = await GraphManager.get_graph(GraphName.COMMS)
         # as_node="tools", not "agent": the agent node's should_continue needs
         # a store aupdate_state can't inject; the tools->agent edge needs none.
         await comms_graph.aupdate_state(
