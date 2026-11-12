@@ -65,6 +65,38 @@ async def _run_with(
         return await er._execute_executor("do the thing", {}, run)
 
 
+@pytest.mark.unit
+async def test_the_prepared_context_runs_and_its_frames_reach_the_stream() -> None:
+    ctx = SimpleNamespace(config={}, configurable={})
+    streamed: list[dict[str, object]] = []
+    seen: dict[str, object] = {}
+
+    async def execute(*, ctx: object, stream_writer: Any) -> SubagentOutcome:
+        seen["ctx"] = ctx
+        stream_writer({"progress": "step"})
+        return SubagentOutcome(text="done", answered=True)
+
+    run = ExecutorRun(
+        stream_id="stream-1",
+        conversation_id="conv-1",
+        user=AuthenticatedUser(user_id="u1"),
+        kind=RunKind.LIVE,
+        task_id="task-1",
+        user_message_id=None,
+        bot_message_id=None,
+    )
+    with (
+        patch.object(er, "prepare_executor_execution", AsyncMock(return_value=(ctx, None))),
+        patch.object(er, "make_redis_stream_writer", lambda _sid: streamed.append),
+        patch.object(er, "execute_subagent_stream", execute),
+    ):
+        result = await er._execute_executor("do the thing", {}, run)
+
+    assert (result.text, result.type) == ("done", "final")
+    assert seen["ctx"] is ctx
+    assert streamed == [{"progress": "step"}]
+
+
 @pytest.fixture
 async def fake_cache(
     fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch

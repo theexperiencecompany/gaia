@@ -430,11 +430,10 @@ def _approval_entry(
     *,
     asked_at: datetime,
     feedback: str | None = None,
-    auto_reason: str | None = None,
 ) -> ApprovalRequestEntry:
     """Build a decided card; a pending status here is a bug and raises."""
     data = SettledApprovalCardData(
-        **_card_fields(card, asked_at=asked_at, feedback=feedback, auto_reason=auto_reason),
+        **_card_fields(card, asked_at=asked_at, feedback=feedback, auto_reason=None),
         status=_SETTLED_STATUS.validate_python(status.value),
     )
     return _entry(data)

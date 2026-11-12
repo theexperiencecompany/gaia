@@ -1693,6 +1693,8 @@ class TestPublishLedgerDecision:
         assert entry.data.asked_at == row.created_at
         assert entry.data.integration_name is None
         assert entry.data.feedback == "stored words"
+        assert entry.data.auto_reason is None
+        assert datetime.fromisoformat(entry.timestamp).utcoffset() == timedelta(0)
         seams.settle_frame.assert_called_once_with("stream-1", "ap_1", status, "stored words")
         seams.persist.assert_awaited_once_with(
             "conv-1", user_id=USER_ID, approval_id="ap_1", status=status
