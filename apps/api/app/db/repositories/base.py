@@ -99,7 +99,15 @@ def _translating_driver_errors(method: Callable[_P, Awaitable[_R]]) -> Callable[
         try:
             return await method(*args, **kwargs)
         except PyMongoError as error:
-            raise _repository_error(error) from error
+            translated = _repository_error(error)
+            log.set(
+                repository_error={
+                    "operation": f"{type(args[0]).__name__}.{method.__name__}",
+                    "error_type": type(translated).__name__,
+                    "cause_type": type(error).__name__,
+                }
+            )
+            raise translated from error
         finally:
             _inside_repository_call.reset(token)
 
@@ -108,11 +116,25 @@ def _translating_driver_errors(method: Callable[_P, Awaitable[_R]]) -> Callable[
 
 
 def _translate_public_methods(cls: type) -> None:
-    """Wrap every public coroutine method cls defines or inherits unwrapped."""
+    """Wrap every public coroutine method cls defines or inherits unwrapped.
+
+    Refuses a public async generator or static/class coroutine: the wrapper cannot
+    cover them, so a driver error would escape them untranslated.
+    """
     for name in dir(cls):
         if name.startswith("_"):
             continue
         method = inspect.getattr_static(cls, name)
+        target = method.__func__ if isinstance(method, (staticmethod, classmethod)) else method
+        escapes = inspect.isasyncgenfunction(target) or (
+            target is not method and inspect.iscoroutinefunction(target)
+        )
+        if escapes:
+            raise RepositoryMisconfiguredError(
+                message=f"{cls.__name__}.{name} would escape driver-error translation",
+                why="only public async instance methods are wrapped to raise RepositoryError",
+                fix=f"make {name} an async instance method returning a list, or prefix it with _",
+            )
         if inspect.iscoroutinefunction(method) and not hasattr(method, _TRANSLATES_DRIVER_ERRORS):
             setattr(cls, name, _translating_driver_errors(method))
 
@@ -158,7 +180,12 @@ def cached_query(result_model: type[Any]) -> Callable[[_TFinder], _TFinder]:
 
 
 class _BaseRepository(Generic[TDoc, TUpdate]):
-    """Shared CRUD + cache machinery; subclass MongoRepository or UserScopedRepository, not this."""
+    """Shared CRUD + cache machinery; subclass MongoRepository or UserScopedRepository, not this.
+
+    Every subclass's public async methods are wrapped at class creation: a driver error
+    leaving the outermost repository call becomes RepositoryError or AlreadyExistsError,
+    while nested repository calls still see the driver's own errors. Never hand-write that try.
+    """
 
     collection_name: ClassVar[str]
     document_model: type[TDoc]

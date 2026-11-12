@@ -51,8 +51,10 @@ public repository method is raised as `RepositoryError`, or `AlreadyExistsError`
 when a unique index refused the write (`errors.py`). The base wraps every public
 coroutine method in `__init_subclass__`, and only the outermost repository call
 translates, so a repository body still catches `DuplicateKeyError` from its own
-nested calls. Callers catch the repository types; `TRANSIENT_MONGO_RETRY` retries
-`RepositoryError`.
+nested calls. The translation stamps `repository_error.cause_type` (the driver class)
+on the wide event. A public async generator or static/class coroutine is refused at
+class creation, because the wrapper cannot cover it. Callers catch the repository
+types; `TRANSIENT_MONGO_RETRY` retries `RepositoryError`.
 
 ## Caching (automatic — do not reimplement)
 

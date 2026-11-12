@@ -9,6 +9,7 @@ them because the raise sites are the PR's changed lines.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -17,6 +18,7 @@ from pydantic import BaseModel
 from pymongo.errors import AutoReconnect, DuplicateKeyError
 import pytest
 
+from app.db.repositories import base as base_module
 from app.db.repositories.base import MongoDocument, _BaseRepository
 from app.db.repositories.errors import AlreadyExistsError, RepositoryError
 from app.utils.errors import RepositoryMisconfiguredError
@@ -211,3 +213,55 @@ async def test_a_repository_body_still_catches_the_driver_error_of_its_own_neste
     collection.insert_one = AsyncMock(side_effect=DuplicateKeyError("E11000"))
     with patch("app.db.repositories.base.get_async_collection", return_value=collection):
         assert await _NestingRepository().create_or_false(_Doc(id="a", name="a")) is False
+
+
+async def test_a_new_subclass_public_coroutine_translates_with_no_handling_of_its_own() -> None:
+    async def count_named(self: _BaseRepository[_Doc, _Update], name: str) -> int:
+        return await self._count({"name": name})
+
+    repo = _concrete(count_named=count_named)()
+    collection = MagicMock()
+    collection.count_documents = AsyncMock(side_effect=AutoReconnect("down"))
+    with (
+        patch("app.db.repositories.base.get_async_collection", return_value=collection),
+        pytest.raises(RepositoryError),
+    ):
+        await repo.count_named("x")  # type: ignore[attr-defined]  # added by the dynamic subclass
+
+
+async def test_the_wide_event_names_the_driver_error_behind_the_repository_error() -> None:
+    collection = MagicMock()
+    collection.find_one = AsyncMock(side_effect=AutoReconnect("primary stepped down"))
+    recorded: list[dict[str, object]] = []
+    with (
+        patch("app.db.repositories.base.get_async_collection", return_value=collection),
+        patch.object(base_module.log, "set", lambda **fields: recorded.append(fields)),
+        pytest.raises(RepositoryError),
+    ):
+        await _NestingRepository().get_twice("x")
+
+    assert recorded == [
+        {
+            "repository_error": {
+                "operation": "_NestingRepository.get_twice",
+                "error_type": "RepositoryError",
+                "cause_type": "AutoReconnect",
+            }
+        }
+    ]
+
+
+def test_a_public_async_generator_is_refused_at_class_creation() -> None:
+    async def stream(self: object) -> AsyncIterator[_Doc]:
+        yield _Doc()
+
+    with pytest.raises(RepositoryMisconfiguredError, match="stream"):
+        _concrete(stream=stream)
+
+
+def test_a_public_static_coroutine_is_refused_at_class_creation() -> None:
+    async def lookup() -> None:
+        return None
+
+    with pytest.raises(RepositoryMisconfiguredError, match="lookup"):
+        _concrete(lookup=staticmethod(lookup))
