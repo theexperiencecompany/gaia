@@ -9,7 +9,7 @@ The head stores the log's fold (state), its step holder (runner) and the last ep
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -33,8 +33,6 @@ from app.models.conversation_log_models import (
     ConversationState,
     Entry,
     LoggedEntry,
-    Reply,
-    UserMessage,
 )
 
 _ENTRY: TypeAdapter[Entry] = TypeAdapter(Entry)
@@ -81,13 +79,7 @@ class ConversationLogRepository(ConversationRepository):
         }
         if epoch is not None:
             expected[f"{RUNNER_FIELD}.epoch"] = epoch
-        document = {
-            **logged.entry.model_dump(mode="json"),
-            "conversation_id": head.conversation_id,
-            "user_id": head.user_id,
-            "seq": logged.seq,
-            "at": logged.at,
-        }
+        document = _document(head.conversation_id, head.user_id, logged)
         with store_errors("log append"):
             result = await self._raw_collection().update_one(
                 expected,
@@ -111,37 +103,43 @@ class ConversationLogRepository(ConversationRepository):
         user_id: str,
         after_seq: int = 0,
         through_seq: int | None = None,
+        ids: Sequence[str] | None = None,
     ) -> list[LoggedEntry] | None:
-        """Return the log entries after after_seq (through through_seq) in seq order; None for a missing conversation."""
+        """Return the log entries after after_seq (through through_seq, of ids) in seq order; None for a missing conversation."""
         heads = await self._read_heads({"conversation_id": conversation_id, "user_id": user_id})
         if not heads:
             return None
         before = None if through_seq is None else through_seq + 1
-        window = EntryWindow(after_seq=after_seq, before_seq=before, log=True)
+        window = EntryWindow(after_seq=after_seq, before_seq=before, ids=ids, log=True)
         [(_, rows)] = await self._union_for(heads, window)
         return [_logged(row) for row in rows]
 
-    async def amend_log_entry(
-        self, conversation_id: str, *, user_id: str, entry: Reply | UserMessage
-    ) -> LoggedEntry | None:
-        """Replace the content of the entry with entry's id and kind at its next revision; None when absent."""
-        content = entry.model_dump(mode="json", exclude={"id", "kind", "revision"})
-        revised = [
-            {
-                "$set": {
-                    **{name: {"$literal": value} for name, value in content.items()},
-                    "revision": {"$add": [{"$ifNull": ["$revision", 0]}, 1]},
-                }
-            }
-        ]
-        match = {"id": entry.id, "kind": entry.kind.value}
-        if not await self._update_entry(conversation_id, user_id, match, revised):
-            return None
-        with store_errors("log read"):
-            raw = await self._entries().find_one(
-                {"user_id": user_id, "conversation_id": conversation_id, **match}
+    async def stage_log_amend(
+        self, conversation_id: str, *, user_id: str, epoch: int, amended: LoggedEntry
+    ) -> bool:
+        """Stage amended in the head's outbox, only while epoch holds the step; the flush carries it to its document.
+
+        The one write of an amendment is this head update, so the epoch fence and the write are atomic.
+        """
+        with store_errors("log amend"):
+            result = await self._raw_collection().update_one(
+                {
+                    "conversation_id": conversation_id,
+                    "user_id": user_id,
+                    f"{RUNNER_FIELD}.epoch": epoch,
+                },
+                {
+                    "$set": {
+                        f"{OUTBOX_FIELD}.{amended.seq}": _document(
+                            conversation_id, user_id, amended
+                        )
+                    }
+                },
             )
-        return None if raw is None else _logged(raw)
+        if not result.matched_count:
+            return False
+        self._spawn_flush(conversation_id, user_id)
+        return True
 
     async def take_runner(
         self, conversation_id: str, *, user_id: str, runner_epoch: int, alive_key: str
@@ -249,6 +247,16 @@ class _StoredEntry(BaseModel):
 
     seq: int
     at: datetime
+
+
+def _document(conversation_id: str, user_id: str, logged: LoggedEntry) -> dict[str, object]:
+    return {
+        **logged.entry.model_dump(mode="json"),
+        "conversation_id": conversation_id,
+        "user_id": user_id,
+        "seq": logged.seq,
+        "at": logged.at,
+    }
 
 
 def _logged(raw: Mapping[str, object]) -> LoggedEntry:

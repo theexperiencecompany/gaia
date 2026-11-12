@@ -13,6 +13,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
+from pydantic import BaseModel, ConfigDict
 from pymongo.errors import PyMongoError
 
 from app.constants.chat import (
@@ -31,6 +32,8 @@ OUTBOX_FIELD = "outbox"
 STATE_FIELD = "state"
 RUNNER_FIELD = "runner"
 RUNNER_EPOCH_FIELD = "runner_epoch"
+#: On an amendable log entry (a reply, a user message): bumped by each amend, staged through the outbox.
+REVISION_FIELD = "revision"
 #: The message_id the migration last copied from the embedded array, so a later write by the old build shows.
 MIGRATED_LAST_ID_FIELD = "migrated_last_id"
 #: On a migrated entry: the hash of the embedded element it was copied from (verify compares it).
@@ -97,6 +100,30 @@ class Head:
     def known_seqs(self) -> dict[str, int]:
         """Every entry id this head's reads saw, outbox and collection both, by seq."""
         return {**self.existing, **{str(e["id"]): seq for seq, e in self.outbox.items()}}
+
+
+class _Revisioned(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    revision: int | None = None
+
+
+def revision_of(entry: Mapping[str, object]) -> int | None:
+    """Return an amendable log entry's revision; None for an entry no amend ever changes."""
+    return _Revisioned.model_validate(entry).revision
+
+
+def newest(
+    stored: Mapping[str, object] | None, staged: Mapping[str, object]
+) -> Mapping[str, object]:
+    """Pick the copy of one entry a read returns: the staged one unless the collection already holds its revision."""
+    if stored is None:
+        return staged
+    staged_revision = revision_of(staged)
+    if staged_revision is None:
+        return stored
+    stored_revision = revision_of(stored)
+    return staged if stored_revision is None or staged_revision > stored_revision else stored
 
 
 def is_log_entry(raw: Mapping[str, object]) -> bool:

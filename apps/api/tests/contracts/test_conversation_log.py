@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 import uuid
@@ -27,6 +27,7 @@ from app.models.conversation_log_models import (
     LoggedEntry,
     Rejected,
     Reply,
+    ReplyOutcome,
 )
 from app.models.conversation_models import ConversationDocument
 from app.services.conversation.mongo_log import MongoConversationLog
@@ -148,6 +149,61 @@ async def test_of_many_concurrent_claimers_exactly_one_wins(
     won = [claim for claim in claims if claim is not None]
     assert len(won) == 1
     assert (await log.hint(conversation, UID)).epoch == won[0].epoch
+
+
+class _ReadThenPause(ConversationLogRepository):
+    """Runs pause once, right after the next log read returns: the gap between an amend's read and its write."""
+
+    def __init__(self) -> None:
+        self.pause: Callable[[], Awaitable[None]] | None = None
+
+    async def read_log(
+        self,
+        conversation_id: str,
+        *,
+        user_id: str,
+        after_seq: int = 0,
+        through_seq: int | None = None,
+        ids: Sequence[str] | None = None,
+    ) -> list[LoggedEntry] | None:
+        rows = await super().read_log(
+            conversation_id, user_id=user_id, after_seq=after_seq, through_seq=through_seq, ids=ids
+        )
+        pause, self.pause = self.pause, None
+        if pause is not None:
+            await pause()
+        return rows
+
+
+async def test_a_holder_that_lost_its_claim_mid_amend_never_changes_the_entry(
+    conversation: str, redis: Redis, held: HeldFlushes
+) -> None:
+    stale_repository = _ReadThenPause()
+    stale = MongoConversationLog(stale_repository, FakeClock())
+    fresh = MongoConversationLog(ConversationLogRepository(), FakeClock())
+    await fresh.append(conversation, UID, user("u1"))
+    old = await stale.claim(conversation, UID)
+    assert old is not None
+    reply = opened("o", "r1")
+    await stale.append_fenced(old, reply)
+    await held.run_all()
+    recovered = reply.model_copy(update={"text": "what was shown"})
+
+    async def take_over() -> None:
+        await redis.flushdb()
+        new = await fresh.claim(conversation, UID)
+        assert new is not None
+        await fresh.amend(new, recovered)
+        await fresh.append_fenced(new, settled("s", [], 1, outcome=ReplyOutcome.FAILED))
+
+    stale_repository.pause = take_over
+    with pytest.raises(ClaimLost):
+        await stale.amend(old, reply.model_copy(update={"text": "late"}))
+    await held.run_all()
+    [stored] = [
+        item for item in await fresh.read_after(conversation, UID, 0) if item.entry.id == "o"
+    ]
+    assert stored.entry == recovered.model_copy(update={"revision": 1})
 
 
 async def test_a_stale_epoch_cannot_amend_and_a_released_one_cannot_beat(

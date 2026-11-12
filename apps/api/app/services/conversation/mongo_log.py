@@ -74,18 +74,29 @@ class MongoConversationLog:
         return await self._append(claim.conversation_id, claim.user_id, entry, epoch=claim.epoch)
 
     async def amend(self, claim: StepClaim, entry: Reply | UserMessage) -> LoggedEntry:
-        """Replace the stored entry with entry's id in place at its next revision, fenced."""
-        # The entry is its own document, so the fence is a read of the head just before the write.
-        if (await self._head(claim.conversation_id, claim.user_id)).holder != claim.epoch:
-            raise ClaimLost
-        amended = await self._repository.amend_log_entry(
-            claim.conversation_id, user_id=claim.user_id, entry=entry
+        """Replace the stored entry with entry's id in place at its next revision, fenced; never a state change."""
+        found = await self._repository.read_log(
+            claim.conversation_id, user_id=claim.user_id, ids=[entry.id]
         )
-        if amended is None:
+        if found is None:
+            raise _not_found(claim.conversation_id)
+        stored = found[0] if found else None
+        previous = None if stored is None else stored.entry
+        if (
+            stored is None
+            or not isinstance(previous, Reply | UserMessage)
+            or type(previous) is not type(entry)
+        ):
             raise ConversationEntryNotFoundError(
                 message=f"no {entry.kind} entry {entry.id} in conversation {claim.conversation_id}",
                 meta={"conversation_id": claim.conversation_id, "entry_id": entry.id},
             )
+        revised = entry.model_copy(update={"revision": previous.revision + 1})
+        amended = stored.model_copy(update={"entry": revised})
+        if not await self._repository.stage_log_amend(
+            claim.conversation_id, user_id=claim.user_id, epoch=claim.epoch, amended=amended
+        ):
+            raise ClaimLost
         return amended
 
     async def read_after(

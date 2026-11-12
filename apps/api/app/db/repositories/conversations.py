@@ -40,6 +40,7 @@ from app.db.repositories.conversation_entries import (
     MESSAGES_ONLY,
     MIGRATED_LAST_ID_FIELD,
     OUTBOX_FIELD,
+    REVISION_FIELD,
     RUNNER_EPOCH_FIELD,
     RUNNER_FIELD,
     STATE_FIELD,
@@ -52,7 +53,9 @@ from app.db.repositories.conversation_entries import (
     filled,
     head_fields,
     head_from_raw,
+    newest,
     parked,
+    revision_of,
     still_waiting,
     store_errors,
     stored_message,
@@ -352,13 +355,29 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         outbox = head_from_raw({OUTBOX_FIELD: (raw or {}).get(OUTBOX_FIELD)}).outbox
         if not outbox:
             return
+        head = {"conversation_id": conversation_id, "user_id": user_id}
+        revisions = {seq: revision_of(entry) for seq, entry in outbox.items()}
+        once = [seq for seq, revision in revisions.items() if revision is None]
         with store_errors("flush"):
-            await self._insert_entries([dict(entry) for entry in outbox.values()])
-            unset = await self._raw_collection().update_one(
-                {"conversation_id": conversation_id, "user_id": user_id},
-                {"$unset": {f"{OUTBOX_FIELD}.{seq}": "" for seq in outbox}},
-            )
-            if not unset.matched_count:
+            if once:
+                await self._insert_entries([dict(outbox[seq]) for seq in once])
+            for seq, revision in revisions.items():
+                if revision is None:
+                    continue
+                await self._place_revision(head, seq, revision, outbox[seq])
+                # An amend staged after this read keeps its newer revision for the next flush.
+                await self._raw_collection().update_one(
+                    {**head, f"{OUTBOX_FIELD}.{seq}.{REVISION_FIELD}": revision},
+                    {"$unset": {f"{OUTBOX_FIELD}.{seq}": ""}},
+                )
+            if once:
+                unset = await self._raw_collection().update_one(
+                    head, {"$unset": {f"{OUTBOX_FIELD}.{seq}": "" for seq in once}}
+                )
+                gone = not unset.matched_count
+            else:
+                gone = not await self._count(head)
+            if gone:
                 # The conversation was deleted while this flush ran: take back what it inserted.
                 await self._entries().delete_many(
                     {
@@ -1019,6 +1038,17 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     meta={"conflicts": len(conflicts)},
                 ) from exc
 
+    async def _place_revision(
+        self, head: Mapping[str, object], seq: int, revision: int, entry: Mapping[str, object]
+    ) -> None:
+        """Write an amendable entry's document, unless the collection already holds this revision or a newer one."""
+        try:
+            await self._entries().insert_one(dict(entry))
+        except DuplicateKeyError:
+            await self._entries().replace_one(
+                {**head, "seq": seq, REVISION_FIELD: {"$lt": revision}}, dict(entry)
+            )
+
     async def _read_entries(
         self, conversation_id: str, *, user_id: str, window: EntryWindow | None = None
     ) -> list[ConversationEntry]:
@@ -1071,7 +1101,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             union = dict(stored.get((head.user_id, head.conversation_id), {}))
             for seq, entry in head.outbox.items():
                 if window.admits(seq, entry, head.log_head):
-                    union.setdefault(seq, entry)
+                    union[seq] = newest(union.get(seq), entry)
             result.append((head, window.take(union)))
         return result
 
@@ -1149,10 +1179,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     ) -> bool:
         """Update one stored message (every matching one with every_match); one still in the outbox is flushed first.
 
-        A match that names a kind updates that kind instead. Never writes inside the outbox:
-        a miss flushes it and retries once.
+        Never writes inside the outbox: a miss flushes it and retries once.
         """
-        query = {"user_id": user_id, "conversation_id": conversation_id, **MESSAGES_ONLY, **match}
+        query = {"user_id": user_id, "conversation_id": conversation_id, **match, **MESSAGES_ONLY}
         filters = [dict(f) for f in array_filters] if array_filters is not None else None
         document: dict[str, object] | list[dict[str, object]] = (
             dict(update) if isinstance(update, Mapping) else [dict(stage) for stage in update]
