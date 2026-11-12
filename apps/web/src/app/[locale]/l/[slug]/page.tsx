@@ -74,8 +74,15 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const meta = await fetchLinkMeta(slug);
+  // The generated card lives on whichever host served this page: the site-wide
+  // metadataBase is GAIA Cloud's, which would point a self-host's previews there.
+  const requestHeaders = await headers();
+  const host =
+    requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
+  const proto = requestHeaders.get("x-forwarded-proto") ?? "https";
+  const card = `/api/og/link?slug=${encodeURIComponent(slug)}`;
   const image = {
-    url: meta.image_url ?? `/api/og/link?slug=${encodeURIComponent(slug)}`,
+    url: meta.image_url ?? (host ? `${proto}://${host}${card}` : card),
     width: OG_IMAGE_WIDTH,
     height: OG_IMAGE_HEIGHT,
   };

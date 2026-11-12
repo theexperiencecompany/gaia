@@ -61,6 +61,7 @@ class TestActiveHtml:
         ):
             assert directive in csp
         assert headers["cache-control"] == "private, max-age=600"
+        assert headers["vary"] == "Sec-Fetch-Dest"
 
     @pytest.mark.parametrize("dest", ["document", None, "image", "embed", "object", ""])
     def test_anywhere_else_it_goes_back_to_the_link(self, dest: str | None) -> None:
@@ -69,6 +70,7 @@ class TestActiveHtml:
         )
         assert response.status_code == 302
         assert response.headers["location"] == LINK
+        assert response.headers["cache-control"] == "no-store"
         assert response.body == b""
 
 

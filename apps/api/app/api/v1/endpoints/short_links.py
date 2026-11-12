@@ -105,6 +105,7 @@ def _viewer(request: Request, user: AuthenticatedUser | None) -> LinkViewer:
         user_id=user.user_id if user else None,
         # A local sign-in's email is whatever was typed at signup, so it grants nothing there.
         email=user.email if user and not settings.deployment.local_auth else None,
+        signed_in_as=user.email if user else None,
         ip=viewer_ip(request),
         user_agent=request.headers.get("user-agent", ""),
     )

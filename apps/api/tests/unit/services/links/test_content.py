@@ -329,7 +329,7 @@ LINK = ShortLink(
 class TestContentTokens:
     def test_a_fresh_url_carries_a_token_for_its_own_origin(self, origin: None) -> None:
         url, expires_at = issue_content_url(LINK, CID, NOW)
-        assert url.startswith(f"https://{CID}.u.heygaia.test/?t=")
+        assert url.startswith(f"https://{CID}.u.heygaia.test?t=")
         assert expires_at == NOW + timedelta(seconds=CONTENT_TOKEN_TTL_SECONDS)
         token = url.split("?t=", 1)[1]
         assert token_valid(LINK, CID, token, NOW + timedelta(seconds=CONTENT_TOKEN_TTL_SECONDS - 1))

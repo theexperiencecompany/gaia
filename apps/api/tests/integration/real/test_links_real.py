@@ -332,6 +332,8 @@ class TestLocalSignIn:
         member = await _open(client, link["slug"])
 
         assert impostor.status_code == 403
+        # The page still tells them which account they are in; it just grants nothing.
+        assert impostor.json()["signed_in_as"] == "friend@example.com"
         assert member.status_code == 200
         assert (await _stored(link["slug"])).grantee_ids == [member_id]
 
@@ -525,9 +527,9 @@ class TestSharedFiles:
         cid = content["content_id"]
         token = await client.post(f"/api/v1/l/{slug}/content-token")
         url = token.json()["content_url"]
-        assert url.startswith(f"http://{cid}.u.test/api/v1/usercontent/{cid}/?t=")
-        query = url.split("?", 1)[1]
-        path = f"/api/v1/usercontent/{cid}?{query}"
+        # The signed URL itself is fetched, so a redirect-inducing shape (a trailing slash) fails here.
+        assert url.startswith(f"http://{cid}.u.test/api/v1/usercontent/{cid}?t=")
+        path = url.removeprefix(f"http://{cid}.u.test")
         origin_host = f"{cid}.u.test"
 
         framed = await client.get(path, headers={"host": origin_host, "sec-fetch-dest": "iframe"})

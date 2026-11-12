@@ -416,7 +416,7 @@ def issue_content_url(link: ShortLink, content_id: str, now: datetime) -> tuple[
     expires_at = now + timedelta(seconds=CONTENT_TOKEN_TTL_SECONDS)
     expires = int(expires_at.timestamp())
     token = f"{expires}.{_signature(content_id, link, expires)}"
-    return f"{content_origin_base(content_id)}/?t={token}", expires_at
+    return f"{content_origin_base(content_id)}?t={token}", expires_at
 
 
 def token_valid(link: ShortLink, content_id: str, token: str, now: datetime) -> bool:

@@ -49,18 +49,25 @@ def _attachment(filename: str) -> str:
 
 
 def _response(
-    body: bytes, media_type: str, csp: str, disposition: str, cache_control: str
+    body: bytes,
+    media_type: str,
+    csp: str,
+    disposition: str,
+    cache_control: str,
+    *,
+    varies_by_dest: bool = False,
 ) -> Response:
-    return Response(
-        body,
-        media_type=media_type,
-        headers={
-            **_SHARED_HEADERS,
-            "Content-Security-Policy": csp,
-            "Content-Disposition": disposition,
-            "Cache-Control": cache_control,
-        },
-    )
+    headers = {
+        **_SHARED_HEADERS,
+        "Content-Security-Policy": csp,
+        "Content-Disposition": disposition,
+        "Cache-Control": cache_control,
+    }
+    if varies_by_dest:
+        # The answer depends on the requesting element: a cached iframe copy must never
+        # satisfy a top-level navigation, which gets the redirect (or download) instead.
+        headers["Vary"] = "Sec-Fetch-Dest"
+    return Response(body, media_type=media_type, headers=headers)
 
 
 def snapshot_response(
@@ -75,14 +82,28 @@ def snapshot_response(
     match snapshot.render:
         case RenderMode.FRAME_ACTIVE:
             if fetch_dest != "iframe":
-                return RedirectResponse(link_url, status_code=302)
+                return RedirectResponse(
+                    link_url, status_code=302, headers={"Cache-Control": "no-store"}
+                )
             csp = _FRAME_ACTIVE_CSP.format(app_origin=app_origin)
             return _response(
-                body, f"{snapshot.mime}; charset=utf-8", csp, "inline", SNAPSHOT_CACHE_CONTROL
+                body,
+                f"{snapshot.mime}; charset=utf-8",
+                csp,
+                "inline",
+                SNAPSHOT_CACHE_CONTROL,
+                varies_by_dest=True,
             )
         case RenderMode.IMAGE_SVG:
             disposition = "inline" if fetch_dest == "image" else _attachment(snapshot.filename)
-            return _response(body, snapshot.mime, _SVG_CSP, disposition, SNAPSHOT_CACHE_CONTROL)
+            return _response(
+                body,
+                snapshot.mime,
+                _SVG_CSP,
+                disposition,
+                SNAPSHOT_CACHE_CONTROL,
+                varies_by_dest=True,
+            )
         case RenderMode.PDF:
             csp = _PDF_CSP.format(app_origin=app_origin)
             return _response(body, snapshot.mime, csp, "inline", SNAPSHOT_CACHE_CONTROL)

@@ -120,6 +120,8 @@ class LinkViewer:
     email: str | None
     ip: str
     user_agent: str
+    #: The account's email as the viewer sees it on a FORBIDDEN page; never matched against a grant.
+    signed_in_as: str | None = None
 
 
 class LinkSnapshot(BaseModel):

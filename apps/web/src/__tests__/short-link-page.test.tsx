@@ -7,8 +7,9 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let userAgent = "Mozilla/5.0 (Macintosh)";
+let host = "gaia.example.org";
 vi.mock("next/headers", () => ({
-  headers: async () => new Headers({ "user-agent": userAgent }),
+  headers: async () => new Headers({ "user-agent": userAgent, host }),
 }));
 vi.mock("@/features/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isAuthenticated: false }),
@@ -42,6 +43,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
   userAgent = "Mozilla/5.0 (Macintosh)";
+  host = "gaia.example.org";
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -70,7 +72,14 @@ describe("generateMetadata", () => {
     expect(metadata.robots).toEqual({ index: true, follow: true });
     expect(metadata.openGraph).toMatchObject({
       siteName: "GAIA",
-      images: [{ url: `/api/og/link?slug=${SLUG}`, width: 1200, height: 630 }],
+      // On the host that served the page, never GAIA Cloud's site URL: a self-host previews itself.
+      images: [
+        {
+          url: `https://gaia.example.org/api/og/link?slug=${SLUG}`,
+          width: 1200,
+          height: 630,
+        },
+      ],
     });
     expect(metadata.twitter).toMatchObject({ card: "summary_large_image" });
   });

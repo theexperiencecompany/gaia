@@ -412,7 +412,7 @@ def _deny(link: ShortLink | None, viewer: LinkViewer, denial: LinkDenial) -> Lin
             ShortLinkDenied(target_type=link.target_type.value, reason=reason),
             _day_dedupe(link.slug, viewer, reason),
         )
-    signed_in_as = viewer.email if denial is LinkDenial.FORBIDDEN else None
+    signed_in_as = viewer.signed_in_as if denial is LinkDenial.FORBIDDEN else None
     return LinkDeniedError.for_denial(denial, signed_in_as=signed_in_as)
 
 
