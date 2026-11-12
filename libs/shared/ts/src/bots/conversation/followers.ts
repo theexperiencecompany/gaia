@@ -105,7 +105,6 @@ export class ConversationFollowers {
           wideLog.set({
             replies_delivered: summary.repliesDelivered,
             reactions_placed: summary.reactionsPlaced,
-            quotes_missed: summary.quotesMissed,
           });
         }
       },

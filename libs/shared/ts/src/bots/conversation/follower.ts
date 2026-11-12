@@ -7,8 +7,8 @@
  *
  * - a reply's deltas stream into edited messages on live platforms (Telegram,
  *   Slack); the others send the reply's saved text once it settles;
- * - ReplySettled finishes the reply, and its quote_target becomes a native
- *   reply to that user message's platform message;
+ * - a Reply's quote_target, known when it opens, makes its first message a
+ *   native reply to that user message's platform message;
  * - a user message's reaction becomes a native reaction on it;
  * - the typing indicator runs while GAIA is thinking or working.
  *
@@ -23,6 +23,7 @@ import type {
   ConversationView,
   Entry,
   LoggedEntry,
+  Reply,
 } from "../../conversation/types";
 import { applyFrame, EMPTY_CONVERSATION_VIEW } from "../../conversation/view";
 import { formatBotError, PLATFORM_MARKDOWN } from "../utils/formatters";
@@ -74,7 +75,6 @@ export class ConversationFollower {
   readonly summary: FollowSummary = {
     repliesDelivered: 0,
     reactionsPlaced: 0,
-    quotesMissed: 0,
   };
 
   constructor(
@@ -188,15 +188,15 @@ export class ConversationFollower {
   /** The open reply for an attempt whose Reply entry is past the floor; null for history. */
   private replyFor(attemptId: string): OpenReply | null {
     if (this.open?.attempts.has(attemptId)) return this.open;
-    const opened = this.view.entries.some(
+    const opened = this.view.entries.find(
       ({ seq, entry }) =>
         seq > this.floor &&
         entry.kind === ENTRY_KIND.REPLY &&
         entry.attempt_id === attemptId,
-    );
-    if (!opened) return null;
+    )?.entry;
+    if (opened?.kind !== ENTRY_KIND.REPLY) return null;
     // A retracted attempt leaves its reply open: the next attempt overwrites it in place.
-    this.open ??= { delivery: this.newDelivery(), attempts: new Set() };
+    this.open ??= { delivery: this.newDelivery(opened), attempts: new Set() };
     this.open.attempts.add(attemptId);
     return this.open;
   }
@@ -220,15 +220,10 @@ export class ConversationFollower {
     if (this.finishedReplies.has(settled.reply_id)) return;
     this.finishedReplies.add(settled.reply_id);
     this.clearPreview();
-    const delivery = this.open?.delivery ?? this.newDelivery();
+    const reply = this.savedReply(settled.reply_id);
+    const delivery = this.open?.delivery ?? this.newDelivery(reply);
     this.open = null;
-    const saved = this.savedText(settled.reply_id);
-    const target = this.quoteTarget(settled.quote_target);
-    if (target && !delivery.quote(target)) {
-      // A live reply opened its first message before the quote was known.
-      this.summary.quotesMissed += 1;
-      logger.info("reply_quote_missed", { reply_id: settled.reply_id });
-    }
+    const saved = reply?.text ?? "";
     if (delivery.streamed !== saved) {
       // What streamed is not what was saved (a delta gap, or nothing streamed): show the saved text.
       if (delivery.opened) await delivery.boundary(true);
@@ -245,12 +240,12 @@ export class ConversationFollower {
     if (delivery.opened) this.summary.repliesDelivered += 1;
   }
 
-  private savedText(replyId: string): string {
+  private savedReply(replyId: string): Reply | null {
     const reply = this.view.entries.findLast(
       ({ entry }) =>
         entry.kind === ENTRY_KIND.REPLY && entry.reply_id === replyId,
     )?.entry;
-    return reply?.kind === ENTRY_KIND.REPLY ? reply.text : "";
+    return reply?.kind === ENTRY_KIND.REPLY ? reply : null;
   }
 
   /** The platform message of the user message a reply quotes, when this follow holds it. */
@@ -266,11 +261,12 @@ export class ConversationFollower {
     return found.entry.platform_message_id;
   }
 
-  private newDelivery(): ReplyDelivery {
+  private newDelivery(reply: Reply | null): ReplyDelivery {
     const { platform, streaming } = this.options;
     return new ReplyDelivery(
       { live: streaming, platform, render: PLATFORM_MARKDOWN[platform] },
       this.surface,
+      this.quoteTarget(reply?.quote_target ?? null),
     );
   }
 

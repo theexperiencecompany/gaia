@@ -35,6 +35,7 @@ export const reply = (
   attemptId: string,
   text = "",
   revision = 0,
+  quoteTarget: string | null = null,
 ): Entry => ({
   kind: "reply",
   id: `entry-${replyId}`,
@@ -43,6 +44,7 @@ export const reply = (
   text,
   tool_data: [],
   follow_up_actions: [],
+  quote_target: quoteTarget,
   heard_through: null,
   revision,
 });
@@ -53,6 +55,10 @@ export const replySettled = (
   through: number,
   quoteTarget: string | null = null,
   outcome: "answered" | "stopped" | "failed" | "silent" = "answered",
+  failure: "model_error" | "step_limit" | "server_restart" | null = outcome ===
+  "failed"
+    ? "model_error"
+    : null,
 ): Entry => ({
   kind: "reply_settled",
   id: `settled-${replyId}`,
@@ -61,14 +67,20 @@ export const replySettled = (
   answers,
   through,
   quote_target: quoteTarget,
+  failure,
 });
 
-export const workStarted = (taskId: string, causeThrough: number): Entry => ({
+export const workStarted = (
+  taskId: string,
+  causeThrough: number,
+  joins: string | null = null,
+): Entry => ({
   kind: "work_started",
   id: `started-${taskId}`,
   task_id: taskId,
   cause_through: causeThrough,
   answers: [],
+  joins,
 });
 
 export const workFinished = (
@@ -85,11 +97,15 @@ export const workFinished = (
 export const approvalRequested = (
   taskId: string,
   approvalId: string,
+  summary = "",
+  expiresAt: string | null = null,
 ): Entry => ({
   kind: "approval_requested",
   id: `requested-${approvalId}`,
   task_id: taskId,
   approval_id: approvalId,
+  summary,
+  expires_at: expiresAt,
 });
 
 export const approvalDecided = (approvalId: string): Entry => ({

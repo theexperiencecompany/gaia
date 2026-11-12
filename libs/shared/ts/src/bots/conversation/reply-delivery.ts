@@ -5,7 +5,7 @@
  * The follower feeds it the reply's streamed text and boundaries (live
  * platforms) or its saved text at settle (the rest), and the machine decides
  * every send, edit, delete and pause. The first message the reply opens carries
- * the native quote, when the reply has one by then.
+ * the native quote.
  */
 
 import { initialDeliveryState, stepDelivery } from "../utils/bubble-delivery";
@@ -30,12 +30,12 @@ export class ReplyDelivery {
   private readonly messages = new Map<MessageSlot, SentBubble>();
   /** Every response chunk fed so far, to compare with the reply's saved text. */
   private fed = "";
-  /** The platform message the reply's first message answers natively. */
-  private replyTo: string | null = null;
 
   constructor(
     private readonly config: DeliveryConfig,
     private readonly surface: ConversationSurface,
+    /** The platform message the reply's first message answers natively. */
+    private readonly replyTo: string | null,
   ) {}
 
   /** The text streamed into this reply so far. */
@@ -46,13 +46,6 @@ export class ReplyDelivery {
   /** Whether any message of this reply is on screen. */
   get opened(): boolean {
     return this.messages.size > 0;
-  }
-
-  /** Quote replyTo with the first message this reply opens; too late once one is open. */
-  quote(replyTo: string): boolean {
-    if (this.opened) return false;
-    this.replyTo = replyTo;
-    return true;
   }
 
   text(chunk: string): Promise<void> {

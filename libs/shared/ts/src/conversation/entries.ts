@@ -121,6 +121,7 @@ const WorkStartedSchema = z.object({
   task_id: z.string(),
   cause_through: z.number().int().min(1),
   answers: z.array(z.string()).default([]),
+  joins: nullableString,
 });
 
 const ApprovalRequestedSchema = z.object({
@@ -128,6 +129,8 @@ const ApprovalRequestedSchema = z.object({
   id,
   task_id: z.string(),
   approval_id: z.string(),
+  summary: z.string().default(""),
+  expires_at: z.iso.datetime({ offset: true }).nullable().default(null),
 });
 
 const ApprovalDecidedSchema = z.object({
@@ -168,6 +171,7 @@ export const ReplySchema = z.object({
   text: z.string().default(""),
   tool_data: z.array(ToolDataEntrySchema).default([]),
   follow_up_actions: z.array(z.string()).default([]),
+  quote_target: nullableString,
   heard_through: z.number().int().min(0).nullable().default(null),
   revision,
 });
@@ -186,7 +190,16 @@ const ReplySettledSchema = z
     answers: z.array(z.string()),
     through: z.number().int().min(0),
     quote_target: z.string().nullable(),
+    failure: z
+      .enum(["model_error", "step_limit", "server_restart"])
+      .nullable()
+      .default(null),
   })
+  .refine(
+    (entry) =>
+      (entry.failure === null) !== (entry.outcome === REPLY_OUTCOME.FAILED),
+    { message: "a failed reply names its failure, and only a failed one does" },
+  )
   .refine(
     (entry) =>
       entry.answers.length > 0 || MAY_ANSWER_NOTHING.has(entry.outcome),

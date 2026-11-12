@@ -308,6 +308,26 @@ describe("parseConversationFrame", () => {
       "invalid_frame",
     ],
     [
+      "a failed reply that names no failure",
+      JSON.stringify({
+        kind: "entry",
+        seq: 2,
+        at: AT,
+        entry: settled("failed", []),
+      }),
+      "invalid_frame",
+    ],
+    [
+      "an answered reply that names a failure",
+      JSON.stringify({
+        kind: "entry",
+        seq: 2,
+        at: AT,
+        entry: { ...settled("answered", ["m1"]), failure: "model_error" },
+      }),
+      "invalid_frame",
+    ],
+    [
       "an answered reply that answers nothing",
       JSON.stringify({
         kind: "entry",
@@ -322,6 +342,19 @@ describe("parseConversationFrame", () => {
     expect(result.ok).toBe(false);
     expect(!result.ok && result.error.kind).toBe(kind);
     expect(!result.ok && result.error.raw).toBe(raw);
+  });
+
+  it("reads a failed reply's failure", () => {
+    const frame = frameOf({
+      kind: "entry",
+      seq: 2,
+      at: AT,
+      entry: { ...settled("failed", []), failure: "step_limit" },
+    });
+    expect(frame.kind === "entry" && frame.entry).toMatchObject({
+      outcome: "failed",
+      failure: "step_limit",
+    });
   });
 
   it("lets a stopped reply settle with no answers", () => {

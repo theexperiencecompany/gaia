@@ -293,9 +293,9 @@ describe("a late result's native quote", () => {
       entryFrame(5, inbound("u2", "12")),
       ...answer(6, "r2", "Sure, noted.", ["u2"], 5),
       entryFrame(8, workFinished("t1")),
-      entryFrame(9, replyEntry("t1", "a-t1")),
+      entryFrame(9, replyEntry("t1", "a-t1", "", 0, "u1")),
       ...(streamed ? [replyDelta("a-t1", "t1", 0, text)] : []),
-      entryUpdatedFrame(9, replyEntry("t1", "a-t1", text, 1)),
+      entryUpdatedFrame(9, replyEntry("t1", "a-t1", text, 1, "u1")),
       entryFrame(10, replySettled("t1", ["u1"], 8, "u1")),
       stateFrame(10, "idle"),
     ];
@@ -327,10 +327,9 @@ describe("a late result's native quote", () => {
       text: "Your flight is booked.",
       replyTo: "11",
     });
-    expect(follower.summary.quotesMissed).toBe(0);
   });
 
-  it("cannot quote retroactively once an editing platform streamed the result", async () => {
+  it("quotes it on the first bubble an editing platform streams", async () => {
     const { surface, calls } = recorder();
     const follower = new ConversationFollower(0, EDITING, surface);
     follower.expect(1);
@@ -338,8 +337,10 @@ describe("a late result's native quote", () => {
     await feed(follower, lateResult(true));
 
     expect(screen(calls).at(-1)).toBe("Your flight is booked.");
-    expect(sent(calls).at(-1)?.replyTo).toBeNull();
-    expect(follower.summary.quotesMissed).toBe(1);
+    expect(sent(calls).at(-1)).toEqual({
+      text: "Your flight is booked.",
+      replyTo: "11",
+    });
   });
 });
 

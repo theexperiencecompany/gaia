@@ -37,5 +37,4 @@ export interface ConversationSurface {
 export interface FollowSummary {
   repliesDelivered: number;
   reactionsPlaced: number;
-  quotesMissed: number;
 }
