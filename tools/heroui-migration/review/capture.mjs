@@ -10,7 +10,7 @@
  * Run it twice per build: compare.mjs treats pixels that differ between two runs
  * of the same build as noise and masks them before diffing the builds.
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, finishAnimations, load, networkQuiet, newContext, stepLocator } from "./browser.mjs";
@@ -28,6 +28,7 @@ const RUN = Number(arg("run", 1));
 const BASE = arg("base", WEB_BASE[LABEL]);
 const OUT = resolve(arg("out", DEFAULT_OUT));
 const ONLY = arg("only")?.split(",");
+const AREAS = arg("areas")?.split(",");
 const WORKERS = Number(arg("workers", 4));
 const DIR = join(OUT, "shots", LABEL, `run${RUN}`);
 
@@ -36,7 +37,7 @@ const seed = JSON.parse(readFileSync(join(OUT, "seed-state.json"), "utf8"));
 const states = JSON.parse(readFileSync(join(HERE, "states.json"), "utf8"));
 
 const jobs = [];
-for (const target of inventory.targets.filter((t) => !ONLY || ONLY.includes(t.key))) {
+for (const target of inventory.targets.filter((t) => (!ONLY || ONLY.includes(t.key)) && (!AREAS || AREAS.includes(t.area)))) {
   const list = states[target.key];
   if (!Array.isArray(list)) throw new Error(`states.json has no state list for ${target.key}: run discover.mjs`);
   for (const vp of VIEWPORTS) jobs.push({ target, vp, steps: list });
@@ -71,8 +72,8 @@ async function shootState(page, job, step, entry) {
   }
   await loc.scrollIntoViewIfNeeded();
   await networkQuiet(page, 400, 6000);
-  if (step.action === "hover") await loc.hover();
-  else await loc.click();
+  if (step.action === "hover") await loc.hover({ timeout: 8000 });
+  else await loc.click({ timeout: 8000 });
   await page.waitForTimeout(step.action === "hover" ? 900 : 600);
   await finishAnimations(page);
   const file = join(DIR, job.vp.name, fileOf(job.target.key, stateId(step)));
@@ -113,18 +114,23 @@ async function worker() {
 
 await Promise.all(Array.from({ length: WORKERS }, worker));
 await browser.close();
-results.sort((a, b) => `${a.key}|${a.vp}|${a.state}`.localeCompare(`${b.key}|${b.vp}|${b.state}`));
+// A partial capture (--only / --areas) replaces its own targets' entries in the run's manifest.
+const manifestPath = join(DIR, "manifest.json");
+const previous = existsSync(manifestPath) && (ONLY || AREAS) ? JSON.parse(readFileSync(manifestPath, "utf8")) : null;
+const captured = new Set(results.map((r) => r.key));
+const shots = [...(previous?.shots ?? []).filter((s) => !captured.has(s.key)), ...results];
+shots.sort((a, b) => `${a.key}|${a.vp}|${a.state}`.localeCompare(`${b.key}|${b.vp}|${b.state}`));
 const manifest = {
   label: LABEL,
   run: RUN,
   base: BASE,
   capturedAt: new Date().toISOString(),
   seededAt: seed.seededAt,
-  blockedMutations: [...log.blocked].sort(),
-  thirdPartyFetched: [...log.fetched].sort(),
-  shots: results,
+  blockedMutations: [...new Set([...(previous?.blockedMutations ?? []), ...log.blocked])].sort(),
+  thirdPartyFetched: [...new Set([...(previous?.thirdPartyFetched ?? []), ...log.fetched])].sort(),
+  shots,
 };
-writeFileSync(join(DIR, "manifest.json"), JSON.stringify(manifest, null, 1));
+writeFileSync(manifestPath, JSON.stringify(manifest, null, 1));
 const errors = results.filter((r) => r.error);
 console.log(`\n  ${results.filter((r) => r.file).length} shots, ${errors.length} errors, ${results.filter((r) => r.missing).length} missing triggers -> ${DIR}`);
 for (const e of errors.slice(0, 15)) console.log(`    ${e.key} [${e.vp}] ${e.state}: ${e.error}`);

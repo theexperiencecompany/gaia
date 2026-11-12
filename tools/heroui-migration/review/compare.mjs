@@ -12,9 +12,8 @@
  * (the after shot dimmed, changed pixels red, masked noise blue).
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
-import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_OUT } from "./config.mjs";
 
@@ -165,7 +164,13 @@ function diffImage(after, mask, noise, w, h) {
   return out;
 }
 
-const keys = [...new Set([...idx.before[0].keys(), ...(idx.after[0]?.keys() ?? [])])].sort();
+const AREAS = arg("areas")?.split(",");
+const NAME = arg("name");
+if (AREAS && !NAME) throw new Error("--areas needs --name (the report/areas/<name>.json it writes)");
+const areaOfShot = (k) => targetByKey.get(k.split("|")[0])?.area;
+const keys = [...new Set([...idx.before[0].keys(), ...(idx.after[0]?.keys() ?? [])])]
+  .filter((k) => !AREAS || AREAS.includes(areaOfShot(k)))
+  .sort();
 const rows = [];
 const noiseStats = { before: { shots: 0, stable: 0, px: 0, total: 0 }, after: { shots: 0, stable: 0, px: 0, total: 0 } };
 let n = 0;
@@ -229,7 +234,9 @@ const data = {
   blockedMutations: { before: runs.before[0]?.blockedMutations ?? [], after: runs.after[0]?.blockedMutations ?? [] },
   rows,
 };
-mkdirSync(join(OUT, "report"), { recursive: true });
-writeFileSync(join(OUT, "report", "data.json"), JSON.stringify(data));
-console.log(`\n  ${rows.length} shots compared -> ${join(OUT, "report/data.json")}`);
+// A per-area run (--areas/--name) publishes only that area's rows, for work to start before the rest finishes.
+const outFile = AREAS ? join(OUT, "report", "areas", `${NAME}.json`) : join(OUT, "report", "data.json");
+mkdirSync(dirname(outFile), { recursive: true });
+writeFileSync(outFile, JSON.stringify(AREAS ? { ...data, areas: AREAS, rows: [...rows].sort((p, q) => (q.changedPct ?? -1) - (p.changedPct ?? -1)) } : data, null, AREAS ? 1 : 0));
+console.log(`\n  ${rows.length} shots compared -> ${outFile}`);
 for (const [k, s] of Object.entries(data.noise)) if (s.shots) console.log(`  noise ${k}: ${s.stableShots}/${s.shots} shots pixel-identical across runs, ${s.noisyPixelPct.toFixed(4)}% of pixels masked`);
