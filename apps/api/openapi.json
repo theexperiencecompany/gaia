@@ -3891,16 +3891,6 @@
             "title": "Messages",
             "type": "array"
           },
-          "runtime": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConversationRuntime"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "source": {
             "anyOf": [
               {
@@ -4455,14 +4445,6 @@
         ],
         "title": "ConversationModel",
         "type": "object"
-      },
-      "ConversationRuntime": {
-        "description": "What runs a conversation: absent on the head means the legacy per-turn stream.",
-        "enum": [
-          "step"
-        ],
-        "title": "ConversationRuntime",
-        "type": "string"
       },
       "ConversationSource": {
         "description": "Client or channel a conversation originated from.",

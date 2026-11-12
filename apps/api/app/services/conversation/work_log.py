@@ -1,8 +1,4 @@
-"""Background work as conversation log entries: started (fenced on the step's claim), approvals, finished.
-
-Callers write these only for runs the conversation step started (conversation_step on their
-configurable), so the legacy stream path keeps its own side channels unchanged.
-"""
+"""Background work as conversation log entries: started (fenced on the step's claim), approvals, finished."""
 
 from app.constants.hil import ApprovalResolution
 from app.models.agent_config import StepTurnRef
@@ -19,7 +15,7 @@ from app.models.conversation_log_models import (
 )
 from app.services.conversation.log import accept, publish_appended
 from app.services.conversation.ports import ClaimLost, EntryRejected
-from app.services.conversation.runtime import runs_on_step, runtime_ports
+from app.services.conversation.runtime import runtime_ports
 from shared.py.wide_events import log
 
 
@@ -99,9 +95,7 @@ async def record_gaia_stop(
 
 
 async def record_user_stop(conversation_id: str, user_id: str, stop_id: str) -> None:
-    """Log the user's Stop on a step-run conversation; its effects preempt the step and cancel the work it covers."""
-    if not await runs_on_step(conversation_id, user_id):
-        return
+    """Log the user's Stop; its effects preempt the step and cancel the work it covers."""
     await accept(
         runtime_ports(),
         conversation_id,

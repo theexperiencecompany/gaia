@@ -15,6 +15,7 @@ from app.constants.desk_buckets import EMAIL_VERDICT_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.constants.payments import CLAIMED_STATUS
 from app.db.mongodb.collections import get_async_collection
+from app.db.repositories.conversation_log import SWEEP_DUE_FILTER, SWEEP_INDEX_NAME
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.db.repositories.users import user_repository
@@ -269,11 +270,11 @@ CONVERSATION_TODO_BINDING_OPTIONS: IndexOptions = {
 }
 
 
-# The sweeper's scan: only heads the conversation step runs, a few among every conversation.
-CONVERSATION_STEP_SWEEP_KEYS: IndexKeys = [("runtime", 1), ("updatedAt", -1)]
-CONVERSATION_STEP_SWEEP_OPTIONS: IndexOptions = {
-    "name": "conversation_step_sweep",
-    "partialFilterExpression": {"runtime": {"$type": "string"}},
+# The sweeper's scan: only heads it has something to finish on, a few among every conversation.
+CONVERSATION_SWEEP_KEYS: IndexKeys = [("updatedAt", -1)]
+CONVERSATION_SWEEP_OPTIONS: IndexOptions = {
+    "name": SWEEP_INDEX_NAME,
+    "partialFilterExpression": SWEEP_DUE_FILTER,
 }
 
 
@@ -328,7 +329,7 @@ async def create_conversation_indexes() -> None:
                 CONVERSATION_TODO_BINDING_KEYS, **CONVERSATION_TODO_BINDING_OPTIONS
             ),
             conversations_collection.create_index(
-                CONVERSATION_STEP_SWEEP_KEYS, **CONVERSATION_STEP_SWEEP_OPTIONS
+                CONVERSATION_SWEEP_KEYS, **CONVERSATION_SWEEP_OPTIONS
             ),
             *(
                 entries_collection.create_index(keys, **options)

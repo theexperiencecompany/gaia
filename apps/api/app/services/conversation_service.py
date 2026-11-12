@@ -7,7 +7,6 @@ from fastapi import HTTPException, status
 from psycopg_pool import AsyncConnectionPool
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
-from app.constants.conversation import ConversationRuntime
 from app.constants.error_codes import CONVERSATION_NOT_FOUND
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
@@ -104,10 +103,7 @@ async def _cleanup_checkpoint_threads(conversation_id: str) -> None:
 
 
 async def create_conversation_service(
-    conversation: ConversationModel,
-    user: AuthenticatedUser,
-    *,
-    runtime: ConversationRuntime | None = None,
+    conversation: ConversationModel, user: AuthenticatedUser
 ) -> CreateConversationResponse:
     user_id = user.user_id
     if not user_id:
@@ -123,7 +119,6 @@ async def create_conversation_service(
         is_unread=conversation.is_unread or False,
         is_onboarding_demo=conversation.is_onboarding_demo,
         source=conversation.source,
-        runtime=runtime,
         createdAt=created_at,
     )
 

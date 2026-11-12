@@ -27,7 +27,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.constants.conversation import ConversationRuntime
 from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import (
     ConversationSource,
@@ -97,8 +96,6 @@ class ConversationDocument(UserScopedDocument):
     # The tracked todo whose chat this is: its runs execute here. Such a chat is
     # reached only from its todo, never listed (see _listed). Set once at creation.
     todo_id: str | None = None
-    # STEP when the conversation step runs it; absent for a conversation on the legacy stream path.
-    runtime: ConversationRuntime | None = None
     # Assembled from conversation_entries by the reads that need history; never stored on the head.
     messages: list[ConversationEntry] = Field(default_factory=list)
     # Conversation-level artifact registry: one entry per agent-written file,
@@ -180,14 +177,6 @@ class _TodoBindingRow(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     todo_id: str | None = None
-
-
-class _RuntimeRow(BaseModel):
-    """Projection of just what runs a conversation."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    runtime: ConversationRuntime | None = None
 
 
 class _SystemGeneratedRow(BaseModel):

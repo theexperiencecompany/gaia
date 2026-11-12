@@ -44,5 +44,3 @@ TURNSTILE_UNAVAILABLE = "turnstile_unavailable"
 CONTACT_EMAIL_REQUIRED = "contact_email_required"
 # 404 — the conversation does not exist or belongs to another user (never told apart).
 CONVERSATION_NOT_FOUND = "CONVERSATION_NOT_FOUND"
-# A runtime send named a conversation the legacy per-turn stream runs.
-CONVERSATION_ON_STREAM_PATH = "CONVERSATION_ON_STREAM_PATH"

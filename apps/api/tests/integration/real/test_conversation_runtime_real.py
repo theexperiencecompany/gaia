@@ -10,18 +10,19 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TypeVar, cast
-from unittest.mock import patch
+from typing import Protocol, TypeVar, cast
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 import pytest
 from redis.asyncio import Redis
 
 from app.agents.context.slots import TIME_CONTEXT_MARKER, mark
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
+from app.agents.core.graph_manager import GraphManager
 from app.constants.chat import ConversationSource
-from app.constants.conversation import ConversationRuntime
+from app.constants.graphs import GraphName
 from app.db.redis import redis_cache
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.models.agent_config import StepTurnRef
@@ -54,7 +55,7 @@ from app.services.conversation.integration_log import (
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports
-from app.services.conversation.send import send_message
+from app.services.conversation.send import send_message, submit_message
 from app.services.conversation.step import advance
 from app.services.conversation.sweeper import sweep_conversations
 from app.services.conversation.work_log import (
@@ -150,26 +151,38 @@ class Rig:
         return await record_work_started(self.step(), self.conversation_id, self.user_id, task_id)
 
 
+class RigFactory(Protocol):
+    """Builds a conversation answered by model, holding history as the entries migration leaves it."""
+
+    def __call__(
+        self, model: GatedModel, history: Sequence[dict[str, str]] = ()
+    ) -> Awaitable[Rig]: ...
+
+
+def _run_config(conversation_id: str, user_id: str) -> AgentRunnableConfig:
+    return cast(
+        AgentRunnableConfig,
+        {
+            "configurable": {
+                "thread_id": conversation_id,
+                "conversation_id": conversation_id,
+                "user_id": user_id,
+                "agent_name": "comms_agent",
+            },
+            "metadata": {"user_id": user_id},
+            "recursion_limit": 25,
+            "agent_name": "comms_agent",
+        },
+    )
+
+
 def _turn_builder(
     turns: list[tuple[StepClaim, Batch]], user_id: str
 ) -> Callable[[StepClaim, Batch], Awaitable[CommsTurn]]:
     async def build(claim: StepClaim, batch: Batch) -> CommsTurn:
         turns.append((claim, batch))
-        config = cast(
-            AgentRunnableConfig,
-            {
-                "configurable": {
-                    "thread_id": claim.conversation_id,
-                    "conversation_id": claim.conversation_id,
-                    "user_id": user_id,
-                    "agent_name": "comms_agent",
-                    "conversation_step": step_turn_ref(claim, batch),
-                },
-                "metadata": {"user_id": user_id},
-                "recursion_limit": 25,
-                "agent_name": "comms_agent",
-            },
-        )
+        config = _run_config(claim.conversation_id, user_id)
+        config["configurable"]["conversation_step"] = step_turn_ref(claim, batch)
         return CommsTurn(
             config=config,
             opening=[SystemMessage(content="STATIC PROMPT")],
@@ -194,15 +207,13 @@ async def rig_for(
     make_conversation: Callable[..., Awaitable[str]],
     user_id: str,
     real_redis: Redis,
-) -> AsyncIterator[Callable[[GatedModel], Awaitable[Rig]]]:
+) -> AsyncIterator[RigFactory]:
     """Build a step-run conversation whose comms graph answers with model."""
     async with AsyncExitStack() as stack:
 
-        async def build(model: GatedModel) -> Rig:
+        async def build(model: GatedModel, history: Sequence[dict[str, str]] = ()) -> Rig:
             conversation_id = f"convrt-{uuid4().hex[:10]}"
-            await make_conversation(
-                user_id, conversation_id, runtime=ConversationRuntime.STEP.value
-            )
+            await make_conversation(user_id, conversation_id, messages=list(history))
             turns: list[tuple[StepClaim, Batch]] = []
             log = MongoConversationLog(conversation_log_repository, _now)
             frames = RedisStreamFrames()
@@ -240,7 +251,7 @@ def _during(model: GatedModel, call: int, action: Callable[[], Awaitable[object]
 
 @pytest.mark.service
 async def test_a_message_sent_before_the_reply_commits_gets_one_reply_using_both(
-    rig_for: Callable[[GatedModel], Awaitable[Rig]],
+    rig_for: RigFactory,
 ) -> None:
     model = gated("never shown", "booked at $900", hold=[0])
     rig = await rig_for(model)
@@ -254,7 +265,7 @@ async def test_a_message_sent_before_the_reply_commits_gets_one_reply_using_both
 
 @pytest.mark.service
 async def test_a_side_question_during_work_is_answered_while_the_work_runs(
-    rig_for: Callable[[GatedModel], Awaitable[Rig]],
+    rig_for: RigFactory,
 ) -> None:
     model = gated("on it", "it is noon")
     rig = await rig_for(model)
@@ -280,7 +291,7 @@ async def test_a_side_question_during_work_is_answered_while_the_work_runs(
 
 @pytest.mark.service
 async def test_stop_mid_work_cancels_that_work_and_wakes_nothing(
-    rig_for: Callable[[GatedModel], Awaitable[Rig]],
+    rig_for: RigFactory,
 ) -> None:
     model = gated("on it")
     rig = await rig_for(model)
@@ -298,7 +309,7 @@ async def test_stop_mid_work_cancels_that_work_and_wakes_nothing(
 
 @pytest.mark.service
 async def test_work_started_after_a_stop_in_its_own_attempt_is_refused(
-    rig_for: Callable[[GatedModel], Awaitable[Rig]],
+    rig_for: RigFactory,
 ) -> None:
     model = gated("stopped")
     rig = await rig_for(model)
@@ -318,7 +329,7 @@ async def test_work_started_after_a_stop_in_its_own_attempt_is_refused(
 
 @pytest.mark.service
 async def test_a_result_landing_with_a_new_ask_is_delivered_in_the_same_reply(
-    rig_for: Callable[[GatedModel], Awaitable[Rig]],
+    rig_for: RigFactory,
 ) -> None:
     model = gated("searching", "3 flights found, and I am booking the hotel")
     rig = await rig_for(model)
@@ -361,7 +372,7 @@ def _live(frames: Sequence[StreamedFrame]) -> list[tuple[str | None, dict[str, o
 
 @pytest.mark.service
 async def test_two_clients_on_one_conversation_see_the_same_frames(
-    rig_for: Callable[[GatedModel], Awaitable[Rig]],
+    rig_for: RigFactory,
 ) -> None:
     rig = await rig_for(gated("hello there"))
     first = asyncio.create_task(_frames_until_settled(rig))
@@ -379,7 +390,7 @@ async def test_two_clients_on_one_conversation_see_the_same_frames(
 
 @pytest.mark.service
 async def test_a_client_resuming_from_a_seq_replays_what_it_missed(
-    rig_for: Callable[[GatedModel], Awaitable[Rig]],
+    rig_for: RigFactory,
 ) -> None:
     rig = await rig_for(gated("hello there"))
     await rig.send("m1", "hi")
@@ -391,7 +402,7 @@ async def test_a_client_resuming_from_a_seq_replays_what_it_missed(
 
 @pytest.mark.service
 async def test_a_step_killed_mid_thinking_is_answered_after_the_sweep(
-    rig_for: Callable[[GatedModel], Awaitable[Rig]], real_redis: Redis
+    rig_for: RigFactory, real_redis: Redis
 ) -> None:
     model = gated("never shown", "here you go", hold=[0])
     rig = await rig_for(model)
@@ -413,7 +424,7 @@ async def test_a_step_killed_mid_thinking_is_answered_after_the_sweep(
 
 @pytest.mark.service
 async def test_the_sweep_reports_work_whose_executor_died_in_the_tasks_own_reply(
-    rig_for: Callable[[GatedModel], Awaitable[Rig]],
+    rig_for: RigFactory,
 ) -> None:
     model = gated("working on it", "sorry, that stopped before it finished")
     rig = await rig_for(model)
@@ -429,7 +440,7 @@ async def test_the_sweep_reports_work_whose_executor_died_in_the_tasks_own_reply
 
 @pytest.mark.service
 async def test_connecting_an_integration_continues_the_work_waiting_on_it(
-    rig_for: Callable[[GatedModel], Awaitable[Rig]],
+    rig_for: RigFactory,
 ) -> None:
     model = gated("connect Gmail first", "done, the email is sent")
     rig = await rig_for(model)
@@ -455,7 +466,7 @@ async def test_connecting_an_integration_continues_the_work_waiting_on_it(
 
 @pytest.mark.service
 async def test_an_approval_holds_the_work_until_the_user_decides(
-    rig_for: Callable[[GatedModel], Awaitable[Rig]],
+    rig_for: RigFactory,
 ) -> None:
     model = gated("on it")
     rig = await rig_for(model)
@@ -471,3 +482,45 @@ async def test_an_approval_holds_the_work_until_the_user_decides(
     assert waiting.display is DisplayState.AWAITING_APPROVAL
     assert [work.pending_approvals for work in decided.work] == [frozenset()]
     assert len(await rig.of(ApprovalDecided)) == 1
+
+
+async def _legacy_turn(rig: Rig, said: str) -> None:
+    """Run one turn the way the legacy stream path did: the comms graph straight on the conversation's thread."""
+    graph = await GraphManager.get_graph(GraphName.COMMS)
+    await graph.ainvoke(
+        {"messages": [HumanMessage(content=said)], "intent": "", "integration_usernames": {}},
+        _run_config(rig.conversation_id, rig.user_id),
+    )
+
+
+@pytest.mark.service
+async def test_a_conversation_from_before_the_step_continues_on_it_with_its_history(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("Paris is lovely in May", "May 12 to 19 then")
+    rig = await rig_for(
+        model,
+        history=[
+            {"type": "user", "response": "when should I visit Paris?", "message_id": "old-u"},
+            {"type": "bot", "response": "Paris is lovely in May", "message_id": "old-b"},
+        ],
+    )
+    await _legacy_turn(rig, "when should I visit Paris?")
+    with (
+        patch("app.services.conversation.send.enforce_cost_budget", new_callable=AsyncMock),
+        patch("app.services.conversation.send.capture"),
+    ):
+        accepted = await submit_message(
+            rig.conversation_id,
+            AuthenticatedUser(user_id=rig.user_id),
+            SendMessageRequest(message_id="m1", text="book a week then"),
+            ConversationSource.WEB,
+        )
+    await rig.settle()
+    shown = model.prompts[1]
+    assert accepted.seq == 3
+    assert [reply.text for reply in await rig.of(Reply)] == ["May 12 to 19 then"]
+    assert await rig.answered() == [(ReplyOutcome.ANSWERED, ("m1",))]
+    assert humans(shown).count("when should I visit Paris?") == 1
+    assert [str(m.content) for m in shown if isinstance(m, AIMessage)] == ["Paris is lovely in May"]
+    assert humans(shown).count("book a week then") == 1

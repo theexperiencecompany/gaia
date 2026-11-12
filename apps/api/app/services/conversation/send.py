@@ -1,4 +1,4 @@
-"""A user message entering a step-run conversation: open the conversation, append the message, return at once.
+"""A user message entering a conversation on the step: open the conversation, append the message, return at once.
 
 The reply is the step's, started by the append's kick; the instant reaction is the append's
 StartAck effect, decided in the background. Neither delays the accept.
@@ -8,8 +8,6 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 from app.constants.chat import ConversationSource
-from app.constants.conversation import ConversationRuntime
-from app.constants.error_codes import CONVERSATION_ON_STREAM_PATH
 from app.db.repositories.conversations import conversation_repository
 from app.decorators import enforce_cost_budget
 from app.models.bot_models import BotChatRequest
@@ -28,7 +26,6 @@ from app.services.conversation.log import accept
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation_service import create_conversation_service
 from app.services.files import FileService
-from app.utils.errors import ConversationOnStreamPathError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from shared.py.wide_events import log
@@ -42,29 +39,19 @@ class Sent:
     duplicate: bool
 
 
-async def open_step_conversation(
+async def open_conversation(
     conversation_id: str, user: AuthenticatedUser, source: ConversationSource
 ) -> bool:
-    """Create the conversation on the step when it is new; True when it was created here.
+    """Create the conversation when it is new; True when it was created here.
 
-    A conversation the legacy stream path runs is refused: one conversation has one runtime.
+    An existing conversation continues on the step as it is: its thread already holds its history.
     """
-    row = await conversation_repository.read_runtime(conversation_id, user_id=user.user_id)
-    if row is None:
-        await create_conversation_service(
-            ConversationModel(conversation_id=conversation_id, source=source),
-            user,
-            runtime=ConversationRuntime.STEP,
-        )
-        return True
-    if row.runtime is not ConversationRuntime.STEP:
-        raise ConversationOnStreamPathError(
-            message=f"conversation {conversation_id} runs on the legacy chat stream",
-            fix="send it with POST /chat-stream, or start a new conversation",
-            code=CONVERSATION_ON_STREAM_PATH,
-            meta={"conversation_id": conversation_id},
-        )
-    return False
+    if await conversation_repository.exists(conversation_id, user_id=user.user_id):
+        return False
+    await create_conversation_service(
+        ConversationModel(conversation_id=conversation_id, source=source), user
+    )
+    return True
 
 
 async def send_message(
@@ -75,7 +62,7 @@ async def send_message(
     *,
     platform_message_id: str | None = None,
 ) -> Sent:
-    """Append the user's message to a step-run conversation and return its seq; a resend returns the first seq."""
+    """Append the user's message to the conversation and return its seq; a resend returns the first seq."""
     if body.file_ids:
         await FileService.attach_uploads(body.file_ids, user.user_id, conversation_id)
     message = UserMessage(
@@ -113,7 +100,7 @@ async def submit_message(
 ) -> MessageAccepted:
     """Charge the day's budget, open the conversation on the step, accept the message and count it."""
     await enforce_cost_budget(user.user_id, feature_key="chat_messages")
-    created = await open_step_conversation(conversation_id, user, surface)
+    created = await open_conversation(conversation_id, user, surface)
     sent = await send_message(conversation_id, user, body, surface)
     if sent.duplicate:
         return sent.accepted
@@ -133,29 +120,11 @@ async def submit_message(
 
 
 async def submit_bot_message(body: BotChatRequest, user: AuthenticatedUser) -> BotMessageAccepted:
-    """Accept a bot user's message into their session's conversation on the step.
-
-    A session the legacy stream path runs is replaced by a fresh one on the step, as /new does.
-    """
+    """Accept a bot user's message into their session's conversation, which keeps its history."""
     platform, user_id = body.platform, user.user_id
     conversation_id = await BotService.get_or_create_session(
-        platform,
-        body.platform_user_id,
-        body.channel_id,
-        user,
-        is_dm=body.is_dm,
-        runtime=ConversationRuntime.STEP,
+        platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
     )
-    row = await conversation_repository.read_runtime(conversation_id, user_id=user_id)
-    if row is None or row.runtime is not ConversationRuntime.STEP:
-        conversation_id = await BotService.reset_session(
-            platform,
-            body.platform_user_id,
-            body.channel_id,
-            user,
-            is_dm=body.is_dm,
-            runtime=ConversationRuntime.STEP,
-        )
     message_id = (
         f"{platform}:{body.platform_message_id}" if body.platform_message_id else uuid4().hex
     )

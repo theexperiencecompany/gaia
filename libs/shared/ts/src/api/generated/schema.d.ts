@@ -7723,7 +7723,6 @@ export interface components {
             is_unread?: boolean | null;
             /** Messages */
             messages?: components["schemas"]["ConversationEntry"][];
-            runtime?: components["schemas"]["ConversationRuntime"] | null;
             source?: components["schemas"]["ConversationSource"] | null;
             /** Starred */
             starred?: boolean | null;
@@ -7869,12 +7868,6 @@ export interface components {
             source?: components["schemas"]["ConversationSource"] | null;
             system_purpose?: components["schemas"]["SystemPurpose"] | null;
         };
-        /**
-         * ConversationRuntime
-         * @description What runs a conversation: absent on the head means the legacy per-turn stream.
-         * @enum {string}
-         */
-        ConversationRuntime: "step";
         /**
          * ConversationSource
          * @description Client or channel a conversation originated from.
@@ -17439,7 +17432,6 @@ export type ConversationEvent = components['schemas']['ConversationEvent'];
 export type ConversationListResponse = components['schemas']['ConversationListResponse'];
 export type ConversationMessageHit = components['schemas']['ConversationMessageHit'];
 export type ConversationModel = components['schemas']['ConversationModel'];
-export type ConversationRuntime = components['schemas']['ConversationRuntime'];
 export type ConversationSource = components['schemas']['ConversationSource'];
 export type ConversationStopResponse = components['schemas']['ConversationStopResponse'];
 export type ConversationSummary = components['schemas']['ConversationSummary'];

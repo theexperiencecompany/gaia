@@ -19,12 +19,6 @@ HINT_KEY_PREFIX = "conv:hint:"
 HINT_TTL_SECONDS = ONE_DAY_TTL
 
 
-class ConversationRuntime(StrEnum):
-    """What runs a conversation: absent on the head means the legacy per-turn stream."""
-
-    STEP = "step"
-
-
 class HintField(StrEnum):
     """The fields of a conversation's hint hash."""
 
