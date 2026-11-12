@@ -7,7 +7,7 @@ import type {
   UserMessage,
 } from "./types";
 
-/** Builders for conversation frames in tests, shaped as parseConversationFrame returns them. */
+/** Builders for conversation frames in tests, shaped as parseConversationEvent returns their frames. */
 
 const AT = "2026-11-12T10:00:00+00:00";
 

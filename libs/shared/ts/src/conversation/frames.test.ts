@@ -1,16 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { parseConversationFrame } from "./frames";
+import { parseConversationEvent } from "./frames";
 
 const AT = "2026-11-12T10:00:00+00:00";
 
-const parse = (value: unknown) => parseConversationFrame(JSON.stringify(value));
+const wire = (frame: unknown, streamId: string | null = null) =>
+  JSON.stringify({ stream_id: streamId, frame });
+
+const parse = (value: unknown) => parseConversationEvent(wire(value));
 
 const frameOf = (value: unknown) => {
   const result = parse(value);
   if (!result.ok) {
     throw new Error(`expected a frame, got ${JSON.stringify(result.error)}`);
   }
-  return result.frame;
+  return result.event.frame;
 };
 
 const settled = (outcome: string, answers: string[]) => ({
@@ -23,7 +26,7 @@ const settled = (outcome: string, answers: string[]) => ({
   quote_target: null,
 });
 
-describe("parseConversationFrame", () => {
+describe("parseConversationEvent", () => {
   it("parses a flat entry frame with a user message and fills the model's defaults", () => {
     const frame = frameOf({
       kind: "entry",
@@ -251,14 +254,10 @@ describe("parseConversationFrame", () => {
 
   it.each([
     ["not JSON", "{oops", "invalid_json"],
-    [
-      "an unknown frame kind",
-      JSON.stringify({ kind: "nope" }),
-      "invalid_frame",
-    ],
+    ["an unknown frame kind", wire({ kind: "nope" }), "invalid_frame"],
     [
       "a payload with an unknown tag",
-      JSON.stringify({
+      wire({
         kind: "work_delta",
         task_id: "k",
         index: 0,
@@ -268,7 +267,7 @@ describe("parseConversationFrame", () => {
     ],
     [
       "an untagged payload",
-      JSON.stringify({
+      wire({
         kind: "work_delta",
         task_id: "k",
         index: 0,
@@ -278,7 +277,7 @@ describe("parseConversationFrame", () => {
     ],
     [
       "a negative delta index",
-      JSON.stringify({
+      wire({
         kind: "reply_delta",
         attempt_id: "a",
         reply_id: "r",
@@ -289,7 +288,7 @@ describe("parseConversationFrame", () => {
     ],
     [
       "an entry with seq 0",
-      JSON.stringify({
+      wire({
         kind: "entry",
         seq: 0,
         at: AT,
@@ -299,7 +298,7 @@ describe("parseConversationFrame", () => {
     ],
     [
       "a settled reply missing its quote target",
-      JSON.stringify({
+      wire({
         kind: "entry",
         seq: 2,
         at: AT,
@@ -309,7 +308,7 @@ describe("parseConversationFrame", () => {
     ],
     [
       "an answered reply that answers nothing",
-      JSON.stringify({
+      wire({
         kind: "entry",
         seq: 2,
         at: AT,
@@ -318,10 +317,24 @@ describe("parseConversationFrame", () => {
       "invalid_frame",
     ],
   ])("returns a typed error for %s instead of throwing", (_, raw, kind) => {
-    const result = parseConversationFrame(raw);
+    const result = parseConversationEvent(raw);
     expect(result.ok).toBe(false);
     expect(!result.ok && result.error.kind).toBe(kind);
     expect(!result.ok && result.error.raw).toBe(raw);
+  });
+
+  it("carries the stream id a reader resumes after", () => {
+    const result = parseConversationEvent(
+      wire({ kind: "retract", attempt_id: "a" }, "1731400000000-0"),
+    );
+    expect(result.ok && result.event.streamId).toBe("1731400000000-0");
+  });
+
+  it("refuses a bare frame without its event envelope", () => {
+    const result = parseConversationEvent(
+      JSON.stringify({ kind: "retract", attempt_id: "a" }),
+    );
+    expect(!result.ok && result.error.kind).toBe("invalid_frame");
   });
 
   it("lets a stopped reply settle with no answers", () => {

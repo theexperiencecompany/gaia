@@ -1,13 +1,23 @@
 import { z } from "zod";
+import type {
+  ConversationEvent,
+  EntryFrame,
+  EntryUpdatedFrame,
+  LiveTask,
+  ReplyDeltaFrame,
+  RetractFrame,
+  StateFrame,
+  WorkDeltaFrame,
+} from "../api/generated";
 import { ToolDataEntrySchema } from "../chat/schema";
 import type { ChatStreamEvent } from "../chat/streaming";
 import type { TodoProgressSnapshot } from "../chat/types";
 import { EntrySchema } from "./entries";
 
 /**
- * Zod mirror of the conversation event stream's frames; the source of truth is
- * apps/api/app/models/conversation_frame_models.py. A delta's tagged payload is
- * mapped onto the ChatStreamEvent the shared TurnAccumulator folds.
+ * Zod mirror of the conversation event stream's frames, each tied to its generated
+ * API type. A delta's tagged payload is mapped onto the ChatStreamEvent the shared
+ * TurnAccumulator folds.
  */
 
 export const FRAME_KIND = {
@@ -58,7 +68,8 @@ const StreamPayloadSchema = z.discriminatedUnion("type", [
     subagent_start: z.object({
       subagent_id: z.string(),
       subagent_name: z.string(),
-      agent_type: z.enum(["handoff", "spawned"]),
+      subagent: optionalString,
+      agent_type: z.string(),
       started_at: z.string(),
       icon_url: optionalString,
       tool_category: optionalString,
@@ -84,7 +95,7 @@ const StreamPayloadSchema = z.discriminatedUnion("type", [
     type: z.literal("todo_progress"),
     todo_progress: z.record(z.string(), z.unknown()),
   }),
-]);
+]) satisfies z.ZodType<ReplyDeltaFrame["payload"]>;
 
 type StreamPayload = z.infer<typeof StreamPayloadSchema>;
 
@@ -105,8 +116,17 @@ function toStreamEvent(payload: StreamPayload): ChatStreamEvent {
         messageId: payload.message_boundary.message_id,
         discarded: payload.message_boundary.discarded,
       };
-    case "subagent_start":
-      return { type: "subagent_start", payload: payload.subagent_start };
+    case "subagent_start": {
+      const { agent_type, ...start } = payload.subagent_start;
+      // Nothing emits "handoff" any more; stored rows that carry it still render as one.
+      return {
+        type: "subagent_start",
+        payload: {
+          ...start,
+          agent_type: agent_type === "handoff" ? "handoff" : "spawned",
+        },
+      };
+    }
     case "subagent_end":
       return { type: "subagent_end", payload: payload.subagent_end };
     case "follow_up_actions":
@@ -131,53 +151,78 @@ const deltaPayload = StreamPayloadSchema.transform(toStreamEvent);
 export const LiveTaskSchema = z.object({
   task_id: z.string(),
   awaiting_approval: z.boolean(),
-});
+}) satisfies z.ZodType<LiveTask>;
+
+const EntryFrameSchema = z.object({
+  kind: z.literal(FRAME_KIND.ENTRY),
+  seq,
+  at: z.iso.datetime({ offset: true }),
+  entry: EntrySchema,
+}) satisfies z.ZodType<EntryFrame>;
+
+const EntryUpdatedFrameSchema = z.object({
+  kind: z.literal(FRAME_KIND.ENTRY_UPDATED),
+  seq,
+  entry: EntrySchema,
+}) satisfies z.ZodType<EntryUpdatedFrame>;
+
+// The payload is checked against its generated union above; these tie the rest of each delta frame.
+const ReplyDeltaFields = z.object({
+  kind: z.literal(FRAME_KIND.REPLY_DELTA),
+  attempt_id: z.string(),
+  reply_id: z.string().nullable(),
+  index,
+}) satisfies z.ZodType<Omit<ReplyDeltaFrame, "payload">>;
+
+const WorkDeltaFields = z.object({
+  kind: z.literal(FRAME_KIND.WORK_DELTA),
+  task_id: z.string(),
+  index,
+}) satisfies z.ZodType<Omit<WorkDeltaFrame, "payload">>;
+
+const RetractFrameSchema = z.object({
+  kind: z.literal(FRAME_KIND.RETRACT),
+  attempt_id: z.string(),
+}) satisfies z.ZodType<RetractFrame>;
+
+const StateFrameSchema = z.object({
+  kind: z.literal(FRAME_KIND.STATE),
+  head: z.number().int().min(0),
+  display: z.enum([
+    DISPLAY_STATE.IDLE,
+    DISPLAY_STATE.THINKING,
+    DISPLAY_STATE.WORKING,
+    DISPLAY_STATE.AWAITING_APPROVAL,
+  ]),
+  work: z.array(LiveTaskSchema),
+}) satisfies z.ZodType<StateFrame>;
 
 export const ConversationFrameSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal(FRAME_KIND.ENTRY),
-    seq,
-    at: z.iso.datetime({ offset: true }),
-    entry: EntrySchema,
-  }),
-  z.object({
-    kind: z.literal(FRAME_KIND.ENTRY_UPDATED),
-    seq,
-    entry: EntrySchema,
-  }),
-  z.object({
-    kind: z.literal(FRAME_KIND.REPLY_DELTA),
-    attempt_id: z.string(),
-    reply_id: z.string().nullable(),
-    index,
-    payload: deltaPayload,
-  }),
-  z.object({
-    kind: z.literal(FRAME_KIND.WORK_DELTA),
-    task_id: z.string(),
-    index,
-    payload: deltaPayload,
-  }),
-  z.object({ kind: z.literal(FRAME_KIND.RETRACT), attempt_id: z.string() }),
-  z.object({
-    kind: z.literal(FRAME_KIND.STATE),
-    head: z.number().int().min(0),
-    display: z.enum([
-      DISPLAY_STATE.IDLE,
-      DISPLAY_STATE.THINKING,
-      DISPLAY_STATE.WORKING,
-      DISPLAY_STATE.AWAITING_APPROVAL,
-    ]),
-    work: z.array(LiveTaskSchema),
-  }),
+  EntryFrameSchema,
+  EntryUpdatedFrameSchema,
+  ReplyDeltaFields.extend({ payload: deltaPayload }),
+  WorkDeltaFields.extend({ payload: deltaPayload }),
+  RetractFrameSchema,
+  StateFrameSchema,
 ]);
+
+const ConversationEventSchema = z.object({
+  stream_id: z.string().nullable(),
+  frame: ConversationFrameSchema,
+}) satisfies z.ZodType<unknown, ConversationEvent>;
 
 type FrameParseError =
   | { kind: "invalid_json"; raw: string }
   | { kind: "invalid_frame"; raw: string; issues: string[] };
 
+/** One event of the stream: the frame, and the stream id to resume after (null when replayed from the log). */
+export interface ConversationStreamEvent {
+  streamId: string | null;
+  frame: z.infer<typeof ConversationFrameSchema>;
+}
+
 export type FrameParseResult =
-  | { ok: true; frame: z.infer<typeof ConversationFrameSchema> }
+  | { ok: true; event: ConversationStreamEvent }
   | { ok: false; error: FrameParseError };
 
 const readJson = (
@@ -190,16 +235,19 @@ const readJson = (
   }
 };
 
-/** Parse one `data:` line of the conversation stream into a typed frame or a typed error. */
-export function parseConversationFrame(raw: string): FrameParseResult {
+/** Parse one `data:` line of the conversation stream into a typed event or a typed error. */
+export function parseConversationEvent(raw: string): FrameParseResult {
   const json = readJson(raw);
   if (!json.ok) return { ok: false, error: { kind: "invalid_json", raw } };
-  const parsed = ConversationFrameSchema.safeParse(json.value);
+  const parsed = ConversationEventSchema.safeParse(json.value);
   if (!parsed.success) {
     const issues = parsed.error.issues.map(
       (issue) => `${issue.path.join(".")}: ${issue.message}`,
     );
     return { ok: false, error: { kind: "invalid_frame", raw, issues } };
   }
-  return { ok: true, frame: parsed.data };
+  return {
+    ok: true,
+    event: { streamId: parsed.data.stream_id, frame: parsed.data.frame },
+  };
 }
