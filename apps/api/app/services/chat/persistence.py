@@ -28,7 +28,6 @@ from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import update_messages
 from app.utils.artifact_utils import artifact_url_base
 from app.utils.chat_utils import create_conversation
-from app.utils.errors import ConversationNotFoundError
 
 
 def user_message_content_from(body: MessageRequestWithHistory) -> str:
@@ -150,8 +149,6 @@ class BotReply:
     follow_up_actions: list[str] | None = None
     #: The user cut this turn off with Stop.
     stopped: bool = False
-    #: Its entry was opened (open_bot_reply), so it is filled in place rather than appended.
-    opened: bool = False
 
 
 async def save_bot_reply(
@@ -160,7 +157,10 @@ async def save_bot_reply(
     conversation_id: str,
     reply: BotReply,
 ) -> int | None:
-    """Persist the turn's reply, returning its seq when appended; an opened entry keeps its own.
+    """Persist the turn's reply, returning its seq when appended; an opened entry is filled and keeps its own.
+
+    Whether the entry was opened is the store's answer, not the turn's: an open whose
+    write landed before its call raised is filled all the same.
 
     Artifact URLs are baked absolute so a stale frontend chunk still renders.
     """
@@ -184,14 +184,9 @@ async def save_bot_reply(
     for key, value in reply.tool_data.items():
         setattr(bot_message, key, value)
 
-    if reply.opened:
-        if not await conversation_repository.fill_message(
-            conversation_id, user_id=user.user_id, message=bot_message
-        ):
-            raise ConversationNotFoundError(
-                message=f"the opened reply {reply.bot_message_id} is gone from its conversation",
-                meta={"conversation_id": conversation_id},
-            )
+    if await conversation_repository.fill_message(
+        conversation_id, user_id=user.user_id, message=bot_message
+    ):
         return None
     saved = await update_messages(
         UpdateMessagesRequest(conversation_id=conversation_id, messages=[bot_message]), user=user

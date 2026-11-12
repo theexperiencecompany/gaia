@@ -1122,7 +1122,6 @@ async def _persist_turn(
                 complete_message="",
                 bot_message_id=state.bot_message_id,
                 error=TURN_REPLY_NOT_SAVED,
-                opened=state.reply_opened,
             ),
         )
     state.saved = True
@@ -1170,7 +1169,6 @@ async def _save_reply(
             error=state.error or None,
             follow_up_actions=state.follow_up_actions or None,
             stopped=state.is_cancelled,
-            opened=state.reply_opened,
         ),
     )
 

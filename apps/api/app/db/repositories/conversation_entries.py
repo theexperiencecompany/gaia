@@ -306,6 +306,8 @@ def is_same_entry(stored: Mapping[str, object] | None, entry: StoredEntry) -> bo
 def filled(message: MessageModel) -> list[dict[str, object]]:
     """Pipeline that replaces an entry's content with message, keeping its keys and the cards folded in since it opened."""
     data = stored_message(message)
+    # The entry now holds this message: a retried append of it is the same save, not a conflict.
+    committed = content_hash(data)
     own_cards = data.pop("tool_data", [])
     del data["id"]
     cleared = [
@@ -319,6 +321,7 @@ def filled(message: MessageModel) -> list[dict[str, object]]:
         {
             "$set": {
                 **{key: {"$literal": value} for key, value in data.items()},
+                CONTENT_HASH_FIELD: committed,
                 "tool_data": {"$cond": [{"$eq": [cards, []]}, "$$REMOVE", cards]},
             }
         }

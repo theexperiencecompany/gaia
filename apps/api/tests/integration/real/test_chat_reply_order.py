@@ -25,7 +25,12 @@ from app.core.stream_manager import stream_manager
 from app.db.repositories import conversations as conversations_module
 from app.db.repositories.conversations import conversation_repository
 from app.models.message_models import MessageRequestWithHistory
-from app.services.chat.persistence import open_bot_reply, save_user_message
+from app.services.chat.persistence import (
+    BotReply,
+    open_bot_reply,
+    save_bot_reply,
+    save_user_message,
+)
 from app.services.chat.stream import run_chat_stream_background
 from app.workers.tasks.reply_sweep_tasks import sweep_unfinished_replies
 from tests.conftest import FAKE_USER
@@ -302,6 +307,29 @@ async def test_a_turn_killed_before_its_flush_is_swept_from_the_outbox(
     assert (event["unfinished_reply_conversations"], event["failed_reply_count"]) == (1, 1)
     [_, reply] = await _read(client, conversation_id)
     assert (reply["error"], reply.get("in_progress")) == (TURN_INTERRUPTED, None)
+
+
+async def test_a_reply_whose_open_committed_but_raised_is_still_saved_in_full(
+    client: AsyncClient, real_redis, mongo_db, make_conversation
+) -> None:
+    conversation_id = await make_conversation(FAKE_USER.user_id)
+    await save_user_message(_body(conversation_id, "A"), FAKE_USER, conversation_id, "msg-a")
+    # The open's write landed, then the call raised: the turn never learned its entry exists.
+    await open_bot_reply(_body(conversation_id, "A"), FAKE_USER, conversation_id, "msg-reply")
+
+    await save_bot_reply(
+        _body(conversation_id, "A"),
+        FAKE_USER,
+        conversation_id,
+        BotReply(complete_message="the full answer", bot_message_id="msg-reply"),
+    )
+
+    [_, reply] = await _read(client, conversation_id)
+    assert (reply["seq"], reply["response"], reply.get("in_progress")) == (
+        2,
+        "the full answer",
+        None,
+    )
 
 
 async def test_a_second_sweep_changes_nothing(real_redis, mongo_db, make_conversation) -> None:
