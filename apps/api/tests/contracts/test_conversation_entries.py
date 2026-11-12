@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Coroutine, Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 import uuid
@@ -894,3 +894,25 @@ async def test_a_retried_append_of_a_known_id_with_other_content_fails_instead_o
 
     kept = await repo.get_message(cid, "r1", user_id=uid)
     assert kept is not None and kept.response == ""
+
+
+async def test_the_reply_sweep_settles_a_reply_whose_process_died_before_its_flush(
+    repo: ConversationRepository, conversation: ConversationDocument, held: _HeldFlushes
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    opened = MessageModel(type="bot", response="", message_id="r1", in_progress=True)
+    await repo.append(cid, user_id=uid, entries=[opened])
+    # The process dies here: the flush append spawned never runs.
+    held.drop_all()
+    cutoff = datetime.now(UTC) + timedelta(seconds=1)
+
+    owners = await repo.list_unfinished_reply_owners(opened_before=cutoff)
+    assert owners == {(uid, cid)}
+    assert (
+        await repo.fail_unfinished_replies(opened_before=cutoff, error="interrupted", owners=owners)
+        == 1
+    )
+
+    settled = await repo.get_message(cid, "r1", user_id=uid)
+    assert settled is not None
+    assert (settled.in_progress, settled.error) == (None, "interrupted")

@@ -47,6 +47,7 @@ from app.db.repositories.conversation_entries import (
     at_its_seq,
     at_log_head,
     content_hash,
+    every_outbox_entry_matching,
     filled,
     head_fields,
     head_from_raw,
@@ -544,10 +545,14 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     ) -> int:
         """Settle the replies in progress since before opened_before in owners' conversations as failed with error.
 
-        owners holds (user_id, conversation_id) pairs. Intentionally unscoped (a maintenance sweep).
+        owners holds (user_id, conversation_id) pairs; each one's outbox is flushed first, so a
+        reply committed by a process that died before its flush is settled too. Intentionally
+        unscoped (a maintenance sweep).
         """
         if not owners:
             return 0
+        for user_id, conversation_id in sorted(owners):
+            await self.flush_outbox(conversation_id, user_id=user_id)
         with store_errors("unfinished reply sweep"):
             result = await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).update_many(
                 {
@@ -567,18 +572,22 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     ) -> set[tuple[str, str]]:
         """Return the (user_id, conversation_id) of every reply in progress since before opened_before.
 
-        Intentionally unscoped (a maintenance sweep).
+        Reads the outboxes as well as the collection. Intentionally unscoped (a maintenance sweep).
         """
+        unfinished = {"in_progress": True, "at": {"$lt": opened_before}}
+        owner = {"_id": 0, "user_id": 1, "conversation_id": 1}
         with store_errors("unfinished reply sweep"):
-            rows = await (
+            stored = await (
                 self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
-                .find(
-                    {"in_progress": True, "at": {"$lt": opened_before}},
-                    {"_id": 0, "user_id": 1, "conversation_id": 1},
-                )
+                .find(unfinished, owner)
                 .to_list(length=None)
             )
-        owners = [_ConversationOwnerRow.model_validate(row) for row in rows]
+            pending = await (
+                self._raw_collection()
+                .aggregate([*every_outbox_entry_matching(unfinished), {"$project": owner}])
+                .to_list(length=None)
+            )
+        owners = [_ConversationOwnerRow.model_validate(row) for row in [*stored, *pending]]
         return {(owner.user_id, owner.conversation_id) for owner in owners}
 
     async def set_message_response(
