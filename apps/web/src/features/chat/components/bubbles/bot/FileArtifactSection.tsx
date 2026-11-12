@@ -4,6 +4,7 @@ import { formatFileSize } from "@shared/utils";
 import type React from "react";
 import { useCallback, useMemo, useState } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import FileViewerPanel from "@/features/chat/components/artifacts/FileViewerPanel";
 import { useIsMobile } from "@/hooks/ui/useMobile";
@@ -165,7 +166,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
                 <div className="mb-1 flex items-center gap-2.5">
                   <Chip
                     size="sm"
-                    variant="tertiary"
+                    variant="soft"
                     color={config.color}
                     className="text-xs"
                   >
@@ -183,18 +184,18 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
             </div>
 
             <div className="flex items-center gap-2">
-              <Button
+              <GaiaButton
                 size="sm"
-                variant="tertiary"
+                variant="default-soft"
                 className="font-medium text-zinc-200"
                 onPress={handleOpen}
               >
                 Open
-              </Button>
+              </GaiaButton>
               <Button
                 isIconOnly
                 size="sm"
-                variant="tertiary"
+                variant="ghost"
                 className="text-zinc-300 group-hover:text-white"
                 onPress={handleDownload}
                 aria-label="Download artifact"

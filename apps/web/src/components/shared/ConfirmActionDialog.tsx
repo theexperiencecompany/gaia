@@ -2,7 +2,7 @@
 
 import { Button, Modal } from "@heroui/react";
 import { useRouter } from "next/navigation";
-
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useLogout } from "@/features/auth/hooks/useLogout";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { db } from "@/lib/db/chatDb";
@@ -100,13 +100,13 @@ export function ConfirmActionDialog({
               <p className="text-sm text-zinc-400">{config.description}</p>
             </Modal.Body>
             <Modal.Footer>
-              <Button
-                variant="tertiary"
+              <GaiaButton
+                variant="default-soft"
                 onPress={() => handleOpenChange(false)}
                 className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
               >
                 {config.cancelText}
-              </Button>
+              </GaiaButton>
               <Button
                 onPress={() => {
                   handleConfirm();

@@ -78,7 +78,7 @@ export default function MemoryIndicator({
     <GaiaButton
       shape="pill"
       size="sm"
-      variant="tertiary"
+      variant="default-soft"
       className="w-fit text-gray-500"
       onPress={onOpenModal}
     >

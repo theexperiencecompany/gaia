@@ -821,7 +821,7 @@ function ChatDemoWindow() {
               aria-label="Retry"
               onPress={handleRetry}
               isIconOnly
-              variant="tertiary"
+              variant="default-soft"
             >
               <RedoIcon width={20} height={20} />
             </GaiaButton>

@@ -381,7 +381,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                 onPress={onClose}
                 isIconOnly
                 size="sm"
-                variant="tertiary"
+                variant="default-soft"
               >
                 <Cancel01Icon size={14} />
               </GaiaButton>

@@ -93,7 +93,7 @@ function BotCard({
             href={secondaryAction.href}
             target={secondaryAction.external ? "_blank" : "_self"}
             rel={secondaryAction.external ? "noopener noreferrer" : undefined}
-            variant="tertiary"
+            variant="default-soft"
             className="w-full @min-[22rem]:w-auto"
           >
             {secondaryAction.label}

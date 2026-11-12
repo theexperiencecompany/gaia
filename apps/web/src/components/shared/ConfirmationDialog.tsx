@@ -2,6 +2,7 @@
 
 import { Button, Kbd, Modal } from "@heroui/react";
 import { useEffect, useEffectEvent, useRef } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 interface ConfirmationDialogProps {
   isOpen: boolean;
@@ -83,8 +84,8 @@ export function ConfirmationDialog({
               <p>{message}</p>
             </Modal.Body>
             <Modal.Footer>
-              <Button
-                variant="tertiary"
+              <GaiaButton
+                variant="default-soft"
                 onPress={() => {
                   onCancel();
                   handleOpenChange(false);
@@ -96,7 +97,7 @@ export function ConfirmationDialog({
                 <Kbd>
                   <Kbd.Abbr keyValue="escape" />
                 </Kbd>
-              </Button>
+              </GaiaButton>
               <Button
                 ref={confirmButtonRef}
                 onPress={handleConfirmPress}

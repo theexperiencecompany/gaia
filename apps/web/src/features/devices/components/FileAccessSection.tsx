@@ -3,6 +3,7 @@
 import { Button, Chip } from "@heroui/react";
 import { Folder01Icon, HardDriveIcon } from "@icons";
 import type { ProtectedFolder } from "@shared/desktop-tools";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { PROTECTED_FOLDERS, useFileAccess } from "../hooks/useFileAccess";
 
 const FOLDER_LABELS: Record<ProtectedFolder, string> = {
@@ -60,9 +61,13 @@ export function FileAccessSection() {
         <div className="flex items-center gap-2 text-sm">
           <HardDriveIcon className="size-4 text-zinc-400" />
           <span className="min-w-0 flex-1 truncate">Full Disk Access</span>
-          <Button size="sm" variant="tertiary" onPress={openFullDiskAccess}>
+          <GaiaButton
+            size="sm"
+            variant="default-soft"
+            onPress={openFullDiskAccess}
+          >
             Open System Settings
-          </Button>
+          </GaiaButton>
         </div>
       </div>
     </div>

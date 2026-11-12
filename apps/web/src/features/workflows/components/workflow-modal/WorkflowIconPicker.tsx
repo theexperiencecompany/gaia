@@ -108,9 +108,9 @@ export default function WorkflowIconPicker({
         if (!open) setQuery("");
       }}
     >
-      <Button
+      <GaiaButton
         isIconOnly
-        variant="tertiary"
+        variant="default-soft"
         aria-label={selected ? "Change workflow icon" : "Add workflow icon"}
         className={cn(
           "-mt-0.5 size-10 min-w-10 shrink-0",
@@ -123,7 +123,7 @@ export default function WorkflowIconPicker({
         ) : (
           <PlusSignIcon className="size-5 text-zinc-500" />
         )}
-      </Button>
+      </GaiaButton>
       <Popover.Content
         placement="bottom start"
         className="w-80 bg-zinc-800 p-3"

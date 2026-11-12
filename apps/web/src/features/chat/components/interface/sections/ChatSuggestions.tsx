@@ -46,7 +46,7 @@ export const ChatSuggestions: React.FC = () => {
           >
             <Button
               fullWidth
-              variant="tertiary"
+              variant="ghost"
               size="sm"
               onPress={() => appendToInput(prompt)}
               className="h-10 justify-start gap-3 rounded-xl px-3 text-sm font-normal text-zinc-400 hover:text-zinc-100"

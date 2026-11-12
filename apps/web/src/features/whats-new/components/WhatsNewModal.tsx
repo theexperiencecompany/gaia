@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, Modal, Spinner } from "@heroui/react";
+import { Modal, Spinner } from "@heroui/react";
 import { ArrowLeft02Icon, ArrowRight02Icon, ArrowUpRight01Icon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { track } from "@/lib/analytics";
 import { useWhatsNewModal, useWhatsNewStore } from "@/stores/whatsNewStore";
@@ -131,9 +132,9 @@ export function WhatsNewModal() {
                   </LinkButton>
                 )}
                 <div className="flex items-center gap-1">
-                  <Button
+                  <GaiaButton
                     isIconOnly
-                    variant="tertiary"
+                    variant="default-soft"
                     size="sm"
                     isDisabled={!canScrollPrev}
                     onPress={scrollPrev}
@@ -141,10 +142,10 @@ export function WhatsNewModal() {
                     className="h-7 w-7 min-w-7 bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-30"
                   >
                     <ArrowLeft02Icon className="h-4 w-4" />
-                  </Button>
-                  <Button
+                  </GaiaButton>
+                  <GaiaButton
                     isIconOnly
-                    variant="tertiary"
+                    variant="default-soft"
                     size="sm"
                     isDisabled={!canScrollNext}
                     onPress={scrollNext}
@@ -152,7 +153,7 @@ export function WhatsNewModal() {
                     className="h-7 w-7 min-w-7 bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-30"
                   >
                     <ArrowRight02Icon className="h-4 w-4" />
-                  </Button>
+                  </GaiaButton>
                 </div>
               </Modal.Footer>
             )}

@@ -1343,6 +1343,13 @@ html {
     font-size: var(--gaia-button-lg-font-size);
     border-radius: var(--gaia-radius-lg);
   }
+  /* v3 sizes every button icon to 16px; v2 left an icon's own width/height alone.
+     width:auto hands an svg back its width/height attributes. */
+  .button svg[width],
+  .button svg[height] {
+    width: auto;
+    height: auto;
+  }
   .button--icon-only {
     min-width: var(--gaia-button-md-height);
     width: var(--gaia-button-md-height);

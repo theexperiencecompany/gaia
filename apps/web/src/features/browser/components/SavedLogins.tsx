@@ -25,6 +25,7 @@ import {
 import Image from "next/image";
 import { type ComponentType, useEffect, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useBrowserLogins } from "../hooks/useBrowserLogins";
 import type { SavedBrowserLogin } from "../types";
@@ -322,9 +323,13 @@ export function SavedLogins() {
       ) : error ? (
         <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-800/40 p-6 text-center text-sm text-zinc-400">
           <span>Couldn&apos;t load your saved sites.</span>
-          <Button size="sm" variant="tertiary" onPress={() => void refetch()}>
+          <GaiaButton
+            size="sm"
+            variant="default-soft"
+            onPress={() => void refetch()}
+          >
             Retry
-          </Button>
+          </GaiaButton>
         </div>
       ) : logins.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-zinc-800/40 p-8 text-center">

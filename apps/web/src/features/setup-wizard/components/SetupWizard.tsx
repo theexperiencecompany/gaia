@@ -10,9 +10,10 @@
 
 "use client";
 
-import { Button, Spinner } from "@heroui/react";
+import { Spinner } from "@heroui/react";
 import { Alert01Icon } from "@icons";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
 import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
 import { ACCOUNT_STEP, WIZARD_STEPS } from "../constants";
@@ -47,15 +48,15 @@ export function SetupWizard() {
         <p className="text-sm text-zinc-400">
           Couldn't reach your GAIA instance to check its setup status.
         </p>
-        <Button
-          variant="tertiary"
+        <GaiaButton
+          variant="default-soft"
           onPress={() => {
             void refetch();
             void catalogQuery.refetch();
           }}
         >
           Try again
-        </Button>
+        </GaiaButton>
       </div>
     );
   }

@@ -30,7 +30,7 @@ export default function OrbDevPage() {
         <GaiaButton
           shape="pill"
           size="sm"
-          variant="tertiary"
+          variant="default-soft"
           onPress={() => setLarge((v) => !v)}
         >
           {large ? "small" : "large"}

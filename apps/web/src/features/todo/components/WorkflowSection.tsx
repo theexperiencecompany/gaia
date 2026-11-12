@@ -260,8 +260,8 @@ export default function WorkflowSection({
             {hasWorkflow ? (
               <Dropdown>
                 <DropdownTrigger>
-                  <Button
-                    variant="tertiary"
+                  <GaiaButton
+                    variant="default-soft"
                     size="sm"
                     isPending={isGenerating}
                     isDisabled={isGenerating}
@@ -273,7 +273,7 @@ export default function WorkflowSection({
                     {!isGenerating && (
                       <ChevronDown className="h-3 w-3 text-zinc-400" />
                     )}
-                  </Button>
+                  </GaiaButton>
                 </DropdownTrigger>
                 <DropdownPopover placement="bottom end">
                   <DropdownMenu
@@ -297,8 +297,8 @@ export default function WorkflowSection({
                 </DropdownPopover>
               </Dropdown>
             ) : (
-              <Button
-                variant="tertiary"
+              <GaiaButton
+                variant="default-soft"
                 size="sm"
                 onPress={handleGenerate}
                 isIconOnly
@@ -307,7 +307,7 @@ export default function WorkflowSection({
                 <RedoIcon
                   className={`h-4 w-4 text-zinc-400 ${isGenerating ? "animate-spin" : ""}`}
                 />
-              </Button>
+              </GaiaButton>
             )}
             {hasWorkflow && (
               <Tooltip>

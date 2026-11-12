@@ -82,7 +82,7 @@ function OnboardingProgressImpl({
         <GaiaButton
           shape="pill"
           size="sm"
-          variant="tertiary"
+          variant="default-soft"
           isPending={isRestarting}
           isDisabled={isRestarting}
           isIconOnly={isMobile}
@@ -146,12 +146,12 @@ function OnboardingProgressImpl({
                 </p>
               </Modal.Body>
               <Modal.Footer>
-                <Button
-                  variant="tertiary"
+                <GaiaButton
+                  variant="default-soft"
                   onPress={() => setConfirmOpen(false)}
                 >
                   Cancel
-                </Button>
+                </GaiaButton>
                 <Button
                   onPress={() => {
                     setConfirmOpen(false);

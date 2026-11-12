@@ -1,7 +1,8 @@
 "use client";
 
-import { Button, Modal, Spinner } from "@heroui/react";
+import { Modal, Spinner } from "@heroui/react";
 import { Alert01Icon, Login02Icon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { handleAuthLogin } from "@/features/auth/hooks/handleAuthLogin";
 import {
@@ -98,15 +99,15 @@ function InstanceSignIn({ onLocalSignIn }: { onLocalSignIn: () => void }) {
       <p className="text-sm text-zinc-400">
         Couldn&apos;t reach your GAIA server to start signing in.
       </p>
-      <Button
-        variant="tertiary"
+      <GaiaButton
+        variant="default-soft"
         isPending={isFetching}
         onPress={() => {
           void refetch();
         }}
       >
         Try again
-      </Button>
+      </GaiaButton>
     </div>
   );
 }

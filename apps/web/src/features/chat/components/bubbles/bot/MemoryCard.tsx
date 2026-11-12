@@ -111,7 +111,7 @@ function AddSection({
             </div>
           )}
         </div>
-        <Chip size="sm" variant="tertiary" color={color}>
+        <Chip size="sm" variant="soft" color={color}>
           <Chip.Label className="text-xs font-medium">{label}</Chip.Label>
         </Chip>
       </div>
@@ -142,7 +142,7 @@ function SearchSection({
             </span>
           </div>
         )}
-        <Chip size="sm" variant="tertiary" className="ml-auto">
+        <Chip size="sm" variant="soft" className="ml-auto">
           <Chip.Label className="text-xs text-zinc-400">
             {item.memories.length} result{item.memories.length === 1 ? "" : "s"}
           </Chip.Label>
@@ -265,7 +265,7 @@ function DocumentSection({
           </span>
         </div>
         {updated && (
-          <Chip size="sm" variant="tertiary" color="accent">
+          <Chip size="sm" variant="soft" color="accent">
             <Chip.Label className="text-xs font-medium">Updated</Chip.Label>
           </Chip>
         )}
@@ -280,7 +280,7 @@ function DocumentSection({
           <GaiaButton
             shape="pill"
             size="sm"
-            variant="tertiary"
+            variant="ghost"
             onPress={() => setExpanded((v) => !v)}
             className="mt-2 h-auto min-w-0 px-2 py-1 text-xs text-zinc-500 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300"
           >

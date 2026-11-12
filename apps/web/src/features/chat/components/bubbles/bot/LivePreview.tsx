@@ -51,7 +51,7 @@ export function LivePreview({
             shape="pill"
             isIconOnly
             size="sm"
-            variant="tertiary"
+            variant="ghost"
             className="ml-auto size-6 min-w-6 text-zinc-400"
             aria-label="Open in side panel"
             onPress={surface.openPanel}
@@ -64,7 +64,7 @@ export function LivePreview({
             shape="pill"
             isIconOnly
             size="sm"
-            variant="tertiary"
+            variant="ghost"
             className="ml-auto size-6 min-w-6 text-zinc-400"
             aria-label="Full screen live preview"
             onPress={() => setFullscreen(true)}
@@ -87,7 +87,7 @@ export function LivePreview({
           <GaiaButton
             shape="pill"
             size="sm"
-            variant="tertiary"
+            variant="ghost"
             className="h-7 px-2 text-xs text-zinc-400"
             onPress={surface.openPanel}
           >
@@ -104,7 +104,7 @@ export function LivePreview({
             target="_blank"
             rel="noopener noreferrer"
             size="sm"
-            variant="tertiary"
+            variant="ghost"
             className="h-7 px-2 text-xs text-zinc-400"
           >
             <SquareArrowUpRight02Icon className="size-3.5" />

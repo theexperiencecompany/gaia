@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, Chip, ListBox, Select } from "@heroui/react";
+import { Chip, ListBox, Select } from "@heroui/react";
 import type { HilMode } from "@shared/chat";
 import { useRouter } from "next/navigation";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useHilPreferences } from "@/features/settings/hooks/useHilPreferences";
@@ -82,14 +83,14 @@ export function HilApprovalMode() {
         label="Per-tool approvals"
         description="Force a specific tool to always ask, in each integration's tool list."
       >
-        <Button
+        <GaiaButton
           size="sm"
-          variant="tertiary"
+          variant="default-soft"
           className="rounded-xl"
           onPress={() => router.push("/integrations")}
         >
           Open Integrations
-        </Button>
+        </GaiaButton>
       </SettingsRow>
     </SettingsSection>
   );

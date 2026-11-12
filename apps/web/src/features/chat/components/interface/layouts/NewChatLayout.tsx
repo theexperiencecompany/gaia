@@ -44,7 +44,7 @@ export const NewChatLayout: React.FC<NewChatLayoutProps> = ({
           <GaiaButton
             shape="pill"
             className="font-medium text-zinc-300"
-            variant="tertiary"
+            variant="default-soft"
             onPress={() => setShowUseCases(true)}
           >
             Explore Use Cases <ChevronUp />

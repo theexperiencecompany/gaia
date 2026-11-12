@@ -9,7 +9,6 @@
 
 "use client";
 
-import { Button } from "@heroui/react";
 import { ArrowDown01Icon, Cancel01Icon, Wrench01Icon } from "@icons";
 import * as m from "motion/react-m";
 import { useEffect, useMemo, useState } from "react";
@@ -31,7 +30,7 @@ function ChecklistAction({ item }: { item: SetupChecklistItem }) {
     <LinkButton
       href={item.href}
       size="sm"
-      variant="tertiary"
+      variant="default-soft"
       className="shrink-0 font-medium"
     >
       {item.actionLabel}
@@ -125,9 +124,9 @@ export function SetupChecklistBanner({
               <p className="min-w-0 flex-1 truncate text-xs font-medium text-zinc-200">
                 {visible.length} setup steps left
               </p>
-              <Button
+              <GaiaButton
                 size="sm"
-                variant="tertiary"
+                variant="default-soft"
                 className="shrink-0 font-medium"
                 aria-expanded={isExpanded}
                 onPress={() => setIsExpanded((open) => !open)}
@@ -140,7 +139,7 @@ export function SetupChecklistBanner({
                     isExpanded && "rotate-180",
                   )}
                 />
-              </Button>
+              </GaiaButton>
             </div>
           )}
           <DismissButton

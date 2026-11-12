@@ -1,17 +1,17 @@
 "use client";
 
-import { Button, Skeleton } from "@heroui/react";
+import { Skeleton } from "@heroui/react";
 import { PlusSignIcon } from "@icons";
 import type { IntegrationAccountResponse } from "@shared/api/generated";
 import { useState } from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useIntegrationAccounts } from "@/features/integrations/hooks/useIntegrationAccounts";
 import type {
   Integration,
   IntegrationConnectOptions,
 } from "@/features/integrations/types";
-
 import { IntegrationAccountRenameModal } from "./IntegrationAccountRenameModal";
 import { IntegrationAccountRow } from "./IntegrationAccountRow";
 
@@ -78,9 +78,9 @@ export function IntegrationAccounts({
           onRemove={() => setRemoving(account)}
         />
       ))}
-      <Button
+      <GaiaButton
         size="sm"
-        variant="tertiary"
+        variant="default-soft"
         isPending={isAdding}
         isDisabled={atLimit}
         onPress={addAccount}
@@ -89,7 +89,7 @@ export function IntegrationAccounts({
         {atLimit
           ? `${maxAccounts} accounts connected (the maximum)`
           : "Add another account"}
-      </Button>
+      </GaiaButton>
 
       <IntegrationAccountRenameModal
         key={renaming?.id ?? "closed"}

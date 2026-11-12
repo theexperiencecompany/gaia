@@ -7,6 +7,7 @@ import {
   integrationConnectionState,
 } from "@shared/utils";
 import { useEffect, useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";
 import type { HoloCardDisplayData } from "@/components/ui/holo-card/types";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -100,25 +101,25 @@ export default function ProfileCardSettings() {
         </div>
         <ButtonGroup>
           <Tooltip>
-            <Button
+            <GaiaButton
               isIconOnly
-              variant="tertiary"
+              variant="default-soft"
               onPress={handleCopyLink}
               size="sm"
             >
               <Copy01Icon size={16} />
-            </Button>
+            </GaiaButton>
             <Tooltip.Content>Copy profile link</Tooltip.Content>
           </Tooltip>
           <Tooltip>
-            <Button
+            <GaiaButton
               isIconOnly
-              variant="tertiary"
+              variant="default-soft"
               onPress={handleOpenProfile}
               size="sm"
             >
               <LinkSquare02Icon size={16} />
-            </Button>
+            </GaiaButton>
             <Tooltip.Content>View full profile</Tooltip.Content>
           </Tooltip>
         </ButtonGroup>

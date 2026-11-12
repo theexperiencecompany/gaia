@@ -1,6 +1,7 @@
 import { Button, Tooltip } from "@heroui/react";
 import { Cancel01Icon, DownloadSquare01Icon } from "@icons";
 import type React from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toast } from "@/lib/toast";
 import type { ImageData } from "@/types/features/toolDataTypes";
 
@@ -61,10 +62,10 @@ export default function ChatBubble_Actions_Image({
   return (
     <div className="flex w-fit items-center gap-2 pl-1">
       {fullWidth && setOpenImage ? (
-        <Button variant="tertiary" onPress={() => setOpenImage(false)}>
+        <GaiaButton variant="default-soft" onPress={() => setOpenImage(false)}>
           <Cancel01Icon height="22" />
           <span>Cancel</span>
-        </Button>
+        </GaiaButton>
       ) : null}
       <Tooltip>
         <Button
