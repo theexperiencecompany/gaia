@@ -14,6 +14,7 @@ import {
 import { Comment01Icon, HelpCircleIcon, PencilEdit01Icon } from "@icons";
 import { useState } from "react";
 import { z } from "zod";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { Separator } from "@/components/ui/separator";
 import { supportApi } from "@/features/support/api/supportApi";
 import { toast } from "@/lib/toast";
@@ -295,14 +296,15 @@ export default function SupportTicketCard({
 
         {/* Submit Button */}
         <div className="flex justify-end px-6 pb-5">
-          <Button
+          <GaiaButton
+            shape="pill"
             onPress={handleSubmit}
             isPending={isSubmitting}
             className="font-medium"
             variant="primary"
           >
             {isSubmitting ? "Submitting..." : "Submit Ticket"}
-          </Button>
+          </GaiaButton>
         </div>
       </div>
 

@@ -15,6 +15,7 @@ import type { MemoryOverviewResponse } from "@shared/api/generated";
 import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useState } from "react";
+import { shapeVariants } from "@/components/shared/shape";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { CoreDocuments } from "@/features/memory/components/CoreDocuments";
 import { MemoryDocsBanner } from "@/features/memory/components/MemoryDocsBanner";
@@ -122,6 +123,7 @@ export default function MemoryManagement({
       </div>
 
       <Tabs
+        className={shapeVariants({ shape: "pill" })}
         variant="primary"
         selectedKey={selectedTab}
         onSelectionChange={(key) => setSelectedTab(key as string)}

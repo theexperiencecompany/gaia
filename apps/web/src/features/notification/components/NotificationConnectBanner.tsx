@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { Cancel01Icon } from "@icons";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -80,7 +79,8 @@ export function NotificationConnectBanner({
             >
               Connect
             </GaiaButton>
-            <Button
+            <GaiaButton
+              shape="pill"
               isIconOnly
               variant="ghost"
               size="sm"
@@ -89,7 +89,7 @@ export function NotificationConnectBanner({
               className="h-6 w-6 min-w-6 text-zinc-500 hover:text-white"
             >
               <Cancel01Icon className="h-3 w-3" />
-            </Button>
+            </GaiaButton>
           </div>
         </div>
       </div>
@@ -98,7 +98,8 @@ export function NotificationConnectBanner({
 
   return (
     <div className="relative rounded-xl border border-zinc-700 bg-zinc-800/60 p-4">
-      <Button
+      <GaiaButton
+        shape="pill"
         isIconOnly
         variant="ghost"
         size="sm"
@@ -107,7 +108,7 @@ export function NotificationConnectBanner({
         className="absolute top-2 right-2 h-6 w-6 min-w-6 text-zinc-500 hover:text-white"
       >
         <Cancel01Icon className="h-3 w-3" />
-      </Button>
+      </GaiaButton>
       <p className="pr-6 text-sm font-medium text-zinc-200">
         Stay notified on your devices
       </p>

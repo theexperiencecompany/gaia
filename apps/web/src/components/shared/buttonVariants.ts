@@ -1,6 +1,8 @@
 import { buttonVariants as heroButtonVariants } from "@heroui/react";
 import { tv, type VariantProps } from "tailwind-variants";
 
+import { SHAPE_CLASSES } from "./shape";
+
 /**
  * HeroUI's button variants plus GAIA's two, extended the way HeroUI documents.
  * default-solid is v2's bare default button (zinc-700 fill); accent-soft is v2's
@@ -15,7 +17,9 @@ export const buttonVariants = tv({
       "accent-soft":
         "bg-accent-soft text-accent-soft-foreground hover:bg-accent-soft-hover active:bg-accent-soft-hover",
     },
+    shape: SHAPE_CLASSES,
   },
+  defaultVariants: { shape: "default" },
 });
 
 export type ButtonVariants = VariantProps<typeof buttonVariants>;

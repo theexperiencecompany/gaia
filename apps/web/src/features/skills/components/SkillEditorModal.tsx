@@ -13,6 +13,7 @@ import {
 } from "@heroui/react";
 import { Github01Icon } from "@icons";
 import { useState } from "react";
+import { shapeVariants } from "@/components/shared/shape";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { toast } from "@/lib/toast";
 import { skillsApi } from "../api/skillsApi";
@@ -67,6 +68,7 @@ function InstructionsField({
       <div className="flex items-center justify-between">
         <span className="text-sm text-zinc-300">Instructions</span>
         <Tabs
+          className={shapeVariants({ shape: "pill" })}
           selectedKey={tab}
           onSelectionChange={(key) => setTab(key as "write" | "preview")}
         >
@@ -285,7 +287,7 @@ function SkillEditorForm({
           <Tabs
             selectedKey={mode}
             onSelectionChange={(key) => setMode(key as "write" | "import")}
-            className="mb-1"
+            className={shapeVariants({ shape: "pill", className: "mb-1" })}
           >
             <Tabs.List>
               <Tabs.Tab id="write">Write your own</Tabs.Tab>

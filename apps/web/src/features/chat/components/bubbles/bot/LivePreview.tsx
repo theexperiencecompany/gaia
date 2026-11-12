@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Modal } from "@heroui/react";
+import { Modal } from "@heroui/react";
 import {
   EyeIcon,
   FullScreenIcon,
@@ -8,6 +8,7 @@ import {
   SquareArrowUpRight02Icon,
 } from "@icons";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { useLiveBrowser } from "@/features/browser/hooks/useLiveBrowser";
 import type { LiveSurface } from "@/features/browser/types";
@@ -46,7 +47,8 @@ export function LivePreview({
         <EyeIcon className="size-3.5 text-zinc-400" />
         <span className="text-xs font-medium text-zinc-300">Live preview</span>
         {surface.kind === "card" && (
-          <Button
+          <GaiaButton
+            shape="pill"
             isIconOnly
             size="sm"
             variant="tertiary"
@@ -55,10 +57,11 @@ export function LivePreview({
             onPress={surface.openPanel}
           >
             <SidebarRight01Icon className="size-4" />
-          </Button>
+          </GaiaButton>
         )}
         {surface.kind === "mobile" && (
-          <Button
+          <GaiaButton
+            shape="pill"
             isIconOnly
             size="sm"
             variant="tertiary"
@@ -67,7 +70,7 @@ export function LivePreview({
             onPress={() => setFullscreen(true)}
           >
             <FullScreenIcon className="size-4" />
-          </Button>
+          </GaiaButton>
         )}
       </div>
 
@@ -81,7 +84,8 @@ export function LivePreview({
 
       {surface.kind === "card" && (
         <div className="mt-2 px-0.5">
-          <Button
+          <GaiaButton
+            shape="pill"
             size="sm"
             variant="tertiary"
             className="h-7 px-2 text-xs text-zinc-400"
@@ -89,12 +93,13 @@ export function LivePreview({
           >
             <SidebarRight01Icon className="size-3.5" />
             Open side panel
-          </Button>
+          </GaiaButton>
         </div>
       )}
       {surface.kind === "mobile" && (
         <div className="mt-2 px-0.5">
           <LinkButton
+            shape="pill"
             href={pageUrl}
             target="_blank"
             rel="noopener noreferrer"

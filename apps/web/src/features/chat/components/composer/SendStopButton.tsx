@@ -1,10 +1,10 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { ArrowUp02Icon, Clock01Icon, StopIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { TextMorph } from "torph/react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   type ComposerSendMode,
   useComposerSendMode,
@@ -102,7 +102,8 @@ export default function SendStopButton({
     : `${className} ${stopCursor}`;
 
   return (
-    <Button
+    <GaiaButton
+      shape="pill"
       isIconOnly={!showQueue}
       aria-label={MODE_ARIA_LABEL[mode]}
       className={`transition-all duration-300 ${contentColor} ${shapeClass}`}
@@ -127,6 +128,6 @@ export default function SendStopButton({
           {renderModeContent(mode)}
         </m.span>
       </AnimatePresence>
-    </Button>
+    </GaiaButton>
   );
 }

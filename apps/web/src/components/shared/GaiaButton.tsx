@@ -3,26 +3,45 @@
 import { Button, type ButtonProps } from "@heroui/react";
 
 import { type ButtonVariants, buttonVariants } from "./buttonVariants";
+import { type Shape, shapeVariants } from "./shape";
 
-type GaiaVariant = Extract<
-  ButtonVariants["variant"],
-  "default-solid" | "accent-soft"
->;
+/** HeroUI's button variants plus GAIA's, closed: a misspelt or v2 variant is a type error. */
+export type GaiaButtonVariant = NonNullable<ButtonVariants["variant"]>;
+
+type GaiaOnlyVariant = "default-solid" | "accent-soft";
+
+function isGaiaVariant(variant: GaiaButtonVariant): variant is GaiaOnlyVariant {
+  return variant === "default-solid" || variant === "accent-soft";
+}
 
 type GaiaButtonProps = Omit<ButtonProps, "variant" | "className"> & {
-  variant: GaiaVariant;
+  variant?: GaiaButtonVariant;
+  shape?: Shape;
   className?: string;
 };
 
-/** HeroUI's Button in one of GAIA's two extra variants; every other variant is HeroUI's own Button. */
+/** HeroUI's Button with GAIA's extra variants and shape; HeroUI's own variants pass straight through. */
 export function GaiaButton({
-  variant,
+  variant = "primary",
+  shape = "default",
   size,
   isIconOnly,
   fullWidth,
   className,
   ...props
 }: GaiaButtonProps) {
+  if (!isGaiaVariant(variant)) {
+    return (
+      <Button
+        variant={variant}
+        size={size}
+        isIconOnly={isIconOnly}
+        fullWidth={fullWidth}
+        className={shapeVariants({ shape, className })}
+        {...props}
+      />
+    );
+  }
   return (
     <Button
       variant="ghost"
@@ -31,6 +50,7 @@ export function GaiaButton({
       fullWidth={fullWidth}
       className={buttonVariants({
         variant,
+        shape,
         size,
         isIconOnly,
         fullWidth,

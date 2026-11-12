@@ -162,15 +162,16 @@ function PresetChips({ presets, selected, onSelect }: PresetChipsProps) {
   return (
     <div className="flex flex-wrap gap-2">
       {chips.map((chip) => (
-        <Button
+        <GaiaButton
+          shape="pill"
           key={chip.id}
           size="sm"
-          className="rounded-full"
+          className=""
           variant={selected === chip.id ? "secondary" : "ghost"}
           onPress={() => onSelect(chip.id)}
         >
           {chip.label}
-        </Button>
+        </GaiaButton>
       ))}
     </div>
   );

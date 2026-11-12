@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toast } from "@/lib/toast";
 
 const LONG_MESSAGE =
@@ -139,14 +139,15 @@ export default function ToastPlaygroundPage() {
             </h2>
             <div className="flex flex-wrap gap-2">
               {group.triggers.map((t) => (
-                <Button
+                <GaiaButton
+                  shape="pill"
                   key={t.label}
                   size="sm"
                   variant="tertiary"
                   onPress={t.run}
                 >
                   {t.label}
-                </Button>
+                </GaiaButton>
               ))}
             </div>
           </section>
