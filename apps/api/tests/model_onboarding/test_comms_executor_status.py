@@ -83,6 +83,10 @@ CASES = {
     "status_running": Case("running", "is it done yet?", dispatches=None),
     # Something new for the running work still reaches it.
     "add_while_running": Case("running", "oh and archive the newsletter ones too", dispatches=True),
+    # The running work cannot see the chat: a passing detail that changes its result must be handed over.
+    "detail_while_running": Case(
+        "running", "fyi the ones from my bank aren't promos", dispatches=True
+    ),
     # The acknowledgment of this turn's own dispatch must never dispatch again.
     "ack_after_dispatch": Case("running", None, dispatches=False),
     "chat_while_running": Case("running", "lol thanks", dispatches=False),
