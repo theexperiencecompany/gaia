@@ -64,9 +64,16 @@ function cutAtBreaks(text: string): string[] {
 const cleanBubble = (piece: string): string =>
   stripPartialBreakToken(piece).trim();
 
+/** The non-empty bubbles of cut pieces, cleaned. */
+const cleanBubbles = (pieces: string[]): string[] =>
+  pieces.flatMap((piece) => {
+    const bubble = cleanBubble(piece);
+    return bubble ? [bubble] : [];
+  });
+
 /** Split finished assistant text into its bubbles; empty ones are dropped. */
 export function splitMessageByBreaks(text: string): string[] {
-  return cutAtBreaks(text).map(cleanBubble).filter(Boolean);
+  return cleanBubbles(cutAtBreaks(text));
 }
 
 /** Text still streaming, as the bubbles a break has closed and the one still being written. */
@@ -82,5 +89,5 @@ export interface StreamingBubbles {
 export function splitStreamingBubbles(text: string): StreamingBubbles {
   const pieces = cutAtBreaks(text);
   const open = cleanBubble(pieces.pop() ?? "");
-  return { complete: pieces.map(cleanBubble).filter(Boolean), open };
+  return { complete: cleanBubbles(pieces), open };
 }

@@ -31,14 +31,16 @@ import {
 } from "../delivery-failures";
 import type { ChatRequest, PlatformName } from "../types";
 import {
-  type DeliveryConfig,
-  type DeliveryEvent,
-  type DeliveryOp,
   initialDeliveryState,
-  type MessageSlot,
   PLACEHOLDER_SLOT,
   stepDelivery,
 } from "./bubble-delivery";
+import type {
+  DeliveryConfig,
+  DeliveryEvent,
+  DeliveryOp,
+  MessageSlot,
+} from "./bubble-delivery.types";
 import { BUBBLE_PAUSE_MS } from "./bubbles";
 import { isMessageGoneError, retryAfterMs } from "./delivery-errors";
 import { BOT_FAILURE_REASON, recordBotFailure } from "./failure-reasons";

@@ -16,11 +16,17 @@
  */
 
 import { splitStreamingBubbles } from "../../utils/messageBubbles";
-import type { PlatformName } from "../types";
+import type {
+  Carry,
+  DeliveryConfig,
+  DeliveryEvent,
+  DeliveryOp,
+  DeliveryState,
+  MessageSlot,
+  TurnFields,
+} from "./bubble-delivery.types";
 import { chunkResponse, PLATFORM_LIMITS, splitOverflow } from "./text";
 
-/** A message on screen, numbered in the order this turn opened it. */
-export type MessageSlot = number;
 /** The adapter's own "Thinking..." message, there before the turn starts. */
 export const PLACEHOLDER_SLOT: MessageSlot = 0;
 
@@ -30,65 +36,6 @@ export const PLACEHOLDER_SLOT: MessageSlot = 0;
  * limit instead of taking shown text back.
  */
 export const LIVE_PREVIEW_SHARE = 0.9;
-
-export type DeliveryOp =
-  | { kind: "edit"; slot: MessageSlot; text: string }
-  | { kind: "send"; slot: MessageSlot; text: string }
-  | { kind: "delete"; slot: MessageSlot }
-  | { kind: "pause" };
-
-export type DeliveryEvent =
-  | { kind: "text"; chunk: string }
-  | { kind: "tick" }
-  | { kind: "boundary"; discarded: boolean }
-  | { kind: "outOfBand"; text: string }
-  | { kind: "end" };
-
-export interface DeliveryConfig {
-  live: boolean;
-  platform: PlatformName;
-  /** The platform's markdown converter: limits are measured on what it produces. */
-  render: (text: string) => string;
-}
-
-/** A message whose text the next output may overwrite: the placeholder, or retracted text. */
-interface Reusable {
-  slot: MessageSlot;
-  retracted: boolean;
-}
-
-/** The bubble being written, as `carried + open.slice(from)`: earlier messages took the rest. */
-interface Carry {
-  carried: string;
-  from: number;
-}
-
-interface TurnFields {
-  /** Raw text of the assistant message in flight. */
-  pending: string;
-  /** How many of its complete bubbles are delivered. */
-  sealedBubbles: number;
-  carry: Carry;
-  reusable: Reusable | null;
-  nextSlot: MessageSlot;
-  /** The latest out-of-band message: a reply never lands above it by reusing an older one. */
-  pinned: MessageSlot | null;
-  /** The user has been shown something of the reply. */
-  spoke: boolean;
-}
-
-/** The in-flight message's bubbles on screen: `earlier` are final, `live` is still growing. */
-export type DeliveryState =
-  | ({ phase: "idle" } & TurnFields)
-  | ({
-      phase: "streaming";
-      earlier: MessageSlot[];
-      live: { slot: MessageSlot; shown: string };
-    } & TurnFields)
-  | ({
-      phase: "sealed";
-      earlier: [MessageSlot, ...MessageSlot[]];
-    } & TurnFields);
 
 const FRESH_CARRY: Carry = { carried: "", from: 0 };
 

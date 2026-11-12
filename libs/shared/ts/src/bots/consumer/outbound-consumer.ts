@@ -593,9 +593,12 @@ export class OutboundConsumer {
     progress: { delivered: number },
   ): Promise<void> {
     const text = sources
-      .flatMap((source) => splitMessageByBreaks(source))
-      .map((bubble) => renderForPlatform(bubble, this.platform).trim())
-      .filter(Boolean)
+      .flatMap((source) =>
+        splitMessageByBreaks(source).flatMap((bubble) => {
+          const rendered = renderForPlatform(bubble, this.platform).trim();
+          return rendered ? [rendered] : [];
+        }),
+      )
       .join("\n\n");
     wideLog.set({ outbound_mode: "notification" });
     if (!text) return;

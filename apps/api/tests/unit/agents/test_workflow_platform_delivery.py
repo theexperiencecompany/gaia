@@ -28,7 +28,7 @@ from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.core.background.workflow_platform_delivery"
 
-USER: dict = {"user_id": "user-1", "email": "u@gaia.local"}
+USER = AuthenticatedUser(user_id="user-1", email="u@gaia.local")
 USER_ID = "user-1"
 TEXT = f"Report is ready.{NEW_MESSAGE_BREAKER}It has 3 pages."
 
