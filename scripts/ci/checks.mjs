@@ -97,7 +97,9 @@ import {
   HEROUI_SANCTIONED_FILES,
   HEROUI_SCANNED_ROOTS,
   HEROUI_STYLE_BASELINE,
+  HEROUI_WRAPPER_DIR,
   heroStyleOverridesIn,
+  heroWrappersIn,
 } from "./lib/heroui-styling.mjs";
 import {
   BASELINES,
@@ -957,11 +959,18 @@ function cmdHeroStyleOverrides(argv) {
       existsSync(file),
   );
 
+  const wrappers = new Map();
+  for (const file of gitLsFiles([`${HEROUI_WRAPPER_DIR}*.tsx`])) {
+    if (isTestFile(file) || !existsSync(file)) continue;
+    const names = heroWrappersIn(file, readFileSync(file, "utf8"));
+    if (names.size > 0) wrappers.set(file.replace(/\.tsx$/, ""), names);
+  }
+
   const fresh = [];
   const seen = new Set();
   for (const file of scanned) {
     const src = readFileSync(file, "utf8");
-    for (const { line, entry } of heroStyleOverridesIn(file, src)) {
+    for (const { line, entry } of heroStyleOverridesIn(file, src, wrappers)) {
       seen.add(entry);
       if (!baseline.has(entry)) fresh.push({ file, line, entry });
     }

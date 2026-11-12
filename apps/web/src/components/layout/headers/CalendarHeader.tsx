@@ -78,7 +78,7 @@ export default function CalendarHeader() {
           className="w-34"
         >
           <Select.Trigger className="bg-zinc-800 text-xs! cursor-pointer">
-            <GaiaSelectValue className="text-zinc-300">
+            <GaiaSelectValue>
               {
                 dayOptions.find(
                   (opt) =>

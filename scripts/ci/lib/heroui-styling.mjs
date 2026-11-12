@@ -8,6 +8,7 @@
 // A Biome GritQL plugin cannot express this: GritQL cannot regex the content of
 // a string literal, so it cannot tell `rounded-lg` from `w-full` inside a
 // className, nor follow cn()/clsx() arguments or an aliased import binding.
+import { posix } from "node:path";
 import { parse } from "@babel/parser";
 import traverse from "@babel/traverse";
 
@@ -28,6 +29,11 @@ export const HEROUI_SANCTIONED_FILES = new Set([
   "apps/web/src/lib/heroui/accordionParity.ts",
   "apps/web/src/lib/heroui/tabsParity.ts",
 ]);
+
+// A component exported from here that hands its className to a HeroUI element
+// (or one styled by a shared variant) is a GAIA wrapper, checked like HeroUI.
+export const HEROUI_WRAPPER_DIR = "apps/web/src/components/shared/";
+const VARIANT_MODULE = /\/(\w+Variants|shape)$/;
 
 // Skeleton has no shape of its own: its radius is the placeholder's layout.
 const UNSTYLED_COMPONENTS = new Set(["Skeleton"]);
@@ -123,20 +129,98 @@ function styleKeys(node) {
     .filter((key) => typeof key === "string" && STYLE_KEY.test(key));
 }
 
-/** Local name -> HeroUI component name, for every capitalised binding imported from "@heroui/react". */
-function heroBindings(ast) {
+function parseTsx(file, src) {
+  return parse(src, {
+    sourceType: "module",
+    plugins: ["typescript", "jsx", "decorators"],
+    errorRecovery: true,
+    sourceFilename: file,
+  });
+}
+
+/** The repo path (no extension) an import names, for the alias and relative forms. */
+function importTarget(file, source) {
+  if (source.startsWith("@/") && file.startsWith("apps/web/src/")) {
+    return `apps/web/src/${source.slice(2)}`;
+  }
+  if (source.startsWith(".")) return posix.join(posix.dirname(file), source);
+  return null;
+}
+
+/** Local name -> component name, for every capitalised binding from "@heroui/react" or a GAIA wrapper module. */
+function heroBindings(ast, file, wrappers) {
   const named = new Map();
   const namespaces = new Set();
   for (const stmt of ast.program.body) {
-    if (stmt.type !== "ImportDeclaration" || stmt.source.value !== HEROUI) continue;
+    if (stmt.type !== "ImportDeclaration") continue;
+    const isHero = stmt.source.value === HEROUI;
+    const target = isHero ? null : importTarget(file, stmt.source.value);
+    const wrapped = target ? wrappers.get(target) : undefined;
+    if (!isHero && !wrapped) continue;
     for (const spec of stmt.specifiers) {
-      if (spec.type === "ImportNamespaceSpecifier") namespaces.add(spec.local.name);
+      if (isHero && spec.type === "ImportNamespaceSpecifier") namespaces.add(spec.local.name);
       if (spec.type !== "ImportSpecifier") continue;
       const imported = spec.imported.name ?? spec.imported.value;
-      if (/^[A-Z]/.test(imported)) named.set(spec.local.name, imported);
+      if (isHero ? /^[A-Z]/.test(imported) : wrapped.has(imported)) {
+        named.set(spec.local.name, imported);
+      }
     }
   }
   return { named, namespaces };
+}
+
+function mentionsIdentifier(node, name) {
+  if (!node || typeof node !== "object") return false;
+  if (node.type === "Identifier" && node.name === name) return true;
+  return Object.entries(node).some(
+    ([key, child]) =>
+      key !== "loc" &&
+      (Array.isArray(child)
+        ? child.some((c) => mentionsIdentifier(c, name))
+        : child?.type && mentionsIdentifier(child, name)),
+  );
+}
+
+function exportedComponentName(stmt) {
+  if (stmt?.type !== "ExportNamedDeclaration") return null;
+  const decl = stmt.declaration;
+  const name =
+    decl?.type === "FunctionDeclaration"
+      ? decl.id?.name
+      : decl?.type === "VariableDeclaration"
+        ? decl.declarations[0]?.id?.name
+        : null;
+  return name && /^[A-Z]/.test(name) ? name : null;
+}
+
+/** The components a shared file exports that pass their own className to a HeroUI or variant-styled element. */
+export function heroWrappersIn(file, src) {
+  const ast = parseTsx(file, src);
+  const bindings = heroBindings(ast, file, new Map());
+  const variantFns = new Set();
+  for (const stmt of ast.program.body) {
+    if (stmt.type !== "ImportDeclaration" || !VARIANT_MODULE.test(stmt.source.value)) continue;
+    for (const spec of stmt.specifiers) variantFns.add(spec.local.name);
+  }
+  const wrappers = new Set();
+  traverse.default(ast, {
+    JSXOpeningElement(nodePath) {
+      const top = nodePath.findParent((p) => p.parentPath?.isProgram());
+      const component = exportedComponentName(top?.node);
+      if (!component) return;
+      const attrs = nodePath.node.attributes;
+      const classAttr = attrs.find((a) => a.type === "JSXAttribute" && a.name.name === "className");
+      const classExpr = classAttr?.value?.expression;
+      const styled =
+        heroTag(nodePath.node.name, bindings) !== null ||
+        (classExpr?.type === "CallExpression" && variantFns.has(classExpr.callee.name));
+      const forwards =
+        mentionsIdentifier(classAttr?.value, "className") ||
+        attrs.some((a) => a.type === "JSXSpreadAttribute");
+      if (styled && forwards) wrappers.add(component);
+    },
+  });
+  return wrappers;
 }
 
 /** The HeroUI component a JSX tag names (`Modal.Body` -> "Modal.Body"), or null. */
@@ -154,14 +238,9 @@ function heroTag(name, { named, namespaces }) {
 }
 
 /** Each override as `{ line, entry }`; entry is `<file>:<Component>:<token or style key>`, the baseline's key. */
-export function heroStyleOverridesIn(file, src) {
-  const ast = parse(src, {
-    sourceType: "module",
-    plugins: ["typescript", "jsx", "decorators"],
-    errorRecovery: true,
-    sourceFilename: file,
-  });
-  const bindings = heroBindings(ast);
+export function heroStyleOverridesIn(file, src, wrappers) {
+  const ast = parseTsx(file, src);
+  const bindings = heroBindings(ast, file, wrappers);
   if (bindings.named.size === 0 && bindings.namespaces.size === 0) return [];
   const found = [];
   traverse.default(ast, {

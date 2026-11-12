@@ -108,7 +108,7 @@ function IdentitySettingsSection({
           isDisabled={isUpdating}
         >
           <Select.Trigger className="bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]">
-            <GaiaSelectValue className="text-white text-sm" />
+            <GaiaSelectValue />
             <Select.Indicator />
           </Select.Trigger>
           <Select.Popover className="bg-zinc-800 z-50">
@@ -153,7 +153,7 @@ function IdentitySettingsSection({
             isDisabled={isUpdating}
           >
             <Select.Trigger className="bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]">
-              <GaiaSelectValue className="text-white text-sm" />
+              <GaiaSelectValue />
               <Select.Indicator />
             </Select.Trigger>
             <Select.Popover className="bg-zinc-800 z-50">
@@ -355,7 +355,7 @@ export default function PreferencesSettings({
             isDisabled={isUpdating}
           >
             <Select.Trigger className="bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]">
-              <GaiaSelectValue className="text-white text-sm" />
+              <GaiaSelectValue />
               <Select.Indicator />
             </Select.Trigger>
             <Select.Popover className="bg-zinc-800 z-50">
