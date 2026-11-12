@@ -53,6 +53,27 @@ describe("validateArtifact", () => {
     ]);
   });
 
+  it("rejects a slot inside a table cell, which would print as braces", () => {
+    const result = validateArtifact(
+      `root = Artifact("Atlas launch", "Week one", [], [funnel1, table1])\n${FUNNEL}\ntable1 = DataTable(null, ["Step", "Lost"], [0], [["Signed up", "{funnel1.maxDrop}"]])\n`,
+      SOURCE,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.problems).toEqual([
+      expect.stringContaining('table1 = DataTable(...): "{funnel1.maxDrop}"'),
+    ]);
+  });
+
+  it("rejects a chart series that has a different number of values than labels", () => {
+    const result = validateArtifact(
+      `root = Artifact("Atlas launch", "Week one", [], [line1])\nline1 = Line("Signups", "Week one", ["Mon", "Tue"], [["Signups", [96]]])\n`,
+      "Signups: 96.",
+    );
+    expect(result.problems).toEqual([
+      'line1 = Line(...): series "Signups" has 1 values for 2 labels; give each label exactly one value',
+    ]);
+  });
+
   it("rejects a statement named off the list", () => {
     const result = validateArtifact(
       `root = Artifact("Atlas launch", "Week one", [], [signupFunnel])\n${FUNNEL.replace("funnel1", "signupFunnel")}\n`,

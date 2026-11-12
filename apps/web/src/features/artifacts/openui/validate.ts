@@ -8,6 +8,7 @@ import { createParser } from "@openuidev/react-lang";
 import type { z } from "zod";
 import {
   buildIndex,
+  containsSlot,
   extractProgram,
   type GroundingIndex,
   type GroundNode,
@@ -90,6 +91,47 @@ function namingProblems(nodes: GroundNode[]): string[] {
       `${node.statementId} = ${node.typeName}(...): name it ${base}1, ${base}2, ... as the statement-name list says`,
     ];
   });
+}
+
+const CHART_TYPES = new Set(["Line", "Area", "Bars", "StackedBars"]);
+
+function stringsIn(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(stringsIn);
+  if (value && typeof value === "object")
+    return Object.values(value).flatMap(stringsIn);
+  return [];
+}
+
+/** A table prints its cells as written, so a slot there would reach the reader as braces. */
+function tableSlotProblems(nodes: GroundNode[]): string[] {
+  return nodes
+    .filter((node) => node.typeName === "DataTable")
+    .flatMap((node) =>
+      stringsIn(node.props)
+        .filter(containsSlot)
+        .map(
+          (cell) =>
+            `${node.statementId} = DataTable(...): "${cell}" holds a {slot}, which a table prints as text; type the figure as the source states it`,
+        ),
+    );
+}
+
+/** A series with a different count of values than labels would draw a gap as zero. */
+function seriesLengthProblems(nodes: GroundNode[]): string[] {
+  return nodes
+    .filter((node) => CHART_TYPES.has(node.typeName ?? ""))
+    .flatMap((node) => {
+      const labels = (node.props?.labels as unknown[] | undefined) ?? [];
+      const series =
+        (node.props?.series as [string, unknown[]][] | undefined) ?? [];
+      return series
+        .filter(([, values]) => values.length !== labels.length)
+        .map(
+          ([name, values]) =>
+            `${node.statementId} = ${node.typeName}(...): series "${name}" has ${values.length} values for ${labels.length} labels; give each label exactly one value`,
+        );
+    });
 }
 
 interface GroundingScope {
@@ -201,6 +243,8 @@ export function validateArtifact(
     ...namingProblems(nodes),
     ...grounding.problems,
     ...propProblems(nodes),
+    ...tableSlotProblems(nodes),
+    ...seriesLengthProblems(nodes),
     ...htmlArtifactProblems(nodes, interactive),
     ...(roots > 1
       ? [`the program is written ${roots} times; write it once`]

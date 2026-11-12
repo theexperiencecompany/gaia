@@ -2,8 +2,9 @@
 
 import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
-import { Cancel01Icon } from "@icons";
+import { Cancel01Icon, Download02Icon } from "@icons";
 import { usePanelDrawsClose } from "@/components/layout/sidebar/RightSidebarSlot";
+import { artifactPdfDownloadUrl } from "@/features/artifacts/api/artifactsApi";
 import { useArtifact } from "@/features/artifacts/hooks/useArtifact";
 import { LazyArtifactRenderer } from "@/features/artifacts/LazyArtifactRenderer";
 import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
@@ -24,6 +25,17 @@ export function ArtifactViewer({ artifactId, title }: ArtifactViewerProps) {
     <div className="flex h-full min-h-0 flex-col bg-zinc-900">
       <div className="flex min-h-12 shrink-0 items-center gap-2 bg-zinc-800 px-3">
         <p className="min-w-0 flex-1 truncate text-sm text-zinc-200">{title}</p>
+        <Button
+          isIconOnly
+          size="sm"
+          variant="light"
+          as="a"
+          href={artifactPdfDownloadUrl(artifactId)}
+          download
+          aria-label="Download PDF"
+        >
+          <Download02Icon size={16} />
+        </Button>
         <ShareLinkControls
           iconOnly
           targetType="openui_artifact"

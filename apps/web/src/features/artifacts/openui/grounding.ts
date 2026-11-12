@@ -21,6 +21,11 @@ type SlotValue = string | Figure;
 // {statement.key}, {statement.key:Series}, and a trailing ~ on the key for a rounded figure
 const SLOT = /\{([A-Za-z_$][\w$]*)\.([A-Za-z]+)(~?)(?::([^}]+))?\}/g;
 
+/** Whether text holds a {statement.key} slot, which only prose components resolve. */
+export function containsSlot(text: string): boolean {
+  return new RegExp(SLOT.source).test(text);
+}
+
 const fig = (n: number, pct = false): Figure => ({ n, pct });
 
 /** Exact: integers as written, others to one decimal. Rounded (~): two significant figures. */

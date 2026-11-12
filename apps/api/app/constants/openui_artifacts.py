@@ -41,3 +41,10 @@ ARTIFACT_PRINT_PROGRAM_GLOBAL = "__GAIA_ARTIFACT_PROGRAM__"
 ARTIFACT_READY_SELECTOR = "[data-artifact-ready]"
 ARTIFACT_PDF_CACHE_KEY = "artifact_pdf:{artifact_id}:{version}"
 ARTIFACT_PDF_CACHE_TTL_SECONDS = 7 * 24 * 3600
+
+#: Chromium renders running at once on one API process; the rest wait their turn.
+PDF_RENDER_MAX_CONCURRENT = 2
+#: Renders allowed to wait for a turn; past it a request is refused with 429.
+PDF_RENDER_MAX_WAITING = 6
+#: The public short link's PDF route: /api/v1/l/{slug}/pdf.
+PUBLIC_PDF_PATH_PATTERN = r"/api/v1/l/[^/]+/pdf"

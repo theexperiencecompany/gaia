@@ -1,10 +1,6 @@
+import { API_BASE } from "@/lib/api/baseUrl";
 import { api } from "@/lib/api/typed";
 import type { ShortLinkTargetType } from "@/types/features/shortLinkTypes";
-
-const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(
-  /\/$/,
-  "",
-);
 
 /**
  * Share an artifact the signed-in user owns: its heygaia.link, minted on first
