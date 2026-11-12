@@ -309,6 +309,28 @@ async def get_request_tokens(root_request_id: str) -> int:
     return int(raw) if raw is not None else 0
 
 
+async def restart_request_tokens(root_request_id: str) -> None:
+    """Start the request ceiling over: the run it counts for has just taken in a new user turn.
+
+    A busy executor run absorbs later user messages through its inbox instead of
+    starting a run per message, so without this every message the user sends while
+    it works is charged against the ceiling of the turn that started the run.
+    Fails open with a warning on Redis errors, the same contract as the reads.
+    """
+    client = redis_cache.redis
+    if client is None:
+        log.warning(f"{LogTag.STORAGE} Redis unavailable — request ceiling not restarted.")
+        return
+    try:
+        await client.delete(_REQUEST_TOKENS_KEY.format(root_request_id=root_request_id))
+    except (RedisError, OSError) as e:
+        log.warning(
+            f"{LogTag.STORAGE} Request ceiling restart failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+
+
 async def get_budget_stop_reason(
     user_id: str | None,
     plan_type: PlanType | None,

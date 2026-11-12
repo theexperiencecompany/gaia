@@ -12,7 +12,7 @@ once and then lose it — silently, and only in production.
 
 import asyncio
 from collections.abc import Iterator
-from unittest.mock import ANY, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import fakeredis.aioredis
 from langchain_core.messages import AIMessage, HumanMessage
@@ -27,16 +27,22 @@ from app.agents.core.background.executor_channel import (
 )
 from app.constants.agents import AgentTag
 from app.constants.executor import INBOX_ENTRY_ID
+from app.constants.llm import PRO_PER_REQUEST_TOKEN_CEILING
 from app.constants.log_tags import LogTag
+from app.db.redis import redis_cache
+from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.models.agent_models import InboxEntry
 from app.override.langgraph_bigtool.utils import (
     INJECTED_MESSAGES_KEY,
     pop_injected_messages,
 )
+from app.services import cost_budget
+from app.services.cost_budget import get_request_tokens, record_model_call_usage
 from app.utils.agent_utils import strip_internal_agent_tags
 from tests.helpers import captured_wide_event
 
 CONVERSATION = "conv-1"
+FIRST_TURN_REQUEST = "root-req-first-turn"
 #: A real executor run carries the WRAPPED thread id and the conversation id
 #: separately. Keying the drain on thread_id silently misses the inbox.
 CONFIG = {
@@ -45,6 +51,8 @@ CONFIG = {
         "conversation_id": CONVERSATION,
     }
 }
+#: The same run as CONFIG, carrying the id of the user turn that started it.
+RUN_CONFIG = {"configurable": {**CONFIG["configurable"], "root_request_id": FIRST_TURN_REQUEST}}
 
 
 @pytest.fixture
@@ -423,3 +431,60 @@ class TestDrainHook:
         injected = [m.content for m in result[INJECTED_MESSAGES_KEY]]
         assert "first thing" in injected[0]
         assert "second thing" in injected[1]
+
+
+class TestAnAbsorbedUserTurnGetsItsOwnRequestCeiling:
+    """A user message absorbed by a busy run is charged to a ceiling of its own.
+
+    A busy executor run takes later user messages in through this inbox instead of
+    starting a run per message. The request ceiling counts tokens per root_request_id,
+    and the run keeps the id of the turn that started it, so before this every
+    message the user sent while it worked was charged against that first turn's
+    ceiling: a long conversation stopped on "This request hit its safety ceiling"
+    while each turn on its own was well under it.
+    """
+
+    @pytest.fixture(autouse=True)
+    def budget_redis(self, redis: fakeredis.aioredis.FakeRedis) -> Iterator[None]:
+        with (
+            patch.object(redis_cache, "redis", redis),
+            patch.object(cost_budget, "record_cost", AsyncMock()),
+        ):
+            yield
+
+    async def _first_turn_spent(self, tokens: int) -> None:
+        await record_model_call_usage(
+            None,
+            UsageDailyIncrement(input_tokens=tokens),
+            FIRST_TURN_REQUEST,
+            charge_to_budget=False,
+        )
+
+    async def test_a_new_user_message_restarts_the_ceiling(self, inbox: ExecutorInbox) -> None:
+        await self._first_turn_spent(PRO_PER_REQUEST_TOKEN_CEILING)
+        await inbox.append("t2", "now do the same for my work account")
+
+        await drain_inbox_hook({"messages": []}, RUN_CONFIG, None)
+
+        assert await get_request_tokens(FIRST_TURN_REQUEST) == 0
+
+    async def test_a_subagent_result_does_not_restart_it(self, inbox: ExecutorInbox) -> None:
+        """Work the run started reporting back is the same turn, not a new one."""
+        await self._first_turn_spent(1_000)
+        await inbox.append("r1", "found 3 invoices", AgentTag.SUBAGENT_RESULT)
+
+        await drain_inbox_hook({"messages": []}, RUN_CONFIG, None)
+
+        assert await get_request_tokens(FIRST_TURN_REQUEST) == 1_000
+
+    async def test_a_message_already_in_the_thread_does_not_restart_it_again(
+        self, inbox: ExecutorInbox
+    ) -> None:
+        """Every model call drains; only the call that takes the message in restarts the count."""
+        await self._first_turn_spent(1_000)
+        await inbox.append("t2", "now do the same for my work account")
+        committed = HumanMessage(content="x", additional_kwargs={INBOX_ENTRY_ID: "t2"})
+
+        await drain_inbox_hook({"messages": [committed]}, RUN_CONFIG, None)
+
+        assert await get_request_tokens(FIRST_TURN_REQUEST) == 1_000
