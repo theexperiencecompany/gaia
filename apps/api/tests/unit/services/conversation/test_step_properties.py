@@ -11,7 +11,9 @@ from app.constants.chat import ConversationSource
 from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
+    ReplyDeltaFrame,
     ResponseEvent,
+    ToolDataEvent,
 )
 from app.models.conversation_log_models import (
     CommsPhase,
@@ -208,7 +210,7 @@ def scripts(draw: st.DrawFn, world_kinds: st.SearchStrategy[str]) -> list[tuple[
     steps = draw(
         st.lists(
             st.tuples(
-                st.sampled_from(["text", "tool_call", "model", "summary", "do", "pause"]),
+                st.sampled_from(["text", "card", "tool_call", "model", "summary", "do", "pause"]),
                 world_kinds,
             ),
             max_size=5,
@@ -224,6 +226,9 @@ def _script(world: World, plan: Sequence[tuple[str, str]]) -> list[ScriptItem]:
         match step:
             case "text":
                 items.append(Streamed(payload=ResponseEvent(response="word ")))
+            case "card":
+                card = ToolDataEvent(tool_data={"tool_name": "search", "data": {"n": len(items)}})
+                items.append(Streamed(payload=card))
             case "tool_call":
                 items.append(ModelOutput(has_tool_calls=True))
             case "model":
@@ -349,6 +354,34 @@ def _assert_no_empty_answer(entries: Sequence[LoggedEntry]) -> None:
             assert reply.text or reply.tool_data, f"{reply.reply_id} answered with an empty bubble"
 
 
+def _assert_saved_replies_keep_everything_shown(
+    world: World, entries: Sequence[LoggedEntry]
+) -> None:
+    """Check each reply its own attempt settled carries exactly the fold of the deltas it showed."""
+    shown: dict[str, list[ReplyDeltaFrame]] = {}
+    for frame in world.rt.frames.published:
+        if isinstance(frame, ReplyDeltaFrame):
+            shown.setdefault(frame.attempt_id, []).append(frame)
+    own_settles = {item.entry.id for item in entries if isinstance(item.entry, ReplySettled)}
+    for item in entries:
+        reply = item.entry
+        if not isinstance(reply, Reply) or reply.attempt_id not in shown:
+            continue
+        if f"{reply.attempt_id}:settled" not in own_settles:
+            continue
+        deltas = sorted(shown[reply.attempt_id], key=lambda frame: frame.index)
+        assert [frame.index for frame in deltas] == list(range(len(deltas)))
+        text = "".join(
+            frame.payload.response for frame in deltas if isinstance(frame.payload, ResponseEvent)
+        )
+        cards = tuple(
+            frame.payload.tool_data for frame in deltas if isinstance(frame.payload, ToolDataEvent)
+        )
+        if reply.heard_through is not None:
+            text = text[: reply.heard_through]
+        assert (reply.text, reply.tool_data) == (text, cards), reply.reply_id
+
+
 def _assert_frames_reproduce_the_log(world: World, entries: Sequence[LoggedEntry]) -> None:
     view: dict[int, Entry] = {}
     for frame in world.rt.frames.published:
@@ -378,3 +411,4 @@ def test_any_interleaving_answers_every_input_once_with_one_run_at_a_time(
     _assert_no_reply_settled_twice(entries)
     _assert_no_empty_answer(entries)
     _assert_frames_reproduce_the_log(world, entries)
+    _assert_saved_replies_keep_everything_shown(world, entries)

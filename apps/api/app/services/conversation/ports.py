@@ -121,7 +121,7 @@ class ModelOutput:
 
 @dataclass(frozen=True)
 class Replied:
-    """The run ended with a reply."""
+    """The run ended with a reply; saved only when it streamed nothing, else the shown deltas are."""
 
     text: str
     tool_data: tuple[ToolDataEntry, ...] = ()

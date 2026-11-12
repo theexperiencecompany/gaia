@@ -4,7 +4,7 @@ import asyncio
 
 from app.constants.chat import EMPTY_RESPONSE_FALLBACK, ConversationSource
 from app.constants.hil import HIL_ACK_APPROVED
-from app.models.conversation_frame_models import ResponseEvent, RetractFrame
+from app.models.conversation_frame_models import ResponseEvent, RetractFrame, ToolDataEvent
 from app.models.conversation_log_models import (
     ApprovalDecided,
     CommsPhase,
@@ -18,6 +18,7 @@ from app.models.conversation_log_models import (
     UserMessage,
     WorkStarted,
 )
+from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.log import accept
 from app.services.conversation.ports import (
     CancelReason,
@@ -575,3 +576,30 @@ async def test_a_step_killed_mid_run_kills_its_run_and_leaves_its_reply_to_recov
     await run(rt)
     assert answered(rt) == [(ReplyOutcome.FAILED, ()), (ReplyOutcome.ANSWERED, ("u1",))]
     await assert_quiet(rt)
+
+
+CARD: ToolDataEntry = {"tool_name": "search", "data": {"query": "flights"}}
+
+
+def card() -> Streamed:
+    return Streamed(payload=ToolDataEvent(tool_data=CARD))
+
+
+async def test_stop_after_text_and_a_card_saves_both_on_the_stopped_reply() -> None:
+    rt = Runtime()
+    rt.runner.script([text("looking"), card(), Pause((arrive(rt, stop("s")),))])
+    await send(rt, user("u1"))
+    await run(rt)
+    saved = replies(rt)[0]
+    assert (saved.text, saved.tool_data) == ("looking", (CARD,))
+    assert answered(rt) == [(ReplyOutcome.STOPPED, ())]
+
+
+async def test_a_failure_after_a_card_with_no_text_saves_the_card_and_settles_failed() -> None:
+    rt = Runtime()
+    rt.runner.script([card(), Fail(RuntimeError("model down"))])
+    await send(rt, user("u1"))
+    await run(rt)
+    saved = replies(rt)[0]
+    assert (saved.text, saved.tool_data) == ("", (CARD,))
+    assert answered(rt) == [(ReplyOutcome.FAILED, ("u1",))]
