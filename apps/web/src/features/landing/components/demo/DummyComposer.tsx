@@ -9,6 +9,7 @@ import {
 import { twMerge } from "cn";
 import type React from "react";
 import { useRef, useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { Button as ShadcnButton } from "@/components/ui/button";
 import {
@@ -95,11 +96,11 @@ const DummyComposer: React.FC<{
             variant="default-soft"
             shape="pill"
             tone="dim"
-            className="searchbar absolute -top-4 z-0 flex h-fit py-2 pb-8 text-xs"
+            className="searchbar absolute -top-4 z-0 flex h-fit text-xs"
             onPress={handleIntegrationsClick}
             aria-label="Connect your tools to GAIA"
           >
-            <div className="flex w-full items-center justify-between">
+            <div className="flex w-full items-center justify-between pt-2 pb-8">
               <span className="text-xs">Connect your tools to GAIA</span>
               <div className="flex items-center gap-1">
                 {dummyIntegrations.slice(0, 7).map((integration) => (
@@ -142,7 +143,11 @@ const DummyComposer: React.FC<{
                 ref={textareaRef}
                 autoFocus
                 rows={1}
-                className="field-sizing-content max-h-[17rem] w-full resize-none border-0 bg-transparent p-0 font-light shadow-none outline-none focus:ring-0"
+                className={inputVariants({
+                  variant: "bare",
+                  className:
+                    "field-sizing-content max-h-[17rem] w-full resize-none font-light outline-none focus:ring-0",
+                })}
                 placeholder="What can I do for you today?"
                 value={message}
                 onChange={(e) => handleInputChange(e.target.value)}

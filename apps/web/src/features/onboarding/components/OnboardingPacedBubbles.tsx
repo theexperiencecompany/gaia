@@ -52,11 +52,9 @@ export function OnboardingPacedBubbles({
               {/* Wrapper pinned to the text line-height so the bubble is exactly
                   as tall as a one-line reply; dots a step lighter than
                   HeroUI's default so they read on the bubble's zinc-800. */}
-              <Spinner
-                color="current"
-                size="md"
-                className="h-6 text-zinc-400"
-              />
+              <span className="contents text-zinc-400">
+                <Spinner color="current" size="md" className="h-6" />
+              </span>
             </m.output>
           </div>
         )}

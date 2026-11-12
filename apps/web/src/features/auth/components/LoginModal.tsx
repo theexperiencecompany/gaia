@@ -52,22 +52,24 @@ export default function LoginModal() {
         variant="blur"
       >
         <Modal.Container placement="center" size="md">
-          <Modal.Dialog className="p-4 outline-none" aria-label="Login">
+          <Modal.Dialog className="outline-none" aria-label="Login">
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Body>
-              <div className="mb-3 space-y-3 text-center">
-                <div className="text-5xl font-medium">Login</div>
-                <div className="text-medium text-foreground-600">
-                  Please login to continue your journey with GAIA.
+              <div className="flex flex-col gap-3 p-4">
+                <div className="mb-3 space-y-3 text-center">
+                  <div className="text-5xl font-medium">Login</div>
+                  <div className="text-medium text-foreground-600">
+                    Please login to continue your journey with GAIA.
+                  </div>
                 </div>
+                {isSelfhostWeb() ? (
+                  <InstanceSignIn
+                    onLocalSignIn={() => setLoginModalOpen(false)}
+                  />
+                ) : (
+                  <SignInButton isLocalAuth={false} />
+                )}
               </div>
-              {isSelfhostWeb() ? (
-                <InstanceSignIn
-                  onLocalSignIn={() => setLoginModalOpen(false)}
-                />
-              ) : (
-                <SignInButton isLocalAuth={false} />
-              )}
             </Modal.Body>
           </Modal.Dialog>
         </Modal.Container>

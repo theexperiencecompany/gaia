@@ -72,9 +72,10 @@ export function FirstStepsWidget() {
                 value={doneCount}
                 maxValue={totalCount}
                 size="sm"
+                color="success"
               >
                 <ProgressBar.Track className="bg-zinc-700">
-                  <ProgressBar.Fill className="bg-success transition-[width] duration-500 ease-out" />
+                  <ProgressBar.Fill className="transition-[width] duration-500 ease-out" />
                 </ProgressBar.Track>
               </ProgressBar>
             </m.div>

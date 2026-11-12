@@ -41,7 +41,7 @@ export function BlogCard({ blog, variant = "large", titleAs }: BlogCardProps) {
                 variant="soft"
                 color="accent"
                 size="sm"
-                className="absolute top-3 right-3 text-primary"
+                className="absolute top-3 right-3"
               >
                 Featured
               </Chip>

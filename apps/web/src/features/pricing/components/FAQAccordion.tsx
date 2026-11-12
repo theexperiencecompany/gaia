@@ -3,6 +3,7 @@
 import { Accordion } from "@heroui/react";
 import Link from "next/link";
 
+import { toneVariants } from "@/components/shared/tone";
 import { type FAQItem, getAllFAQs } from "@/lib/faq";
 import {
   ACCORDION_INDICATOR,
@@ -45,7 +46,7 @@ export function FAQAccordion({ faqs }: { faqs?: FAQItem[] }) {
 
         <Accordion
           variant="default"
-          className="cursor-pointer p-0!"
+          className="cursor-pointer"
           defaultExpandedKeys={faqItems[0] ? [faqItems[0].question] : []}
         >
           {faqItems.map((item) => (
@@ -59,7 +60,10 @@ export function FAQAccordion({ faqs }: { faqs?: FAQItem[] }) {
                 </Accordion.Trigger>
               </Accordion.Heading>
               <Accordion.Panel
-                className={`${ACCORDION_PANEL} mb-6 max-w-full text-base font-light text-foreground-500 sm:max-w-[60%] sm:text-xl`}
+                className={toneVariants({
+                  tone: "muted",
+                  className: `${ACCORDION_PANEL} mb-6 max-w-full text-base font-light sm:max-w-[60%] sm:text-xl`,
+                })}
               >
                 <span className="select-text">{item.answer}</span>
               </Accordion.Panel>

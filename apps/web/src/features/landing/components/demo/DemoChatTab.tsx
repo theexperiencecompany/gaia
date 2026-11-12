@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Dropdown, Menu } from "@heroui/react";
+import { Dropdown, Menu } from "@heroui/react";
 import {
   Delete02Icon,
   MoreVerticalIcon,
@@ -9,6 +9,8 @@ import {
   StarIcon,
 } from "@icons";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 
 interface DemoChatTabProps {
   label: string;
@@ -27,19 +29,24 @@ export default function DemoChatTab({ label, active }: DemoChatTabProps) {
       onFocus={() => setButtonHovered(true)}
       onBlur={() => setButtonHovered(false)}
     >
-      <Button
-        className={`w-full justify-start px-2 text-sm font-light ${active ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
+      <GaiaButton
+        className="w-full justify-start text-sm font-light"
         size="sm"
         variant={active ? "tertiary" : "ghost"}
+        tone={active ? "dim" : "muted"}
       >
         <span className="truncate">{label}</span>
-      </Button>
+      </GaiaButton>
 
       {/* Always-rendered dropdown trigger — fades in on hover like real ChatOptionsDropdown */}
       <div className="absolute right-0">
         <Dropdown>
-          <Dropdown.Trigger
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 text-zinc-400 hover:bg-zinc-700 hover:text-white ${buttonHovered ? "backdrop-blur-lg" : ""}`}
+          <GaiaButton
+            isIconOnly
+            size="sm"
+            variant="ghost"
+            tone="muted"
+            className={`shrink-0 ${buttonHovered ? "backdrop-blur-lg" : ""}`}
             aria-label="Chat options"
           >
             <MoreVerticalIcon
@@ -47,25 +54,33 @@ export default function DemoChatTab({ label, active }: DemoChatTabProps) {
               height={16}
               className={`transition-all ${buttonHovered ? "opacity-100" : "opacity-0"}`}
             />
-          </Dropdown.Trigger>
+          </GaiaButton>
           <Dropdown.Popover
             placement="right top"
-            className="dark w-fit min-w-fit text-foreground"
+            className="dark w-fit min-w-fit"
           >
             <Menu aria-label="Chat actions">
-              <Menu.Item id="star" textValue="Star" className="text-zinc-400">
+              <Menu.Item
+                id="star"
+                textValue="Star"
+                className={toneVariants({ tone: "muted" })}
+              >
                 <StarIcon className="h-[15px] w-[15px]" />
                 Star
               </Menu.Item>
               <Menu.Item
                 id="rename"
                 textValue="Rename"
-                className="text-zinc-400"
+                className={toneVariants({ tone: "muted" })}
               >
                 <PencilEdit02Icon className="h-[15px] w-[15px]" />
                 Rename
               </Menu.Item>
-              <Menu.Item id="pin" textValue="Pin" className="text-zinc-400">
+              <Menu.Item
+                id="pin"
+                textValue="Pin"
+                className={toneVariants({ tone: "muted" })}
+              >
                 <PinIcon className="h-[15px] w-[15px]" />
                 Pin
               </Menu.Item>

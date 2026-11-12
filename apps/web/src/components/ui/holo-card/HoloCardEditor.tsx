@@ -268,8 +268,8 @@ const EditorToolbar = ({
           >
             <ColorSwatch color={color} />
           </GaiaButton>
-          <Popover.Content placement="top" className="w-auto bg-zinc-800 p-4">
-            <div className="flex flex-col gap-3">
+          <Popover.Content placement="top" className="w-auto bg-zinc-800">
+            <div className="flex flex-col gap-3 p-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-white/70">Color Picker</span>
                 <Button

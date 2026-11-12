@@ -99,14 +99,14 @@ export function ApproveDeviceForm() {
         </div>
       </header>
 
-      <Separator className="bg-zinc-700/50" />
+      <Separator />
 
       {!cameFromCli && (
         <>
           <div className="py-5">
             <DeviceSetupGuide />
           </div>
-          <Separator className="bg-zinc-700/50" />
+          <Separator />
         </>
       )}
 

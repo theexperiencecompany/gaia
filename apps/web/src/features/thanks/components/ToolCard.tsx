@@ -118,7 +118,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
       </Tooltip.Trigger>
       <Tooltip.Content
         showArrow
-        className="max-w-[320px] border-0 bg-zinc-900 p-0 text-white shadow-xl rounded-2xl overflow-hidden"
+        className="max-w-[320px] border-0 p-0 shadow-xl overflow-hidden"
       >
         <div className="flex w-full flex-col rounded-3xl">
           {websiteImage && (

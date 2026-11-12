@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
+import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   CATEGORY_LABELS,
@@ -144,7 +145,10 @@ function DemoIntegrationSidebar({
               <Chip
                 size="sm"
                 variant="soft"
-                className="text-xs font-light text-zinc-400"
+                className={toneVariants({
+                  tone: "muted",
+                  className: "text-xs font-light",
+                })}
               >
                 Custom
               </Chip>

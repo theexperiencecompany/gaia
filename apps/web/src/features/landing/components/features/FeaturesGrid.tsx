@@ -78,12 +78,7 @@ export function FeaturesGrid({ children }: { children?: ReactNode }) {
           transition={{ duration: 0.5, ease }}
           className="relative z-10 mb-6"
         >
-          <Chip
-            variant="soft"
-            color="accent"
-            size="md"
-            className="text-primary"
-          >
+          <Chip variant="soft" color="accent" size="md">
             Features
           </Chip>
         </m.div>

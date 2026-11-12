@@ -1,6 +1,7 @@
 "use client";
 
 import { Accordion } from "@heroui/react";
+import { toneVariants } from "@/components/shared/tone";
 import type { FAQItem } from "@/lib/faq";
 import {
   ACCORDION_INDICATOR,
@@ -28,7 +29,7 @@ export default function FAQPageClient({ faqs }: FAQPageClientProps) {
         <h2 className="sr-only">Frequently asked questions</h2>
         <Accordion
           variant="default"
-          className="cursor-pointer p-0!"
+          className="cursor-pointer"
           defaultExpandedKeys={faqs[0] ? [faqs[0].question] : []}
         >
           {faqs.map((item) => (
@@ -42,7 +43,10 @@ export default function FAQPageClient({ faqs }: FAQPageClientProps) {
                 </Accordion.Trigger>
               </Accordion.Heading>
               <Accordion.Panel
-                className={`${ACCORDION_PANEL} mb-6 max-w-[90%] text-xl font-light text-foreground-500`}
+                className={toneVariants({
+                  tone: "muted",
+                  className: `${ACCORDION_PANEL} mb-6 max-w-[90%] text-xl font-light`,
+                })}
               >
                 <span className="select-text">{item.answer}</span>
               </Accordion.Panel>

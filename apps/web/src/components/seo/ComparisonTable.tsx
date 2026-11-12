@@ -29,7 +29,7 @@ export default function ComparisonTable({ columns, rows, ariaLabel }: Props) {
             <Table.Column
               key={col.key}
               id={col.key}
-              className={`bg-zinc-800 text-sm font-medium ${col.headerClassName ?? "text-zinc-400"}`}
+              className={`bg-zinc-800 text-sm font-medium ${col.headerClassName ?? ""}`}
             >
               {col.label}
             </Table.Column>
@@ -45,7 +45,7 @@ export default function ComparisonTable({ columns, rows, ariaLabel }: Props) {
               {columns.map((col) => (
                 <Table.Cell
                   key={col.key}
-                  className={`px-4 py-4 text-sm ${col.cellClassName ?? ""}`}
+                  className={`text-sm ${col.cellClassName ?? ""}`}
                 >
                   {row[col.key] ?? ""}
                 </Table.Cell>
