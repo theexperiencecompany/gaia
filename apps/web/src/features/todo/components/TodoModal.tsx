@@ -302,7 +302,7 @@ function TodoTextInputFields({
     <div className="flex flex-col">
       <Input
         placeholder="Title"
-        className="border-0 bg-transparent text-2xl font-semibold text-zinc-100 shadow-none placeholder:text-zinc-500 hover:bg-transparent focus:bg-transparent"
+        className="rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-1 text-2xl font-semibold text-zinc-100 shadow-none placeholder:text-zinc-500 hover:bg-transparent focus:border-foreground focus:bg-transparent focus:ring-0"
         value={title}
         onChange={(e) => onTitleChange(e.target.value)}
         required
@@ -315,7 +315,7 @@ function TodoTextInputFields({
         value={description}
         onChange={(e) => onDescriptionChange(e.target.value)}
         rows={1}
-        className="max-h-40 min-h-9 field-sizing-content border-0 bg-transparent text-zinc-200 shadow-none placeholder:text-zinc-500 hover:bg-transparent focus:bg-transparent"
+        className="max-h-40 min-h-9 resize-none field-sizing-content rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-1 text-zinc-200 shadow-none placeholder:text-zinc-500 hover:bg-transparent focus:border-foreground focus:bg-transparent focus:ring-0"
       />
     </div>
   );
@@ -465,7 +465,12 @@ export default function TodoModal({
                   variant="primary"
                 >
                   {mode === "edit" ? "Save Changes" : "Add Task"}
-                  {!loading && <Kbd>{`${modifierKeyName} enter`}</Kbd>}
+                  {!loading && (
+                    <Kbd>
+                      <Kbd.Abbr keyValue={modifierKeyName} />
+                      <Kbd.Abbr keyValue="enter" />
+                    </Kbd>
+                  )}
                 </Button>
               </Modal.Footer>
             </Modal.Dialog>

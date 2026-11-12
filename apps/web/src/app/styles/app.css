@@ -13,6 +13,7 @@
 @import "@heroui/styles/components/checkbox.css" layer(components);
 @import "@heroui/styles/components/chip.css" layer(components);
 @import "@heroui/styles/components/close-button.css" layer(components);
+@import "@heroui/styles/components/combo-box.css" layer(components);
 @import "@heroui/styles/components/description.css" layer(components);
 @import "@heroui/styles/components/dropdown.css" layer(components);
 @import "@heroui/styles/components/field-error.css" layer(components);
