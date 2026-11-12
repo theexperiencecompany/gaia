@@ -11,9 +11,9 @@ tests/contracts/test_bot_sessions_repository.py.
 
 from typing import Any
 
-from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.db.repositories.errors import AlreadyExistsError
 from app.models.bot_models import BotSessionDocument
 from app.scripts.merge_legacy_dm_bot_sessions import _apply_merges, canonical_key_for
 from app.services.bot_session_merge import (
@@ -201,7 +201,7 @@ def test_dm_channel_of_takes_the_channel_segment_not_the_user() -> None:
 
 
 class TestAWriteRacedByAnotherClaim:
-    """A race after planning (DuplicateKeyError on RENAME, or the canonical row vanishing on REPOINT) must return False, legacy row intact."""
+    """A race after planning (AlreadyExistsError on RENAME, or the canonical row vanishing on REPOINT) must return False, legacy row intact."""
 
     async def test_a_rename_losing_the_canonical_key_race_is_a_no_op(
         self, repository: _FakeRepository
@@ -212,7 +212,7 @@ class TestAWriteRacedByAnotherClaim:
             canonical_key_for(legacy),
         )
         assert merge is not None
-        repository.rename_raises = DuplicateKeyError("E11000 duplicate key")
+        repository.rename_raises = AlreadyExistsError("E11000 duplicate key")
 
         assert await apply_merge(merge) is False
         assert not any(name == "delete_by_session_key" for name, _ in repository.calls)
