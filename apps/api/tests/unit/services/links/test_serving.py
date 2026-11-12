@@ -1,5 +1,8 @@
 """The content origin's header table: each render mode gets exactly its headers, and HTML and SVG never land top-level."""
 
+from collections.abc import Callable
+
+from fastapi.responses import Response
 import pytest
 
 from app.config.settings import settings
@@ -13,6 +16,10 @@ SHARED = {
     "cross-origin-opener-policy": "same-origin",
     "referrer-policy": "no-referrer",
     "x-robots-tag": "noindex, nofollow",
+    "permissions-policy": (
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), "
+        "bluetooth=(), clipboard-read=(), display-capture=()"
+    ),
 }
 
 
@@ -30,10 +37,12 @@ def _snapshot(render: RenderMode, mime: str, filename: str = "report.html") -> L
 def _assert_shared(headers: dict[str, str]) -> None:
     for name, value in SHARED.items():
         assert headers[name] == value
-    assert "permissions-policy" in headers
-    assert "camera=()" in headers["permissions-policy"]
     assert not any(name.startswith("access-control-allow") for name in headers)
     assert "set-cookie" not in headers
+
+
+def _served_as_snapshot(body: bytes, snapshot: LinkSnapshot) -> Response:
+    return snapshot_response(body, snapshot, "document", LINK)
 
 
 class TestActiveHtml:
@@ -47,8 +56,17 @@ class TestActiveHtml:
         assert response.status_code == 200
         assert headers["content-type"] == "text/html; charset=utf-8"
         assert headers["content-disposition"] == "inline"
+        assert response.body == b"<p>"
         csp = headers["content-security-policy"]
-        assert csp.startswith("sandbox allow-scripts allow-forms allow-modals allow-popups ")
+        assert csp == (
+            "sandbox allow-scripts allow-forms allow-modals allow-popups "
+            "allow-popups-to-escape-sandbox allow-downloads; "
+            "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https:; "
+            "style-src 'unsafe-inline' https:; img-src data: blob: https:; font-src data: https:; "
+            "media-src data: blob: https:; connect-src 'none'; form-action 'none'; "
+            "base-uri 'none'; frame-src 'none'; worker-src 'none'; "
+            "frame-ancestors https://heygaia.io"
+        )
         assert "allow-same-origin" not in csp
         assert "allow-top-navigation" not in csp
         for directive in (
@@ -81,8 +99,11 @@ class TestSvg:
         )
         headers = dict(response.headers)
         _assert_shared(headers)
+        assert response.body == b"<svg>"
         assert headers["content-type"] == "image/svg+xml"
         assert headers["content-disposition"] == "inline"
+        assert headers["cache-control"] == "private, max-age=600"
+        assert headers["vary"] == "Sec-Fetch-Dest"
         assert (
             headers["content-security-policy"]
             == "default-src 'none'; style-src 'unsafe-inline'; sandbox"
@@ -94,6 +115,7 @@ class TestSvg:
             b"<svg>", _snapshot(RenderMode.IMAGE_SVG, "image/svg+xml", "logo.svg"), dest, LINK
         )
         assert response.headers["content-disposition"] == "attachment; filename*=UTF-8''logo.svg"
+        assert response.headers["vary"] == "Sec-Fetch-Dest"
 
 
 def test_a_pdf_renders_in_the_browser_viewer_framed_only_by_the_app() -> None:
@@ -102,6 +124,9 @@ def test_a_pdf_renders_in_the_browser_viewer_framed_only_by_the_app() -> None:
     )
     headers = dict(response.headers)
     _assert_shared(headers)
+    assert response.body == b"%PDF"
+    assert "vary" not in headers
+    assert headers["cache-control"] == "private, max-age=600"
     assert headers["content-type"] == "application/pdf"
     assert headers["content-disposition"] == "inline"
     assert headers["content-security-policy"] == (
@@ -123,19 +148,28 @@ def test_inert_types_render_inline_in_a_sandbox(
     response = snapshot_response(b"data", _snapshot(render, mime), "document", LINK)
     headers = dict(response.headers)
     _assert_shared(headers)
+    assert response.body == b"data"
+    assert "vary" not in headers
+    assert headers["cache-control"] == "private, max-age=600"
     assert headers["content-type"] == content_type
     assert headers["content-disposition"] == "inline"
     assert headers["content-security-policy"] == "default-src 'none'; sandbox"
 
 
-def test_a_download_is_opaque_bytes_with_an_encoded_name() -> None:
-    snapshot = _snapshot(RenderMode.DOWNLOAD, "application/octet-stream", 'résumé "x".zip')
-    headers = dict(download_response(b"PK", snapshot).headers)
+@pytest.mark.parametrize("serve", [download_response, _served_as_snapshot])
+def test_a_download_is_opaque_bytes_with_an_encoded_name(
+    serve: Callable[[bytes, LinkSnapshot], Response],
+) -> None:
+    snapshot = _snapshot(RenderMode.DOWNLOAD, "application/octet-stream", 'résumé/"x".zip')
+    response = serve(b"PK", snapshot)
+    headers = dict(response.headers)
     _assert_shared(headers)
+    assert response.body == b"PK"
+    assert "vary" not in headers
     assert headers["content-type"] == "application/octet-stream"
     assert (
         headers["content-disposition"]
-        == "attachment; filename*=UTF-8''r%C3%A9sum%C3%A9%20%22x%22.zip"
+        == "attachment; filename*=UTF-8''r%C3%A9sum%C3%A9%2F%22x%22.zip"
     )
     assert headers["content-security-policy"] == "default-src 'none'; sandbox"
     assert headers["cache-control"] == "private, no-store"
@@ -150,7 +184,12 @@ def test_a_download_of_html_never_renders() -> None:
 
 
 def test_a_preview_image_is_publicly_cacheable() -> None:
-    headers = dict(thumbnail_response(b"jpg").headers)
+    response = thumbnail_response(b"jpg")
+    headers = dict(response.headers)
     _assert_shared(headers)
+    assert response.body == b"jpg"
+    assert "vary" not in headers
+    assert headers["content-disposition"] == "inline"
+    assert headers["content-security-policy"] == "default-src 'none'; sandbox"
     assert headers["content-type"] == "image/jpeg"
     assert headers["cache-control"] == "public, max-age=3600"
