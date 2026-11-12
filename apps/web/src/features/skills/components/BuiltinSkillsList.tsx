@@ -110,7 +110,7 @@ export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
                 <div className="flex shrink-0 items-center gap-2">
                   <Chip
                     size="sm"
-                    variant="tertiary"
+                    variant="soft"
                     color="warning"
                     className="bg-warning/15"
                   >

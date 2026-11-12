@@ -38,7 +38,7 @@ export function BlogCard({ blog, variant = "large", titleAs }: BlogCardProps) {
             <GrainOverlay className="rounded-2xl" />
             {blog.featured && (
               <Chip
-                variant="tertiary"
+                variant="soft"
                 color="accent"
                 size="sm"
                 className="absolute top-3 right-3 text-primary"

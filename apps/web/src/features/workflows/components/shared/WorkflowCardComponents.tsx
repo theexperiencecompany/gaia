@@ -97,7 +97,7 @@ export function TriggerDisplay({
 }: TriggerDisplayProps) {
   if (triggerLabel === "Manual Trigger" || !triggerLabel) {
     return (
-      <Chip size="sm" variant="tertiary" className="text-xs">
+      <Chip size="sm" variant="soft" className="text-xs">
         Manual
       </Chip>
     );
@@ -136,7 +136,7 @@ export function ActivationStatus({
   const label = activated ? "Activated" : "Deactivated";
 
   return (
-    <Chip color={color} variant="tertiary" size={size}>
+    <Chip color={color} variant="soft" size={size}>
       {label}
     </Chip>
   );
@@ -152,7 +152,7 @@ export function SystemWorkflowChip({ size = "sm" }: SystemWorkflowChipProps) {
       <Tooltip.Trigger>
         <Chip
           color="accent"
-          variant="tertiary"
+          variant="soft"
           size={size}
           className="text-primary"
         >
@@ -251,12 +251,7 @@ interface MissingIntegrationsWarningProps {
  */
 export function NeedsSetupChip({ size = "sm" }: { size?: "sm" | "md" | "lg" }) {
   return (
-    <Chip
-      color="warning"
-      variant="tertiary"
-      size={size}
-      className="cursor-default"
-    >
+    <Chip color="warning" variant="soft" size={size} className="cursor-default">
       <Alert01Icon width={13} height={13} />
       <Chip.Label>Needs setup</Chip.Label>
     </Chip>

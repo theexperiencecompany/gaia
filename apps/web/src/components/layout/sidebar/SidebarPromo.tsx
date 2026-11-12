@@ -53,7 +53,7 @@ export function SidebarPromo({
             <div className="font-medium text-sm">{copy.heading}</div>
             <Button
               isIconOnly
-              variant="tertiary"
+              variant="ghost"
               size="sm"
               className="p-0! text-zinc-400 hover:text-white relative left-3 group-hover/pricingsidebar:opacity-100 opacity-0 transition"
               onPress={() => handleCollapse()}

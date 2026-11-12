@@ -9,19 +9,9 @@
 @import "@heroui/styles/utilities";
 @import "@heroui/styles/variants";
 
-
-
-
-
-
-
-
-
-
 /* HeroUI */
 
 /* Streamdown — markdown renderer; scan its dist so Tailwind emits the utilities its components use */
-
 
 @source "../not-found.tsx";
 @source inline("row-span-2 row-span-3 row-span-4");
@@ -29,7 +19,6 @@
 @source inline("grid-rows-3 grid-rows-4 grid-cols-3 grid-cols-4");
 @custom-variant dark (&:is(.dark *));
 @plugin "tailwindcss-animate";
-@plugin "@tailwindcss/typography";
 
 /* Global rather than in openui.css: it matches every recharts bar, not only react-ui's. */
 @layer openui {
@@ -121,8 +110,6 @@
   /* biome-ignore lint/complexity/noImportantStyles: override sileo's runtime-injected z-50 */
   z-index: 1000 !important;
 }
-
-
 
 @keyframes shine {
   0% {
@@ -444,11 +431,6 @@
   :root {
     /* HeroUI theme variables */
 
-    --foreground: 222.2 47.4% 11.2%;
-
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 47.4% 11.2%;
 
@@ -463,9 +445,6 @@
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-
     --destructive: 0 100% 50%;
     --destructive-foreground: 210 40% 98%;
 
@@ -475,14 +454,6 @@
 
   .dark {
     /* HeroUI theme variables */
-
-    --foreground: 213 31% 91%;
-
-    --muted: 223 47% 11%;
-    --muted-foreground: 215.4 16.3% 56.9%;
-
-    --accent: 216 34% 17%;
-    --accent-foreground: 210 40% 98%;
 
     --popover: 224 71% 4%;
     --popover-foreground: 215 20.2% 65.1%;
@@ -1267,6 +1238,9 @@
 :root {
   --background: #ffffff;
   --surface: #ffffff;
+  /* v2 foreground and its muted step (foreground-500): text, placeholders, soft-chip text */
+  --foreground: #11181c;
+  --muted: #71717a;
   --border: hsl(214.3 31.8% 91.4%);
   --separator: hsl(0 0% 90%);
 }
@@ -1274,6 +1248,8 @@
 .dark {
   /* v2 --heroui-background: 0 0% 0% */
   --background: #000000;
+  --foreground: #ecedee;
+  --muted: #a1a1aa;
   /* v2 --heroui-content1: 240 5.88% 10% (zinc-900) */
   --surface: hsl(240 5.88% 10%);
   /* v2 --border: 216 34% 17% (subtle blue-grey hairline, not white) */

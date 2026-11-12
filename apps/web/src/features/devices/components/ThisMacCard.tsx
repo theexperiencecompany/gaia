@@ -23,12 +23,12 @@ function StatusChip({
 }) {
   if (!paired)
     return (
-      <Chip size="sm" variant="tertiary" color="default">
+      <Chip size="sm" variant="soft" color="default">
         Not connected
       </Chip>
     );
   return (
-    <Chip size="sm" variant="tertiary" color={running ? "success" : "warning"}>
+    <Chip size="sm" variant="soft" color={running ? "success" : "warning"}>
       {running ? "Online" : "Paused"}
     </Chip>
   );

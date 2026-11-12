@@ -121,7 +121,7 @@ function TaskActions({
         <Button
           isIconOnly
           size="sm"
-          variant="tertiary"
+          variant="ghost"
           className="text-zinc-400"
           aria-label="Open conversation"
           onPress={() => router.push(`/c/${task.conversation_id}`)}

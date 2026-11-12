@@ -71,7 +71,7 @@ export default function LabelsFieldChip({
                 </div>
                 <Button
                   size="sm"
-                  variant="tertiary"
+                  variant="ghost"
                   isDisabled={
                     !newLabel.trim() || value.includes(newLabel.trim())
                   }
@@ -97,7 +97,7 @@ export default function LabelsFieldChip({
                     <Tag01Icon size={12} />
                     {label}
                     <Button
-                      variant="tertiary"
+                      variant="ghost"
                       size="sm"
                       onPress={() => handleRemoveLabel(label)}
                       className="h-4 w-4 min-w-4 border-0 p-0 text-zinc-400 hover:text-zinc-200"

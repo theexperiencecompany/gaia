@@ -11,7 +11,7 @@ export default function IntegrationStrip({
       {integrations.map((integration) => (
         <Chip
           key={integration.id}
-          variant="tertiary"
+          variant="soft"
           size="sm"
           className="bg-zinc-800 text-zinc-300"
         >

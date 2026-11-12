@@ -108,7 +108,7 @@ export default function WorkflowHeader({
             ) : (
               <Chip
                 size="sm"
-                variant="tertiary"
+                variant="soft"
                 color={isActivated ? "success" : "default"}
                 className={isActivated ? "bg-success/15" : "bg-zinc-800"}
               >

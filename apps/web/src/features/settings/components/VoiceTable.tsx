@@ -116,7 +116,7 @@ function VoiceCell({
             <Button
               isIconOnly
               size="sm"
-              variant="tertiary"
+              variant="ghost"
               aria-label={
                 voice.starred ? `Unstar ${voice.name}` : `Star ${voice.name}`
               }
@@ -164,7 +164,7 @@ function VoiceCell({
               <Tooltip.Trigger>
                 <Chip
                   size="sm"
-                  variant="tertiary"
+                  variant="soft"
                   className="cursor-default bg-zinc-800 text-zinc-400"
                 >
                   +{voice.languages.length - 1}

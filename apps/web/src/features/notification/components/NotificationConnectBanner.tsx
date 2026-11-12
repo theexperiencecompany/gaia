@@ -81,7 +81,7 @@ export function NotificationConnectBanner({
             </Button>
             <Button
               isIconOnly
-              variant="tertiary"
+              variant="ghost"
               size="sm"
               onPress={dismiss}
               aria-label="Dismiss"
@@ -99,7 +99,7 @@ export function NotificationConnectBanner({
     <div className="relative rounded-xl border border-zinc-700 bg-zinc-800/60 p-4">
       <Button
         isIconOnly
-        variant="tertiary"
+        variant="ghost"
         size="sm"
         onPress={dismiss}
         aria-label="Dismiss"

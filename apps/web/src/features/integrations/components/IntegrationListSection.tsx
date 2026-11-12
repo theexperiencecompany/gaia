@@ -35,7 +35,7 @@ function AccordionTitle({ title, count, tooltip }: AccordionTitleProps) {
       <span>{title}</span>
       <Chip
         size="sm"
-        variant="tertiary"
+        variant="soft"
         className="text-xs aspect-square flex items-center justify-center text-zinc-400"
       >
         {count}
@@ -155,7 +155,7 @@ function IntegrationListSection({
                 {integration.name}
               </span>
               {isConnected && (
-                <Chip size="sm" variant="tertiary" color="success">
+                <Chip size="sm" variant="soft" color="success">
                   Connected
                 </Chip>
               )}
@@ -213,7 +213,7 @@ function IntegrationListSection({
               <span className="text-sm font-medium text-white">
                 {suggestion.name}
               </span>
-              <Chip size="sm" variant="tertiary" color="accent">
+              <Chip size="sm" variant="soft" color="accent">
                 Community
               </Chip>
             </div>

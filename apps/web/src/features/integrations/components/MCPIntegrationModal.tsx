@@ -238,7 +238,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
 
             <Modal.Footer>
               <Button
-                variant="tertiary"
+                variant="ghost"
                 onPress={handleClose}
                 isDisabled={loading}
               >

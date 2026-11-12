@@ -276,7 +276,7 @@ function DesktopSection() {
       imagePriority={false}
       title="Download for Desktop"
       chip={
-        <Chip variant="tertiary" color="success">
+        <Chip variant="soft" color="success">
           Beta
         </Chip>
       }
@@ -331,7 +331,7 @@ function MobileSection() {
       imageHeight={288}
       imageSizes={null}
       chip={
-        <Chip variant="tertiary" color="warning">
+        <Chip variant="soft" color="warning">
           Waitlist
         </Chip>
       }

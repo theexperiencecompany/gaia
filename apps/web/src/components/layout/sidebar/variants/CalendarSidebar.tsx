@@ -56,7 +56,7 @@ export default function CalendarSidebar() {
           <div className="flex justify-center mt-2 mb-1">
             <Chip
               className="mb-2 mx-auto pl-2"
-              variant="tertiary"
+              variant="soft"
               color="danger"
               size="sm"
             >

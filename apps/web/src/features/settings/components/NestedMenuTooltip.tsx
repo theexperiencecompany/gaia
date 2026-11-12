@@ -74,7 +74,7 @@ export function NestedMenuTooltip({
                 return (
                   <Button
                     key={item.key}
-                    variant="tertiary"
+                    variant="ghost"
                     size="sm"
                     className="justify-start text-sm text-zinc-400 transition hover:text-white"
                     onPress={() => {

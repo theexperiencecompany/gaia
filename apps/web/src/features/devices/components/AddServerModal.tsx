@@ -164,7 +164,7 @@ export function AddServerModal({ onAdd, isBusy }: AddServerModalProps) {
                 )}
               </Modal.Body>
               <Modal.Footer>
-                <Button variant="tertiary" onPress={close}>
+                <Button variant="ghost" onPress={close}>
                   Cancel
                 </Button>
                 <Button

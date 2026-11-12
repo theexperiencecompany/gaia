@@ -79,7 +79,7 @@ export default function SidebarTopButtons() {
       <LinkButton
         href="/c"
         size="sm"
-        variant="tertiary"
+        variant="ghost"
         className="w-full justify-start gap-2 text-sm text-zinc-400 hover:text-zinc-300"
       >
         <ChevronLeft className="size-4" />

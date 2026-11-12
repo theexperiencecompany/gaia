@@ -40,7 +40,7 @@ export function FileAccessSection() {
                 {FOLDER_LABELS[folder]}
               </span>
               {state === "granted" ? (
-                <Chip size="sm" variant="tertiary" color="success">
+                <Chip size="sm" variant="soft" color="success">
                   Allowed
                 </Chip>
               ) : (

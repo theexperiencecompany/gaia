@@ -237,7 +237,7 @@ export function InstallPageClient() {
         >
           View on GitHub
         </LinkButton>
-        <LinkButton href="/open-source-ai-assistant" variant="tertiary">
+        <LinkButton href="/open-source-ai-assistant" variant="ghost">
           Why self-host GAIA
         </LinkButton>
       </div>

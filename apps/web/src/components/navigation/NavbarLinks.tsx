@@ -24,7 +24,7 @@ export function NavbarNavLinks({ pathname }: { pathname: string }) {
       <LinkButton
         key={link.href}
         size="sm"
-        variant="tertiary"
+        variant="ghost"
         className={`h-[30px] w-fit p-[9px] text-sm font-medium ${link.external ? "" : "rounded-sm"} ${pathname === link.href ? "text-primary" : "text-zinc-300 hover:text-zinc-100"}`}
         href={link.href}
         {...(link.external

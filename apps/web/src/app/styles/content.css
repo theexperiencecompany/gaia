@@ -39,7 +39,6 @@
 
 @custom-variant dark (&:is(.dark *));
 @plugin "tailwindcss-animate";
-@plugin "@tailwindcss/typography";
 
 @source "../[locale]/(landing)/blog";
 @source "../[locale]/(landing)/marketplace";

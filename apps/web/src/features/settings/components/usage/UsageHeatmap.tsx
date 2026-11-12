@@ -325,7 +325,7 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
             actions
           </p>
           {activity.streak > 0 && (
-            <Chip size="sm" variant="tertiary" className="h-6 bg-orange-500/15">
+            <Chip size="sm" variant="soft" className="h-6 bg-orange-500/15">
               <Fire02Icon size={13} />
               <Chip.Label className="flex items-center gap-1 px-2 text-xs font-medium text-orange-400">
                 {activity.streak}-day streak
@@ -336,7 +336,7 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
         <Button
           isIconOnly
           size="sm"
-          variant="tertiary"
+          variant="ghost"
           className="shrink-0 text-zinc-400 data-[hover=true]:text-zinc-100"
           aria-label="Share on X"
           onPress={() => void shareActivity(activity)}

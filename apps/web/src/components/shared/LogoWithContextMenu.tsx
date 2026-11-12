@@ -1,6 +1,5 @@
 "use client";
 
-import { buttonVariants } from "@heroui/react";
 import {
   Copy01Icon,
   DownloadCircle01Icon,
@@ -10,6 +9,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useState } from "react";
+import { LinkButton } from "@/components/shared/LinkButton";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/context-menu";
 import { copyText } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
-import { cn } from "@/lib/utils";
 
 const menuItemsConfig = [
   {
@@ -195,10 +194,11 @@ export function LogoWithContextMenu({
   return (
     <ContextMenu onOpenChange={setIsOpen} modal={false}>
       <ContextMenuTrigger asChild>
-        <Link
+        <LinkButton
           href="/"
           aria-label="GAIA home"
-          className={cn(buttonVariants({ variant: "ghost" }), className)}
+          variant="ghost"
+          className={className}
         >
           <div className="transition-transform duration-200 hover:scale-[1.02]">
             <Image
@@ -210,7 +210,7 @@ export function LogoWithContextMenu({
               className={imageClassName}
             />
           </div>
-        </Link>
+        </LinkButton>
       </ContextMenuTrigger>
       {isOpen && (
         <ContextMenuContent className="rounded-2xl bg-primary-bg/70 p-1.5">

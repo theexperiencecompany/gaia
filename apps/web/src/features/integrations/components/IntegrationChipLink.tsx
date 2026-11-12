@@ -13,7 +13,7 @@ interface IntegrationChipLinkProps {
 export function IntegrationChipLink({ integration }: IntegrationChipLinkProps) {
   return (
     <SiteLink href={marketplacePath(integration.slug)}>
-      <Chip variant="tertiary" size="md" className="bg-zinc-800 text-zinc-300">
+      <Chip variant="soft" size="md" className="bg-zinc-800 text-zinc-300">
         {getToolCategoryIcon(
           integration.integrationId,
           { size: 16, width: 16, height: 16, showBackground: false },

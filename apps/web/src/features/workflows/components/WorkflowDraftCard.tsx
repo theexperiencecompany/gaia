@@ -70,7 +70,7 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
       <div className="group relative z-1 flex w-full max-w-md flex-col gap-3 rounded-3xl border border-dashed border-warning/40 bg-zinc-800/40 p-4 backdrop-blur-lg transition-colors hover:bg-zinc-700/50">
         <Chip
           size="sm"
-          variant="tertiary"
+          variant="soft"
           color="warning"
           className="absolute -top-2 -right-2 bg-warning/20"
         >
@@ -100,7 +100,7 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
             </div>
             <Chip
               size="sm"
-              variant="tertiary"
+              variant="soft"
               color={trigger.color}
               className={`${trigger.bgColor} shrink-0`}
             >

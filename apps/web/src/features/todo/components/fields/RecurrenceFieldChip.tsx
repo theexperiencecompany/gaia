@@ -48,7 +48,7 @@ export default function RecurrenceFieldChip({
             return (
               <Button
                 key={option.value ?? "none"}
-                variant="tertiary"
+                variant="ghost"
                 fullWidth
                 aria-pressed={isOptionSelected}
                 className={`justify-start gap-2 px-3 text-sm ${

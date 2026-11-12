@@ -36,7 +36,7 @@ function IconGrid({ icons, selectedName, onPick }: IconGridProps) {
           <Button
             isIconOnly
             size="sm"
-            variant="tertiary"
+            variant="ghost"
             aria-label={workflowIconLabel(def.name)}
             className={cn(
               "text-zinc-300",
@@ -185,7 +185,7 @@ export default function WorkflowIconPicker({
           {selected && (
             <Button
               size="sm"
-              variant="tertiary"
+              variant="ghost"
               className="self-start text-zinc-400"
               onPress={() => {
                 iconField.onChange(null);

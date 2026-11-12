@@ -103,7 +103,7 @@ export default function ModelSelectorDevControls() {
       <Button
         isIconOnly
         size="sm"
-        variant="tertiary"
+        variant="ghost"
         aria-label="Dev model selector"
         // Tint primary when a non-default model is pinned, so it's obvious at a
         // glance that the dev override is active.

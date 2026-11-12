@@ -93,7 +93,7 @@ function DemoWorkflowCard({
         {variant === "user" && activated !== undefined && (
           <Chip
             color={activated ? "success" : "danger"}
-            variant="tertiary"
+            variant="soft"
             size="sm"
           >
             {activated ? "Activated" : "Deactivated"}

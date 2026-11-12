@@ -49,7 +49,7 @@ function DismissButton({
     <Button
       isIconOnly
       size="sm"
-      variant="tertiary"
+      variant="ghost"
       aria-label={label}
       onPress={onDismiss}
       className="shrink-0 rounded-full text-zinc-500"

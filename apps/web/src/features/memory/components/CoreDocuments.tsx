@@ -121,7 +121,7 @@ export function CoreDocuments() {
         <div className="flex justify-end gap-2">
           <Button
             size="sm"
-            variant="tertiary"
+            variant="ghost"
             className="rounded-xl"
             onPress={() => setDraft(null)}
           >

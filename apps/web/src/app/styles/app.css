@@ -50,7 +50,6 @@
 
 @custom-variant dark (&:is(.dark *));
 @plugin "tailwindcss-animate";
-@plugin "@tailwindcss/typography";
 
 /* These are ALLOWLISTS: `source(none)` means a directory not named here emits
    zero CSS, and Tailwind reports nothing. Anything a page imports must be

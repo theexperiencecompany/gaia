@@ -89,11 +89,7 @@ function ImportedBadge({ login }: { login: SavedBrowserLogin }) {
           onMouseEnter={() => setOpen(true)}
           onMouseLeave={() => setOpen(false)}
         >
-          <Chip
-            size="sm"
-            variant="tertiary"
-            className="bg-zinc-800 text-zinc-300"
-          >
+          <Chip size="sm" variant="soft" className="bg-zinc-800 text-zinc-300">
             <Chip.Label>Imported</Chip.Label>
           </Chip>
         </button>
@@ -276,7 +272,7 @@ export function SavedLogins() {
               isIconOnly
               aria-label="Saved sites actions"
               size="sm"
-              variant="tertiary"
+              variant="ghost"
             >
               <MoreVerticalIcon className="size-4" />
             </Button>

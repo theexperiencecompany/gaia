@@ -144,7 +144,7 @@ export function UpgradeModalOffer({
       )}
 
       <Button
-        variant="tertiary"
+        variant="ghost"
         size="sm"
         className="mx-auto mt-1 h-auto min-w-0 p-0 text-xs text-zinc-500 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300 data-[hover=true]:underline"
         onPress={() => onLogout()}

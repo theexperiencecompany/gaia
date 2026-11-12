@@ -120,7 +120,7 @@ export function WhatsNewModal() {
                     href={release.docsUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    variant="tertiary"
+                    variant="ghost"
                     size="sm"
                     onClick={() =>
                       track("whats_new:docs_clicked", { releaseId: release.id })

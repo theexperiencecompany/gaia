@@ -18,7 +18,7 @@ export function BrowserStatusChip({
       )}
       <Chip
         size="sm"
-        variant="tertiary"
+        variant="soft"
         color={meta.color === "primary" ? "accent" : meta.color}
         // Browser accent is #00bbff — apply it to the live "Working" state.
         className={

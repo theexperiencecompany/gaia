@@ -50,12 +50,12 @@ export function IntegrationAccountRow({
         )}
       </div>
       {account.isPrimary && (
-        <Chip size="sm" variant="tertiary" color="accent">
+        <Chip size="sm" variant="soft" color="accent">
           Primary
         </Chip>
       )}
       {isExpired && (
-        <Chip size="sm" variant="tertiary" color="warning">
+        <Chip size="sm" variant="soft" color="warning">
           Expired
         </Chip>
       )}
@@ -64,7 +64,7 @@ export function IntegrationAccountRow({
           <Button
             isIconOnly
             size="sm"
-            variant="tertiary"
+            variant="ghost"
             isPending={isPending}
             aria-label={`Manage ${account.displayName}`}
           >

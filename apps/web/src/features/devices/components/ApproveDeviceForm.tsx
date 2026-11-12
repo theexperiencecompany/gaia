@@ -87,7 +87,7 @@ export function ApproveDeviceForm() {
         <div className="flex flex-col gap-1 pt-0.5">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-medium leading-none">Add a device</h2>
-            <Chip size="sm" variant="tertiary" color="success">
+            <Chip size="sm" variant="soft" color="success">
               Beta
             </Chip>
           </div>
