@@ -300,7 +300,7 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         with _seams(todo=_todo()) as seams:
             await run_todo_on_executor(_request())
 
-        task, configurable, run, _resume = seams.execute.await_args.args
+        task, configurable, run = seams.execute.await_args.args
         assert task == _request().task
         assert configurable["execution_mode"] == "background"
         assert configurable["active_todo_id"] == TODO_ID
@@ -323,7 +323,7 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         await record_turn_presence(USER.user_id, ConversationSource.TELEGRAM)
         with _seams(todo=_todo()) as seams:
             await run_todo_on_executor(_request())
-        task, configurable, _run, _resume = seams.execute.await_args.args
+        task, configurable, _run = seams.execute.await_args.args
 
         with (
             patch.object(
@@ -360,7 +360,7 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
     async def test_the_run_holds_the_conversations_executor_lock_under_its_own_ids(self) -> None:
         live: list[bool] = []
 
-        async def execute(task, configurable, run, resume):
+        async def execute(task, configurable, run):
             # The stream's session exists, marked spawned, while the executor runs.
             session = get_session(run.stream_id)
             live.append(session is not None and session.executor_spawned)

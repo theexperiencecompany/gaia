@@ -1008,9 +1008,8 @@ groups:
           description: >-
             One chat turn in twenty takes over thirty seconds to complete its
             comms reply. Split delegated vs direct via the delegated label, then
-            executor_active_seconds (executor work) vs HIL wait
-            (hil_user_wait_seconds) vs delivery (delivery_narration_seconds,
-            delivery_persist_seconds). No latency dashboard panel exists for
+            executor_active_seconds (executor work) vs delivery
+            (delivery_narration_seconds, delivery_persist_seconds). No latency dashboard panel exists for
             these metrics yet — query /metrics histograms directly.
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-e2e-p95
         labels:
