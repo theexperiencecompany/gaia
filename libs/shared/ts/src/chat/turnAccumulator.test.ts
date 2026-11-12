@@ -63,29 +63,6 @@ describe("turnAccumulator golden replay", () => {
     expect(acc.toolData).toHaveLength(0);
   });
 
-  it("parses an emoji_ack frame into the reaction event", () => {
-    const events = parseChatStreamEvent(
-      JSON.stringify({
-        emoji_ack: { emoji: "😎", reacts_to_message_id: "umsg_1" },
-      }),
-    );
-
-    expect(events).toEqual([
-      { type: "emoji_ack", emoji: "😎", reactsToMessageId: "umsg_1" },
-    ]);
-  });
-
-  it("does not accumulate an emoji_ack into message state", () => {
-    // Same contract as main_response_complete: a turn-session event, consumed
-    // by the session, never content.
-    const acc = fold([
-      JSON.stringify({ emoji_ack: { emoji: "👍", reacts_to_message_id: "u" } }),
-    ]);
-
-    expect(acc.responseText).toBe("");
-    expect(acc.toolData).toEqual([]);
-  });
-
   it("parses a reaction frame into the reaction on its message", () => {
     const events = parseChatStreamEvent(
       JSON.stringify({

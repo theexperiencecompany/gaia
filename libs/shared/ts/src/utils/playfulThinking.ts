@@ -1,9 +1,3 @@
-import {
-  DEFAULT_SIMILARITY_CONFIG,
-  getRelevantLoadingMessage,
-  type SimilarityConfig,
-} from "./similarity";
-
 const PLAYFUL_THINKING_MESSAGES = [
   "Asking my mom",
   "Questioning my existence",
@@ -81,38 +75,6 @@ export function getRandomThinkingMessage(): string {
     Math.random() * PLAYFUL_THINKING_MESSAGES.length,
   );
   return PLAYFUL_THINKING_MESSAGES[randomIndex];
-}
-
-/**
- * Get a contextually relevant thinking message based on user input
- * Falls back to random selection if no relevant matches found
- */
-export function getRelevantThinkingMessage(
-  userMessage: string,
-  config?: Partial<SimilarityConfig>,
-): string {
-  // If no user message provided, fall back to random
-  if (!userMessage?.trim()) {
-    return getRandomThinkingMessage();
-  }
-
-  try {
-    const finalConfig = { ...DEFAULT_SIMILARITY_CONFIG, ...config };
-
-    // Get a single relevant message using weighted random selection
-    return getRelevantLoadingMessage(
-      userMessage,
-      PLAYFUL_THINKING_MESSAGES,
-      finalConfig,
-    );
-  } catch (error) {
-    // Graceful fallback on any error
-    console.warn(
-      "Error getting relevant thinking message, falling back to random:",
-      error,
-    );
-    return getRandomThinkingMessage();
-  }
 }
 
 /**

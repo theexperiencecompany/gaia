@@ -69,12 +69,6 @@ const DesktopToolRequestPayloadSchema = z.object({
 
 const ResponseFrameSchema = z.object({ response: z.string() });
 const ErrorFrameSchema = z.object({ error: z.string() });
-const EmojiAckFrameSchema = z.object({
-  emoji_ack: z.object({
-    emoji: z.string(),
-    reacts_to_message_id: z.string(),
-  }),
-});
 const ReactionFrameSchema = z.object({
   reaction: z
     .object({
@@ -203,7 +197,6 @@ const ReplyPlacedFrameSchema = z.object({
 export const ChatStreamFrameSchema = z.union([
   ResponseFrameSchema,
   ErrorFrameSchema,
-  EmojiAckFrameSchema,
   ReactionFrameSchema,
   ModelFallbackFrameSchema,
   KeepaliveFrameSchema,

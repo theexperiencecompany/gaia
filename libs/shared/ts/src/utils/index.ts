@@ -78,7 +78,6 @@ export type { OpenUISample } from "./openui-samples";
 export { OPENUI_SAMPLES } from "./openui-samples";
 export {
   getRandomThinkingMessage,
-  getRelevantThinkingMessage,
   PLAYFUL_THINKING_MESSAGES,
 } from "./playfulThinking";
 export type {
@@ -90,12 +89,5 @@ export type {
 export { parseQuickAdd } from "./quickAdd";
 export type { RateLimitResetInfo } from "./rateLimitReset";
 export { rateLimitResetInfo } from "./rateLimitReset";
-export type { ReactionBadge, ReactionFoldable } from "./reactions";
-export { foldReactionAcks, groupReactions, isReactionAck } from "./reactions";
-export type { SimilarityConfig } from "./similarity";
-export {
-  DEFAULT_SIMILARITY_CONFIG,
-  getRelevantLoadingMessage,
-} from "./similarity";
 export type { ParsedContent } from "./thinkingParser";
 export { parseThinkingFromText } from "./thinkingParser";
