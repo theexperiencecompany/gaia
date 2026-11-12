@@ -71,6 +71,9 @@ CRAWL_RELATIVE_RULES = frozenset(
 # Listing pages with no sitemap page under them, kept short on purpose (#1701 shortened their intros).
 SHORT_PAGES = frozenset({"/download", "/contact"})
 WIKI_LINK = re.compile(r"^\[\[[^\[\]'\"]+\]\]$")
+# One integration's page; the paginated hub (/marketplace/page/N) is ours and stays checked.
+MARKETPLACE_DETAIL = re.compile(r"^/marketplace/[^/]+$")
+PLACEHOLDER_RULES = frozenset({"content/placeholder-contact", "content/placeholder-text"})
 BASELINE_HEADER = """\
 # squirrelscan's findings, which `scripts/ci/smoke-web.sh` holds to this file:
 # `<page path>\\t<rule id>/<check>[\\t<item>]`, one per line, `*` as the page of a
@@ -145,6 +148,11 @@ def _cron_as_markdown(seen: Observed, _pages: frozenset[str]) -> bool:
     return seen.finding.rule == "content/unrendered-markup" and emphasis
 
 
+def _synced_tool_docs(seen: Observed, _pages: frozenset[str]) -> bool:
+    page = seen.finding.page
+    return seen.finding.rule in PLACEHOLDER_RULES and bool(MARKETPLACE_DETAIL.match(page))
+
+
 def _hub_word_count(seen: Observed, pages: frozenset[str]) -> bool:
     page = seen.finding.page
     index = page != "/" and any(other.startswith(f"{page}/") for other in pages)
@@ -173,6 +181,14 @@ IGNORED = (
         "/learn/cron-job: 'example (*/15 in the minute field means every 15 minutes). Common "
         "examples: 0 2 *' reported as unrendered markdown-emphasis",
         _cron_as_markdown,
+    ),
+    Ignore(
+        "an integration page shows its tools' documentation as the API syncs it from the "
+        "provider (Composio), sample addresses included; it changes with no deploy of ours, "
+        "so no baseline can pin it",
+        "/marketplace/googlesheets gained jane@example.com and john@example.com from its "
+        "Composio tool docs between two crawls on 2026-11-12, with no commit in between",
+        _synced_tool_docs,
     ),
     Ignore(
         "founder's decision, not a squirrel bug: hub indexes (a page other pages sit under: "
