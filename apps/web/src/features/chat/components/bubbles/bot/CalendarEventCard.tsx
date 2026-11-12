@@ -25,6 +25,7 @@ export const EventCard = ({
   label,
   children,
   variant = "display",
+  buttonColor = "primary",
   completedLabel = "Completed",
   icon: Icon,
   onAction,
