@@ -239,6 +239,21 @@ class TestLearnFreezeReplay:
         assert learned.scout is not None
         assert learned.scout.status is ScoutStatus.WATCHING
 
+    @time_machine.travel(datetime(2026, 10, 22, 1, 35, tzinfo=UTC), tick=False)
+    async def test_the_agent_is_told_the_date_where_the_user_is_not_in_utc(self) -> None:
+        app = _App([_ISSUE])
+        los_angeles = PlaybookUser(
+            email="ada@example.com", name="Ada", timezone="America/Los_Angeles"
+        )
+        with _seams(app, _report()), _spy_graph() as runs:
+            await learn_scout(los_angeles, USER_ID, LINEAR, _tools(app))
+
+        [run] = runs
+        [message] = run["args"][2]
+        assert message.content == SCOUT_LEARN_PROMPT.format(
+            app="Linear", today="2026-10-21", timezone="America/Los_Angeles"
+        )
+
     async def test_a_source_whose_paths_miss_the_result_is_not_frozen(self) -> None:
         app = _App([_ISSUE])
         wrong = {**_SOURCE, "fields": {**_FIELDS, "title": "name"}}

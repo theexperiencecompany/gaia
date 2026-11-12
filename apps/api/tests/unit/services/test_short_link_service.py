@@ -208,6 +208,17 @@ class TestRecordOpen:
         assert event == ShortLinkOpened(target_type=TODO.value, viewer_signed_in=False)
         assert dedupe.occurred_at.tzinfo is not None
         assert VIEWER_IP not in dedupe.key
+        repo.get_by_slug.assert_awaited_once_with("abc")
+        assert dedupe.key.startswith(f"{hash_short_link_slug('abc')}:")
+
+    async def test_the_open_is_dated_by_the_utc_clock(self, repo, capture):
+        repo.get_by_slug.return_value = _link("abc")
+
+        with patch(f"{_SVC}.datetime") as clock:
+            clock.now.return_value = datetime(2030, 1, 2, 12, tzinfo=UTC)
+            await record_open("abc", _anonymous())
+
+        clock.now.assert_called_once_with(UTC)
 
     async def test_the_owner_opening_their_own_link_is_not_an_open(self, repo, capture):
         repo.get_by_slug.return_value = _link("abc")
@@ -255,12 +266,14 @@ class TestRecordOpen:
         first = _opened_dedupe(capture)
         await record_open("abc", _anonymous(ip="203.0.113.9"))
         other_viewer = _opened_dedupe(capture)
+        await record_open("abc", _anonymous(user_agent="Firefox/130"))
+        other_browser = _opened_dedupe(capture)
         with patch(f"{_SVC}.datetime") as clock:
             clock.now.return_value = datetime(2030, 1, 2, 12, tzinfo=UTC)
             await record_open("abc", _anonymous())
         other_day = _opened_dedupe(capture)
 
-        assert len({first.key, other_viewer.key, other_day.key}) == 3
+        assert len({first.key, other_viewer.key, other_browser.key, other_day.key}) == 4
         assert other_day.occurred_at != first.occurred_at
 
     async def test_a_signed_in_viewer_is_one_viewer_on_any_network(self, repo, capture):

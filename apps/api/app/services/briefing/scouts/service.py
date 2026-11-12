@@ -7,10 +7,11 @@ relearns that scout once; a learn that fails waits out a backoff. One scout fail
 typed skipped result and an error on the wide event, never a failed brief.
 """
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from app.constants.scouts import SCOUT_RELEARN_BACKOFF
+from app.constants.scouts import SCOUT_RELEARN_BACKOFF, SCOUT_TURN_TIMEOUT
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.scouts import scouts_repository
 from app.models.payment_models import PlanType
@@ -173,7 +174,8 @@ async def _run_scout(user: UserDocument, integration: ScoutIntegration) -> Scout
 async def _scout_turn(user: UserDocument, integration: ScoutIntegration) -> ScoutResult:
     """Run one scout; any failure is that scout's skipped result, never the brief's."""
     try:
-        return await _run_scout(user, integration)
+        async with asyncio.timeout(SCOUT_TURN_TIMEOUT.total_seconds()):
+            return await _run_scout(user, integration)
     except Exception as exc:
         # Broad on purpose: an app being down, a bad report or a timeout must cost the
         # brief this one app's signals only. The error still lands on the wide event.
