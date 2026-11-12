@@ -128,6 +128,8 @@ class FakeGh:
         self.checks = checks
         # The legacy commit-status endpoint; only the tests that read it set it.
         self.statuses: list[dict[str, Any]] = []
+        # The head's Actions runs; only the tests about superseded runs set them.
+        self.workflow_runs: list[dict[str, Any]] = []
         self.pr_meta = pr_meta or PR_META
         self.artifacts = artifacts if artifacts is not None else []
         # Keyed by artifact id; the None key is served for any artifact id.
@@ -146,6 +148,8 @@ class FakeGh:
             return 0, json.dumps({"check_runs": self.checks}), ""
         if "/status?" in endpoint:
             return 0, json.dumps({"statuses": self.statuses}), ""
+        if "/actions/runs?" in endpoint:
+            return 0, json.dumps({"workflow_runs": self.workflow_runs}), ""
         if "/artifacts" in endpoint:
             return 0, json.dumps({"artifacts": self.artifacts}), ""
         raise AssertionError(f"unexpected gh call: {args}")
@@ -1491,6 +1495,95 @@ def test_a_watch_that_runs_out_of_time_is_not_green(
 ) -> None:
     wire(SequencedGh([[PENDING_CHECK]]))
     assert run_cli(monkeypatch, ["--watch", "--no-stack", "--max-wait", "1"]) == 1
+
+
+def ci_run(run_id: int, status: str, conclusion: str | None = None) -> dict[str, Any]:
+    return {
+        "id": run_id,
+        "workflow_id": 394732533,
+        "name": "CI",
+        "status": status,
+        "conclusion": conclusion,
+        "html_url": f"https://github.com/o/r/actions/runs/{run_id}",
+    }
+
+
+def job_in(check: dict[str, Any], run_id: int) -> dict[str, Any]:
+    return dict(check, html_url=f"https://github.com/o/r/actions/runs/{run_id}/job/{run_id + 1}")
+
+
+SUPERSEDED_GATE = job_in(dict(FAILED_CHECK, name="quality-gate"), 98)
+
+
+def test_a_superseded_runs_failed_gate_does_not_stop_the_watch(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: a stacked push started two CI runs on one head, and the cancelled one's gate read as red."""
+    fake = SequencedGh(
+        [
+            [SUPERSEDED_GATE, job_in(PENDING_CHECK, 99)],
+            [SUPERSEDED_GATE, job_in(PASSED_CHECK, 99)],
+        ],
+        job_log="",
+    )
+    fake.workflow_runs = [ci_run(98, "completed", "cancelled"), ci_run(99, "in_progress")]
+    wire(fake)
+
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
+    assert fake.check_polls == 2
+    assert "FAIL" not in capsys.readouterr().out
+
+
+def test_the_newest_run_with_no_job_listed_yet_is_pending(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    title = job_in(dict(PASSED_CHECK, name="Validate PR Title"), 97)
+    fake = SequencedGh(
+        [[SUPERSEDED_GATE, title], [SUPERSEDED_GATE, title, job_in(PASSED_CHECK, 99)]]
+    )
+    fake.workflow_runs = [ci_run(98, "completed", "cancelled"), ci_run(99, "queued")]
+    wire(fake)
+
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
+    assert fake.check_polls == 2, "settled green before the live run listed a job"
+
+
+def test_a_newest_run_that_never_started_a_job_still_reports_its_failure(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeGh(checks=[SUPERSEDED_GATE], job_log="")
+    fake.workflow_runs = [
+        ci_run(98, "completed", "cancelled"),
+        ci_run(99, "completed", "startup_failure"),
+    ]
+    wire(fake)
+
+    assert run_cli(monkeypatch, ["--no-stack"]) == 1
+    assert "FAIL  CI  [error]" in capsys.readouterr().out
+
+
+def test_the_stack_rollup_skips_a_superseded_runs_checks() -> None:
+    def node(run_id: int, conclusion: str) -> dict[str, Any]:
+        return {
+            "__typename": "CheckRun",
+            "name": "quality-gate",
+            "status": "COMPLETED",
+            "conclusion": conclusion,
+            "checkSuite": {
+                "workflowRun": {"databaseId": run_id, "workflow": {"databaseId": 394732533}}
+            },
+        }
+
+    status = {
+        "__typename": "StatusContext",
+        "context": "ci / node / biome",
+        "state": "FAILURE",
+        "targetUrl": "https://github.com/o/r/actions/runs/98/job/5",
+    }
+    rollup = {"contexts": {"nodes": [node(98, "FAILURE"), status, node(99, "SUCCESS")]}}
+    pr_state = {"commits": {"nodes": [{"commit": {"statusCheckRollup": rollup}}]}}
+
+    assert ci_remote.rollup_contexts(pr_state) == [("quality-gate", "passed")]
 
 
 def test_fail_fast_without_watch_is_a_usage_error(
