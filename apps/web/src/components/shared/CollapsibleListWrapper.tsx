@@ -1,6 +1,11 @@
 import type { Selection } from "@heroui/react";
 import { Accordion } from "@heroui/react";
 import { type ReactNode, useState } from "react";
+import {
+  ACCORDION_INDICATOR,
+  ACCORDION_PANEL_COMPACT,
+  ACCORDION_TRIGGER_COMPACT,
+} from "@/lib/heroui/accordionParity";
 
 interface CollapsibleListWrapperProps {
   children: ReactNode;
@@ -48,16 +53,21 @@ export default function CollapsibleListWrapper({
           className="w-screen max-w-(--breakpoint-sm) px-0"
         >
           <Accordion.Heading>
-            <Accordion.Trigger className="cursor-pointer">
+            <Accordion.Trigger
+              className={`cursor-pointer ${ACCORDION_TRIGGER_COMPACT}`}
+            >
               <div className="flex items-center gap-2 text-sm font-normal text-zinc-400 transition hover:text-white">
                 {icon}
                 <div>
                   {isExpanded ? "Hide" : "Show"} {getCountLabel()}
                 </div>
               </div>
+              <Accordion.Indicator className={ACCORDION_INDICATOR} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel>{children}</Accordion.Panel>
+          <Accordion.Panel className={ACCORDION_PANEL_COMPACT}>
+            {children}
+          </Accordion.Panel>
         </Accordion.Item>
       </Accordion>
     </div>

@@ -10,6 +10,7 @@ import {
 import { useEffect, useMemo, useRef } from "react";
 import { toTitleCase } from "@/features/chat/utils/chatUtils";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
+import { ACCORDION_TRIGGER_COMPACT } from "@/lib/heroui/accordionParity";
 import type {
   TodoProgressData,
   TodoProgressItem,
@@ -220,7 +221,7 @@ function MultiSourceAccordion({
           return (
             <AccordionItem key={source} id={source} className="px-2">
               <Accordion.Heading>
-                <Accordion.Trigger className="py-2">
+                <Accordion.Trigger className={ACCORDION_TRIGGER_COMPACT}>
                   <div className="flex items-center gap-2 w-full pr-1">
                     <span className="text-xs font-medium text-zinc-400 min-w-0 flex-1 truncate">
                       {getSourceLabel(source)}

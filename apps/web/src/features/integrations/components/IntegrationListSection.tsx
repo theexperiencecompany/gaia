@@ -17,6 +17,10 @@ import { IntegrationIcon } from "@/features/integrations/components/IntegrationI
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import type { SuggestedIntegration } from "@/features/integrations/types";
+import {
+  ACCORDION_INDICATOR,
+  ACCORDION_TRIGGER_BASE,
+} from "@/lib/heroui/accordionParity";
 import { toast } from "@/lib/toast";
 
 interface IntegrationListSectionProps {
@@ -250,14 +254,16 @@ function IntegrationListSection({
   const accordionItems = [
     connectedIntegrations.length > 0 ? (
       <AccordionItem key="connected" id="connected">
-        <Accordion.Heading className="text-xs font-semibold text-zinc-400">
-          <Accordion.Trigger className="py-2 cursor-pointer">
+        <Accordion.Heading>
+          <Accordion.Trigger
+            className={`cursor-pointer py-2 text-xs font-semibold text-zinc-400 ${ACCORDION_TRIGGER_BASE}`}
+          >
             <AccordionTitle
               title="Connected"
               count={connectedIntegrations.length}
               tooltip="Your active integrations"
             />
-            <Accordion.Indicator />
+            <Accordion.Indicator className={ACCORDION_INDICATOR} />
           </Accordion.Trigger>
         </Accordion.Heading>
         <Accordion.Panel className="pt-0 pb-4">
@@ -269,14 +275,16 @@ function IntegrationListSection({
     ) : null,
     suggestedIntegrations.length > 0 ? (
       <AccordionItem key="suggested" id="suggested">
-        <Accordion.Heading className="text-xs font-semibold text-zinc-400">
-          <Accordion.Trigger className="py-2 cursor-pointer">
+        <Accordion.Heading>
+          <Accordion.Trigger
+            className={`cursor-pointer py-2 text-xs font-semibold text-zinc-400 ${ACCORDION_TRIGGER_BASE}`}
+          >
             <AccordionTitle
               title="Discover More"
               count={suggestedIntegrations.length}
               tooltip="Public integrations from the community marketplace"
             />
-            <Accordion.Indicator />
+            <Accordion.Indicator className={ACCORDION_INDICATOR} />
           </Accordion.Trigger>
         </Accordion.Heading>
         <Accordion.Panel className="pt-0 pb-4">
@@ -297,14 +305,16 @@ function IntegrationListSection({
     ) : null,
     notConnectedIntegrations.length > 0 ? (
       <AccordionItem key="available" id="available">
-        <Accordion.Heading className="text-xs font-semibold text-zinc-400">
-          <Accordion.Trigger className="py-2 cursor-pointer">
+        <Accordion.Heading>
+          <Accordion.Trigger
+            className={`cursor-pointer py-2 text-xs font-semibold text-zinc-400 ${ACCORDION_TRIGGER_BASE}`}
+          >
             <AccordionTitle
               title="Available"
               count={notConnectedIntegrations.length}
               tooltip="Integrations provided natively by GAIA"
             />
-            <Accordion.Indicator />
+            <Accordion.Indicator className={ACCORDION_INDICATOR} />
           </Accordion.Trigger>
         </Accordion.Heading>
         <Accordion.Panel className="pt-0 pb-4">
@@ -322,7 +332,6 @@ function IntegrationListSection({
         allowsMultipleExpanded
         defaultExpandedKeys={defaultExpandedKeys}
         className="px-0"
-        variant="default"
       >
         {accordionItems}
       </Accordion>

@@ -15,6 +15,13 @@ import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useArtifactText } from "@/features/chat/hooks/useArtifactText";
 import { copyWithFeedback } from "@/lib/clipboard";
+import {
+  TABS_INDICATOR,
+  TABS_LIST,
+  TABS_ROOT,
+  TABS_SELECTED,
+  TABS_TAB_SM,
+} from "@/lib/heroui/tabsParity";
 import { useCloseRightSidebar } from "@/stores/layoutStore";
 
 interface FileViewerPanelProps {
@@ -340,26 +347,30 @@ export default function FileViewerPanel({
           <Tabs
             selectedKey={viewMode}
             onSelectionChange={(key) => setViewMode(key as ViewMode)}
-            variant="primary"
+            className={TABS_ROOT}
           >
-            <Tabs.List aria-label="View mode">
-              <Tabs.Tab id="preview">
+            <Tabs.List aria-label="View mode" className={TABS_LIST}>
+              <Tabs.Tab
+                id="preview"
+                className={`${TABS_TAB_SM} ${TABS_SELECTED}`}
+              >
                 <div className="flex items-center gap-1.5">
                   <File01Icon size={14} />
                   <span>Preview</span>
                 </div>
-                <Tabs.Indicator />
+                <Tabs.Indicator className={TABS_INDICATOR} />
               </Tabs.Tab>
-              <Tabs.Tab id="source">
+              <Tabs.Tab
+                id="source"
+                className={`${TABS_TAB_SM} ${TABS_SELECTED}`}
+              >
                 <div className="flex items-center gap-1.5">
                   <CodeIcon size={14} />
                   <span>Code</span>
                 </div>
-                <Tabs.Indicator />
+                <Tabs.Indicator className={TABS_INDICATOR} />
               </Tabs.Tab>
             </Tabs.List>
-            <Tabs.Panel id="preview">{null}</Tabs.Panel>
-            <Tabs.Panel id="source">{null}</Tabs.Panel>
           </Tabs>
         ) : null}
 
