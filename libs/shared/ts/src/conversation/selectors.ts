@@ -1,17 +1,18 @@
-import type { ToolDataEntry } from "@shared/api/generated";
-import { extractToolProgressMessage, type TurnAccumulator } from "@shared/chat";
-import {
-  type ConversationView,
-  DISPLAY_STATE,
-  type DisplayState,
-  ENTRY_KIND,
-  type LoggedEntry,
-  type PendingSend,
-  type Reaction,
-  type Reply,
-  type StreamDraft,
-  type UserMessage,
-} from "@shared/conversation";
+import type { ToolDataEntry } from "../api/generated";
+import { extractToolProgressMessage } from "../chat/streaming";
+import type { TurnAccumulator } from "../chat/turnAccumulator";
+import { ENTRY_KIND } from "./entries";
+import { DISPLAY_STATE } from "./frames";
+import type {
+  ConversationView,
+  DisplayState,
+  LoggedEntry,
+  PendingSend,
+  Reaction,
+  Reply,
+  StreamDraft,
+  UserMessage,
+} from "./types";
 
 type WorkOutcome = "done" | "failed" | "cancelled" | "lost";
 export type WorkStatus = "running" | "awaiting_approval" | WorkOutcome;

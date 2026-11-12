@@ -1,16 +1,8 @@
-import type { ConversationView } from "@shared/conversation";
-import {
-  addPendingSend,
-  applyFrame,
-  EMPTY_CONVERSATION_VIEW,
-} from "@shared/conversation";
-import {
-  attemptMarker,
-  generateConversation,
-  seededRandom,
-} from "@shared/conversation/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadingRow, visibleBubbles } from "./selectors";
+import { attemptMarker, generateConversation, seededRandom } from "./testing";
+import type { ConversationView } from "./types";
+import { addPendingSend, applyFrame, EMPTY_CONVERSATION_VIEW } from "./view";
 
 const SEEDS = Array.from({ length: 200 }, (_, index) => index + 1);
 

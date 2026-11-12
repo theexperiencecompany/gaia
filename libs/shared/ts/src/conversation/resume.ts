@@ -1,4 +1,5 @@
-import { type ConversationView, ENTRY_KIND } from "@shared/conversation";
+import { ENTRY_KIND } from "./entries";
+import type { ConversationView } from "./types";
 
 /**
  * The seq to resume the events stream after: just before the oldest entry that can

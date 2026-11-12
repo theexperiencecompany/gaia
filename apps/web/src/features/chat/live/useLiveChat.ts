@@ -3,6 +3,7 @@ import {
   type ConversationView,
   DISPLAY_STATE,
   type DisplayState,
+  loadingRow,
 } from "@shared/conversation";
 import { useEffect, useMemo } from "react";
 import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
@@ -20,7 +21,6 @@ import {
   useLiveConversationStore,
 } from "./liveConversationStore";
 import { liveMessages } from "./liveMessages";
-import { loadingRow } from "./selectors";
 
 const STATUS_TEXT: Record<Exclude<DisplayState, "thinking">, string> = {
   [DISPLAY_STATE.IDLE]: "",

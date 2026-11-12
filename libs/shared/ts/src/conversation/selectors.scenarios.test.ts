@@ -1,9 +1,5 @@
-import type { ConversationFrame, ConversationView } from "@shared/conversation";
-import {
-  addPendingSend,
-  applyFrame,
-  EMPTY_CONVERSATION_VIEW,
-} from "@shared/conversation";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { loadingRow, quoteFor, visibleBubbles } from "./selectors";
 import {
   approvalDecided,
   approvalRequested,
@@ -20,9 +16,9 @@ import {
   workCardDelta,
   workFinished,
   workStarted,
-} from "@shared/conversation/testing";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadingRow, quoteFor, visibleBubbles } from "./selectors";
+} from "./testing";
+import type { ConversationFrame, ConversationView } from "./types";
+import { addPendingSend, applyFrame, EMPTY_CONVERSATION_VIEW } from "./view";
 
 const fold = (
   frames: ConversationFrame[],

@@ -1,9 +1,10 @@
-import type { ConversationFrame, ConversationView } from "@shared/conversation";
+import { describe, expect, it } from "vitest";
 import {
-  addPendingSend,
-  applyFrame,
-  EMPTY_CONVERSATION_VIEW,
-} from "@shared/conversation";
+  type LiveBubble,
+  loadingRow,
+  quoteFor,
+  visibleBubbles,
+} from "./selectors";
 import {
   approvalDecided,
   approvalRequested,
@@ -20,14 +21,9 @@ import {
   workCardDelta,
   workFinished,
   workStarted,
-} from "@shared/conversation/testing";
-import { describe, expect, it } from "vitest";
-import {
-  type LiveBubble,
-  loadingRow,
-  quoteFor,
-  visibleBubbles,
-} from "./selectors";
+} from "./testing";
+import type { ConversationFrame, ConversationView } from "./types";
+import { addPendingSend, applyFrame, EMPTY_CONVERSATION_VIEW } from "./view";
 
 const fold = (
   frames: ConversationFrame[],

@@ -16,6 +16,7 @@
     "./bots": "./src/bots/index.ts",
     "./chat": "./src/chat/index.ts",
     "./conversation": "./src/conversation/index.ts",
+    "./conversation/live": "./src/conversation/live.ts",
     "./constants/*": "./src/constants/*.ts",
     "./cli": "./src/cli/index.ts",
     "./desktop-tools": "./src/desktop-tools/index.ts",

@@ -1,4 +1,4 @@
-import type { FailureReason } from "@shared/api/generated";
+import type { FailureReason } from "../api/generated";
 
 /** The strip under a failed reply that already showed text or cards. */
 export const REPLY_CUT_SHORT = "Response was cut short";

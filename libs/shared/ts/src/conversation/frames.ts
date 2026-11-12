@@ -220,7 +220,7 @@ const ConversationEventSchema = z.object({
   frame: ConversationFrameSchema,
 }) satisfies z.ZodType<unknown, ConversationEvent>;
 
-type FrameParseError =
+export type FrameParseError =
   | { kind: "invalid_json"; raw: string }
   | { kind: "invalid_frame"; raw: string; issues: string[] };
 

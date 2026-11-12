@@ -79,3 +79,6 @@ export type FrameOutcome =
   | { status: "applied"; view: ConversationView }
   | { status: "unknown_seq"; seq: number; view: ConversationView }
   | { status: "index_gap"; expected: number; view: ConversationView };
+
+/** A frame the view could not apply, after which the stream must be reopened from the log. */
+export type FrameGap = Exclude<FrameOutcome, { status: "applied" }>;

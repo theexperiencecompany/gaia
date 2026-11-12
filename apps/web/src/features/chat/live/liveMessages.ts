@@ -2,13 +2,15 @@ import {
   type ConversationView,
   ENTRY_KIND,
   FAILURE_REASON,
+  type LiveBubble,
+  quoteFor,
+  REPLY_FAILURE_MESSAGE,
   type UserMessage,
+  visibleBubbles,
 } from "@shared/conversation";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
-import { REPLY_FAILURE_MESSAGE } from "@/features/chat/constants/replyFailure";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { LocalSend } from "./liveConversationStore";
-import { type LiveBubble, quoteFor, visibleBubbles } from "./selectors";
 
 const STOPPED_WORK: ReadonlySet<string> = new Set(["cancelled", "lost"]);
 // Far above any one conversation's rows, so a visible row is never evicted.
