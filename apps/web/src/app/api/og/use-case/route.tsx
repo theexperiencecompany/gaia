@@ -6,6 +6,7 @@ import {
   getOgIconPath,
   getToolIconConfig,
 } from "@/config/toolIconConfig";
+import { internalApiHeaders } from "@/lib/internalApiHeaders";
 import {
   colors,
   createErrorResponse,
@@ -38,9 +39,13 @@ async function fetchWorkflow(
 ): Promise<OgWorkflow | null> {
   try {
     const [exploreResponse, communityResponse] = await Promise.all([
-      fetch(`${apiBaseUrl}/workflows/explore`, { cache: "no-store" }),
+      fetch(`${apiBaseUrl}/workflows/explore`, {
+        cache: "no-store",
+        headers: internalApiHeaders(),
+      }),
       fetch(`${apiBaseUrl}/workflows/community?limit=100`, {
         cache: "no-store",
+        headers: internalApiHeaders(),
       }),
     ]);
 
