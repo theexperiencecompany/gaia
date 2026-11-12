@@ -21,6 +21,8 @@ export type BriefingEditionPayload = z.infer<typeof briefingSchema> & {
   message?: string | null;
   /** What the brief read but GAIA left out of today's composition. */
   uncomposed?: BriefPoolItem[];
+  /** The brief as composed, in reading order: the blocks its edition drew. */
+  blocks?: BriefingPayload["blocks"];
   /** Composed blocks the day's edition could not draw in its idiom. */
   undrawn?: BriefingPayload["undrawn"];
 };
