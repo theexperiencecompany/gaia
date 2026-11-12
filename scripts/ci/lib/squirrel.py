@@ -58,10 +58,15 @@ REACT_ID = re.compile(r"react-aria-[\w-]+")
 # 1,336 pages slow, so it counts only through the Performance score.
 TIMED_RULES = frozenset({"perf/ttfb"})
 # Rules that judge a page against the rest of the crawl (its inbound links, its schema
-# next to its peers'): on the PR gate's 126 pages they flagged 69 pages the every-page
-# crawl of the same build does not, so only a full crawl judges them.
+# next to its peers'): on the PR gate's 126 pages they disagreed with the full crawl of
+# the same build on 69 pages, and no-contextual-inbound on 18, so only a full crawl judges them.
 CRAWL_RELATIVE_RULES = frozenset(
-    {"links/orphan-pages", "links/weak-internal-links", "schema/coverage-outlier"}
+    {
+        "links/orphan-pages",
+        "links/weak-internal-links",
+        "links/no-contextual-inbound",
+        "schema/coverage-outlier",
+    }
 )
 # Listing pages with no sitemap page under them, kept short on purpose (#1701 shortened their intros).
 SHORT_PAGES = frozenset({"/download", "/contact"})
@@ -506,7 +511,12 @@ def cmd_drop(args: argparse.Namespace) -> int:
         if match := FIXED.search(line):
             fixed.add(Finding(match[1], match[2], match[3] or ""))
         elif match := RAISED.search(line):
-            scores[f"{SCORE_PREFIX}{match[1]}"] = int(match[2])
+            key, now, logged = f"{SCORE_PREFIX}{match[1]}", int(match[2]), int(match[3])
+            if baseline.scores.get(key, PERFECT_SCORE) != logged:
+                raise SystemExit(
+                    f"squirrel: {key} is {baseline.scores.get(key)} in {args.baseline}, the log saw {logged}: a stale log"
+                )
+            scores[key] = now
     unknown = fixed - baseline.findings
     if unknown:
         raise SystemExit(

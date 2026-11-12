@@ -419,3 +419,17 @@ def test_a_slow_response_counts_only_through_the_score(tmp_path: Path) -> None:
         _ratchet(tmp_path, rows, "score:Performance=70\n", scores={"Performance": 69}).returncode
         == 1
     )
+
+
+def test_drop_refuses_a_score_from_a_stale_log(tmp_path: Path) -> None:
+    (tmp_path / "baseline.txt").write_text("score:Images=90\n")
+    log = tmp_path / "ci.log"
+    log.write_text("squirrel: Images rose to 85, baseline 80\n")
+    dropped = subprocess.run(
+        [sys.executable, "-I", str(SCRIPT), "drop", "--log", str(log), "--baseline", str(tmp_path / "baseline.txt")],
+        capture_output=True,
+        text=True,
+        check=False,
+    )  # fmt: skip
+    assert dropped.returncode != 0
+    assert _lines(tmp_path) == ["score:Images=90"]
