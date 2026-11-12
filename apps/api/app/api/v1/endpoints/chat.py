@@ -33,7 +33,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.chat.stream import run_chat_stream_background
 from app.services.conversation_service import require_owned_conversation
-from app.services.conversation_stop_service import stop_conversation
+from app.services.conversation_stop_service import press_stop
 from app.services.latency_metrics import observe_sse_delivery
 from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
@@ -265,9 +265,7 @@ async def cancel_stream_endpoint(
         )
 
     # The mobile app's Stop names its turn's stream; it stops the conversation like the web's.
-    result = await stop_conversation(
-        progress.conversation_id, user_id, None, held_stream_id=stream_id
-    )
+    result = await press_stop(progress.conversation_id, user_id, None, held_stream_id=stream_id)
     log.set_ns(
         "chat",
         stopped_streams=len(result.stream_ids),

@@ -1,7 +1,7 @@
 """POST /conversations/{id}/stop: the web Stop cancels the turn and every kind of work the conversation runs."""
 
 from collections.abc import Iterator
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from httpx import AsyncClient
 import pytest
@@ -10,8 +10,10 @@ from app.agents.core.background.executor_channel import ExecutorInbox
 from app.constants.agents import AgentTag
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.core.stream_manager import stream_manager
+from app.services import conversation_stop_service
 from app.services.browser import job_stop
 from app.services.browser.jobs import job_cancel_requested
+from shared.py.analytics.catalog.chat import ChatWorkStopped
 from tests.conftest import FAKE_USER, FAKE_USER_2
 from tests.work_cancel_fakes import (
     APPROVAL,
@@ -98,6 +100,17 @@ class TestStopConversation:
         pending_approvals.barrier.assert_awaited_once_with(CONVERSATION, FAKE_USER.user_id)
         pending_approvals.ledger.assert_awaited_once_with(CONVERSATION, FAKE_USER.user_id)
         assert await job_cancel_requested(BROWSER_JOB)
+
+    async def test_a_web_stop_emits_work_stopped_exactly_once(
+        self, client: AsyncClient, no_approvals: ApprovalSeams, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured = MagicMock()
+        monkeypatch.setattr(conversation_stop_service, "capture", captured)
+
+        await client.post(STOP_URL)
+
+        events = [c.args[1] for c in captured.call_args_list]
+        assert [type(event) for event in events] == [ChatWorkStopped]
 
     async def test_stopping_an_idle_conversation_is_an_empty_summary(
         self, client: AsyncClient, no_approvals: ApprovalSeams, fake_redis

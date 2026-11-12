@@ -994,6 +994,18 @@ class TestCancelEverythingIsTheConversationStop:
         closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
         closed_ledger_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
 
+    async def test_the_models_stop_is_not_the_users_and_emits_no_event(
+        self,
+        fake_redis: AsyncRedisCommands,
+        broadcast: AsyncMock,
+        posthog_events: list[dict[str, object]],
+    ) -> None:
+        await seed_live_work(CONVERSATION_ID)
+
+        await run_cancel_executor(config=config_for(), task_ids=[])
+
+        assert posthog_events == []
+
     async def test_stop_everything_closes_approvals_when_no_run_holds_the_lock(
         self,
         fake_redis: AsyncRedisCommands,

@@ -41,7 +41,7 @@ from app.services.conversation_service import (
     update_conversation_description,
     update_messages,
 )
-from app.services.conversation_stop_service import stop_conversation
+from app.services.conversation_stop_service import press_stop
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -184,7 +184,7 @@ async def stop_conversation_endpoint(
         conversation={"operation": "stop", "id": conversation_id},
     )
     await require_owned_conversation(conversation_id, user.user_id)
-    result = await stop_conversation(conversation_id, user.user_id, None)
+    result = await press_stop(conversation_id, user.user_id, None)
     log.set_ns(
         "conversation",
         stopped_streams=len(result.stream_ids),

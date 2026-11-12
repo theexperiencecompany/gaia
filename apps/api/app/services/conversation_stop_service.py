@@ -27,10 +27,27 @@ async def stop_conversation(
     for stream_id in stream_ids:
         await stop_stream(conversation_id, stream_id)
     work = await cancel_all_work(conversation_id, user_id, requester)
+    return ConversationStopResponse(
+        conversation_id=conversation_id, stream_ids=stream_ids, work=work
+    )
+
+
+async def press_stop(
+    conversation_id: str,
+    user_id: str,
+    requester: RequesterChat | None,
+    *,
+    held_stream_id: str | None = None,
+) -> ConversationStopResponse:
+    """Stop the conversation because the user pressed Stop, and count that press."""
+    result = await stop_conversation(
+        conversation_id, user_id, requester, held_stream_id=held_stream_id
+    )
+    work = result.work
     capture(
         UserId(user_id),
         ChatWorkStopped(
-            streams=len(stream_ids),
+            streams=len(result.stream_ids),
             executor_stopped=work.executor_stopped,
             pending_tasks=work.pending_tasks,
             subagents=len(work.subagent_ids),
@@ -38,6 +55,4 @@ async def stop_conversation(
             browser_jobs=len(work.browser_jobs),
         ),
     )
-    return ConversationStopResponse(
-        conversation_id=conversation_id, stream_ids=stream_ids, work=work
-    )
+    return result
