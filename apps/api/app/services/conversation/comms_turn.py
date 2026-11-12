@@ -68,14 +68,8 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
             presence=presence,
         ),
     )
-    step: StepTurnRef = {
-        "epoch": claim.epoch,
-        "batch_start": batch.start,
-        "cause_through": batch.end,
-        "answers": [message.id for message in said],
-    }
     configurable = cast(AgentConfigurable, config[CONF])
-    configurable["conversation_step"] = step
+    configurable["conversation_step"] = step_turn_ref(claim, batch)
     return CommsTurn(
         config=config,
         opening=[*context.chain, *(m for m in (context.presence,) if m is not None)],
@@ -94,3 +88,15 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
 def _source(said: list[UserMessage]) -> str:
     """Answer on the surface of the newest message; work with no message behind it answers in the background."""
     return said[-1].surface.value if said else ConversationSource.BACKGROUND.value
+
+
+def step_turn_ref(claim: StepClaim, batch: Batch) -> StepTurnRef:
+    """Return what the attempt's run and the work it dispatches carry of the attempt."""
+    return {
+        "epoch": claim.epoch,
+        "batch_start": batch.start,
+        "cause_through": batch.end,
+        "answers": [
+            logged.entry.id for logged in batch.waking if isinstance(logged.entry, UserMessage)
+        ],
+    }

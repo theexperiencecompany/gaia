@@ -34,6 +34,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
 import uvicorn
 
+from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
 from app.constants.cache import (
     REPO_GLOBAL_SCOPE,
@@ -339,3 +340,12 @@ async def user_id(mongo_db, real_redis: Redis) -> AsyncIterator[str]:
     await mongo_db["projects"].delete_many({"user_id": str(owner)})
     await mongo_db["users"].delete_many({"_id": owner})
     await delete_cache(user_repository.cache_policy.entity_key(REPO_GLOBAL_SCOPE, str(owner)))
+
+
+@pytest.fixture
+async def manager(postgres_url: str) -> AsyncIterator[CheckpointerManager]:
+    """Yield a real Postgres checkpointer for a comms graph built in the test."""
+    mgr = CheckpointerManager(conninfo=postgres_url)
+    await mgr.setup()
+    yield mgr
+    await mgr.close()

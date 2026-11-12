@@ -110,14 +110,6 @@ def _tool_registry() -> None:
 
 
 @pytest.fixture
-async def manager(postgres_url: str) -> AsyncIterator[CheckpointerManager]:
-    mgr = CheckpointerManager(conninfo=postgres_url)
-    await mgr.setup()
-    yield mgr
-    await mgr.close()
-
-
-@pytest.fixture
 async def conversation_id(manager: CheckpointerManager) -> AsyncIterator[str]:
     thread = f"convrt-runner-{uuid4().hex[:10]}"
     yield thread

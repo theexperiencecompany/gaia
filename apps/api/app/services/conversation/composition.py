@@ -143,13 +143,18 @@ def build_runtime_ports() -> RuntimePorts:
     )
 
 
+def running_steps() -> tuple[asyncio.Task[None], ...]:
+    """Return the conversation steps running in this process."""
+    return tuple(_steps.running)
+
+
 async def drain_conversation_steps(grace_seconds: float = STEP_DRAIN_GRACE_SECONDS) -> int:
     """Stop starting steps and wait up to grace_seconds for the running ones; return how many were cut off.
 
     A step cut off keeps its unsettled inputs, and its alive key lapses, so the next process's sweep resumes it.
     """
     _steps.draining = True
-    running = tuple(_steps.running)
+    running = running_steps()
     cut_off = 0
     if running:
         _done, pending = await asyncio.wait(running, timeout=grace_seconds)
