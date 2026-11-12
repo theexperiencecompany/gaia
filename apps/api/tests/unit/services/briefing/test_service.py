@@ -120,6 +120,7 @@ from app.services.briefing.faithfulness import (
     UnsupportedClaims,
 )
 from app.services.briefing.scouts import service as scout_service
+from app.services.briefing.voice_check import message_char_limit
 from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
@@ -2665,6 +2666,35 @@ class TestSignalsInTheBrief:
 
         world.post.assert_awaited_once()
         assert world.capture.call_args.args[1].signal_count == 1
+
+    async def test_a_headline_may_say_something_needs_you_when_an_app_signal_does(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(context, "gather_calendar", AsyncMock(return_value=[]))
+        world.scouts = _scouted(_DOCS)
+        world.agent.return_value = SimpleNamespace(
+            message=_fenced(
+                {
+                    **_VOICE,
+                    "lede": "One thing needs you today.",
+                    "message": f"{_FACTS_SHOWN} Refresh the onboarding docs when you can.",
+                }
+            )
+        )
+
+        await service.run_daily_briefing(_USER)
+
+        world.post.assert_awaited_once()
+
+    async def test_the_message_room_grows_with_each_app_signal(self, world: World) -> None:
+        world.scouts = _scouted(_LOGIN, _DOCS)
+        world.agent.return_value = _saying(f"[{_LOGIN.title}]({_LOGIN.url}) still needs you.")
+
+        await service.run_daily_briefing(_USER)
+
+        assert world.voice_prompt.call_args.kwargs["max_message_chars"] == message_char_limit(2)
+        assert message_char_limit(2) > message_char_limit(0)
+        assert f"stays under {message_char_limit(2)} characters" in _prompt(world)
 
     async def test_only_the_signals_the_message_spoke_of_are_marked_shown(
         self, world: World
