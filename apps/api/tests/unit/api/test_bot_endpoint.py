@@ -483,6 +483,7 @@ class TestUnlinkAccount:
         service = "app.services.platform_link_service"
         with (
             patch(f"{service}.capture") as mock_capture,
+            patch(f"{service}.log") as mock_log,
             patch(f"{service}.redis_cache") as mock_redis,
             patch(
                 f"{service}.PlatformLinkService.unlink_account", new_callable=AsyncMock
@@ -506,6 +507,9 @@ class TestUnlinkAccount:
         mock_get_user.assert_awaited_once_with("discord", "u1")
         mock_unlink.assert_awaited_once_with(USER_ID, "discord")
         mock_redis.client.delete.assert_awaited_once_with("bot_user:discord:u1")
+        mock_log.audit.assert_called_once_with(
+            "platform account unlinked", actor=USER_ID, resource="u1", provider="discord"
+        )
         mock_capture.assert_called_once_with(
             UserId(USER_ID), IntegrationDisconnected(integration_id="discord")
         )
