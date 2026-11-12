@@ -1073,6 +1073,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/conversations/{conversation_id}/barge-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Barge In Endpoint
+         * @description Record that the user spoke over a voice reply and how much of it they heard.
+         */
+        post: operations["conversations_barge_in_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/conversations/{conversation_id}/description": {
         parameters: {
             query?: never;
@@ -6443,6 +6463,26 @@ export interface components {
              * @enum {string}
              */
             kind: "barge_in";
+            /** Reply Id */
+            reply_id: string;
+        };
+        /**
+         * BargeInAccepted
+         * @description The barge-in is durable at seq; a resend for the same reply returns the first seq.
+         */
+        BargeInAccepted: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Seq */
+            seq: number;
+        };
+        /**
+         * BargeInRequest
+         * @description The user spoke over a voice reply, having heard its text up to heard_through characters.
+         */
+        BargeInRequest: {
+            /** Heard Through */
+            heard_through: number;
             /** Reply Id */
             reply_id: string;
         };
@@ -17434,6 +17474,8 @@ export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUser
 export type AuthorDetails = components['schemas']['AuthorDetails'];
 export type AuthoredGateView = components['schemas']['AuthoredGateView'];
 export type BargeIn = components['schemas']['BargeIn'];
+export type BargeInAccepted = components['schemas']['BargeInAccepted'];
+export type BargeInRequest = components['schemas']['BargeInRequest'];
 export type BatchApprovalDecisionRequest = components['schemas']['BatchApprovalDecisionRequest'];
 export type BatchApprovalDecisionResponse = components['schemas']['BatchApprovalDecisionResponse'];
 export type BatchDecisionItem = components['schemas']['BatchDecisionItem'];
@@ -21036,6 +21078,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationActionResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    conversations_barge_in_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BargeInRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BargeInAccepted"];
                 };
             };
             /** @description Unprocessable Entity */
