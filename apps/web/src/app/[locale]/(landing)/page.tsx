@@ -4,6 +4,10 @@ import type { Metadata } from "next";
 import LandingPageClient from "@/app/[locale]/(landing)/client";
 import JsonLd from "@/components/seo/JsonLd";
 import { getLatestRelease } from "@/features/landing/utils/getLatestRelease";
+import { WorkflowIconElementsProvider } from "@/features/workflows/components/shared/WorkflowIconElements";
+import { EXPLORE_WORKFLOWS_LIMIT } from "@/features/workflows/constants/explore";
+import { getExploreWorkflowsServer } from "@/features/workflows/lib/serverWorkflowsApi";
+import { workflowIconElements } from "@/features/workflows/lib/workflowIconElements";
 import { homepageFAQs } from "@/lib/faq";
 import {
   generateBreadcrumbSchema,
@@ -38,7 +42,7 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
-export default function LandingPage() {
+export default async function LandingPage() {
   const latestRelease = getLatestRelease();
   const webPageSchema = generateWebPageSchema(
     siteConfig.name,
@@ -50,6 +54,9 @@ export default function LandingPage() {
     { name: "Home", url: siteConfig.url },
   ]);
   const faqSchema = generateFAQSchema(homepageFAQs);
+  const exploreWorkflows = await getExploreWorkflowsServer(
+    EXPLORE_WORKFLOWS_LIMIT,
+  );
 
   return (
     <>
@@ -66,7 +73,11 @@ export default function LandingPage() {
           generateProductSchema(),
         ]}
       />
-      <LandingPageClient latestRelease={latestRelease} />
+      <WorkflowIconElementsProvider
+        icons={workflowIconElements(exploreWorkflows)}
+      >
+        <LandingPageClient latestRelease={latestRelease} />
+      </WorkflowIconElementsProvider>
     </>
   );
 }

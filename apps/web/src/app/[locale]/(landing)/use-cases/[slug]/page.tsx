@@ -11,7 +11,13 @@ import {
   getExploreWorkflowsServer,
   getPublicWorkflowServer,
 } from "@/features/workflows/lib/serverWorkflowsApi";
+import { WorkflowIconElementsProvider } from "@/features/workflows/components/shared/WorkflowIconElements";
+import { DEFAULT_WORKFLOW_ICON_COLOR } from "@/features/workflows/constants/workflowIconStyle";
 import { findCopiedTemplate } from "@/features/workflows/lib/templateCopies";
+import {
+  workflowIconElement,
+  workflowIconElements,
+} from "@/features/workflows/lib/workflowIconElements";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
 import { generateBreadcrumbSchema, siteConfig } from "@/lib/seo";
 import type { UseCase } from "@/types/features/workflowTypes";
@@ -27,6 +33,9 @@ const getExploreWorkflowsCached = cache((limit: number) =>
 interface PageProps {
   params: Promise<{ readonly slug: string }>;
 }
+
+/** The hero tile draws the workflow's icon at this size. */
+const HERO_ICON_SIZE = 26;
 
 export const revalidate = 3600; // Revalidate every hour
 
@@ -220,12 +229,20 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
   return (
     <>
       <JsonLd data={[structuredData, breadcrumbSchema]} />
-      <UseCaseDetailClient
-        useCase={useCase}
-        communityWorkflow={communityWorkflow}
-        slug={slug}
-        relatedUseCases={related}
-      />
+      <WorkflowIconElementsProvider icons={workflowIconElements(related)}>
+        <UseCaseDetailClient
+          useCase={useCase}
+          communityWorkflow={communityWorkflow}
+          slug={slug}
+          relatedUseCases={related}
+          heroIconElement={workflowIconElement(
+            (useCase ?? communityWorkflow)?.icon,
+            (useCase ?? communityWorkflow)?.icon_color ??
+              DEFAULT_WORKFLOW_ICON_COLOR,
+            HERO_ICON_SIZE,
+          )}
+        />
+      </WorkflowIconElementsProvider>
     </>
   );
 }

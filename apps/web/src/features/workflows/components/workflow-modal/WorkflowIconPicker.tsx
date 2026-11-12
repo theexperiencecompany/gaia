@@ -6,16 +6,18 @@ import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { cn } from "@/lib/utils";
 import {
-  DEFAULT_WORKFLOW_ICON_COLOR,
   searchWorkflowIcons,
-  WORKFLOW_ICON_BG_ALPHA,
   WORKFLOW_ICON_CATALOG,
-  WORKFLOW_ICON_COLORS,
   WORKFLOW_ICON_MAP,
   WORKFLOW_SUGGESTED_ICONS,
   type WorkflowIconDef,
   workflowIconLabel,
 } from "../../constants/workflowIconCatalog";
+import {
+  DEFAULT_WORKFLOW_ICON_COLOR,
+  WORKFLOW_ICON_BG_ALPHA,
+  WORKFLOW_ICON_COLORS,
+} from "../../constants/workflowIconStyle";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 
 interface WorkflowIconPickerProps {

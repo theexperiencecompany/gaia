@@ -1,6 +1,8 @@
 import "../../../styles/marketing.css";
 import type { Metadata } from "next";
 import UseCasesPageClient from "@/app/[locale]/(landing)/use-cases/client";
+import { WorkflowIconElementsProvider } from "@/features/workflows/components/shared/WorkflowIconElements";
+import { workflowIconElements } from "@/features/workflows/lib/workflowIconElements";
 import JsonLd from "@/components/seo/JsonLd";
 import {
   getAllCommunityWorkflowsServer,
@@ -79,7 +81,11 @@ export default async function UseCasesPage() {
           and FAQ rich results require the questions to be on the page. */}
       <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
 
-      <UseCasesPageClient communityWorkflows={communityWorkflows} />
+      <WorkflowIconElementsProvider
+        icons={workflowIconElements([...templates, ...communityWorkflows])}
+      >
+        <UseCasesPageClient communityWorkflows={communityWorkflows} />
+      </WorkflowIconElementsProvider>
     </div>
   );
 }
