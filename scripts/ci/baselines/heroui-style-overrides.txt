@@ -11,19 +11,15 @@
 # This file only ever shrinks. A line that no longer matches anything is
 # reported as removable and does not fail the gate.
 apps/web/src/app/[locale]/(landing)/cli/InstallPageClient.tsx:Tabs.Panel:pt-3
-apps/web/src/app/[locale]/(landing)/cli/InstallPageClient.tsx:Tabs:pb-0
 apps/web/src/app/[locale]/(landing)/marketplace/[slug]/IntegrationToolsCard.tsx:Card:bg-zinc-900/50
 apps/web/src/app/[locale]/(landing)/marketplace/[slug]/IntegrationToolsCard.tsx:Card:rounded-3xl
 apps/web/src/app/[locale]/(landing)/privacy/page.tsx:Link:text-blue-500
 apps/web/src/app/[locale]/(unindexed)/desktop-login/desktop-login-client.tsx:Button:text-zinc-500
 apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Body:py-4
-apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Dialog:bg-zinc-900
-apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Dialog:border-zinc-800
 apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Header:border-zinc-800
 apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Header:pb-3
 apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Heading:text-zinc-200
 apps/web/src/components/layout/headers/CalendarHeader.tsx:Select.Trigger:bg-zinc-800
-apps/web/src/components/layout/headers/CalendarHeader.tsx:Select.Value:text-zinc-300
 apps/web/src/components/layout/headers/ModelSelectorDevControls.tsx:ListBox.Item:rounded-lg
 apps/web/src/components/layout/headers/ModelSelectorDevControls.tsx:Popover.Content:bg-zinc-900
 apps/web/src/components/layout/headers/ModelSelectorDevControls.tsx:Popover.Content:p-3
@@ -47,7 +43,6 @@ apps/web/src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx:S
 apps/web/src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx:Select.Popover:border-zinc-800
 apps/web/src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx:Select.Trigger:bg-zinc-800/30
 apps/web/src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx:Select.Trigger:hover:bg-zinc-800/50
-apps/web/src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx:Select.Value:text-zinc-200
 apps/web/src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx:TextArea:bg-zinc-800/30
 apps/web/src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx:TextArea:hover:bg-zinc-800/50
 apps/web/src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx:TextArea:placeholder:text-zinc-700
@@ -80,15 +75,13 @@ apps/web/src/components/seo/ComparisonTable.tsx:Table.Row:border-zinc-700/50
 apps/web/src/components/seo/ComparisonTable.tsx:Table.Row:hover:bg-white/[0.02]
 apps/web/src/components/seo/ComparisonTable.tsx:Table:bg-zinc-800
 apps/web/src/components/seo/ComparisonTable.tsx:Table:rounded-3xl
-apps/web/src/components/seo/FAQAccordion.tsx:Accordion.Body:pb-4
-apps/web/src/components/seo/FAQAccordion.tsx:Accordion.Body:text-zinc-400
+apps/web/src/components/seo/FAQAccordion.tsx:Accordion.Panel:pb-4
+apps/web/src/components/seo/FAQAccordion.tsx:Accordion.Panel:text-zinc-400
 apps/web/src/components/seo/FAQAccordion.tsx:Accordion:p-0!
 apps/web/src/components/shared/CollapsibleListWrapper.tsx:Accordion.Item:px-0
 apps/web/src/components/shared/CollapsibleListWrapper.tsx:Accordion:px-0
 apps/web/src/components/shared/IntegrationConnectCard.tsx:Button:px-4
 apps/web/src/components/shared/KeyboardShortcutsModal.tsx:Modal.Body:pb-6
-apps/web/src/components/shared/KeyboardShortcutsModal.tsx:Modal.Dialog:bg-zinc-900/90
-apps/web/src/components/shared/KeyboardShortcutsModal.tsx:Modal.Dialog:rounded-2xl
 apps/web/src/components/ui/holo-card/HoloCardEditor.tsx:Popover.Content:bg-zinc-800
 apps/web/src/components/ui/holo-card/HoloCardEditor.tsx:Popover.Content:p-4
 apps/web/src/config/openui/components/CopyableContentView.tsx:Button:p-0
@@ -147,7 +140,6 @@ apps/web/src/features/chat/components/bubbles/bot/CodeExecutionSection.tsx:Accor
 apps/web/src/features/chat/components/bubbles/bot/CodeExecutionSection.tsx:Accordion.Panel:pt-0
 apps/web/src/features/chat/components/bubbles/bot/DeepResearchResultsTabs.tsx:Accordion.Item:px-0
 apps/web/src/features/chat/components/bubbles/bot/DeepResearchResultsTabs.tsx:Accordion:px-0
-apps/web/src/features/chat/components/bubbles/bot/DeepResearchResultsTabs.tsx:Tabs:p-0
 apps/web/src/features/chat/components/bubbles/bot/FileArtifactSection.tsx:Button:group-hover:text-white
 apps/web/src/features/chat/components/bubbles/bot/FileArtifactSection.tsx:Button:text-zinc-300
 apps/web/src/features/chat/components/bubbles/bot/FileArtifactSection.tsx:Card.Content:p-3.5
@@ -177,7 +169,6 @@ apps/web/src/features/chat/components/bubbles/bot/RateLimitCard.tsx:Chip:bg-warn
 apps/web/src/features/chat/components/bubbles/bot/RateLimitCard.tsx:Separator:bg-zinc-700/50
 apps/web/src/features/chat/components/bubbles/bot/SearchResultsTabs.tsx:Popover.Content:bg-transparent
 apps/web/src/features/chat/components/bubbles/bot/SearchResultsTabs.tsx:Popover.Content:p-0!
-apps/web/src/features/chat/components/bubbles/bot/SearchedImageDialog.tsx:Modal.Dialog:text-foreground
 apps/web/src/features/chat/components/bubbles/bot/TextBubble/index.tsx:Chip.Label:text-warning-500
 apps/web/src/features/chat/components/bubbles/bot/TodoProgressSection.tsx:Accordion.Indicator:text-zinc-500
 apps/web/src/features/chat/components/bubbles/bot/TodoProgressSection.tsx:Accordion.Panel:pb-2
@@ -240,16 +231,13 @@ apps/web/src/features/desktop-popup/components/PopupComposer.tsx:InputGroup:pl-0
 apps/web/src/features/desktop-popup/components/PopupComposer.tsx:InputGroup:pr-2
 apps/web/src/features/desktop-popup/components/PopupComposer.tsx:InputGroup:py-0
 apps/web/src/features/devices/components/ApproveDeviceForm.tsx:Separator:bg-zinc-700/50
-apps/web/src/features/faq/components/FAQPageClient.tsx:Accordion.Body:text-foreground-500
+apps/web/src/features/faq/components/FAQPageClient.tsx:Accordion.Panel:text-foreground-500
 apps/web/src/features/faq/components/FAQPageClient.tsx:Accordion:p-0!
 apps/web/src/features/first-steps/components/FirstStepsWidget.tsx:ProgressBar.Fill:bg-success
 apps/web/src/features/first-steps/components/FirstStepsWidget.tsx:ProgressBar.Track:bg-zinc-700
 apps/web/src/features/integrations/components/BearerTokenModal.tsx:Modal.Dialog:rounded-2xl
 apps/web/src/features/integrations/components/IntegrationChipLink.tsx:Chip:bg-zinc-800
 apps/web/src/features/integrations/components/IntegrationChipLink.tsx:Chip:text-zinc-300
-apps/web/src/features/integrations/components/IntegrationInstructionsModal.tsx:Modal.Dialog:bg-zinc-900/95
-apps/web/src/features/integrations/components/IntegrationInstructionsModal.tsx:Modal.Dialog:border-zinc-800
-apps/web/src/features/integrations/components/IntegrationInstructionsModal.tsx:Modal.Dialog:rounded-2xl
 apps/web/src/features/integrations/components/IntegrationInstructionsModal.tsx:Modal.Heading:text-zinc-100
 apps/web/src/features/integrations/components/IntegrationInstructionsModal.tsx:Tabs.Indicator:bg-zinc-700
 apps/web/src/features/integrations/components/IntegrationInstructionsModal.tsx:Tabs.List:bg-zinc-800/60
@@ -302,7 +290,7 @@ apps/web/src/features/landing/components/demo/DemoSettingsDropdown.tsx:Dropdown.
 apps/web/src/features/landing/components/demo/DummyComposer.tsx:Kbd:bg-zinc-700
 apps/web/src/features/landing/components/demo/DummyComposer.tsx:TextArea:bg-transparent
 apps/web/src/features/landing/components/demo/DummyComposer.tsx:TextArea:p-0
-apps/web/src/features/landing/components/demo/DummySlashCommandDropdown.tsx:Accordion.Trigger:pb-1
+apps/web/src/features/landing/components/demo/DummySlashCommandDropdown.tsx:Accordion.Item:pb-1
 apps/web/src/features/landing/components/demo/MemoryGraphDemo.tsx:Card.Content:p-2
 apps/web/src/features/landing/components/demo/MemoryGraphDemo.tsx:Card:bg-zinc-800
 apps/web/src/features/landing/components/demo/MemoryGraphDemo.tsx:Card:bg-zinc-800/90
@@ -312,14 +300,11 @@ apps/web/src/features/landing/components/demo/dashboard-demo/DemoDashboardView.t
 apps/web/src/features/landing/components/demo/founders-demo/IntegrationStrip.tsx:Chip:bg-zinc-800
 apps/web/src/features/landing/components/demo/founders-demo/IntegrationStrip.tsx:Chip:text-zinc-300
 apps/web/src/features/landing/components/demo/integrations-demo/DemoIntegrationsView.tsx:Chip:text-zinc-400
-apps/web/src/features/landing/components/demo/integrations-demo/DemoIntegrationsView.tsx:InputGroup:bg-zinc-800/50
-apps/web/src/features/landing/components/demo/integrations-demo/DemoIntegrationsView.tsx:InputGroup:border-zinc-700
 apps/web/src/features/landing/components/demo/todos-demo/DemoTodosView.tsx:Chip:px-1
 apps/web/src/features/landing/components/demo/todos-demo/DemoTodosView.tsx:Chip:px-2
 apps/web/src/features/landing/components/demo/todos-demo/DemoTodosView.tsx:Chip:style.color
 apps/web/src/features/landing/components/demo/todos-demo/DemoTodosView.tsx:Chip:text-zinc-400
 apps/web/src/features/landing/components/demo/workflows-demo/DemoWorkflowsView.tsx:Button:rounded-xl
-apps/web/src/features/landing/components/demo/workflows-demo/DemoWorkflowsView.tsx:Button:text-primary
 apps/web/src/features/landing/components/features/FeaturesGrid.tsx:Chip:text-primary
 apps/web/src/features/landing/components/features/demos/IntegrationsDemo.tsx:Chip:bg-zinc-800
 apps/web/src/features/landing/components/features/demos/IntegrationsDemo.tsx:Chip:text-zinc-300
@@ -366,12 +351,11 @@ apps/web/src/features/pins/components/PinsPage.tsx:SearchField.Group:border-defa
 apps/web/src/features/pins/components/PinsPage.tsx:SearchField.Group:pr-1
 apps/web/src/features/pins/components/PinsPage.tsx:SearchField.Group:text-medium
 apps/web/src/features/pricing/components/CheckoutFailed.tsx:Button:text-black
-apps/web/src/features/pricing/components/FAQAccordion.tsx:Accordion.Body:text-foreground-500
+apps/web/src/features/pricing/components/FAQAccordion.tsx:Accordion.Panel:text-foreground-500
 apps/web/src/features/pricing/components/FAQAccordion.tsx:Accordion:p-0!
 apps/web/src/features/pricing/components/UpgradeModal.tsx:Modal.CloseTrigger:hover:bg-zinc-800
 apps/web/src/features/pricing/components/UpgradeModal.tsx:Modal.CloseTrigger:hover:text-white
 apps/web/src/features/pricing/components/UpgradeModal.tsx:Modal.CloseTrigger:text-zinc-400
-apps/web/src/features/pricing/components/UpgradeModal.tsx:Modal.Dialog:p-4
 apps/web/src/features/pricing/components/UpgradeModalModes.tsx:Button:data-[hover=true]:bg-transparent
 apps/web/src/features/pricing/components/UpgradeModalModes.tsx:Button:data-[hover=true]:text-zinc-300
 apps/web/src/features/pricing/components/UpgradeModalModes.tsx:Button:p-0
@@ -396,7 +380,6 @@ apps/web/src/features/settings/components/PreferencesSettings.tsx:ListBox:bg-zin
 apps/web/src/features/settings/components/PreferencesSettings.tsx:Select.Popover:bg-zinc-800
 apps/web/src/features/settings/components/PreferencesSettings.tsx:Select.Trigger:bg-zinc-800/50
 apps/web/src/features/settings/components/PreferencesSettings.tsx:Select.Trigger:hover:bg-zinc-700/50
-apps/web/src/features/settings/components/PreferencesSettings.tsx:Select.Value:text-white
 apps/web/src/features/settings/components/QuietHoursSettings.tsx:Slider.Fill:bg-indigo-400/70
 apps/web/src/features/settings/components/QuietHoursSettings.tsx:Slider.Mark:text-zinc-500
 apps/web/src/features/settings/components/QuietHoursSettings.tsx:Slider.Thumb:bg-indigo-300
@@ -408,7 +391,6 @@ apps/web/src/features/settings/components/SubscriptionUpsell.tsx:Button:text-bla
 apps/web/src/features/settings/components/VoiceTable.tsx:Chip:bg-zinc-800
 apps/web/src/features/settings/components/VoiceTable.tsx:Chip:text-zinc-400
 apps/web/src/features/settings/components/composio/ComposioCatalogModal.tsx:Modal.Body:pb-6
-apps/web/src/features/settings/components/composio/ComposioCatalogModal.tsx:Modal.Dialog:rounded-2xl
 apps/web/src/features/settings/components/composio/ComposioToolkitListItem.tsx:Button:px-3
 apps/web/src/features/settings/components/composio/ComposioToolkitListItem.tsx:Button:py-2
 apps/web/src/features/settings/components/composio/ComposioToolkitListItem.tsx:Button:rounded-lg
@@ -505,11 +487,6 @@ apps/web/src/features/todo/components/fields/LabelsFieldChip.tsx:Button:p-0
 apps/web/src/features/todo/components/fields/LabelsFieldChip.tsx:Button:text-zinc-200
 apps/web/src/features/todo/components/fields/LabelsFieldChip.tsx:Button:text-zinc-400
 apps/web/src/features/todo/components/fields/LabelsFieldChip.tsx:Button:text-zinc-600
-apps/web/src/features/todo/components/fields/LabelsFieldChip.tsx:Input:bg-zinc-800
-apps/web/src/features/todo/components/fields/LabelsFieldChip.tsx:Input:focus:bg-zinc-700
-apps/web/src/features/todo/components/fields/LabelsFieldChip.tsx:Input:hover:bg-zinc-700
-apps/web/src/features/todo/components/fields/LabelsFieldChip.tsx:Input:placeholder:text-zinc-500
-apps/web/src/features/todo/components/fields/LabelsFieldChip.tsx:Input:text-zinc-200
 apps/web/src/features/todo/components/fields/RecurrenceFieldChip.tsx:Button:px-3
 apps/web/src/features/todo/components/fields/RecurrenceFieldChip.tsx:Button:text-zinc-200
 apps/web/src/features/todo/components/fields/RecurrenceFieldChip.tsx:Button:text-zinc-500
@@ -556,7 +533,6 @@ apps/web/src/features/workflows/components/workflow-modal/WorkflowHeader.tsx:Tex
 apps/web/src/features/workflows/components/workflow-modal/WorkflowIconPicker.tsx:Button:bg-zinc-700
 apps/web/src/features/workflows/components/workflow-modal/WorkflowIconPicker.tsx:Button:text-zinc-300
 apps/web/src/features/workflows/components/workflow-modal/WorkflowIconPicker.tsx:Button:text-zinc-400
-apps/web/src/features/workflows/components/workflow-modal/WorkflowIconPicker.tsx:Input:bg-transparent
 apps/web/src/features/workflows/components/workflow-modal/WorkflowIconPicker.tsx:Popover.Content:bg-zinc-800
 apps/web/src/features/workflows/components/workflow-modal/WorkflowIconPicker.tsx:Popover.Content:p-3
 apps/web/src/features/workflows/components/workflow-modal/WorkflowModalFormView.tsx:Separator:bg-zinc-700
