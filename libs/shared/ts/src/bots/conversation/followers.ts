@@ -60,14 +60,37 @@ export class ConversationFollowers {
       running.follower.expect(seq);
       return;
     }
-    const follower = new ConversationFollower(seq - 1, this.options, surface);
-    follower.expect(seq);
+    this.start(ctx, conversationId, seq - 1, surface).expect(seq);
+  }
+
+  /**
+   * Follow a conversation a restarted bot finds still answering, after afterSeq
+   * (the newest reply already settled), until it is idle; nothing when one runs.
+   */
+  resume(
+    ctx: BotUserContext,
+    conversationId: string,
+    afterSeq: number,
+    surface: ConversationSurface,
+  ): void {
+    if (this.active.has(conversationId)) return;
+    this.start(ctx, conversationId, afterSeq, surface);
+  }
+
+  private start(
+    ctx: BotUserContext,
+    conversationId: string,
+    floor: number,
+    surface: ConversationSurface,
+  ): ConversationFollower {
+    const follower = new ConversationFollower(floor, this.options, surface);
     const followed = { follower, abort: new AbortController() };
     this.active.set(conversationId, followed);
-    const run = this.run(ctx, conversationId, seq - 1, followed).finally(() => {
+    const run = this.run(ctx, conversationId, floor, followed).finally(() => {
       this.runs.delete(run);
     });
     this.runs.add(run);
+    return follower;
   }
 
   /** Settles once every follow running now has ended. */

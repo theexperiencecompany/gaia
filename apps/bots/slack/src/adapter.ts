@@ -21,6 +21,7 @@
  */
 
 import {
+  type ActiveBotConversation,
   BaseBotAdapter,
   type BotCommand,
   buildAuthLinkMessage,
@@ -447,6 +448,16 @@ export class SlackAdapter extends BaseBotAdapter {
         this.conversationSurface(channelId),
         (authUrl) => this.sendAuthLink(client, channelId, userId, authUrl),
       ),
+    );
+  }
+
+  protected async resumeSurface({
+    platform_user_id: userId,
+    channel_id: channelId,
+    is_dm: isDm,
+  }: ActiveBotConversation): Promise<ConversationSurface> {
+    return this.conversationSurface(
+      isDm || !channelId ? await this.resolveDmChannel(userId) : channelId,
     );
   }
 

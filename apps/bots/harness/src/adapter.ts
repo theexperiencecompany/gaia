@@ -15,6 +15,7 @@
  */
 
 import {
+  type ActiveBotConversation,
   BaseBotAdapter,
   type BotCommand,
   type BotFileData,
@@ -283,6 +284,13 @@ export class HarnessAdapter extends BaseBotAdapter {
         );
       },
     );
+  }
+
+  protected async resumeSurface({
+    platform_user_id: userId,
+    channel_id: channelId,
+  }: ActiveBotConversation): Promise<ConversationSurface> {
+    return this.conversationSurface(channelId ?? userId);
   }
 
   /**

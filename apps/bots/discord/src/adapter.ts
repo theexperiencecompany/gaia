@@ -18,6 +18,7 @@
  */
 
 import {
+  type ActiveBotConversation,
   BaseBotAdapter,
   type BotCommand,
   type BotFileData,
@@ -541,13 +542,41 @@ export class DiscordAdapter extends BaseBotAdapter {
     };
   }
 
-  /**
-   * The channel a DM or mention follows into: native replies, reactions on the
-   * user's messages, and the typing indicator.
-   */
-  private channelSurface(message: Message): ConversationSurface {
+  /** The channel a DM or mention follows into. */
+  private messageSurface(message: Message): ConversationSurface {
     const channel = message.channel as SendableChannels;
-    const inGuild = Boolean(message.guild);
+    return message.guild
+      ? this.channelSurface(channel, message.channelId, true)
+      : this.channelSurface(channel, message.author.id, false);
+  }
+
+  protected async resumeSurface({
+    platform_user_id: userId,
+    channel_id: channelId,
+    is_dm: isDm,
+  }: ActiveBotConversation): Promise<ConversationSurface> {
+    if (isDm || !channelId) {
+      const dm = await (await this.client.users.fetch(userId)).createDM();
+      return this.channelSurface(dm, userId, false);
+    }
+    const channel = await this.client.channels.fetch(channelId);
+    if (!channel?.isTextBased() || !("send" in channel)) {
+      throw new Error(
+        `Discord destination ${channelId} is not a sendable text channel`,
+      );
+    }
+    return this.channelSurface(channel, channelId, true);
+  }
+
+  /**
+   * A channel a conversation follows into: native replies, reactions on the
+   * user's messages (addressed as reactToMessage addresses them), and typing.
+   */
+  private channelSurface(
+    channel: SendableChannels,
+    reactDestination: string,
+    isChannel: boolean,
+  ): ConversationSurface {
     return {
       send: async (content, replyTo) => {
         const sent = await channel.send({
@@ -563,22 +592,14 @@ export class DiscordAdapter extends BaseBotAdapter {
         };
       },
       react: (platformMessageId, emoji, replaces) =>
-        inGuild
-          ? this.reactToMessage(
-              message.channelId,
-              platformMessageId,
-              emoji,
-              true,
-              replaces,
-            )
-          : this.reactToMessage(
-              message.author.id,
-              platformMessageId,
-              emoji,
-              false,
-              replaces,
-            ),
-      startTyping: () => this.startMentionTyping(message),
+        this.reactToMessage(
+          reactDestination,
+          platformMessageId,
+          emoji,
+          isChannel,
+          replaces,
+        ),
+      startTyping: () => this.startMentionTyping(channel),
     };
   }
 
@@ -672,7 +693,7 @@ export class DiscordAdapter extends BaseBotAdapter {
               }
             : {}),
         },
-        this.channelSurface(message),
+        this.messageSurface(message),
         async (authUrl: string) => {
           await send(
             renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
@@ -821,14 +842,13 @@ export class DiscordAdapter extends BaseBotAdapter {
    * Starts the typing indicator when the channel supports it, returning a
    * stop function (a no-op when typing is unavailable).
    */
-  private startMentionTyping(message: Message): () => void {
-    if (!("sendTyping" in message.channel))
+  private startMentionTyping(channel: SendableChannels): () => void {
+    if (!("sendTyping" in channel))
       return () => {
         /* channel has no typing indicator */
       };
     return this.startTypingIndicator(
-      () =>
-        (message.channel as { sendTyping: () => Promise<void> }).sendTyping(),
+      () => (channel as { sendTyping: () => Promise<void> }).sendTyping(),
       TYPING_REFRESH_INTERVAL_MS,
     );
   }
@@ -882,7 +902,7 @@ export class DiscordAdapter extends BaseBotAdapter {
               }
             : {}),
         },
-        this.channelSurface(message),
+        this.messageSurface(message),
         (authUrl: string) => this.sendMentionAuthPrompt(message, send, authUrl),
       );
     } catch (error) {

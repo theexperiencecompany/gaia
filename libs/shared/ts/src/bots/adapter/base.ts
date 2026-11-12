@@ -40,6 +40,7 @@ import {
   parseUserId,
   platformIdentity,
 } from "../../analytics";
+import type { ActiveBotConversation } from "../../api/generated";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
 import type {
@@ -246,6 +247,8 @@ export abstract class BaseBotAdapter {
           // Consume backend-originated outbound messages (executor replies,
           // reminders) and deliver them via this platform's send primitive.
           this.startOutboundConsumer();
+          // In the background, so a slow API never holds the platform's boot.
+          void this.resumeFollows();
 
           // Start the server after registerEvents() so all routes are mounted.
           await this._botServer.start();
@@ -359,6 +362,14 @@ export abstract class BaseBotAdapter {
    * Called as the final step of {@link boot}.
    */
   protected abstract start(): Promise<void>;
+
+  /**
+   * The chat a restarted bot follows a still-answering conversation into, rebuilt
+   * from its session: the DM with platform_user_id, or channel_id.
+   */
+  protected abstract resumeSurface(
+    target: ActiveBotConversation,
+  ): Promise<ConversationSurface>;
 
   /**
    * Gracefully disconnects from the platform.
@@ -771,6 +782,48 @@ export abstract class BaseBotAdapter {
           accepted.seq,
           surface,
         );
+      },
+    );
+  }
+
+  /**
+   * Follows again every conversation the server lists as still answering, so a
+   * result that lands after a restart still reaches the platform. Never throws:
+   * a conversation it cannot reach stays in the log and on web.
+   */
+  protected resumeFollows(): Promise<void> {
+    return withWideEvent(
+      "conversation_resume",
+      { platform: this.platform, component: "base-adapter" },
+      async () => {
+        let active: ActiveBotConversation[];
+        try {
+          active = await this.gaia.listActiveConversations(this.platform);
+        } catch (error) {
+          recordBotFailure("conversation_resume_list_failed", error);
+          return;
+        }
+        let resumed = 0;
+        for (const target of active) {
+          try {
+            const surface = await this.resumeSurface(target);
+            this.followers.resume(
+              {
+                platform: this.platform,
+                platformUserId: target.platform_user_id,
+              },
+              target.conversation_id,
+              target.after_seq,
+              surface,
+            );
+            resumed += 1;
+          } catch (error) {
+            recordBotFailure("conversation_resume_failed", error, {
+              conversation_id: target.conversation_id,
+            });
+          }
+        }
+        wideLog.set({ active: active.length, resumed });
       },
     );
   }

@@ -16,6 +16,7 @@
  */
 
 import {
+  type ActiveBotConversation,
   BaseBotAdapter,
   BODY_READ_TIMEOUT,
   BODY_TOO_LARGE,
@@ -692,10 +693,19 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     );
   }
 
-  /** The chat a conversation follows into; typing is shown against the message that opened the follow. */
+  protected async resumeSurface({
+    platform_user_id: waId,
+  }: ActiveBotConversation): Promise<ConversationSurface> {
+    return this.conversationSurface(waId, null);
+  }
+
+  /**
+   * The chat a conversation follows into. Typing is shown against the message
+   * that opened the follow; a follow resumed after a restart has none, so it shows no typing.
+   */
   private conversationSurface(
     waId: string,
-    messageId: string,
+    messageId: string | null,
   ): ConversationSurface {
     return {
       send: async (text, replyTo) => {
@@ -709,7 +719,10 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       },
       react: (platformMessageId, emoji, replaces) =>
         this.reactToMessage(waId, platformMessageId, emoji, false, replaces),
-      startTyping: () => this.startWhatsAppTyping(waId, messageId).stop,
+      startTyping: () =>
+        messageId
+          ? this.startWhatsAppTyping(waId, messageId).stop
+          : () => undefined,
     };
   }
 

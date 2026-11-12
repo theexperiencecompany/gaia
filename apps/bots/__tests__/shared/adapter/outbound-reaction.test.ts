@@ -5,6 +5,7 @@
 
 import {
   BaseBotAdapter,
+  type ConversationSurface,
   type OutboundReaction,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -34,6 +35,9 @@ class TestAdapter extends BaseBotAdapter {
   }
   protected async stop(): Promise<void> {
     /* nothing to disconnect */
+  }
+  protected async resumeSurface(): Promise<ConversationSurface> {
+    throw new Error("no restart under test");
   }
   protected async sendOutboundFile(): Promise<void> {
     /* no file delivery under test */

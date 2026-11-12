@@ -8,6 +8,8 @@
  * New command: add it under commands/<name>.ts and to the allCommands array in commands/index.ts.
  * New platform bot: extend BaseBotAdapter under apps/bots/<platform>/ and call adapter.boot(allCommands).
  */
+
+export type { ActiveBotConversation } from "../api/generated";
 export {
   BaseBotAdapter,
   BotServer,
@@ -15,7 +17,6 @@ export {
   richMessageToMarkdown,
   runBotProcess,
 } from "./adapter";
-
 export { GaiaApiError, GaiaClient } from "./api";
 export {
   allCommands,

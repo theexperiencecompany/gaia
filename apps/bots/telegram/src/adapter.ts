@@ -22,6 +22,7 @@
  */
 
 import {
+  type ActiveBotConversation,
   BaseBotAdapter,
   type BotCommand,
   type BotFileData,
@@ -612,6 +613,15 @@ export class TelegramAdapter extends BaseBotAdapter {
       this.conversationSurface(chatId, isGroup),
       (authUrl) => this.sendAuthLink(chatId, userId, isGroup, authUrl),
     );
+  }
+
+  protected async resumeSurface({
+    platform_user_id: userId,
+    channel_id: channelId,
+    is_dm: isDm,
+  }: ActiveBotConversation): Promise<ConversationSurface> {
+    // A private chat's id is the user's id, so a DM session needs no channel id.
+    return this.conversationSurface(Number(channelId ?? userId), !isDm);
   }
 
   /** The chat a conversation follows into: native replies, reactions and the typing action. */

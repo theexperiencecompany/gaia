@@ -63,6 +63,8 @@ export class ConversationFollower {
   private readonly expected = new Set<number>();
   /** The newest seq a settled reply or a stop has covered. */
   private covered = 0;
+  /** Whether a state frame arrived: until one does, idle is only the empty view's default. */
+  private stated = false;
   private open: OpenReply | null = null;
   /** Reply ids already finished on the platform. */
   private readonly finishedReplies = new Set<string>();
@@ -93,6 +95,7 @@ export class ConversationFollower {
   /** Idle, and every posted message answered or stopped. */
   get finished(): boolean {
     return (
+      this.stated &&
       this.view.display === DISPLAY_STATE.IDLE &&
       [...this.expected].every((seq) => seq <= this.covered)
     );
@@ -101,6 +104,7 @@ export class ConversationFollower {
   /** Fold one frame in and render what it changed; resolves once the platform calls are done. */
   apply(frame: ConversationFrame): Promise<void> {
     const before = this.view;
+    if (frame.kind === FRAME_KIND.STATE) this.stated = true;
     const outcome = applyFrame(before, frame);
     this.view = outcome.view;
     if (outcome.status === "index_gap") {

@@ -1,5 +1,6 @@
 import axios, { type AxiosInstance } from "axios";
 import type {
+  ActiveBotConversation,
   BotMessageAccepted,
   ConversationStopResponse,
   DeliveryFailureReport,
@@ -234,6 +235,25 @@ export class GaiaClient {
       after,
       signal,
     );
+  }
+
+  /** The platform's conversations still answering or working, for a restarted bot to follow again. */
+  async listActiveConversations(
+    platform: string,
+  ): Promise<ActiveBotConversation[]> {
+    return this.request(async () => {
+      const { data } = await this.client.get<ActiveBotConversation[]>(
+        "/api/v1/bot/conversations/active",
+        {
+          params: { platform },
+          headers: {
+            "X-Bot-API-Key": this.apiKey,
+            "X-Bot-Platform": platform,
+          },
+        },
+      );
+      return data;
+    });
   }
 
   /**

@@ -1,4 +1,5 @@
 import {
+  type ActiveBotConversation,
   BaseBotAdapter,
   BODY_READ_TIMEOUT,
   BODY_TOO_LARGE,
@@ -400,6 +401,13 @@ export class ImessageAdapter extends BaseBotAdapter {
         );
       },
     );
+  }
+
+  protected async resumeSurface({
+    platform_user_id: handle,
+  }: ActiveBotConversation): Promise<ConversationSurface> {
+    // DM-only, as deliverOutbound: the handle names the space.
+    return this.conversationSurface(handle, await this.im.space.create(handle));
   }
 
   /** The space a conversation follows into: threaded replies, tapbacks and typing. */
