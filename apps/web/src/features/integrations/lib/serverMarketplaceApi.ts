@@ -179,6 +179,11 @@ export async function getMarketplaceIntegration(
 export async function marketplaceApiIdentifier(
   urlSlug: string,
 ): Promise<string> {
+  // Natives first: a native page must not depend on the community catalog being up.
+  const native = (await getNativeIntegrations()).find(
+    (item) => marketplaceSlug(item.slug) === urlSlug,
+  );
+  if (native) return native.slug;
   const index = await getMarketplaceSlugIndex();
   const integration = index.get(normalizeToolSlug(urlSlug));
   return integration && marketplaceSlug(integration.slug) === urlSlug
