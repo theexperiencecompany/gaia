@@ -4,8 +4,8 @@ GAIA Cloud's usercontent Worker (on *.u.heygaia.link) and a self-host's Caddy
 site block forward here. A request is served only when the host it arrived on
 is its snapshot's content-origin host, so the same path reached on the API or
 app host (which carry the session cookie) serves nothing. The Worker cannot
-keep the browser's Host, so it names it in X-Forwarded-Host beside the internal
-token; a direct caller without the token cannot.
+keep the browser's Host, so it names it in X-Gaia-Content-Host beside the
+internal token; a direct caller without the token cannot.
 """
 
 from datetime import UTC, datetime
@@ -15,6 +15,7 @@ from fastapi import APIRouter, Header, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 
 from app.api.v1.middleware.rate_limiter import carries_internal_token
+from app.constants.http import CONTENT_HOST_HEADER
 from app.constants.short_links import THUMBNAIL_PATH
 from app.db.repositories.short_links import short_link_repository
 from app.models.short_link_models import LinkAccess, ShortLink
@@ -43,7 +44,9 @@ def _not_found() -> AppError:
 
 
 def _arrived_on_origin(request: Request, content_id: str) -> bool:
-    forwarded = request.headers.get("x-forwarded-host") if carries_internal_token(request) else None
+    forwarded = (
+        request.headers.get(CONTENT_HOST_HEADER) if carries_internal_token(request) else None
+    )
     host = (forwarded or request.headers.get("host", "")).lower()
     return host == content_origin_host(content_id)
 

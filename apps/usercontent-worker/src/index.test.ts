@@ -116,7 +116,7 @@ describe("request headers", () => {
           Authorization: "Bearer secret",
           "X-Gaia-Internal": "forged",
           "X-Gaia-Viewer-IP": "6.6.6.6",
-          "X-Forwarded-Host": "api.heygaia.io",
+          "X-Gaia-Content-Host": "api.heygaia.io",
           Referer: "https://heygaia.io/l/abc",
         },
       }),
@@ -127,7 +127,7 @@ describe("request headers", () => {
     expect(headers.get("Authorization")).toBeNull();
     expect(headers.get("Referer")).toBeNull();
     expect(headers.get("X-Gaia-Internal")).toBe("internal-token");
-    expect(headers.get("X-Forwarded-Host")).toBe(HOST);
+    expect(headers.get("X-Gaia-Content-Host")).toBe(HOST);
     // No CF-Connecting-IP: the forged viewer IP must not pass through either.
     expect(headers.get("X-Gaia-Viewer-IP")).toBeNull();
   });
@@ -150,7 +150,7 @@ describe("request headers", () => {
     expect(headers.get("Range")).toBe("bytes=0-99");
     expect(headers.get("If-None-Match")).toBe('"etag-1"');
     expect(headers.get("X-Gaia-Viewer-IP")).toBe("203.0.113.7");
-    expect(headers.get("X-Forwarded-Host")).toBe(HOST);
+    expect(headers.get("X-Gaia-Content-Host")).toBe(HOST);
     expect(init.redirect).toBe("manual");
   });
 });

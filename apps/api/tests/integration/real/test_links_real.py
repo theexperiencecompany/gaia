@@ -513,7 +513,7 @@ class TestSharedFiles:
         url = (await client.post(f"/api/v1/l/{slug}/content-token")).json()["content_url"]
         cid = url.split("//", 1)[1].split(".", 1)[0]
         path = f"/api/v1/usercontent/{cid}?{url.split('?', 1)[1]}"
-        forwarded = {"x-forwarded-host": f"{cid}.u.test", "sec-fetch-dest": "image"}
+        forwarded = {"x-gaia-content-host": f"{cid}.u.test", "sec-fetch-dest": "image"}
 
         spoofed = await client.get(path, headers=forwarded)
         worker = await client.get(path, headers={**forwarded, "x-gaia-internal": "i" * 40})
