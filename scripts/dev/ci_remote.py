@@ -1359,11 +1359,12 @@ def snapshot_once(repo: Repo, pr_number: int, branch: str, with_stack: bool) -> 
     t0 = time.monotonic()
     pr_meta = fetch_pr_state(repo, pr_number)
     head = pr_meta["headRefOid"]
-    runs, runs_truncated = fetch_pages(repo, f"commits/{head}/check-runs", "check_runs")
-    statuses, statuses_truncated = fetch_pages(repo, f"commits/{head}/status", "statuses")
+    # Runs first: a run already completed here has every job's check in the reads below.
     workflow_runs, workflows_truncated = fetch_pages(
         repo, "actions/runs", "workflow_runs", f"head_sha={head}&"
     )
+    runs, runs_truncated = fetch_pages(repo, f"commits/{head}/check-runs", "check_runs")
+    statuses, statuses_truncated = fetch_pages(repo, f"commits/{head}/status", "statuses")
     checks = live_checks(runs + status_checks(statuses), workflow_runs)
     truncated = runs_truncated or statuses_truncated or workflows_truncated
     counts = {k: sum(1 for c in checks if c["status"] == k) for k in COUNT_KEYS}

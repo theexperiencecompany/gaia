@@ -1441,7 +1441,7 @@ class SequencedGh(FakeGh):
             self.checks = self.polls[min(self.check_polls, len(self.polls) - 1)]
             self.check_polls += 1
         if "/actions/runs?" in endpoint:
-            self.workflow_runs = self.run_polls[min(self.check_polls, len(self.run_polls)) - 1]
+            self.workflow_runs = self.run_polls[min(self.check_polls, len(self.run_polls) - 1)]
         return super().text(args, timeout_s, stdin_text)
 
 
@@ -1595,6 +1595,37 @@ def test_a_newest_run_that_never_started_a_job_still_reports_its_failure(
 
     assert run_cli(monkeypatch, ["--no-stack"]) == 1
     assert "FAIL  CI  [error]" in capsys.readouterr().out
+
+
+class RunEndsMidSnapshot(FakeGh):
+    """The run's gate fails and the run completes the moment the first of the two reads returns."""
+
+    def text(
+        self, args: list[str], timeout_s: int, stdin_text: str | None = None
+    ) -> tuple[int, str, str]:
+        out = super().text(args, timeout_s, stdin_text)
+        endpoint = args[1] if len(args) > 1 else ""
+        if "/check-runs" in endpoint or "/actions/runs?" in endpoint:
+            self.checks = [
+                job_in(PASSED_CHECK, 99),
+                dict(
+                    FAILED_CHECK,
+                    name="quality-gate",
+                    html_url="https://github.com/o/r/actions/runs/99/job/101",
+                ),
+            ]
+            self.workflow_runs = [ci_run(99, "completed", "failure")]
+        return out
+
+
+def test_a_run_that_fails_between_the_two_reads_is_never_green(
+    wire, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = RunEndsMidSnapshot(checks=[job_in(PASSED_CHECK, 99)], job_log="")
+    fake.workflow_runs = [ci_run(99, "in_progress")]
+    wire(fake)
+
+    assert run_cli(monkeypatch, ["--no-stack"]) != 0
 
 
 def test_the_stack_rollup_skips_a_superseded_runs_checks() -> None:
