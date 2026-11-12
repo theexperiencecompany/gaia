@@ -9,12 +9,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from pydantic import ValidationError
 import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.briefing import BriefingFrequency
 from app.constants.log_tags import LogTag
-from app.models.briefing_models import BriefingSchedule
+from app.models.briefing_models import BriefingSchedule, BriefingScheduleUpdate
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationContentView,
@@ -863,6 +864,16 @@ class TestBriefingScheduleEndpoints:
         assert response.status_code == 422
         assert "workflow_deliveries is only accepted when frequency is off" in response.text
         setter.assert_not_awaited()
+
+    def test_the_refusal_names_exactly_why_deliveries_were_refused(self) -> None:
+        with pytest.raises(ValidationError) as refused:
+            BriefingScheduleUpdate(
+                frequency=BriefingFrequency.DAILY, hour=7, workflow_deliveries={"wf-1": "now"}
+            )
+
+        assert [error["msg"] for error in refused.value.errors()] == [
+            "Value error, workflow_deliveries is only accepted when frequency is off"
+        ]
 
     @pytest.mark.parametrize(
         "body", [{"frequency": "hourly", "hour": 7}, {"frequency": "daily", "hour": 24}]
