@@ -1180,7 +1180,10 @@ class TestProviderProbe:
         }
 
     @pytest.mark.parametrize(
-        "provider", sorted(set(CredentialProviderName) - set(LLM_PROVIDER_PRIORITY))
+        "provider",
+        sorted(
+            set(CredentialProviderName) - {CredentialProviderName(p) for p in LLM_PROVIDER_PRIORITY}
+        ),
     )
     async def test_only_chat_providers_can_be_probed(
         self, client: AsyncClient, provider: str
@@ -1213,16 +1216,18 @@ class TestSsrfGuard:
             provider_setup_service, "allows_private_endpoint", lambda provider: provider == "ollama"
         )
 
-    @pytest.mark.parametrize("provider", ["custom", "openrouter"])
+    @pytest.mark.parametrize(
+        "provider", [CredentialProviderName.CUSTOM, CredentialProviderName.OPENROUTER]
+    )
     def test_production_keeps_non_ollama_endpoints_public(
-        self, monkeypatch: pytest.MonkeyPatch, provider: str
+        self, monkeypatch: pytest.MonkeyPatch, provider: CredentialProviderName
     ) -> None:
         monkeypatch.undo()
         monkeypatch.setattr(settings, "ENV", "production")
         monkeypatch.setattr(settings, "AUTH_MODE", "workos")
 
         assert provider_setup_service.allows_private_endpoint(provider) is False
-        assert provider_setup_service.allows_private_endpoint("ollama") is True
+        assert provider_setup_service.allows_private_endpoint(CredentialProviderName.OLLAMA) is True
 
     async def test_decimal_ip_shorthand_resolving_private_is_rejected(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch

@@ -21,7 +21,6 @@ import pytest
 from app.config.oauth_config import (
     OAUTH_INTEGRATIONS,
     get_integration_by_id,
-    get_integration_scopes,
 )
 from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION, AccountConnectOutcome
 from app.models.integration_models import (
@@ -1099,17 +1098,6 @@ class TestOAuthConfigHelpers:
     def test_get_integration_by_id_not_found(self) -> None:
         """Unknown integration ID returns None."""
         assert get_integration_by_id("nonexistent_xyz") is None
-
-    def test_get_integration_scopes_gmail(self) -> None:
-        """Gmail scopes include gmail.modify."""
-        scopes = get_integration_scopes("gmail")
-        assert len(scopes) > 0
-        assert any("gmail" in s for s in scopes)
-
-    def test_get_integration_scopes_unknown_returns_empty(self) -> None:
-        """Unknown integration returns empty scope list."""
-        scopes = get_integration_scopes("nonexistent_xyz_123")
-        assert scopes == []
 
     def test_oauth_integrations_list_not_empty(self) -> None:
         """OAUTH_INTEGRATIONS contains at least one integration."""

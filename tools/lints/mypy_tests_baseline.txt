@@ -71,7 +71,6 @@ apps/api/tests/integration/db/test_chroma_store.py	attr-defined
 apps/api/tests/integration/endpoints/conftest.py	arg-type
 apps/api/tests/integration/endpoints/conftest.py	misc
 apps/api/tests/integration/endpoints/test_members_api.py	attr-defined
-apps/api/tests/integration/endpoints/test_setup_api.py	arg-type
 apps/api/tests/integration/endpoints/test_setup_composio_api.py	attr-defined
 apps/api/tests/integration/endpoints/test_setup_composio_toolkits_api.py	arg-type
 apps/api/tests/integration/endpoints/test_setup_composio_toolkits_api.py	attr-defined
@@ -374,9 +373,6 @@ apps/api/tests/unit/services/test_outbound_delivery.py	arg-type
 apps/api/tests/unit/services/test_outbound_delivery.py	attr-defined
 apps/api/tests/unit/services/test_payment_service_dodo_reconciliation.py	attr-defined
 apps/api/tests/unit/services/test_platform_message_service.py	attr-defined
-apps/api/tests/unit/services/test_provider_credentials_service.py	arg-type
-apps/api/tests/unit/services/test_provider_credentials_service.py	assignment
-apps/api/tests/unit/services/test_provider_credentials_service.py	index
 apps/api/tests/unit/services/test_publish_service.py	arg-type
 apps/api/tests/unit/services/test_s3_blob_store.py	union-attr
 apps/api/tests/unit/services/test_search_service.py	arg-type
