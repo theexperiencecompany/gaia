@@ -4,7 +4,8 @@ The API, the ARQ browser worker and two browser hosts (Chrome, and Obscura
 behind it) are child processes; the models and the two-origin fixture site are
 local servers in this process; the outbound Telegram queue is read
 as transcripts. A scenario talks to it the way the Telegram bot does: messages
-to /api/v1/bot/chat-stream and /stop to /api/v1/bot/reset-session. What a user
+to /api/v1/bot/messages, followed on the conversation's events stream, and /stop
+to /api/v1/bot/reset-session. What a user
 opens (the live view, its Done and Cancel, recaps) goes through the self-host
 Caddy in front of the API, so it works only where a deployed proxy forwards it.
 """
@@ -104,7 +105,7 @@ class BotUser:
 
 @dataclass(frozen=True)
 class BotReply:
-    """What one chat-stream turn answered: its text, and the conversation it ran in."""
+    """What one posted message was answered with: its text, and the conversation it ran in."""
 
     text: str
     conversation_id: str | None
@@ -325,33 +326,50 @@ class BrowserStack:
             "channel_id": channel_id,
             "is_dm": channel_id is None,
         }
-        chunks: list[str] = []
-        conversation_id: str | None = None
-        error: str | None = None
-        # Keepalive frames reset a read timeout, so a turn that never ends is bounded as a whole.
+        headers = self._bot_headers(user)
+        # The events stream sends a keepalive, so a reply that never comes is bounded as a whole.
         async with (
             asyncio.timeout(RUN_SECONDS),
             httpx.AsyncClient(base_url=self.api_url, timeout=RUN_SECONDS) as client,
         ):
-            async with client.stream(
-                "POST", "/api/v1/bot/chat-stream", json=body, headers=self._bot_headers(user)
-            ) as response:
-                if response.status_code != 200:
-                    await response.aread()
-                    raise AssertionError(
-                        f"chat-stream answered {response.status_code}: {response.text}"
+            posted = await client.post("/api/v1/bot/messages", json=body, headers=headers)
+            if posted.status_code != 202:
+                raise AssertionError(f"bot/messages answered {posted.status_code}: {posted.text}")
+            accepted = posted.json()
+            conversation_id = str(accepted["conversation_id"])
+            seq = int(accepted["seq"])
+            return await self._follow_reply(client, headers, conversation_id, seq)
+
+    async def _follow_reply(
+        self, client: httpx.AsyncClient, headers: dict[str, str], conversation_id: str, seq: int
+    ) -> BotReply:
+        """Read the conversation's events until a reply settles covering message seq."""
+        texts: dict[str, str] = {}
+        async with client.stream(
+            "GET",
+            f"/api/v1/conversations/{conversation_id}/events",
+            params={"after": str(seq - 1)},
+            headers=headers,
+        ) as response:
+            if response.status_code != 200:
+                await response.aread()
+                raise AssertionError(f"events answered {response.status_code}: {response.text}")
+            async for line in response.aiter_lines():
+                if not line.startswith("data:"):
+                    continue
+                frame = json.loads(line.removeprefix("data:").strip())["frame"]
+                entry = frame.get("entry") or {}
+                if entry.get("kind") == "reply":
+                    texts[entry["reply_id"]] = entry.get("text", "")
+                settled = entry.get("kind") == "reply_settled" and entry["through"] >= seq
+                if frame["kind"] == "entry" and settled:
+                    failed = entry["outcome"] == "failed"
+                    return BotReply(
+                        text=texts.get(entry["reply_id"], ""),
+                        conversation_id=conversation_id,
+                        error="reply_failed" if failed else None,
                     )
-                async for line in response.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    frame = json.loads(line.removeprefix("data:").strip())
-                    if "text" in frame:
-                        chunks.append(frame["text"])
-                    if "error" in frame:
-                        error = str(frame["error"])
-                    if frame.get("done"):
-                        conversation_id = frame.get("conversation_id")
-        return BotReply(text="".join(chunks), conversation_id=conversation_id, error=error)
+        raise AssertionError("the events stream closed before the reply settled")
 
     async def stop_command(self, user: BotUser, *, channel_id: str | None = None) -> None:
         """Send /stop the way the bot does: a session reset for that chat."""

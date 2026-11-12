@@ -199,8 +199,7 @@ and the OpenAPI schema:
   request and an unpaid shell load would mint a pile of single-use links nobody
   asked for. Clients mint on user intent, from
   `POST /api/v1/payments/checkout-session`. The bots do not read this body at
-  all — the bot chat turn renders its own paywall notice with its own link
-  (`endpoints/bot.py::_bot_upgrade_url`).
+  all — `POST /bot/messages` refuses an unentitled turn with its own 402.
 - **A plan read that fails is a 503, not a 402.** "We could not read your plan"
   is not "you are not subscribed", and answering 402 there showed every paying
   user a paywall during a Redis blip.
