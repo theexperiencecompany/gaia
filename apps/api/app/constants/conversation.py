@@ -74,6 +74,8 @@ EVENTS_STREAM_TTL_SECONDS = ONE_DAY_TTL
 EVENTS_BLOCK_MS = 15_000
 #: The cursor that reads a stream from its oldest retained frame.
 EVENTS_STREAM_START = "0-0"
+#: conv:work_index:{conversation_id}:{task_id}, the next work_delta index; a resumed run continues it.
+WORK_DELTA_INDEX_KEY_PREFIX = "conv:work_index:"
 # How often a running step polls its preempt hint while the model is silent.
 STEP_TICK_SECONDS = 0.25
 # Heads one sweep reads; the sweep runs every SWEEP_SECONDS, so a backlog drains over a few runs.

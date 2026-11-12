@@ -22933,6 +22933,14 @@
           "task_id": {
             "title": "Task Id",
             "type": "string"
+          },
+          "tool_data": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ToolDataEntry"
+            },
+            "title": "Tool Data",
+            "type": "array"
           }
         },
         "required": [

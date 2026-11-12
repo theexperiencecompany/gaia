@@ -27,7 +27,7 @@ from app.db.redis import redis_cache
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.models.agent_config import StepTurnRef
 from app.models.agent_models import AgentRunnableConfig
-from app.models.conversation_frame_models import EntryFrame
+from app.models.conversation_frame_models import EntryFrame, ToolDataEvent, WorkDeltaFrame
 from app.models.conversation_log_models import (
     ApprovalDecided,
     Batch,
@@ -43,11 +43,17 @@ from app.models.conversation_log_models import (
     WorkOutcome,
 )
 from app.models.conversation_send_models import SendMessageRequest
+from app.models.tool_data_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation.comms_runner import CommsGraphRunner, CommsTurn
 from app.services.conversation.comms_turn import step_turn_ref
 from app.services.conversation.composition import RuntimeEffects, running_steps
-from app.services.conversation.event_stream import RedisStreamFrames, StreamedFrame, follow
+from app.services.conversation.event_stream import (
+    RedisStreamFrames,
+    StreamedFrame,
+    follow,
+    read_frames,
+)
 from app.services.conversation.integration_log import (
     continue_after_connect,
     record_integration_needed,
@@ -58,6 +64,7 @@ from app.services.conversation.runtime import install_runtime_ports
 from app.services.conversation.send import send_message, submit_message
 from app.services.conversation.step import advance
 from app.services.conversation.sweeper import sweep_conversations
+from app.services.conversation.work_deltas import WorkDeltas
 from app.services.conversation.work_log import (
     record_approval_decided,
     record_approval_requested,
@@ -524,3 +531,39 @@ async def test_a_conversation_from_before_the_step_continues_on_it_with_its_hist
     assert humans(shown).count("when should I visit Paris?") == 1
     assert [str(m.content) for m in shown if isinstance(m, AIMessage)] == ["Paris is lovely in May"]
     assert humans(shown).count("book a week then") == 1
+
+
+def _card(tool_name: str) -> ToolDataEntry:
+    return {"tool_name": tool_name, "data": {"n": 1}, "timestamp": "2026-11-13T00:00:00+00:00"}
+
+
+@pytest.mark.service
+async def test_executor_cards_stream_as_work_deltas_and_land_on_the_tasks_reply(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("searching", "3 flights found")
+    rig = await rig_for(model)
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "find me flights")
+    await rig.settle()
+    raw = [_card("search_flights"), _card("flight_list")]
+    deltas = WorkDeltas(rig.conversation_id, "t1")
+    deltas({"tool_data": raw[0]})
+    deltas({"reasoning": {"content": "thinking"}})
+    deltas({"tool_data": [raw[1], _card("price_chart")]})
+    await deltas.drain()
+    resumed = WorkDeltas(rig.conversation_id, "t1")
+    resumed({"tool_data": _card("booking")})
+    await resumed.drain()
+    cards = (_card("search_flights"), _card("flight_list"), _card("price_chart"), _card("booking"))
+    await record_work_finished(
+        rig.conversation_id, rig.user_id, "t1", WorkOutcome.DONE, "3 flights found", cards
+    )
+    await rig.settle()
+    streamed = await read_frames(rig.conversation_id, "0", block_ms=1)
+    work = [s.frame for s in streamed if isinstance(s.frame, WorkDeltaFrame)]
+    shown = [f.payload.tool_data["tool_name"] for f in work if isinstance(f.payload, ToolDataEvent)]
+    task_reply = [reply for reply in await rig.of(Reply) if reply.reply_id == "t1"]
+    assert [(f.task_id, f.index) for f in work] == [("t1", 0), ("t1", 1), ("t1", 2), ("t1", 3)]
+    assert shown == ["search_flights", "flight_list", "price_chart", "booking"]
+    assert [(r.text, r.tool_data) for r in task_reply] == [("3 flights found", cards)]

@@ -16731,6 +16731,11 @@ export interface components {
             report: string;
             /** Task Id */
             task_id: string;
+            /**
+             * Tool Data
+             * @default []
+             */
+            tool_data?: components["schemas"]["ToolDataEntry"][];
         };
         /**
          * WorkflowCreator

@@ -43,6 +43,7 @@ from app.models.conversation_log_models import (
     WorkFinished,
     WorkflowFired,
 )
+from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.log import publish_appended, state_frame
 from app.services.conversation.ports import (
     CancelReason,
@@ -98,6 +99,8 @@ class _Attempt:
     # A Stop or another group's input ended the run of joinable entries.
     closed: bool = False
     deltas: int = 0
+    # The cards of the work whose reply this is (reply_id = task_id); the reply opens with them.
+    work_cards: tuple[ToolDataEntry, ...] = ()
 
     @property
     def committed(self) -> CommitReason | None:
@@ -194,13 +197,15 @@ async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool
     if await _answered_as_approval(ports, claim, state, pending[0], attempt_id):
         return False
     batch = _batch(pending)
+    reply_id = _reply_id(batch, entries, attempt_id)
     attempt = _Attempt(
         claim=claim,
         attempt_id=attempt_id,
-        reply_id=_reply_id(batch, entries, attempt_id),
+        reply_id=reply_id,
         batch=batch,
         covers=batch.waking,
         seen=batch.end,
+        work_cards=_work_cards(batch, reply_id),
     )
     # Everything since the last settled input that no batch carries: notes, stops, a dead attempt.
     context = [
@@ -237,6 +242,18 @@ def _reply_id(batch: Batch, entries: Sequence[LoggedEntry], attempt_id: str) -> 
         logged.entry.task_id for logged in batch.waking if isinstance(logged.entry, WorkFinished)
     )
     return next((task for task in tasks if task not in used), f"r{attempt_id}")
+
+
+def _work_cards(batch: Batch, reply_id: str) -> tuple[ToolDataEntry, ...]:
+    """Return the cards of the finished work this reply answers in its own reply."""
+    return next(
+        (
+            logged.entry.tool_data
+            for logged in batch.waking
+            if isinstance(logged.entry, WorkFinished) and logged.entry.task_id == reply_id
+        ),
+        (),
+    )
 
 
 async def _answered_as_approval(
@@ -524,7 +541,7 @@ def _final_reply(attempt: _Attempt, outcome: RunOutcome) -> tuple[Reply, ReplyOu
         filled = filled.model_copy(
             update={
                 "text": outcome.text,
-                "tool_data": outcome.tool_data,
+                "tool_data": (*attempt.work_cards, *outcome.tool_data),
                 "follow_up_actions": outcome.follow_up_actions,
             }
         )
@@ -634,7 +651,10 @@ def _fold(reply: Reply, payload: StreamPayload) -> Reply:
 
 def _empty_reply(attempt: _Attempt) -> Reply:
     return Reply(
-        id=f"{attempt.attempt_id}:reply", reply_id=attempt.reply_id, attempt_id=attempt.attempt_id
+        id=f"{attempt.attempt_id}:reply",
+        reply_id=attempt.reply_id,
+        attempt_id=attempt.attempt_id,
+        tool_data=attempt.work_cards,
     )
 
 

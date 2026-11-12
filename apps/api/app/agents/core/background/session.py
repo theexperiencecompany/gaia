@@ -262,9 +262,12 @@ class ExecutorRun:
 
         The real axis is live-streamed vs background-detached: live-streamed
         attaches tool_data to the comms message; a run with no comms consumer
-        (detached, a workflow's, a tracked todo's) self-persists.
+        (detached, a workflow's, a tracked todo's, one the conversation step
+        dispatched, whose cards ride its WorkFinished) self-persists.
         """
-        return self.owns_stream or self.workflow_id is not None
+        return (
+            self.owns_stream or self.workflow_id is not None or self.conversation_step is not None
+        )
 
 
 # ── Session registry ─────────────────────────────────────────────────

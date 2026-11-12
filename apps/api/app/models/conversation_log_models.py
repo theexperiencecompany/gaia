@@ -167,6 +167,8 @@ class WorkFinished(_Entry):
     task_id: str
     outcome: WorkOutcome
     report: str
+    # The cards the work showed; the reply that narrates it (reply_id = task_id) carries them.
+    tool_data: tuple[ToolDataEntry, ...] = ()
 
 
 class IntegrationNeeded(_Entry):

@@ -1,5 +1,7 @@
 """Background work as conversation log entries: started (fenced on the step's claim), approvals, finished."""
 
+from collections.abc import Sequence
+
 from app.constants.hil import ApprovalResolution
 from app.models.agent_config import StepTurnRef
 from app.models.conversation_log_models import (
@@ -13,6 +15,7 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
+from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.log import accept, publish_appended
 from app.services.conversation.ports import ClaimLost, EntryRejected
 from app.services.conversation.runtime import runtime_ports
@@ -46,11 +49,20 @@ async def record_work_started(
 
 
 async def record_work_finished(
-    conversation_id: str, user_id: str, task_id: str, outcome: WorkOutcome, report: str
+    conversation_id: str,
+    user_id: str,
+    task_id: str,
+    outcome: WorkOutcome,
+    report: str,
+    tool_data: Sequence[ToolDataEntry] = (),
 ) -> None:
-    """Append WorkFinished; its kick wakes the step, which narrates the result in the task's own reply."""
+    """Append WorkFinished; its kick wakes the step, which narrates the result and its cards in the task's own reply."""
     entry = WorkFinished(
-        id=f"work:{task_id}:finished", task_id=task_id, outcome=outcome, report=report
+        id=f"work:{task_id}:finished",
+        task_id=task_id,
+        outcome=outcome,
+        report=report,
+        tool_data=tuple(tool_data),
     )
     await accept(runtime_ports(), conversation_id, user_id, entry)
 

@@ -493,6 +493,23 @@ class TestBackgroundRunCardsSurviveTheCommsDrain:
         assert [entry["tool_name"] for entry in (saved.tool_data or [])] == ["tool_calls_data"]
 
 
+async def test_a_step_dispatched_live_run_logs_its_cards_on_work_finished(boundaries) -> None:
+    session = create_session("s1", RunKind.LIVE)
+    session.tool_events.append(
+        {"tool_data": {"tool_name": "tool_calls_data", "data": {"tool_call_id": "tc-1"}}}
+    )
+    run = replace(
+        _run(RunKind.LIVE),
+        conversation_step={"epoch": 1, "batch_start": 1, "cause_through": 1, "answers": ["m1"]},
+    )
+    with patch.object(er, "record_work_finished", new_callable=AsyncMock) as finished:
+        await er._finalize_executor_run(run, TASK, "the digest", "final")
+    logged = finished.await_args
+    assert logged is not None
+    assert [card["tool_name"] for card in logged.args[5]] == ["tool_calls_data"]
+    boundaries.deliver.assert_not_awaited()
+
+
 class TestCancelStillCarriesHandedOverWork:
     """Adversarial test for the lock/hand-off lifecycle, written red-first."""
 
