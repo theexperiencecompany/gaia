@@ -28,8 +28,9 @@ export const dynamicParams = false;
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
-  const { locale } = await params;
-  return automateHubMetadata(locale);
+  const { locale, page } = await params;
+  const combos = await getAllCombos();
+  return automateHubMetadata(locale, Number(page), hubPageCount(combos.length));
 }
 
 export default async function AutomateHubPage({ params }: PageProps) {

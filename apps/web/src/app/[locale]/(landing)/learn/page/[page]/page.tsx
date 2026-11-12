@@ -25,8 +25,9 @@ export const dynamicParams = false;
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
-  const { locale } = await params;
-  return glossaryHubMetadata(locale);
+  const { locale, page } = await params;
+  const terms = await getAllGlossaryTerms();
+  return glossaryHubMetadata(locale, Number(page), hubPageCount(terms.length));
 }
 
 export default async function LearnHubPage({ params }: PageProps) {
