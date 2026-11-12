@@ -28,7 +28,7 @@ from compare import (
 )
 from report import render_github_summary, render_terminal, to_json, write_map_json
 from routers import collect_router_mounts
-from scan import collect_worker_registry, scan, scored_entries
+from scan import MapResult, collect_worker_registry, scan, scored_entries
 from schema import canonical_fields
 from voice import collect_voice_registry
 
@@ -38,7 +38,7 @@ API_PACKAGE_ROOT = REPO_ROOT / "apps/api"
 APP_FACTORY_MODULE = REPO_ROOT / "apps/api/app/core/app_factory.py"
 WORKER_REGISTRY_MODULE = REPO_ROOT / "apps/api/app/worker.py"
 VOICE_AGENT_MODULE = REPO_ROOT / "apps/voice-agent/src/agent.py"
-VOICE_LLM_MODULE = REPO_ROOT / "apps/voice-agent/src/llm.py"
+VOICE_TURN_MODULE = REPO_ROOT / "apps/voice-agent/src/conversation.py"
 MAP_JSON = REPO_ROOT / "evlog.map.json"
 DEFAULT_MIN_NEW_SCORE = 70
 
@@ -141,66 +141,82 @@ def main(argv: list[str]) -> int:
     paths = _resolve_paths(args)
     fields = canonical_fields(REPO_ROOT)
     worker_registry = collect_worker_registry(WORKER_REGISTRY_MODULE)
-    voice_registry = collect_voice_registry(VOICE_AGENT_MODULE, VOICE_LLM_MODULE)
+    voice_registry = collect_voice_registry(VOICE_AGENT_MODULE, VOICE_TURN_MODULE)
     router_mounts = collect_router_mounts(APP_FACTORY_MODULE, API_PACKAGE_ROOT)
     result = scan(paths, fields, worker_registry, voice_registry, router_mounts)
+    _report(result, args)
+    # Every gate runs, so one failure never hides another's message.
+    failed = [gate(result, args) for gate in _GATES]
+    return 1 if any(failed) else 0
 
+
+def _report(result: MapResult, args: argparse.Namespace) -> None:
     if not args.no_write:
         write_map_json(result, MAP_JSON)
-
     if args.json:
         print(json.dumps(to_json(result), indent=2))
     else:
         print(render_terminal(result, show_all=args.all))
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if args.github_summary and summary_path:
+        with Path(summary_path).open("a", encoding="utf-8") as fh:
+            fh.write(render_github_summary(result) + "\n")
 
-    if args.github_summary:
-        summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-        if summary_path:
-            with Path(summary_path).open("a", encoding="utf-8") as fh:
-                fh.write(render_github_summary(result) + "\n")
 
-    failed = False
-    if args.min_score is not None and result.score < args.min_score:
+def _below_min_score(result: MapResult, args: argparse.Namespace) -> bool:
+    if args.min_score is None or result.score >= args.min_score:
+        return False
+    print(f"\nscore {result.score} is below --min-score {args.min_score}", file=sys.stderr)
+    return True
+
+
+def _below_min_entries(result: MapResult, args: argparse.Namespace) -> bool:
+    # The score says nothing about what was never discovered: a framework
+    # upgrade or refactor that hides entry points reads as a perfect run.
+    # Assert the surface is still there before trusting the number.
+    if args.min_entries is None:
+        return False
+    entry_count = len(scored_entries(result.entries))
+    if entry_count >= args.min_entries:
+        return False
+    print(
+        f"\ndiscovery found {entry_count} scored entry point(s), below "
+        f"--min-entries {args.min_entries} — the scan is not seeing the surface",
+        file=sys.stderr,
+    )
+    return True
+
+
+def _below_baseline(result: MapResult, args: argparse.Namespace) -> bool:
+    if not args.baseline:
+        return False
+    baseline = json.loads(_resolve_input_path(args.baseline).read_text(encoding="utf-8"))
+    failures = compare_to_baseline(
+        head_file_entries(result),
+        baseline_file_entries(baseline),
+        load_rename_map(Path(args.rename_map)) if args.rename_map else {},
+        args.min_new_score,
+    )
+    for failure in failures:
+        print(failure, file=sys.stderr)
+    return bool(failures)
+
+
+def _unparsable(result: MapResult, args: argparse.Namespace) -> bool:
+    # A file that will not parse is a real failure of the gate, not a
+    # cosmetic warning — otherwise breaking parse deletes its coverage
+    # from the score and the ratchet waves the regression through.
+    if not result.unparsable or (args.min_score is None and not args.baseline):
+        return False
+    for path in result.unparsable:
         print(
-            f"\nscore {result.score} is below --min-score {args.min_score}",
+            f"gate failure: {path} failed to parse — its entry points are unscored",
             file=sys.stderr,
         )
-        failed = True
-    if args.min_entries is not None:
-        # The score says nothing about what was never discovered: a framework
-        # upgrade or refactor that hides entry points reads as a perfect run.
-        # Assert the surface is still there before trusting the number.
-        entry_count = len(scored_entries(result.entries))
-        if entry_count < args.min_entries:
-            print(
-                f"\ndiscovery found {entry_count} scored entry point(s), below "
-                f"--min-entries {args.min_entries} — the scan is not seeing the surface",
-                file=sys.stderr,
-            )
-            failed = True
-    if args.baseline:
-        baseline = json.loads(_resolve_input_path(args.baseline).read_text(encoding="utf-8"))
-        failures = compare_to_baseline(
-            head_file_entries(result),
-            baseline_file_entries(baseline),
-            load_rename_map(Path(args.rename_map)) if args.rename_map else {},
-            args.min_new_score,
-        )
-        for failure in failures:
-            print(failure, file=sys.stderr)
-        if failures:
-            failed = True
-    if result.unparsable and (args.min_score is not None or args.baseline):
-        # A file that will not parse is a real failure of the gate, not a
-        # cosmetic warning — otherwise breaking parse deletes its coverage
-        # from the score and the ratchet waves the regression through.
-        for path in result.unparsable:
-            print(
-                f"gate failure: {path} failed to parse — its entry points are unscored",
-                file=sys.stderr,
-            )
-        failed = True
-    return 1 if failed else 0
+    return True
+
+
+_GATES = (_below_min_score, _below_min_entries, _below_baseline, _unparsable)
 
 
 if __name__ == "__main__":

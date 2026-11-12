@@ -64,6 +64,8 @@ class ReplyOutcome(StrEnum):
 
     ANSWERED = "answered"
     STOPPED = "stopped"
+    # The user spoke over it: the saved reply is what they heard, up to Reply.heard_through.
+    TRUNCATED = "truncated"
     FAILED = "failed"
     SILENT = "silent"
 
@@ -132,11 +134,11 @@ class StopRequested(_Entry):
 
 
 class BargeIn(_Entry):
-    """The user spoke over a voice reply, having heard only heard_text of it."""
+    """The user spoke over a voice reply, having heard its text only up to heard_through characters."""
 
     kind: Literal[EntryKind.BARGE_IN] = EntryKind.BARGE_IN
     reply_id: str
-    heard_text: str
+    heard_through: int = Field(ge=0)
 
 
 class WorkflowRun(BaseModel):
@@ -325,7 +327,7 @@ Entry = Annotated[
     Field(discriminator="kind"),
 ]
 
-WakingEntry = UserMessage | BargeIn | WorkflowFired | WorkFinished | IntegrationConnected
+WakingEntry = UserMessage | WorkflowFired | WorkFinished | IntegrationConnected
 
 
 class LoggedEntry(BaseModel):

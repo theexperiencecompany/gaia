@@ -44,8 +44,10 @@ def reduce(state: ConversationState, logged: LoggedEntry) -> Transition | Reject
 def _apply(state: ConversationState, seq: int, entry: Entry) -> Transition | Rejected:
     result: Transition | Rejected
     match entry:
-        case UserMessage() | BargeIn() | WorkflowFired() | IntegrationConnected():
+        case UserMessage() | WorkflowFired() | IntegrationConnected():
             result = Transition(state=_wake(state, seq), effects=_wake_effects(entry))
+        case BargeIn(reply_id=reply_id):
+            result = Transition(state=state, effects=_barge_effects(state, reply_id))
         case StopRequested():
             result = _stop(state, seq, entry)
         case TodoWoke() | Notice() | IntegrationNeeded():
@@ -71,16 +73,19 @@ def _apply(state: ConversationState, seq: int, entry: Entry) -> Transition | Rej
     return result
 
 
-def _wake_effects(
-    entry: UserMessage | BargeIn | WorkflowFired | IntegrationConnected,
-) -> tuple[Effect, ...]:
+def _wake_effects(entry: UserMessage | WorkflowFired | IntegrationConnected) -> tuple[Effect, ...]:
     match entry:
         case UserMessage(voice=False, id=message_id):
             return (KickStep(), StartAck(message_id=message_id))
-        case BargeIn(reply_id=reply_id):
-            return (Preempt(barge_reply_id=reply_id), KickStep())
         case _:
             return (KickStep(),)
+
+
+def _barge_effects(state: ConversationState, reply_id: str) -> tuple[Effect, ...]:
+    """Cut the open reply in its running attempt, or have a step cut the settled one; the user's words wake it."""
+    if reply_id == state.open_reply:
+        return (Preempt(barge_reply_id=reply_id), KickStep())
+    return (KickStep(),)
 
 
 def _wake(state: ConversationState, seq: int) -> ConversationState:

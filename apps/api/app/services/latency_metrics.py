@@ -46,7 +46,7 @@ _CHAT_TTFT_SECONDS = _register_once(
     lambda: Histogram(
         name="chat_ttft_seconds",
         documentation="Time to first comms response text per chat turn in seconds",
-        labelnames=("source", "voice_mode", "status"),
+        labelnames=("source", "status"),
         buckets=_TTFT_BUCKETS,
     ),
 )
@@ -56,7 +56,7 @@ _CHAT_E2E_ACK_SECONDS = _register_once(
     lambda: Histogram(
         name="chat_e2e_ack_seconds",
         documentation="Request accepted to comms ack complete per chat turn in seconds",
-        labelnames=("source", "voice_mode", "delegated", "status"),
+        labelnames=("source", "delegated", "status"),
         buckets=_TURN_BUCKETS,
     ),
 )
@@ -66,7 +66,7 @@ _CHAT_E2E_FULL_SECONDS = _register_once(
     lambda: Histogram(
         name="chat_e2e_full_seconds",
         documentation="Request accepted to stream DONE per chat turn in seconds",
-        labelnames=("source", "voice_mode", "delegated", "status"),
+        labelnames=("source", "delegated", "status"),
         buckets=_TURN_BUCKETS,
     ),
 )
@@ -375,40 +375,33 @@ def span() -> Iterator[Callable[[], float]]:
     yield lambda: time.perf_counter() - start
 
 
-def observe_chat_ttft(seconds: float, *, source: str, voice_mode: bool, status: str) -> None:
+def observe_chat_ttft(seconds: float, *, source: str, status: str) -> None:
     """Record time to first comms response text for a chat turn."""
     _observe(
         _CHAT_TTFT_SECONDS,
         seconds,
         source=source,
-        voice_mode=_bool_label(voice_mode),
         status=status,
     )
 
 
-def observe_chat_e2e_ack(
-    seconds: float, *, source: str, voice_mode: bool, delegated: bool, status: str
-) -> None:
+def observe_chat_e2e_ack(seconds: float, *, source: str, delegated: bool, status: str) -> None:
     """Record request-accepted to comms-ack-complete for a chat turn."""
     _observe(
         _CHAT_E2E_ACK_SECONDS,
         seconds,
         source=source,
-        voice_mode=_bool_label(voice_mode),
         delegated=_bool_label(delegated),
         status=status,
     )
 
 
-def observe_chat_e2e_full(
-    seconds: float, *, source: str, voice_mode: bool, delegated: bool, status: str
-) -> None:
+def observe_chat_e2e_full(seconds: float, *, source: str, delegated: bool, status: str) -> None:
     """Record request-accepted to stream-DONE for a chat turn."""
     _observe(
         _CHAT_E2E_FULL_SECONDS,
         seconds,
         source=source,
-        voice_mode=_bool_label(voice_mode),
         delegated=_bool_label(delegated),
         status=status,
     )

@@ -22,7 +22,6 @@ from app.helpers.agent_helpers import (
 from app.models.agent_config import AgentConfigurable, StepTurnRef
 from app.models.agent_models import agent_user_context
 from app.models.conversation_log_models import (
-    BargeIn,
     Batch,
     StepClaim,
     UserMessage,
@@ -102,7 +101,7 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
         config=config,
         opening=[*context.chain, *(m for m in (context.presence,) if m is not None)],
         closing=[*await _delivery_note(claim, batch), context.clock],
-        attribution=_attribution(batch, said, fired),
+        attribution=_attribution(said, fired),
         run_started=AgentRunStarted(
             agent="comms",
             mode=mode,
@@ -168,16 +167,12 @@ def _stamp_workflow_run(configurable: AgentConfigurable, run: WorkflowRun) -> No
 _UNPROMPTED = Attribution(actor=Actor.AGENT, trigger=Trigger.SYSTEM, surface=EntrySurface.WORKER)
 
 
-def _attribution(batch: Batch, said: list[UserMessage], fired: WorkflowRun | None) -> Attribution:
+def _attribution(said: list[UserMessage], fired: WorkflowRun | None) -> Attribution:
     """Return who caused the attempt: the user who spoke last, the workflow's fire, else the work itself."""
     if said:
         return _spoken(said[-1])
     if fired is not None:
         return fired.attribution
-    if any(isinstance(logged.entry, BargeIn) for logged in batch.waking):
-        return Attribution(
-            actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.VOICE
-        )
     return _UNPROMPTED
 
 

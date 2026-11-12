@@ -11,7 +11,7 @@ from app.services.latency_metrics import (
 def test_histograms_registered_and_observe():
     from app.services import latency_metrics as m
 
-    m.observe_chat_ttft(0.5, source="web", voice_mode=False, status="success")
+    m.observe_chat_ttft(0.5, source="web", status="success")
     assert "chat_ttft_seconds" in REGISTRY._names_to_collectors
 
 

@@ -1,8 +1,7 @@
 """Voice agent entrypoint — prewarm, room session lifecycle, and worker startup."""
 
 import asyncio
-from collections.abc import Callable, Coroutine
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 import os
 from pathlib import Path
@@ -11,7 +10,6 @@ from typing import Any
 
 from livekit import rtc
 from livekit.agents import (
-    Agent,
     AgentFalseInterruptionEvent,
     AgentSession,
     AgentStateChangedEvent,
@@ -36,15 +34,13 @@ from shared.py.secrets import inject_infisical_secrets
 from shared.py.wide_events import ModelContext, VoiceContext, get_trace_id, log, log_context
 from src.config import bootstrap_settings
 from src.constants import (
-    BACKEND_REQUEST_TIMEOUT_S,
     MIN_ENDPOINTING_DELAY_S,
     PROMETHEUS_METRICS_PORT,
     PROMETHEUS_MULTIPROC_DIR,
     VOICE_SESSION_ANALYTICS,
-    VOICE_SYSTEM_PROMPT,
     LogTag,
 )
-from src.llm import CustomLLM
+from src.conversation import VoiceConversation, VoiceTurnAgent
 from src.utils import extract_meta_data, ms_since, user_id_from_room
 
 # Absolute path so logs land in the right place regardless of CWD. A no-op
@@ -264,72 +260,77 @@ def _register_session_logging(
     ctx.add_shutdown_callback(log_session_end)
 
 
+@dataclass
+class _ConfiguredSession:
+    """What participant metadata configures: the conversation, the TTS voice, and the identity it logs under."""
+
+    conversation: VoiceConversation
+    tts: elevenlabs.TTS
+    identity: dict[str, Any]
+    # The entrypoint's, so each credential event joins the session's start event.
+    trace_id: str
+    # Credential tasks still running, kept referenced so they are not collected mid-run.
+    tasks: set[asyncio.Task[None]] = field(default_factory=set)
+    # Join and metadata_changed both carry the voice; it is applied only when it changes.
+    applied_voice_id: str | None = None
+
+
 async def _apply_participant_credentials(
     md: str | None,
     origin: str,
     who: str,
     *,
-    custom_llm: CustomLLM,
-    tts: elevenlabs.TTS,
-    applied_voice: dict[str, str],
-    identity: dict[str, Any],
+    session: _ConfiguredSession,
 ) -> None:
     """Apply agent token, TTS voice, and conversation id from participant metadata."""
     meta = extract_meta_data(md)
     token, conv_id, voice_id = meta.agent_token, meta.conversation_id, meta.voice_id
     if token:
-        custom_llm.set_agent_token(token)
+        session.conversation.agent_token = token
         log.debug(
             f"{LogTag.AGENT} token set",
             phase="token_set",
             participant=who,
             origin=origin,
-            **identity,
+            **session.identity,
         )
-    if meta.backend_url and meta.backend_url != custom_llm.base_url:
+    if meta.backend_url and meta.backend_url != session.conversation.base_url:
         # Multi-backend deployments (staging previews) run ONE shared agent;
         # each session's metadata names the API that minted it.
-        custom_llm.set_backend_url(meta.backend_url)
+        session.conversation.set_backend_url(meta.backend_url)
         log.info(
             f"{LogTag.AGENT} backend url set",
             phase="backend_url_set",
             backend_url=meta.backend_url,
             participant=who,
-            **identity,
+            **session.identity,
         )
-    if voice_id and voice_id != applied_voice.get("id"):
+    if voice_id and voice_id != session.applied_voice_id:
         # User-selected ElevenLabs voice (set in Settings → Voice), carried
         # in the participant metadata minted by /token. Applies to all
         # synthesis from the next utterance on.
-        applied_voice["id"] = voice_id
-        tts.update_options(voice_id=voice_id)
+        session.applied_voice_id = voice_id
+        session.tts.update_options(voice_id=voice_id)
         log.info(
             f"{LogTag.AGENT} voice set",
             phase="voice_set",
             voice_id=voice_id,
             participant=who,
-            **identity,
+            **session.identity,
         )
     if conv_id:
-        await custom_llm.set_conversation_id(conv_id)
+        await session.conversation.set_conversation_id(conv_id)
         log.debug(
             f"{LogTag.AGENT} conversation id set",
             phase="conv_id_set",
             conversation_id=conv_id,
             participant=who,
-            **identity,
+            **session.identity,
         )
 
 
 def _spawn_credential_task(
-    apply: Callable[[str | None, str, str], Coroutine[Any, Any, None]],
-    md: str | None,
-    origin: str,
-    who: str,
-    *,
-    tasks: set[asyncio.Task[None]],
-    identity: dict[str, Any],
-    trace_id: str,
+    md: str | None, origin: str, who: str, *, session: _ConfiguredSession
 ) -> None:
     """Run a credential coroutine in its own wide event, kept alive in tasks.
 
@@ -344,32 +345,32 @@ def _spawn_credential_task(
     async def _run() -> None:
         async with log_context(
             "voice_credentials",
-            trace_id=trace_id or None,
+            trace_id=session.trace_id or None,
             origin=origin,
-            **identity,
+            **session.identity,
         ):
             log.set(
                 voice=VoiceContext(
                     operation="credentials",
-                    room=identity["room"],
+                    room=session.identity["room"],
                     participant=who,
                 )
             )
-            await apply(md, origin, who)
+            await _apply_participant_credentials(md, origin, who, session=session)
 
     task: asyncio.Task[None] = asyncio.create_task(_run())
-    tasks.add(task)
+    session.tasks.add(task)
 
     def _done(t: asyncio.Task[None]) -> None:
         # The boundary above already emitted the queryable failure event; this
         # keeps the traceback (which the event does not carry) and retrieves
         # the exception so asyncio does not report it as never-retrieved.
-        tasks.discard(t)
+        session.tasks.discard(t)
         if not t.cancelled() and t.exception():
             log.error(
                 f"{LogTag.AGENT} Background credential task failed",
                 exc_info=t.exception(),
-                **identity,
+                **session.identity,
             )
 
     task.add_done_callback(_done)
@@ -420,12 +421,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
         room_start = time.monotonic()
 
-        custom_llm = CustomLLM(
-            base_url=settings.GAIA_BACKEND_URL,
-            room=ctx.room,
-            request_timeout_s=BACKEND_REQUEST_TIMEOUT_S,
-        )
-        custom_llm.user_id = user.value
+        conversation = VoiceConversation(settings.GAIA_BACKEND_URL, ctx.room, user.value)
 
         tts = elevenlabs.TTS(
             api_key=settings.ELEVENLABS_API_KEY,
@@ -433,41 +429,27 @@ async def entrypoint(ctx: JobContext) -> None:
             model=settings.ELEVENLABS_TTS_MODEL,
         )
 
+        # No LLM: each finished user turn is sent to the conversation, whose replies the
+        # conversation speaks as they arrive. A send is durable, so nothing is generated
+        # speculatively before the user's turn ends.
         session: AgentSession = AgentSession(
-            llm=custom_llm,
             stt=deepgram.STT(model="nova-3", language="multi"),
             tts=tts,
             turn_detection=MultilingualModel(),
             vad=ctx.proc.userdata["vad"],
             min_endpointing_delay=MIN_ENDPOINTING_DELAY_S,
-            preemptive_generation=True,
             use_tts_aligned_transcript=True,
         )
-
-        # The drain speaks each delegated executor answer as its own utterance
-        # once the comms turn has ended.
-        custom_llm.session = session
+        conversation.speaker = session
+        ctx.add_shutdown_callback(lambda _reason: conversation.aclose())
 
         _register_session_logging(ctx, session, identity, session_trace_id, analytics, user)
 
-        # Tracks the currently-applied TTS voice so repeated metadata events
-        # (join + metadata_changed) don't re-apply the same voice.
-        applied_voice: dict[str, str] = {}
-        apply_credentials = partial(
-            _apply_participant_credentials,
-            custom_llm=custom_llm,
-            tts=tts,
-            applied_voice=applied_voice,
-            identity=identity,
-        )
-
-        background_tasks: set[asyncio.Task[None]] = set()
         spawn_credentials = partial(
             _spawn_credential_task,
-            apply_credentials,
-            tasks=background_tasks,
-            identity=identity,
-            trace_id=session_trace_id,
+            session=_ConfiguredSession(
+                conversation=conversation, tts=tts, identity=identity, trace_id=session_trace_id
+            ),
         )
 
         @ctx.room.on("participant_connected")
@@ -490,7 +472,7 @@ async def entrypoint(ctx: JobContext) -> None:
         # room event handlers are registered above, before any connection exists,
         # so no participant events are missed.
         await session.start(
-            agent=Agent(instructions=VOICE_SYSTEM_PROMPT),
+            agent=VoiceTurnAgent(conversation),
             room=ctx.room,
             room_input_options=RoomInputOptions(
                 noise_cancellation=noise_cancellation.BVC(),

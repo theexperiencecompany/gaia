@@ -530,7 +530,6 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "stream_id": string;
     "conversation_id": string;
-    "voice_mode": boolean;
     "is_new_conversation": boolean;
     "delegated": boolean;
     "queued": boolean;
@@ -545,7 +544,6 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "stream_id": string;
     "conversation_id": string;
-    "voice_mode": boolean;
     "is_new_conversation": boolean;
     "delegated": boolean;
     "queued": boolean;

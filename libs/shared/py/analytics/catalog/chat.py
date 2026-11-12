@@ -74,7 +74,6 @@ class _ChatTurnEnded(ServerEvent):
 
     stream_id: Identifier
     conversation_id: Identifier
-    voice_mode: bool
     is_new_conversation: bool
     delegated: bool
     queued: bool

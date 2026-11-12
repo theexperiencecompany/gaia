@@ -72,8 +72,8 @@ def stop(
     return StopRequested(id=entry_id, by=by, covers_through=covers_through)
 
 
-def barge(entry_id: str, reply_id: str) -> BargeIn:
-    return BargeIn(id=entry_id, reply_id=reply_id, heard_text="heard")
+def barge(entry_id: str, reply_id: str, heard_through: int = 5) -> BargeIn:
+    return BargeIn(id=entry_id, reply_id=reply_id, heard_through=heard_through)
 
 
 def workflow_run(execution_id: str = "ex_1") -> WorkflowRun:

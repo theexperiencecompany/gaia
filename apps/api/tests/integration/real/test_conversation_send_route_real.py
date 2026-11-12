@@ -17,7 +17,7 @@ from app.db.repositories.conversations import conversation_repository
 from app.models.bot_models import BotChatRequest
 from app.models.chat_models import MessageModel
 from app.models.conversation_frame_models import ConversationUpdatedFrame, StateFrame
-from app.models.conversation_log_models import DisplayState, UserMessage
+from app.models.conversation_log_models import BargeIn, DisplayState, UserMessage
 from app.models.user_models import AuthenticatedUser
 from app.services.bot_service import BotService
 from app.services.conversation.mongo_log import MongoConversationLog
@@ -106,6 +106,50 @@ async def test_a_send_returns_202_with_its_seq_and_kicks_the_step(
     assert EffectCall("kick") in sends.effects.calls
     states = [f.display for f in sends.frames.published if isinstance(f, StateFrame)]
     assert states == [DisplayState.THINKING]
+
+
+async def test_a_spoken_turn_is_logged_as_voice_and_gets_no_instant_reaction(
+    client: AsyncClient, sends: Sends
+) -> None:
+    conversation_id = f"convrt-{uuid4().hex[:10]}"
+    response = await client.post(
+        f"/api/v1/conversations/{conversation_id}/messages",
+        json={**_send("m1", "what's on today"), "voice": True},
+    )
+    assert response.status_code == 202, response.text
+    entries = await conversation_log_repository.read_log(conversation_id, user_id=FAKE_USER.user_id)
+    [message] = [e.entry for e in entries or [] if isinstance(e.entry, UserMessage)]
+    assert message.voice is True
+    assert sends.effects.calls == [EffectCall("kick")]
+
+
+async def test_a_barge_in_is_logged_after_the_turn_and_a_resend_keeps_its_seq(
+    client: AsyncClient, sends: Sends
+) -> None:
+    conversation_id = f"convrt-{uuid4().hex[:10]}"
+    await client.post(
+        f"/api/v1/conversations/{conversation_id}/messages", json={**_send("m1"), "voice": True}
+    )
+    url = f"/api/v1/conversations/{conversation_id}/barge-in"
+    first = await client.post(url, json={"reply_id": "r1.1", "heard_through": 12})
+    again = await client.post(url, json={"reply_id": "r1.1", "heard_through": 12})
+    assert (first.status_code, again.status_code) == (202, 202), first.text
+    assert first.json() == again.json() == {"conversation_id": conversation_id, "seq": 2}
+    entries = await conversation_log_repository.read_log(conversation_id, user_id=FAKE_USER.user_id)
+    barges = [e.entry for e in entries or [] if isinstance(e.entry, BargeIn)]
+    assert barges == [BargeIn(id="r1.1:barge", reply_id="r1.1", heard_through=12)]
+
+
+async def test_a_barge_in_on_someone_elses_conversation_is_refused(
+    client: AsyncClient, sends: Sends
+) -> None:
+    response = await client.post(
+        f"/api/v1/conversations/convrt-{uuid4().hex[:10]}/barge-in",
+        json={"reply_id": "r1.1", "heard_through": 3},
+    )
+    assert response.status_code == 404, response.text
+    assert response.json()["code"] == "CONVERSATION_NOT_FOUND"
+    assert sends.effects.calls == []
 
 
 async def test_a_resent_message_keeps_its_first_seq_and_is_stored_once(

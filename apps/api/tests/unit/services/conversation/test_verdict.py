@@ -18,7 +18,6 @@ from app.models.conversation_log_models import (
 from app.services.conversation.verdict import merge_group, quote_target, verdict
 from tests.unit.services.conversation.log_helpers import (
     T0,
-    barge,
     finished,
     fired,
     logged,
@@ -101,7 +100,6 @@ def test_restart_window_is_exclusive_at_its_end(now_offset: float, expected: Ver
     ("entry", "group"),
     [
         (user("u"), MergeGroup.INTERACTIVE),
-        (barge("b", "r"), MergeGroup.INTERACTIVE),
         (finished("f", "t1"), MergeGroup.INTERACTIVE),
         (fired("w"), MergeGroup.BACKGROUND),
     ],

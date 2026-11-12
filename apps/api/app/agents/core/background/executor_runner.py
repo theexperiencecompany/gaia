@@ -73,8 +73,6 @@ from app.constants.executor import (
     EXECUTOR_ERROR_PREP_FAILED,
     EXECUTOR_PAUSED,
     EXECUTOR_STEP_LIMIT_MESSAGE,
-    MESSAGE_ID_KEY,
-    VOICE_TTS_KEY,
 )
 from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS, HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
@@ -106,7 +104,6 @@ from app.services.latency_metrics import (
     observe_executor_ttft,
     span,
 )
-from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.analytics.context import analytics_context
@@ -803,33 +800,13 @@ async def _deliver_terminal_outcome(
         else:
             await persist_cancelled_run(run, outcome.tool_data)
     elif outcome.result_text:
-        notification_text, message_id = await deliver_result(
+        await deliver_result(
             run,
             outcome.result_text,
             outcome.result_type,
             outcome.returned_note,
             tool_data=outcome.tool_data,
             review=outcome.review,
-        )
-        await _publish_voice_tts(run.stream_id, notification_text, message_id)
-
-
-async def _publish_voice_tts(
-    stream_id: str, notification_text: str | None, message_id: str | None
-) -> None:
-    """Push the narrated answer on a voice-mode stream so the agent speaks AND bubbles it.
-
-    The frame carries the message_id so the voice agent forwards it as a display
-    frame, rendering off the data channel immediately; the later WebSocket push
-    (same id) then reconciles in place instead of duplicating. Only live streams are ever voice mode.
-    """
-    if not notification_text:
-        return
-    session = get_session(stream_id)
-    if session is not None and session.voice_mode:
-        await StreamManager.publish_chunk(
-            stream_id,
-            format_sse_data({VOICE_TTS_KEY: notification_text, MESSAGE_ID_KEY: message_id}),
         )
 
 

@@ -58,7 +58,10 @@ INTEGRATION_CONNECTED_NOTE = (
     "[The user just connected {integration}. Carry on with the work that was waiting on it; "
     "the user did not type a message.]"
 )
-BARGE_IN_NOTE = "[The user spoke over your reply. They heard only this much of it: {heard}]"
+BARGE_IN_NOTE = (
+    "[The user spoke over your reply and heard only this much of it: {heard}\n"
+    "They did not hear the rest, so do not assume they know it.]"
+)
 SERVER_RESTART_NOTE = (
     "<server_restart>Your previous reply was cut off by a server restart before it finished. "
     "Do not redo anything it already did; tell the user it was interrupted, then carry on."

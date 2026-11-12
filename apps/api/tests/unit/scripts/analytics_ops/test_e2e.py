@@ -52,7 +52,6 @@ WORKFLOW_RUN: dict[str, object] = {
 COMPLETED = {
     "delegated": False,
     "queued": False,
-    "voice_mode": False,
     "ttft_ms": 44.0,
     "e2e_ack_ms": 4.0,
     "e2e_full_ms": 4.0,

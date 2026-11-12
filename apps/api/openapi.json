@@ -1198,11 +1198,12 @@
       },
       "BargeIn": {
         "additionalProperties": false,
-        "description": "The user spoke over a voice reply, having heard only heard_text of it.",
+        "description": "The user spoke over a voice reply, having heard its text only up to heard_through characters.",
         "properties": {
-          "heard_text": {
-            "title": "Heard Text",
-            "type": "string"
+          "heard_through": {
+            "minimum": 0.0,
+            "title": "Heard Through",
+            "type": "integer"
           },
           "id": {
             "description": "Producer-minted idempotency key",
@@ -1224,9 +1225,50 @@
         "required": [
           "id",
           "reply_id",
-          "heard_text"
+          "heard_through"
         ],
         "title": "BargeIn",
+        "type": "object"
+      },
+      "BargeInAccepted": {
+        "description": "The barge-in is durable at seq; a resend for the same reply returns the first seq.",
+        "properties": {
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "seq"
+        ],
+        "title": "BargeInAccepted",
+        "type": "object"
+      },
+      "BargeInRequest": {
+        "description": "The user spoke over a voice reply, having heard its text up to heard_through characters.",
+        "properties": {
+          "heard_through": {
+            "minimum": 0.0,
+            "title": "Heard Through",
+            "type": "integer"
+          },
+          "reply_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Reply Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reply_id",
+          "heard_through"
+        ],
+        "title": "BargeInRequest",
         "type": "object"
       },
       "BatchApprovalDecisionRequest": {
@@ -12125,11 +12167,6 @@
             "default": true,
             "title": "Use Default Models",
             "type": "boolean"
-          },
-          "voice_mode": {
-            "default": false,
-            "title": "Voice Mode",
-            "type": "boolean"
           }
         },
         "required": [
@@ -16684,6 +16721,7 @@
         "enum": [
           "answered",
           "stopped",
+          "truncated",
           "failed",
           "silent"
         ],
@@ -28396,6 +28434,79 @@
           }
         },
         "summary": "Get Conversation Endpoint",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
+    "/api/v1/conversations/{conversation_id}/barge-in": {
+      "post": {
+        "description": "Record that the user spoke over a voice reply and how much of it they heard.",
+        "operationId": "conversations_barge_in_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BargeInRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BargeInAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Barge In Endpoint",
         "tags": [
           "Conversations"
         ]

@@ -12,8 +12,10 @@ from app.db.repositories.conversations import conversation_repository
 from app.decorators import enforce_cost_budget
 from app.models.bot_models import BotChatRequest
 from app.models.chat_models import ConversationModel
-from app.models.conversation_log_models import UserMessage
+from app.models.conversation_log_models import BargeIn, UserMessage
 from app.models.conversation_send_models import (
+    BargeInAccepted,
+    BargeInRequest,
     BotMessageAccepted,
     MessageAccepted,
     SendMessageRequest,
@@ -160,3 +162,16 @@ async def submit_bot_message(body: BotChatRequest, user: AuthenticatedUser) -> B
         user_id=user_id, platform=platform, platform_user_id=body.platform_user_id
     )
     return BotMessageAccepted(**sent.accepted.model_dump(), session_token=token)
+
+
+async def submit_barge_in(
+    conversation_id: str, user: AuthenticatedUser, body: BargeInRequest
+) -> BargeInAccepted:
+    """Log that the user spoke over a voice reply; the step cuts the reply to what they heard."""
+    barge = BargeIn(
+        id=f"{body.reply_id}:barge", reply_id=body.reply_id, heard_through=body.heard_through
+    )
+    accepted = await accept(runtime_ports(), conversation_id, user.user_id, barge)
+    seq = accepted.appended.logged.seq
+    log.set_ns("conversation", seq=seq, duplicate=accepted.appended.duplicate)
+    return BargeInAccepted(conversation_id=conversation_id, seq=seq)

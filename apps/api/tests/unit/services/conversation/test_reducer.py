@@ -183,11 +183,18 @@ def test_stop_leaves_comms_for_the_reply_end_to_settle() -> None:
 # ---- BargeIn, WorkflowFired, TodoWoke, Notice ----
 
 
-def test_barge_in_preempts_the_reply_wakes_and_kicks() -> None:
+def test_barge_in_on_the_open_reply_preempts_it_and_waits_for_the_users_words() -> None:
     state, _ = fold([user("u1"), opened("o", reply_id="r1")])
     result = _accept(state, 3, barge("b", "r1"))
-    assert result.state.unsettled_waking == (1, 3)
+    assert result.state.unsettled_waking == (1,)
     assert result.effects == (Preempt(barge_reply_id="r1"), KickStep())
+
+
+def test_barge_in_on_a_settled_reply_kicks_the_step_to_cut_it_without_preempting() -> None:
+    state, _ = fold([user("u1"), opened("o", reply_id="r1"), settled("s", ("u1",), 1)])
+    result = _accept(state, 4, barge("b", "r1"))
+    assert result.state.unsettled_waking == ()
+    assert result.effects == (KickStep(),)
 
 
 def test_workflow_fired_wakes_and_kicks_without_an_ack() -> None:

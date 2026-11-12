@@ -27,6 +27,8 @@ from app.models.conversation_models import (
     UpdateMessagesResponse,
 )
 from app.models.conversation_send_models import (
+    BargeInAccepted,
+    BargeInRequest,
     ConversationEvent,
     MessageAccepted,
     SendMessageRequest,
@@ -35,7 +37,7 @@ from app.models.user_models import AuthenticatedUser
 from app.models.work_cancel_models import ConversationStopResponse
 from app.services.conversation.event_stream import event_lines
 from app.services.conversation.runtime import runtime_ports
-from app.services.conversation.send import submit_message
+from app.services.conversation.send import submit_barge_in, submit_message
 from app.services.conversation_service import (
     batch_sync_conversations,
     create_conversation_service,
@@ -180,6 +182,21 @@ async def send_message_endpoint(
     accepted = await submit_message(conversation_id, user, body, request_client_source(request))
     log.set_ns("conversation", message_id=accepted.message_id, seq=accepted.seq)
     return accepted
+
+
+@router.post("/conversations/{conversation_id}/barge-in", status_code=status.HTTP_202_ACCEPTED)
+async def barge_in_endpoint(
+    conversation_id: str,
+    body: BargeInRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> BargeInAccepted:
+    """Record that the user spoke over a voice reply and how much of it they heard."""
+    log.set(
+        user={"id": user.user_id},
+        conversation={"operation": "barge_in", "id": conversation_id},
+    )
+    await require_owned_conversation(conversation_id, user.user_id)
+    return await submit_barge_in(conversation_id, user, body)
 
 
 @router.get(

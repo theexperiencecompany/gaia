@@ -38,6 +38,20 @@ class SendMessageRequest(BaseModel):
         return self
 
 
+class BargeInRequest(BaseModel):
+    """The user spoke over a voice reply, having heard its text up to heard_through characters."""
+
+    reply_id: str = Field(min_length=1, max_length=128)
+    heard_through: int = Field(ge=0)
+
+
+class BargeInAccepted(ResponseModel):
+    """The barge-in is durable at seq; a resend for the same reply returns the first seq."""
+
+    conversation_id: str
+    seq: int
+
+
 class MessageAccepted(ResponseModel):
     """The message is durable at seq; its reply arrives on the conversation's events stream."""
 
