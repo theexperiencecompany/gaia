@@ -341,14 +341,13 @@ class ConversationEntriesMigration(ConversationRepository):
                 await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).replace_one(
                     {**_of(ref), "seq": seq}, self._entry(ref, element, entry_id, seq)
                 )
-        log_head = int(str(head[LOG_HEAD_FIELD]))
-        seqs = {i: log_head + n for n, (i, _) in enumerate(fresh, 1)}
-        appended = [(i, self._entry(ref, e, i, seqs[i])) for i, e in fresh]
-        if fresh and not await self._commit(
-            ref.conversation_id, ref.user_id, log_head, appended, seqs
-        ):
-            return MigrationOutcome(ref.conversation_id, MigrationAction.RACED)
-        await self.flush_outbox(ref.conversation_id, user_id=ref.user_id)
+        if fresh:
+            log_head = int(str(head[LOG_HEAD_FIELD]))
+            seqs = {i: log_head + n for n, (i, _) in enumerate(fresh, 1)}
+            appended = [(i, self._entry(ref, e, i, seqs[i])) for i, e in fresh]
+            if not await self._commit(ref.conversation_id, ref.user_id, log_head, appended, seqs):
+                return MigrationOutcome(ref.conversation_id, MigrationAction.RACED)
+            await self.flush_outbox(ref.conversation_id, user_id=ref.user_id)
         with store_errors("migration merge"):  # pragma: no mutate — error label only
             marked = await self._raw_collection().update_one(
                 {"_id": ObjectId(ref.head_id), "$expr": {"$eq": [EMBEDDED_LAST_ID, last_id]}},
