@@ -127,19 +127,16 @@ def test_a_rejected_entry_leaves_the_state_unchanged(data: st.DataObject) -> Non
     state = _fold(_valid_log(data))
     snapshot = state.model_copy(deep=True)
     seq = data.draw(st.integers(1, state.head + 3))
-    entry = data.draw(
-        st.sampled_from(
-            [
-                user("x"),
-                stop("x", state.head + 1),
-                started("x", "t_new", max(1, state.stopped_through)),
-                *(started("x", item.task_id, item.cause_through) for item in state.work),
-                asked("x", "t_never", "ap"),
-                settled("x", ["x"], state.head + 1),
-                opened("x"),
-            ]
-        )
-    )
+    candidates: list[Entry] = [
+        user("x"),
+        stop("x", state.head + 1),
+        started("x", "t_new", max(1, state.stopped_through)),
+        *(started("x", item.task_id, item.cause_through) for item in state.work),
+        asked("x", "t_never", "ap"),
+        settled("x", ["x"], state.head + 1),
+        opened("x"),
+    ]
+    entry = data.draw(st.sampled_from(candidates))
     result = reduce(state, logged(seq, entry))
     if isinstance(result, Rejected):
         assert state == snapshot
