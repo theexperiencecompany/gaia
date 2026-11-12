@@ -569,7 +569,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 )
                 .to_list(length=None)
             )
-        return {(str(row["user_id"]), str(row["conversation_id"])) for row in rows}
+        owners = [_ConversationOwnerRow.model_validate(row) for row in rows]
+        return {(owner.user_id, owner.conversation_id) for owner in owners}
 
     async def set_message_response(
         self, conversation_id: str, *, user_id: str, message_id: str, response: str
