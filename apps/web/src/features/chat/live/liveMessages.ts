@@ -1,15 +1,16 @@
 import {
   type ConversationView,
   ENTRY_KIND,
+  FAILURE_REASON,
   type UserMessage,
 } from "@shared/conversation";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
+import { REPLY_FAILURE_MESSAGE } from "@/features/chat/constants/replyFailure";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { LocalSend } from "./liveConversationStore";
 import { type LiveBubble, quoteFor, visibleBubbles } from "./selectors";
 
 const STOPPED_WORK: ReadonlySet<string> = new Set(["cancelled", "lost"]);
-const FAILED_REPLY_MESSAGE = "GAIA couldn't finish this reply.";
 // Far above any one conversation's rows, so a visible row is never evicted.
 const MAX_CACHED_ROWS = 2000;
 
@@ -53,13 +54,13 @@ function quotedUserMessage(
     : undefined;
 }
 
-function settledOutcome(view: ConversationView, replyId: string | null) {
+function settlement(view: ConversationView, replyId: string | null) {
   if (!replyId) return null;
   const settled = view.entries.find(
     ({ entry }) =>
       entry.kind === ENTRY_KIND.REPLY_SETTLED && entry.reply_id === replyId,
   )?.entry;
-  return settled?.kind === ENTRY_KIND.REPLY_SETTLED ? settled.outcome : null;
+  return settled?.kind === ENTRY_KIND.REPLY_SETTLED ? settled : null;
 }
 
 interface RowContext {
@@ -73,21 +74,26 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
   const { view, sends, userMessages, dates } = context;
   switch (bubble.kind) {
     case "user": {
-      const send = sends[bubble.message.id];
-      const replyTo = bubble.message.reply_to;
+      const { message } = bubble;
+      const replyTo = message.reply_to;
       return stableRow(
         bubble.key,
-        [bubble.message, send, replyTo && userMessages.get(replyTo)],
+        [message, replyTo && userMessages.get(replyTo)],
         () => ({
           type: "user",
-          response: bubble.message.text,
-          message_id: bubble.message.id,
+          response: message.text,
+          message_id: message.id,
           seq: bubble.seq,
           date: dates.get(bubble.seq),
-          fileIds: bubble.message.file_ids,
-          fileData: send?.fileData,
+          fileIds: message.file_ids,
+          fileData: message.files,
+          selectedTool: message.selected_tool,
+          toolCategory: message.tool_category,
+          selectedWorkflow: message.selected_workflow,
+          selectedCalendarEvent: message.selected_calendar_event,
           replyToMessage:
-            send?.replyToMessage ?? quotedUserMessage(userMessages, replyTo),
+            message.reply_to_message ??
+            quotedUserMessage(userMessages, replyTo),
           reaction: bubble.reaction,
         }),
       );
@@ -100,13 +106,17 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
         message_id: bubble.send.id,
         fileIds: send?.body.file_ids ?? [],
         fileData: send?.fileData,
-        replyToMessage: send?.replyToMessage ?? undefined,
+        selectedTool: send?.body.selected_tool,
+        toolCategory: send?.body.tool_category,
+        selectedWorkflow: send?.body.selected_workflow,
+        selectedCalendarEvent: send?.body.selected_calendar_event,
+        replyToMessage: send?.body.reply_to_message ?? undefined,
         loading: !send?.failed,
         failed: send?.failed ?? false,
       }));
     }
     case "reply": {
-      const outcome = settledOutcome(view, bubble.replyId);
+      const settled = settlement(view, bubble.replyId);
       const quoted = bubble.replyId ? quoteFor(view, bubble.replyId) : null;
       return stableRow(
         bubble.key,
@@ -115,7 +125,7 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
           bubble.toolData,
           bubble.followUpActions,
           bubble.streaming,
-          outcome,
+          settled,
           quoted && userMessages.get(quoted),
         ],
         () => ({
@@ -128,10 +138,13 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
           tool_data: bubble.toolData as TypedToolDataEntry[],
           follow_up_actions: [...bubble.followUpActions],
           in_progress: bubble.streaming,
-          stopped: outcome === "stopped",
+          stopped: settled?.outcome === "stopped",
+          // With text shown, the bubble words this as the cut-short strip under it.
           error:
-            outcome === "failed" && !bubble.text
-              ? FAILED_REPLY_MESSAGE
+            settled?.outcome === "failed"
+              ? REPLY_FAILURE_MESSAGE[
+                  settled.failure ?? FAILURE_REASON.MODEL_ERROR
+                ]
               : undefined,
           replyToMessage: quotedUserMessage(userMessages, quoted),
         }),

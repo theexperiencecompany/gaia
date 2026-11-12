@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { sendMessage } from "@/features/chat/live/sendMessage";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
-import { toast } from "@/lib/toast";
 import { useComposerStore } from "@/stores/composerStore";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
+
+const WORKFLOW_RUN_TEXT = "Run this workflow";
 
 /**
  * Runs a workflow the user picked outside the composer (sidebar, workflow
@@ -45,10 +47,12 @@ export const useWorkflowAutoSend = (): void => {
         return;
       }
 
-      // The send route has no workflow field yet, so the run is refused out loud.
-      toast.error(
-        `Running "${workflow.title}" from chat isn't available yet. Run it from the Workflows page.`,
-      );
+      sendMessage(WORKFLOW_RUN_TEXT, {
+        selectedWorkflow: workflow,
+        conversationId: null,
+      }).catch((error) => {
+        console.error("Workflow auto-send failed", error);
+      });
     }, 0);
 
     // Supersede semantics: a genuinely NEW selection replaces the pending

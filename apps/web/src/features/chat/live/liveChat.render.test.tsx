@@ -59,7 +59,6 @@ const send = (id: string, text: string) =>
     useLiveConversationStore.getState().queueSend(CONVERSATION, {
       body: { message_id: id, text },
       fileData: [],
-      replyToMessage: null,
       failed: false,
     });
   });
@@ -175,6 +174,103 @@ describe("the chat rendered from the conversation's events", () => {
 
     expect(screen.getByText("Dear team, here is the update.")).toBeDefined();
     expect(screen.getAllByTestId("row")).toHaveLength(2);
+  });
+
+  it("shows the loading row from the send until the reply settles, with no gap", async () => {
+    renderChat();
+    await send("m1", "what is on today");
+    expect(loadingRowShown()).toBe(true);
+
+    // Accepted: the entry lands before the state frame that says thinking.
+    await feed(entryFrame(1, userMessage("m1", "what is on today")));
+    expect(loadingRowShown()).toBe(true);
+
+    await feed(stateFrame(1, "thinking"));
+    expect(loadingRowShown()).toBe(true);
+
+    await feed(replyDelta("a1", null, 0, "You have two meetings"));
+    expect(loadingRowShown()).toBe(true);
+
+    await feed(
+      entryFrame(2, reply("r1", "a1", "You have two meetings")),
+      entryFrame(3, replySettled("r1", ["m1"], 1)),
+      stateFrame(3, "idle"),
+    );
+    expect(screen.getByText("You have two meetings")).toBeDefined();
+    expect(loadingRowShown()).toBe(false);
+  });
+
+  it("shows no loading row after a reload for a message of this device's already answered", async () => {
+    const saved: LoggedEntry[] = [
+      { seq: 1, at: "2026-11-12T10:00:00+00:00", entry: userMessage("m1") },
+      {
+        seq: 2,
+        at: "2026-11-12T10:00:00+00:00",
+        entry: reply("r1", "a1", "done"),
+      },
+      {
+        seq: 3,
+        at: "2026-11-12T10:00:00+00:00",
+        entry: replySettled("r1", ["m1"], 1),
+      },
+    ];
+    act(() => {
+      useLiveConversationStore.getState().hydrate(CONVERSATION, saved, {
+        m1: {
+          body: { message_id: "m1", text: "hi" },
+          fileData: [],
+          failed: false,
+        },
+      });
+    });
+    renderChat();
+    expect(loadingRowShown()).toBe(false);
+  });
+
+  it("shows an attachment from the logged message on a device that did not send it", async () => {
+    renderChat();
+    await feed(
+      entryFrame(1, {
+        ...userMessage("m1", "summarise this"),
+        file_ids: ["f1"],
+        files: [
+          {
+            fileId: "f1",
+            filename: "q3-report.pdf",
+            url: "https://f/q3.pdf",
+            type: "application/pdf",
+          },
+        ],
+      }),
+    );
+    expect(screen.getByText(/q3-report/)).toBeDefined();
+  });
+
+  it("marks a failed reply that streamed text as cut short", async () => {
+    renderChat();
+    await feed(
+      entryFrame(1, userMessage("m1", "draft it")),
+      entryFrame(2, reply("r1", "a1", "Here is the start")),
+      entryFrame(3, replySettled("r1", [], 1, null, "failed", "model_error")),
+      stateFrame(3, "idle"),
+    );
+    expect(screen.getByText("Here is the start")).toBeDefined();
+    expect(screen.getByText("Response was cut short")).toBeDefined();
+  });
+
+  it("words a failed reply with nothing shown by why it failed", async () => {
+    renderChat();
+    await feed(
+      entryFrame(1, userMessage("m1", "do it all")),
+      entryFrame(2, reply("r1", "a1")),
+      entryFrame(3, replySettled("r1", [], 1, null, "failed", "step_limit")),
+      stateFrame(3, "idle"),
+    );
+    expect(
+      screen.getByText(
+        "GAIA took too many steps on this and stopped before answering.",
+      ),
+    ).toBeDefined();
   });
 
   it("keeps a stopped task's cards on screen, marked stopped", async () => {

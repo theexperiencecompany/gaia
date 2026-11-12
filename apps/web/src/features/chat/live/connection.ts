@@ -1,4 +1,4 @@
-import { parseConversationEvent } from "@shared/conversation";
+import { FRAME_KIND, parseConversationEvent } from "@shared/conversation";
 import {
   ConversationNotFoundError,
   chatApi,
@@ -85,6 +85,16 @@ async function hydrate(conversationId: string): Promise<void> {
     .hydrate(conversationId, saved?.entries ?? [], saved?.sends ?? {});
 }
 
+// The sidebar and the header read the title from the conversation list, which this update feeds.
+function retitle(conversationId: string, description: string): void {
+  db.updateConversationFields(conversationId, {
+    description,
+    title: description,
+  }).catch((error: unknown) => {
+    console.error("[conversation] failed to save the title:", error);
+  });
+}
+
 /** Read one stream until it ends; returns the gap that ended it early, if one did. */
 async function readStream(
   conversationId: string,
@@ -110,9 +120,14 @@ async function readStream(
         return;
       }
       delivered = true;
+      const { frame } = parsed.event;
+      if (frame.kind === FRAME_KIND.CONVERSATION_UPDATED) {
+        retitle(conversationId, frame.description);
+        return;
+      }
       gap = useLiveConversationStore
         .getState()
-        .applyFrames(conversationId, [parsed.event.frame]);
+        .applyFrames(conversationId, [frame]);
       persistConversation(conversationId);
       if (gap) controller.abort();
     },
@@ -224,6 +239,6 @@ export function openConversation(conversationId: string): () => void {
 }
 
 /** Reconnect now instead of after the backoff: a send has just landed in this conversation. */
-export function wakeConversation(conversationId: string): void {
+function wakeConversation(conversationId: string): void {
   connections.get(conversationId)?.wake?.();
 }

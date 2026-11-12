@@ -49,12 +49,44 @@ describe("useRetryMessage", () => {
     expect(deliverSend).not.toHaveBeenCalled();
   });
 
+  it("resends the logged message's attachments and selections, on any device", async () => {
+    const files = [
+      {
+        fileId: "f1",
+        filename: "q3.pdf",
+        url: "https://f/q3.pdf",
+        type: "application/pdf",
+      },
+    ];
+    useLiveConversationStore.getState().applyFrames("conv-1", [
+      entryFrame(1, {
+        ...userMessage("m-user", "summarise"),
+        file_ids: ["f1"],
+        files,
+        selected_tool: "gmail_send",
+        tool_category: "gmail",
+      }),
+    ]);
+    const { result } = renderHook(() => useRetryMessage());
+
+    await act(() => result.current.retryMessage("conv-1", "m-user"));
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      "summarise",
+      expect.objectContaining({
+        files,
+        selectedTool: "gmail_send",
+        toolCategory: "gmail",
+        retryOf: "m-user",
+      }),
+    );
+  });
+
   it("resends a failed send as the same message instead of a new one", async () => {
     const store = useLiveConversationStore.getState();
     store.queueSend("conv-1", {
       body: { message_id: "m-lost", text: "hello" },
       fileData: [],
-      replyToMessage: null,
       failed: false,
     });
     store.setSendFailed("conv-1", "m-lost", true);

@@ -10,6 +10,7 @@ import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
+import { REPLY_CUT_SHORT } from "@/features/chat/constants/replyFailure";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
   DEFAULT_PART_CHOREOGRAPHY,
@@ -129,7 +130,7 @@ function FailedResponse({
     return (
       <div className="mt-1 flex items-center gap-2 text-zinc-400">
         <Alert01Icon className="shrink-0" height={15} width={15} />
-        <span className="text-xs">Response was cut short</span>
+        <span className="text-xs">{REPLY_CUT_SHORT}</span>
         {retryButton}
       </div>
     );

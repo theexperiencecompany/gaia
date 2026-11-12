@@ -6,7 +6,6 @@ import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEven
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { sendMessage } from "@/features/chat/live/sendMessage";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
-import { toast } from "@/lib/toast";
 import {
   useComposerFiles,
   useComposerIsUploading,
@@ -18,9 +17,6 @@ import {
   useReplyToMessage,
 } from "@/stores/composerStore";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
-
-const UNSENDABLE_SELECTION_MESSAGE =
-  "Sending a selected tool, workflow or calendar event isn't available yet. Remove it and send your message.";
 
 interface UseComposerSubmitParams {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -40,6 +36,7 @@ export function useComposerSubmit({
   const { clearInputText } = useComposerTextActions();
   const {
     selectedTool,
+    selectedToolCategory,
     setSelectedTool,
     setSelectedToolCategory,
     clearToolSelection,
@@ -83,14 +80,12 @@ export function useComposerSubmit({
       openUpgradeModal(undefined, { source: "composer_submit" });
       return;
     }
-    // The send route carries text, files and a reply only; a selection it cannot carry is refused, not dropped.
-    if (selectedTool || selectedWorkflow || selectedCalendarEvent) {
-      toast.error(UNSENDABLE_SELECTION_MESSAGE);
-      return;
-    }
-
     sendMessage(inputText, {
       files: uploadedFileData,
+      selectedTool: selectedTool ?? null,
+      toolCategory: selectedToolCategory ?? null,
+      selectedWorkflow,
+      selectedCalendarEvent,
       replyToMessage,
     }).catch((error) => {
       console.error("Chat send failed", error);

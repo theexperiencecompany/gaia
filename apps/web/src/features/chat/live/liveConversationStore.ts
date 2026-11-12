@@ -1,7 +1,4 @@
-import type {
-  ReplyToMessageData,
-  SendMessageRequest,
-} from "@shared/api/generated";
+import type { SendMessageRequest } from "@shared/api/generated";
 import {
   addPendingSend,
   applyFrame,
@@ -12,17 +9,22 @@ import {
   type LoggedEntry,
 } from "@shared/conversation";
 import { create } from "zustand";
+import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
 
 /**
  * A message this device sent: the request it POSTs (resent unchanged on retry, so the
- * server's message id dedup holds) and what only this device knows about it — the
- * attachments' display data and the quoted message's text.
+ * server's message id dedup holds) and the attachments' display data, which the
+ * request names by id only and the bubble shows before the entry arrives.
  */
+/** The request as this device built it: a picked workflow carries every step's id and category. */
+type LocalSendBody = Omit<SendMessageRequest, "selected_workflow"> & {
+  selected_workflow?: WorkflowData | null;
+};
+
 export interface LocalSend {
-  body: SendMessageRequest;
+  body: LocalSendBody;
   fileData: FileData[];
-  replyToMessage: ReplyToMessageData | null;
   failed: boolean;
 }
 
@@ -87,10 +89,12 @@ export const useLiveConversationStore = create<LiveConversationState>()(
           (logged): ConversationFrame => ({ kind: "entry", ...logged }),
         ),
       ).view;
+      // The saved log is as far as this device knew the state; a replayed state frame moves it on.
+      const known = { ...restored, head: restored.entries.at(-1)?.seq ?? 0 };
       const view = Object.entries(sends).reduce(
         (current, [id, send]) =>
           addPendingSend(current, { id, text: send.body.text }),
-        restored,
+        known,
       );
       set((state) => ({
         conversations: {

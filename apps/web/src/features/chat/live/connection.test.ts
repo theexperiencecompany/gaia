@@ -16,12 +16,13 @@ interface OpenStream {
   aborted: () => boolean;
 }
 
-const { server, saved, sendResult } = vi.hoisted(() => ({
+const { server, saved, sendResult, retitled } = vi.hoisted(() => ({
   server: {
     streams: [] as OpenStream[],
     notFound: new Set<string>(),
   },
   saved: new Map<string, unknown>(),
+  retitled: [] as { id: string; fields: unknown }[],
   sendResult: { fail: null as Error | null, calls: [] as unknown[] },
 }));
 
@@ -76,6 +77,9 @@ vi.mock("@/lib/db/chatDb", () => ({
     },
     putConversation: async () => "",
     getAllConversations: async () => [],
+    updateConversationFields: async (id: string, fields: unknown) => {
+      retitled.push({ id, fields });
+    },
   },
 }));
 
@@ -125,6 +129,7 @@ beforeEach(() => {
   saved.clear();
   sendResult.fail = null;
   sendResult.calls = [];
+  retitled.length = 0;
   useLiveConversationStore.setState({ conversations: {} });
 });
 
@@ -148,6 +153,26 @@ describe("following a conversation's events", () => {
     expect(view().entries.map((logged) => logged.seq)).toEqual([1]);
     expect(view().display).toBe("thinking");
     expect(view().drafts[0]?.content.responseText).toBe("Hello");
+  });
+
+  it("titles the conversation from its title update, leaving the view as it was", async () => {
+    release = openConversation(CONVERSATION);
+    await flush();
+    lastStream().push(entry(1, userMessage("m1", "plan q3")));
+    const before = view();
+
+    lastStream().push({
+      kind: "conversation_updated",
+      description: "Q3 planning",
+    });
+
+    expect(retitled).toEqual([
+      {
+        id: CONVERSATION,
+        fields: { description: "Q3 planning", title: "Q3 planning" },
+      },
+    ]);
+    expect(view()).toBe(before);
   });
 
   it("reconnects after a dropped socket from before what can still change, not from the start", async () => {
@@ -232,6 +257,56 @@ describe("following a conversation's events", () => {
 });
 
 describe("sending", () => {
+  it("sends the picked tool, workflow, calendar event and quoted message with the text", async () => {
+    const workflow = {
+      id: "w1",
+      title: "Weekly digest",
+      description: "Digest the week",
+      steps: [{ id: "s1", title: "Read", description: "r", category: "gmail" }],
+    };
+    const event = {
+      id: "e1",
+      summary: "Standup",
+      description: "",
+      start: { dateTime: AT },
+      end: { dateTime: AT },
+    };
+    const quoted = { id: "m0", content: "earlier", role: "assistant" as const };
+
+    await sendMessage("run it", {
+      conversationId: CONVERSATION,
+      selectedTool: "gmail_send",
+      toolCategory: "gmail",
+      selectedWorkflow: workflow,
+      selectedCalendarEvent: event,
+      replyToMessage: quoted,
+    });
+
+    const [call] = sendResult.calls as { body: Record<string, unknown> }[];
+    expect(call.body).toMatchObject({
+      text: "run it",
+      selected_tool: "gmail_send",
+      tool_category: "gmail",
+      selected_workflow: workflow,
+      selected_calendar_event: event,
+      reply_to: "m0",
+      reply_to_message: quoted,
+    });
+  });
+
+  it("sends a workflow picked with no text", async () => {
+    await sendMessage("", {
+      conversationId: CONVERSATION,
+      selectedWorkflow: {
+        id: "w1",
+        title: "Digest",
+        description: "",
+        steps: [],
+      },
+    });
+    expect(sendResult.calls).toHaveLength(1);
+  });
+
   it("shows the message at once and hands it to the log entry with the same id", async () => {
     release = openConversation(CONVERSATION);
     await flush();
@@ -289,7 +364,6 @@ describe("reload", () => {
         "m-unsent": {
           body: { message_id: "m-unsent", text: "second" },
           fileData: [],
-          replyToMessage: null,
           failed: false,
         },
       },

@@ -15,6 +15,7 @@ import type { MessageType } from "@/types/features/convoTypes";
 import { getRandomThinkingMessage } from "@/utils/playfulThinking";
 import { openConversation } from "./connection";
 import {
+  type LocalSend,
   useLiveConversation,
   useLiveConversationStore,
 } from "./liveConversationStore";
@@ -65,6 +66,21 @@ function newestToolInfo(view: ConversationView): ActiveToolInfo | undefined {
   return toolInfo;
 }
 
+// A send is owed a reply before the server says thinking: until it is accepted, and until the
+// state frame that follows its entry arrives.
+function awaitingServerState(
+  view: ConversationView,
+  sends: Readonly<Record<string, LocalSend>>,
+): boolean {
+  if (view.pending.some((pending) => !sends[pending.id]?.failed)) return true;
+  for (let at = view.entries.length - 1; at >= 0; at -= 1) {
+    const { seq, entry } = view.entries[at];
+    if (seq <= view.head) return false;
+    if (sends[entry.id]) return true;
+  }
+  return false;
+}
+
 export interface LiveLoading {
   isLoading: boolean;
   loadingText: string;
@@ -72,12 +88,11 @@ export interface LiveLoading {
 }
 
 /** The loading row: shown whenever GAIA owes the user something, or a voice or upload flow is busy. */
-export function useLiveLoading(conversationId: string | null): LiveLoading {
+function useLiveLoading(conversationId: string | null): LiveLoading {
   const { view, sends } = useLiveConversation(conversationId);
   const aux = useAuxLoadingStore((state) => state.auxLoading);
   const row = loadingRow(view);
-  // A send the server has not accepted yet is owed a reply before any state frame says so.
-  const sending = view.pending.some((pending) => !sends[pending.id]?.failed);
+  const sending = awaitingServerState(view, sends);
   const status = !row.visible && sending ? DISPLAY_STATE.THINKING : row.status;
   // One playful line per thinking phase, not a new one per frame.
   const thinkingText = useMemo(

@@ -49,11 +49,14 @@ export const useRetryMessage = () => {
           );
           return;
         }
-        const send = live.sends[message.id];
         await sendMessage(message.text, {
           conversationId,
-          files: send?.fileData ?? [],
-          replyToMessage: send?.replyToMessage ?? null,
+          files: message.files,
+          replyToMessage: message.reply_to_message,
+          selectedTool: message.selected_tool,
+          toolCategory: message.tool_category,
+          selectedWorkflow: message.selected_workflow,
+          selectedCalendarEvent: message.selected_calendar_event,
           retryOf: message.id,
         });
       } catch (error) {
