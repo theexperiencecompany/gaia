@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.db.repositories.cache import CachePolicy
+from app.db.repositories.conversation_entries import MESSAGES_ONLY
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import MessageModel, ToolDataEntry
 
@@ -199,7 +200,12 @@ class TestFillMessage:
 
         query, pipeline, _ = _update_call(collection)
         assert isinstance(pipeline, list)
-        assert query == {"user_id": USER_ID, "conversation_id": CONVERSATION_ID, "id": "bot-1"}
+        assert query == {
+            "user_id": USER_ID,
+            "conversation_id": CONVERSATION_ID,
+            "id": "bot-1",
+            **MESSAGES_ONLY,
+        }
         [set_stage, unset_stage] = pipeline
         assert set_stage["$set"]["response"] == {"$literal": "Done."}
         cards = {

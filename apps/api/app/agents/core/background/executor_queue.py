@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 import time
-from typing import Any, TypedDict, cast
+from typing import Any, cast
 from uuid import uuid4
 
 from redis.exceptions import WatchError
@@ -49,6 +49,7 @@ from app.models.agent_models import (
     CONFIGURABLE_OWNED_KEYS,
     CONFIGURABLE_RUN_SCOPED_KEYS,
     AgentConfigurable,
+    ExecutorRunItem,
 )
 from app.models.executor_activity_models import ExecutorActivity, ExecutorActivitySnapshot
 from app.utils.background_tasks import spawn_background_task
@@ -58,33 +59,6 @@ from shared.py.wide_events import current_workflow_execution_id, log
 # Cosmetic prefix for queued stream ids — kept for log greppability only.
 # The run kind is carried explicitly on ExecutorRun, never parsed from the id.
 QUEUED_STREAM_ID_PREFIX = "queued_"
-
-
-class ExecutorRunItem(TypedDict, total=False):
-    """The serialized run context stored between an executor turn and its re-dispatch.
-
-    Written by build_run_item into the Redis queue and into
-    HILApprovalRecord.resume_item; read back by prepare_run_from_item.
-
-    total=False is the honest shape: the HIL resume path re-dispatches from
-    record.resume_item or {}, so an absent or empty item is a real, handled
-    input — every read below supplies a default.
-    """
-
-    task: str
-    task_id: str | None
-    configurable: AgentConfigurable
-    conversation_id: str
-    user_message_id: str | None
-    # Original live turn's bot message id, set only by a HIL pause (_record_pause);
-    # a plain queue enqueue never sets it. Read back into ExecutorRun.
-    bot_message_id: str | None
-    # Workflow execution the run belongs to. It lives only on the workflow task's
-    # wide event, and a queue pop or HIL resume rebuilds the run elsewhere, so the
-    # item is the only carrier across; read into ExecutorRun for attribution.
-    workflow_execution_id: str | None
-    # ISO dispatch time (RunIdentity.dispatched_at), so a rebuilt run keeps it.
-    dispatched_at: str
 
 
 @dataclass(frozen=True)

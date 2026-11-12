@@ -27,7 +27,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.db.repositories.base import UserScopedDocument
 from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import (
     ConversationSource,
@@ -36,6 +35,7 @@ from app.models.chat_models import (
     ToolDataEntry,
 )
 from app.models.conversation_log_models import ConversationState
+from app.models.document_models import UserScopedDocument
 from app.schemas.common import ResponseModel
 from app.utils.tool_data_utils import convert_legacy_tool_data
 

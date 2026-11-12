@@ -15,7 +15,7 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 from app.schemas.common import ResponseModel
 
 

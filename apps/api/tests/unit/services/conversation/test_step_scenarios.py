@@ -6,7 +6,7 @@ import pytest
 
 from app.constants.chat import EMPTY_RESPONSE_FALLBACK, ConversationSource
 from app.constants.hil import HIL_ACK_APPROVED
-from app.models.conversation_frame_models import ResponseEvent, RetractFrame
+from app.models.conversation_frame_models import ResponseEvent, RetractFrame, ToolDataEvent
 from app.models.conversation_log_models import (
     ApprovalDecided,
     CommsPhase,
@@ -20,6 +20,7 @@ from app.models.conversation_log_models import (
     UserMessage,
     WorkStarted,
 )
+from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.log import accept
 from app.services.conversation.ports import (
     CancelReason,
@@ -57,6 +58,13 @@ from tests.unit.services.conversation.runtime_doubles import (
 RESTART = Cancelled(CancelReason.RESTART)
 STOP = Cancelled(CancelReason.STOP)
 LOST = Cancelled(CancelReason.LOST)
+
+
+CARD: ToolDataEntry = {"tool_name": "search", "data": {"query": "flights"}}
+
+
+def card() -> Streamed:
+    return Streamed(payload=ToolDataEvent(tool_data=CARD))
 
 
 def text(chunk: str) -> Streamed:
@@ -613,6 +621,26 @@ class StepScenarios:
         await run(rt)
         assert await answered(rt) == [(ReplyOutcome.FAILED, ()), (ReplyOutcome.ANSWERED, ("u1",))]
         await assert_quiet(rt)
+
+    async def test_stop_after_text_and_a_card_saves_both_on_the_stopped_reply(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script([text("looking"), card(), Pause((arrive(rt, stop("s")),))])
+        await send(rt, user("u1"))
+        await run(rt)
+        saved = (await replies(rt))[0]
+        assert (saved.text, saved.tool_data) == ("looking", (CARD,))
+        assert await answered(rt) == [(ReplyOutcome.STOPPED, ())]
+
+    async def test_a_failure_after_a_card_with_no_text_saves_the_card_and_settles_failed(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script([card(), Fail(RuntimeError("model down"))])
+        await send(rt, user("u1"))
+        await run(rt)
+        saved = (await replies(rt))[0]
+        assert (saved.text, saved.tool_data) == ("", (CARD,))
+        assert await answered(rt) == [(ReplyOutcome.FAILED, ("u1",))]
 
 
 class TestStepScenariosInMemory(StepScenarios):

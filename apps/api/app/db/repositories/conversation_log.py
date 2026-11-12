@@ -39,7 +39,17 @@ from app.models.conversation_models import ConversationHead, StoredEntry
 _ENTRY: TypeAdapter[Entry] = TypeAdapter(Entry)
 #: A stored entry's keys beside the log entry's own fields; id is both, so it stays.
 _POSITION_KEYS = ("conversation_id", "user_id", "seq", "at", "migration_hash")
-_EMPTY_STATE: dict[str, object] = ConversationState.empty().model_dump(mode="json")
+#: The fold of a log with no entries yet: what a head that stores no state holds.
+EMPTY_LOG_STATE = ConversationState(
+    head=0,
+    settled_through=0,
+    stopped_through=0,
+    unsettled_waking=(),
+    comms=CommsPhase.IDLE,
+    open_reply=None,
+    work=(),
+)
+_EMPTY_STATE: dict[str, object] = EMPTY_LOG_STATE.model_dump(mode="json")
 
 
 @dataclass(frozen=True)
@@ -205,7 +215,7 @@ def _comms_as_read(comms: CommsPhase | None) -> dict[str, object]:
 
 def _current(head: ConversationHead) -> ConversationState:
     """Return the stored fold at log_head: a seq holding a message folds as an entry that changes nothing."""
-    stored = head.state or ConversationState.empty()
+    stored = head.state or EMPTY_LOG_STATE
     return stored.model_copy(update={"head": head.log_head or 0})
 
 

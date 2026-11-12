@@ -2,8 +2,8 @@ from typing import Union
 
 from pydantic import BaseModel, ConfigDict
 
-from app.db.repositories.base import MongoDocument
 from app.models.conversation_models import ConversationDescriptionHit, ConversationMessageHit
+from app.models.document_models import MongoDocument
 from app.models.notes_models import NoteSearchHit
 from app.utils.search.models import WebSearchResult
 

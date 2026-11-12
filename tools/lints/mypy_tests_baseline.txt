@@ -111,9 +111,6 @@ apps/api/tests/unit/agents/test_email_processor.py	method-assign
 apps/api/tests/unit/agents/test_executor_channel.py	arg-type
 apps/api/tests/unit/agents/test_executor_channel.py	misc
 apps/api/tests/unit/agents/test_executor_channel.py	var-annotated
-apps/api/tests/unit/agents/test_executor_queue.py	attr-defined
-apps/api/tests/unit/agents/test_executor_queue.py	misc
-apps/api/tests/unit/agents/test_executor_queue.py	typeddict-item
 apps/api/tests/unit/agents/test_github_discovery.py	arg-type
 apps/api/tests/unit/agents/test_held_replies.py	arg-type
 apps/api/tests/unit/agents/test_hil_approval_middleware.py	arg-type
@@ -329,7 +326,6 @@ apps/api/tests/unit/services/embedding_sidecar/test_server.py	attr-defined
 apps/api/tests/unit/services/files/test_sandbox.py	arg-type
 apps/api/tests/unit/services/hil/test_hil_jev_judge.py	attr-defined
 apps/api/tests/unit/services/hil/test_hil_resolution.py	arg-type
-apps/api/tests/unit/services/hil/test_ledger_publish.py	attr-defined
 apps/api/tests/unit/services/integrations/test_integration_status.py	arg-type
 apps/api/tests/unit/services/mcp/test_device_connector.py	union-attr
 apps/api/tests/unit/services/oauth/test_oauth_service_helpers.py	arg-type

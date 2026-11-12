@@ -35,6 +35,7 @@ from app.services.conversation.ports import ClaimLost, EntryRejected
 from app.services.conversation.reducer import reduce
 from tests.contracts.conftest import HeldFlushes
 from tests.unit.services.conversation.log_helpers import (
+    EMPTY,
     asked,
     barge,
     decided,
@@ -145,6 +146,7 @@ async def test_a_wake_appended_after_the_step_read_nothing_keeps_it_from_releasi
 async def test_a_conversation_with_no_log_yet_is_claimed_and_released(
     log: MongoConversationLog, conversation: str, redis: Redis
 ) -> None:
+    assert await log.state(conversation, UID) == EMPTY
     claim = await log.claim(conversation, UID)
     assert claim is not None
     assert await redis.ttl(f"conv:alive:{UID}:{conversation}:{claim.epoch}") > 0
@@ -187,7 +189,7 @@ class _ReadThenPause(ConversationLogRepository):
 
 
 async def test_a_holder_that_lost_its_claim_mid_amend_never_changes_the_entry(
-    conversation: str, redis: Redis, held: HeldFlushes
+    conversation: str, redis: Redis, held: HeldFlushes, entries_collection: Any
 ) -> None:
     stale_repository = _ReadThenPause()
     stale = MongoConversationLog(stale_repository, FakeClock())
@@ -215,6 +217,8 @@ async def test_a_holder_that_lost_its_claim_mid_amend_never_changes_the_entry(
         item for item in await fresh.read_after(conversation, UID, 0) if item.entry.id == "o"
     ]
     assert stored.entry == recovered.model_copy(update={"revision": 1})
+    document = await entries_collection.find_one({"conversation_id": conversation, "id": "o"})
+    assert (document["text"], document["revision"]) == ("what was shown", 1)
 
 
 async def test_a_stale_epoch_cannot_amend_and_a_released_one_cannot_beat(
@@ -355,7 +359,7 @@ def _drawn(kind: str, number: int, cause: int) -> Entry:
 
 
 def _fold(entries: Sequence[LoggedEntry]) -> ConversationState:
-    state = ConversationState.empty()
+    state = EMPTY
     for logged in entries:
         result = reduce(state, logged)
         assert not isinstance(result, Rejected), f"seq {logged.seq}: {result.reason}"

@@ -53,7 +53,7 @@ from app.services.analytics_service import capture
 from app.services.hil.approvals_store import record_auto_approval, upsert_pending_approval
 from app.services.hil.notify import notify_approval_pending
 from app.services.hil.policy import asks_every_time
-from app.services.hil.utils import GatedCall
+from app.services.hil.utils import GatedApproval, GatedCall
 from app.services.latency_metrics import observe_hil_pause
 from app.utils.general_utils import clip_text
 from shared.py.analytics import UserId
@@ -93,19 +93,6 @@ class ApprovalOutcome:
     auto: bool = False
 
 
-@dataclass(frozen=True)
-class GatedApproval:
-    """Identity of a gated call being surfaced — shared by request and receipt."""
-
-    approval_id: str
-    stream_id: str
-    user_id: str
-    conversation_id: str
-    tool_call: GatedCall
-    summary: str
-    integration_name: str | None
-
-
 class ApprovalCard(Protocol):
     """What an approval card renders, the slice of GatedApproval the entry reads."""
 
@@ -143,17 +130,7 @@ async def publish_approval_request(
     actually created the record. A replay is a no-op.
     """
     created = await upsert_pending_approval(
-        approval_id=approval.approval_id,
-        user_id=approval.user_id,
-        conversation_id=approval.conversation_id,
-        stream_id=approval.stream_id,
-        tool_name=approval.tool_call.name,
-        tool_call_id=approval.tool_call.id,
-        args=approval.tool_call.args,
-        summary=approval.summary,
-        integration_name=approval.integration_name,
-        subagent_thread_id=subagent_thread_id,
-        subagent_resume=subagent_resume,
+        approval, subagent_thread_id=subagent_thread_id, subagent_resume=subagent_resume
     )
     if not created:
         return
@@ -305,18 +282,7 @@ async def publish_auto_approval(approval: GatedApproval, *, reason: str) -> None
     is a receipt, not a request. Auto mode should never mean the user cannot see what was
     done in their name.
     """
-    await record_auto_approval(
-        approval_id=approval.approval_id,
-        user_id=approval.user_id,
-        conversation_id=approval.conversation_id,
-        stream_id=approval.stream_id,
-        tool_name=approval.tool_call.name,
-        tool_call_id=approval.tool_call.id,
-        args=approval.tool_call.args,
-        summary=approval.summary,
-        integration_name=approval.integration_name,
-        reason=reason,
-    )
+    await record_auto_approval(approval, reason=reason)
     await _publish_entry(
         approval.stream_id,
         _approval_entry(approval, HILApprovalStatus.AUTO_APPROVED, auto_reason=reason),

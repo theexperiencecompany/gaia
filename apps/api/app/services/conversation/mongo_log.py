@@ -22,7 +22,11 @@ from app.constants.conversation import (
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.db.repositories.conversation_log import ConversationLogRepository, LogHead
+from app.db.repositories.conversation_log import (
+    EMPTY_LOG_STATE,
+    ConversationLogRepository,
+    LogHead,
+)
 from app.models.conversation_log_models import (
     BargeIn,
     CommsPhase,
@@ -233,7 +237,7 @@ class MongoConversationLog:
 
 def _replay(entries: Sequence[LoggedEntry]) -> Appended:
     """Fold entries from the empty state, returning the last one's append; seqs between them hold messages."""
-    state = ConversationState.empty()
+    state = EMPTY_LOG_STATE
     appended: Appended | None = None
     for logged in entries:
         previous = state.model_copy(update={"head": logged.seq - 1})

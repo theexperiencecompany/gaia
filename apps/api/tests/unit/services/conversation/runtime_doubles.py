@@ -31,8 +31,8 @@ from app.services.conversation.ports import (
     RunEvent,
     RuntimePorts,
 )
-from app.services.conversation.reducer import reduce, with_comms
-from tests.unit.services.conversation.log_helpers import T0
+from app.services.conversation.reducer import reduce
+from tests.unit.services.conversation.log_helpers import EMPTY, T0
 
 LIVENESS = timedelta(seconds=10)
 Action = Callable[[], Awaitable[None]]
@@ -57,7 +57,7 @@ async def _no_pause(point: str) -> None:
 class _Conversation:
     user_id: str
     entries: list[LoggedEntry] = field(default_factory=list)
-    state: ConversationState = field(default_factory=ConversationState.empty)
+    state: ConversationState = EMPTY
     first_results: dict[str, Appended] = field(default_factory=dict)
     epoch: int = 0
     holder: int | None = None
@@ -135,7 +135,7 @@ class InMemoryConversationLog:
     async def set_comms(self, claim: StepClaim, phase: CommsPhase) -> ConversationState:
         await self.pause("set_comms")
         conversation = self._holding(claim)
-        conversation.state = with_comms(conversation.state, phase)
+        conversation.state = conversation.state.model_copy(update={"comms": phase})
         await self.pause("set_comms:done")
         return conversation.state
 
