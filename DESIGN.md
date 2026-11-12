@@ -597,6 +597,8 @@ v2's sizes on v3's components, set once as `--gaia-*` variables in the `gaia` la
 
 Buttons use font-weight 400.
 
+Button text tone is one closed dimension, `tone: "default" | "dim" | "muted" | "faint" | "accent"` on `GaiaButton` and `LinkButton` (`BUTTON_TONE_CLASSES` in `components/shared/buttonVariants.ts`), for quiet ghost and tertiary buttons: `dim` zinc-300, `muted` zinc-400, `faint` zinc-500 (v2's light buttons in the greys, each brightening on hover), `accent` the accent text (v2's primary light button). Never put a `text-*` colour class on a button.
+
 Corner shape is one closed dimension, `shape: "default" | "pill"` (`components/shared/shape.ts`). `default` is the radius above; `pill` fully rounds the control and means the same on Button (`GaiaButton shape="pill"`, `LinkButton shape="pill"`), Chip, Tabs, text fields, Checkbox and ButtonGroup (`className={shapeVariants({ shape: "pill" })}`). Never put a `rounded-*` class on a HeroUI control.
 
 Other control options, each one class in the gaia layer and one variant function (never a per-site class):

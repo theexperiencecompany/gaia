@@ -2,8 +2,13 @@
 
 import { Button, type ButtonProps } from "@heroui/react";
 
-import { type ButtonVariants, buttonVariants } from "./buttonVariants";
-import { type Shape, shapeVariants } from "./shape";
+import {
+  type ButtonTone,
+  type ButtonVariants,
+  buttonOverlayVariants,
+  buttonVariants,
+} from "./buttonVariants";
+import type { Shape } from "./shape";
 
 /** HeroUI's button variants plus GAIA's, closed: a misspelt or v2 variant is a type error. */
 export type GaiaButtonVariant = NonNullable<ButtonVariants["variant"]>;
@@ -28,6 +33,7 @@ function isGaiaVariant(variant: GaiaButtonVariant): variant is GaiaOnlyVariant {
 type GaiaButtonProps = Omit<ButtonProps, "variant" | "className"> & {
   variant?: GaiaButtonVariant;
   shape?: Shape;
+  tone?: ButtonTone;
   className?: string;
 };
 
@@ -35,6 +41,7 @@ type GaiaButtonProps = Omit<ButtonProps, "variant" | "className"> & {
 export function GaiaButton({
   variant = "primary",
   shape = "default",
+  tone = "default",
   size,
   isIconOnly,
   fullWidth,
@@ -48,7 +55,7 @@ export function GaiaButton({
         size={size}
         isIconOnly={isIconOnly}
         fullWidth={fullWidth}
-        className={shapeVariants({ shape, className })}
+        className={buttonOverlayVariants({ shape, tone, className })}
         {...props}
       />
     );
@@ -62,6 +69,7 @@ export function GaiaButton({
       className={buttonVariants({
         variant,
         shape,
+        tone,
         size,
         isIconOnly,
         fullWidth,

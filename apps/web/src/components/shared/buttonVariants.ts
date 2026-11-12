@@ -4,6 +4,26 @@ import { tv, type VariantProps } from "tailwind-variants";
 import { SHAPE_CLASSES } from "./shape";
 
 /**
+ * Text tone for a quiet (ghost, tertiary) button: v2's light buttons in the
+ * zinc greys and v2's primary light button (accent). Each brightens on hover.
+ */
+export const BUTTON_TONE_CLASSES = {
+  default: "",
+  dim: "text-zinc-300 hover:text-foreground",
+  muted: "text-zinc-400 hover:text-zinc-300",
+  faint: "text-zinc-500 hover:text-zinc-200",
+  accent: "text-accent",
+} as const;
+
+export type ButtonTone = keyof typeof BUTTON_TONE_CLASSES;
+
+/** Shape and tone, the two GAIA dimensions layered on any HeroUI button variant. */
+export const buttonOverlayVariants = tv({
+  variants: { shape: SHAPE_CLASSES, tone: BUTTON_TONE_CLASSES },
+  defaultVariants: { shape: "default", tone: "default" },
+});
+
+/**
  * HeroUI's button variants plus GAIA's, extended the way HeroUI documents.
  * default-solid is v2's bare default button (zinc-700 fill); accent-soft is v2's
  * primary flat button (accent text on an accent tint, via the bridged tokens);
@@ -27,8 +47,9 @@ export const buttonVariants = tv({
         "bg-accent-soft text-accent-soft-foreground hover:bg-accent-soft-hover active:bg-accent-soft-hover",
     },
     shape: SHAPE_CLASSES,
+    tone: BUTTON_TONE_CLASSES,
   },
-  defaultVariants: { shape: "default" },
+  defaultVariants: { shape: "default", tone: "default" },
 });
 
 export type ButtonVariants = VariantProps<typeof buttonVariants>;
