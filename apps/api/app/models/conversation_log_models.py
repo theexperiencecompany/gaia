@@ -58,26 +58,26 @@ class ReplyOutcome(StrEnum):
 _MAY_ANSWER_NOTHING = frozenset({ReplyOutcome.STOPPED, ReplyOutcome.FAILED})
 
 
-class _Entry(BaseModel):
-    model_config = _FROZEN
-
-    id: str = Field(min_length=1, description="Producer-minted idempotency key")
-
-
 class ReactionBy(StrEnum):
-    """Who set a reaction on a user message."""
+    """Who reacted to a user message: Jev at accept, or the chat model in its reply."""
 
     JEV = "jev"
     CHAT_MODEL = "chat_model"
 
 
 class Reaction(BaseModel):
-    """An emoji set on a user message; a field of the message, never an entry."""
+    """An emoji on a user message; a field updated in place, never a state change."""
 
-    model_config = _FROZEN
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     emoji: str = Field(min_length=1)
     by: ReactionBy
+
+
+class _Entry(BaseModel):
+    model_config = _FROZEN
+
+    id: str = Field(min_length=1, description="Producer-minted idempotency key")
 
 
 class UserMessage(_Entry):
@@ -92,6 +92,8 @@ class UserMessage(_Entry):
     file_ids: tuple[str, ...] = ()
     voice: bool = False
     reaction: Reaction | None = None
+    # Bumped on each in-place update; a client applies an update only when it is newer.
+    revision: int = Field(default=0, ge=0)
 
 
 class StopRequested(_Entry):
@@ -182,6 +184,8 @@ class Reply(_Entry):
     follow_up_actions: tuple[str, ...] = ()
     # Characters of the reply the user heard before a voice barge-in.
     heard_through: int | None = Field(default=None, ge=0)
+    # Bumped on each in-place fill; a client applies an update only when it is newer.
+    revision: int = Field(default=0, ge=0)
 
 
 class ReplySettled(_Entry):
@@ -193,6 +197,8 @@ class ReplySettled(_Entry):
     answers: tuple[str, ...]
     # A recovered reply fails through the old settled_through, which is 0 before any reply.
     through: int = Field(ge=0)
+    # The user message this reply visibly points at; None when it sits directly under what it answers.
+    quote_target: str | None
 
     @model_validator(mode="after")
     def _answers_unless_cut_short(self) -> "ReplySettled":
@@ -238,20 +244,12 @@ class CommsPhase(StrEnum):
     ANSWERING = "answering"
 
 
-class ConversationDisplay(StrEnum):
+class DisplayState(StrEnum):
     """The one status a client shows for a conversation."""
 
     IDLE = "idle"
     THINKING = "thinking"
     WORKING = "working"
-    AWAITING_APPROVAL = "awaiting_approval"
-
-
-class WorkPhase(StrEnum):
-    """Where background work stands, independent of comms."""
-
-    NONE = "none"
-    RUNNING = "running"
     AWAITING_APPROVAL = "awaiting_approval"
 
 
@@ -273,6 +271,7 @@ class FinishedWork(BaseModel):
 
     seq: int = Field(ge=1)
     task_id: str
+    cause_through: int
     answers: tuple[str, ...]
 
 
@@ -307,22 +306,13 @@ class ConversationState(BaseModel):
         )
 
     @property
-    def work_phase(self) -> WorkPhase:
-        """Return the work phase, so an approval card stays up while comms is thinking."""
-        if any(item.pending_approvals for item in self.work):
-            return WorkPhase.AWAITING_APPROVAL
-        return WorkPhase.RUNNING if self.work else WorkPhase.NONE
-
-    @property
-    def display(self) -> ConversationDisplay:
+    def display(self) -> DisplayState:
         """Return the status to show: comms first, then approvals, then work."""
         if self.comms is not CommsPhase.IDLE:
-            return ConversationDisplay.THINKING
-        return {
-            WorkPhase.AWAITING_APPROVAL: ConversationDisplay.AWAITING_APPROVAL,
-            WorkPhase.RUNNING: ConversationDisplay.WORKING,
-            WorkPhase.NONE: ConversationDisplay.IDLE,
-        }[self.work_phase]
+            return DisplayState.THINKING
+        if any(item.pending_approvals for item in self.work):
+            return DisplayState.AWAITING_APPROVAL
+        return DisplayState.WORKING if self.work else DisplayState.IDLE
 
 
 class KickStep(BaseModel):

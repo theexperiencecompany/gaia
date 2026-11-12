@@ -1,19 +1,35 @@
-"""Shape rules of the conversation log types: what can and cannot be constructed, and how they round-trip."""
+"""Shape rules of the conversation log and frame types: what can and cannot be built, and how they round-trip."""
+
+from collections.abc import Callable
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 import pytest
 
 from app.models.conversation_frame_models import (
-    DeltaFrame,
-    DeltaPayload,
+    EntryFrame,
+    EntryUpdatedFrame,
+    FollowUpActionsEvent,
+    LiveTask,
+    MessageBoundaryEvent,
     OutputFrame,
+    ReasoningEvent,
+    ReplyDeltaFrame,
+    ResponseEvent,
     RetractFrame,
     StateFrame,
+    StreamPayload,
+    StreamPayloadType,
+    SubagentEndEvent,
+    SubagentStartEvent,
+    TodoProgressEvent,
+    ToolDataEvent,
+    ToolOutputEvent,
+    WorkDeltaFrame,
 )
 from app.models.conversation_log_models import (
     CommsPhase,
-    ConversationDisplay,
     ConversationState,
+    DisplayState,
     Entry,
     LiveWork,
     LoggedEntry,
@@ -22,21 +38,12 @@ from app.models.conversation_log_models import (
     ReplyOutcome,
     ReplySettled,
     UserMessage,
-    WorkPhase,
 )
-from app.models.hil_models import HILApprovalStatus
 from app.models.stream_events import (
-    ApprovalRequestEntry,
-    ApprovalRequestEntryData,
-    FollowUpActionsFrame,
     MessageBoundaryPayload,
     ReasoningPayload,
-    ResponseFrame,
     SubagentEndPayload,
     SubagentStartPayload,
-    TodoProgressFrame,
-    ToolCallsDataEntry,
-    ToolCallsDataEntryData,
     ToolOutputPayload,
 )
 from tests.unit.services.conversation.log_helpers import (
@@ -58,6 +65,9 @@ from tests.unit.services.conversation.log_helpers import (
 
 _ALL_ENTRIES: list[Entry] = [
     user("u"),
+    user("u").model_copy(
+        update={"reaction": Reaction(emoji="👍", by=ReactionBy.JEV), "revision": 2}
+    ),
     stop("s", 0),
     barge("b", "r"),
     fired("f"),
@@ -69,7 +79,7 @@ _ALL_ENTRIES: list[Entry] = [
     finished("x", "t1"),
     opened("o"),
     settled("r", ["u"], 1),
-    settled("r", [], 1, outcome=ReplyOutcome.FAILED),
+    settled("r", [], 1, outcome=ReplyOutcome.FAILED).model_copy(update={"quote_target": "u"}),
 ]
 
 
@@ -83,6 +93,12 @@ def _work(*approvals: str) -> LiveWork:
     )
 
 
+def _settle(outcome: ReplyOutcome) -> ReplySettled:
+    return ReplySettled(
+        id="s", reply_id="r", outcome=outcome, answers=(), through=1, quote_target=None
+    )
+
+
 @pytest.mark.parametrize("entry", _ALL_ENTRIES, ids=lambda entry: entry.kind)
 def test_every_entry_kind_round_trips_through_json_as_itself(entry: Entry) -> None:
     item = logged(1, entry)
@@ -91,13 +107,20 @@ def test_every_entry_kind_round_trips_through_json_as_itself(entry: Entry) -> No
 
 @pytest.mark.parametrize("outcome", [ReplyOutcome.STOPPED, ReplyOutcome.FAILED])
 def test_a_stopped_or_failed_reply_may_settle_answering_nothing(outcome: ReplyOutcome) -> None:
-    assert ReplySettled(id="s", reply_id="r", outcome=outcome, answers=(), through=1).answers == ()
+    assert _settle(outcome).answers == ()
 
 
 @pytest.mark.parametrize("outcome", [ReplyOutcome.ANSWERED, ReplyOutcome.SILENT])
 def test_an_answered_or_silent_reply_must_name_what_it_answers(outcome: ReplyOutcome) -> None:
     with pytest.raises(ValidationError):
-        ReplySettled(id="s", reply_id="r", outcome=outcome, answers=(), through=1)
+        _settle(outcome)
+
+
+def test_a_settled_reply_must_state_its_quote_target() -> None:
+    with pytest.raises(ValidationError):
+        ReplySettled.model_validate(
+            {"id": "s", "reply_id": "r", "outcome": "answered", "answers": ["u"], "through": 1}
+        )
 
 
 def test_an_entry_without_an_id_cannot_be_constructed() -> None:
@@ -125,112 +148,107 @@ def test_a_logged_entry_needs_a_timezone_and_a_positive_seq() -> None:
         LoggedEntry(seq=0, at=T0, entry=notice("n"))
 
 
+def test_a_reaction_needs_an_emoji_and_a_revision_is_never_negative() -> None:
+    with pytest.raises(ValidationError):
+        Reaction(emoji="", by=ReactionBy.CHAT_MODEL)
+    with pytest.raises(ValidationError):
+        UserMessage.model_validate({**user("u").model_dump(), "revision": -1})
+
+
 @pytest.mark.parametrize(
-    ("state", "display", "work_phase"),
+    ("state", "display"),
     [
-        (_state(CommsPhase.IDLE), ConversationDisplay.IDLE, WorkPhase.NONE),
-        (_state(CommsPhase.IDLE, _work()), ConversationDisplay.WORKING, WorkPhase.RUNNING),
-        (
-            _state(CommsPhase.IDLE, _work("ap")),
-            ConversationDisplay.AWAITING_APPROVAL,
-            WorkPhase.AWAITING_APPROVAL,
-        ),
-        (_state(CommsPhase.THINKING), ConversationDisplay.THINKING, WorkPhase.NONE),
-        (_state(CommsPhase.ANSWERING, _work()), ConversationDisplay.THINKING, WorkPhase.RUNNING),
-        (
-            _state(CommsPhase.THINKING, _work("ap")),
-            ConversationDisplay.THINKING,
-            WorkPhase.AWAITING_APPROVAL,
-        ),
+        (_state(CommsPhase.IDLE), DisplayState.IDLE),
+        (_state(CommsPhase.IDLE, _work()), DisplayState.WORKING),
+        (_state(CommsPhase.IDLE, _work("ap")), DisplayState.AWAITING_APPROVAL),
+        (_state(CommsPhase.THINKING), DisplayState.THINKING),
+        (_state(CommsPhase.ANSWERING, _work()), DisplayState.THINKING),
+        (_state(CommsPhase.THINKING, _work("ap")), DisplayState.THINKING),
     ],
 )
-def test_display_puts_comms_first_and_work_phase_ignores_comms(
-    state: ConversationState, display: ConversationDisplay, work_phase: WorkPhase
+def test_display_puts_comms_first_then_approvals_then_work(
+    state: ConversationState, display: DisplayState
 ) -> None:
-    assert (state.display, state.work_phase) == (display, work_phase)
-
-
-@pytest.mark.parametrize(("reply_id", "task_id"), [(None, None), ("r", "t")])
-def test_a_delta_targets_exactly_one_of_a_reply_or_a_task(
-    reply_id: str | None, task_id: str | None
-) -> None:
-    with pytest.raises(ValidationError):
-        DeltaFrame(
-            attempt_id="a", reply_id=reply_id, task_id=task_id, payload=ResponseFrame(response="x")
-        )
+    assert state.display is display
 
 
 _PAYLOADS: list[BaseModel] = [
-    ResponseFrame(response="hi"),
-    ReasoningPayload(content="thinking"),
-    ToolCallsDataEntry(
-        tool_name="search",
-        tool_category="web",
-        data=ToolCallsDataEntryData(
-            tool_name="search",
-            tool_category="web",
-            message=None,
-            show_category=True,
-            tool_call_id="c1",
-            inputs={},
-            icon_url=None,
-            integration_name=None,
-        ),
-        timestamp="2026-11-12T09:00:00Z",
-        mcp_ui=None,
-        mcp_server_url=None,
+    ResponseEvent(response="hi"),
+    ReasoningEvent(reasoning=ReasoningPayload(content="thinking")),
+    ToolDataEvent(tool_data={"tool_name": "search", "data": {"q": "x"}, "tool_category": "web"}),
+    ToolOutputEvent(tool_output=ToolOutputPayload(tool_call_id="c1", output="ok")),
+    MessageBoundaryEvent(message_boundary=MessageBoundaryPayload(message_id="m1", discarded=True)),
+    SubagentStartEvent(
+        subagent_start=SubagentStartPayload(
+            subagent_id="s1", subagent_name="gmail", agent_type="mcp", started_at="now"
+        )
     ),
-    ApprovalRequestEntry(
-        tool_name="approval_request",
-        tool_category="hil",
-        data=ApprovalRequestEntryData(
-            approval_id="ap",
-            tool_call_id="c1",
-            gated_tool_name="send_email",
-            integration_name=None,
-            summary="Send it",
-            args_preview={},
-            status=HILApprovalStatus.PENDING,
-            feedback=None,
-            auto_reason=None,
-            timeout_seconds=60,
-        ),
-        timestamp="2026-11-12T09:00:00Z",
-    ),
-    ToolOutputPayload(tool_call_id="c1", output="ok"),
-    MessageBoundaryPayload(message_id="m1", discarded=True),
-    SubagentStartPayload(
-        subagent_id="s1", subagent_name="gmail", agent_type="mcp", started_at="now"
-    ),
-    SubagentEndPayload(subagent_id="s1", duration_ms=10),
-    FollowUpActionsFrame(follow_up_actions=["more"]),
-    TodoProgressFrame(todo_progress={"done": 1}),
+    SubagentEndEvent(subagent_end=SubagentEndPayload(subagent_id="s1", duration_ms=10)),
+    FollowUpActionsEvent(follow_up_actions=["more"]),
+    TodoProgressEvent(todo_progress={"done": 1}),
 ]
 
 
+def test_every_payload_tag_has_exactly_one_payload_model() -> None:
+    assert sorted(payload.type for payload in _PAYLOADS) == sorted(StreamPayloadType)
+
+
 @pytest.mark.parametrize("payload", _PAYLOADS, ids=lambda payload: type(payload).__name__)
-def test_every_delta_payload_round_trips_as_its_own_type(payload: DeltaPayload) -> None:
-    frame = DeltaFrame(attempt_id="a", task_id="t1", payload=payload)
+def test_a_payload_is_the_chat_stream_event_plus_its_tag(payload: StreamPayload) -> None:
+    dumped = payload.model_dump(mode="json")
+    tag = dumped.pop("type")
+    assert list(dumped) == [tag]
+
+
+@pytest.mark.parametrize("payload", _PAYLOADS, ids=lambda payload: type(payload).__name__)
+@pytest.mark.parametrize(
+    "frame_of",
+    [
+        lambda payload: ReplyDeltaFrame(attempt_id="a", reply_id=None, index=0, payload=payload),
+        lambda payload: WorkDeltaFrame(task_id="t1", index=3, payload=payload),
+    ],
+    ids=["reply_delta", "work_delta"],
+)
+def test_every_delta_round_trips_with_its_payload_type(
+    payload: StreamPayload, frame_of: Callable[[StreamPayload], ReplyDeltaFrame | WorkDeltaFrame]
+) -> None:
+    frame = frame_of(payload)
     parsed = TypeAdapter(OutputFrame).validate_json(frame.model_dump_json())
-    assert isinstance(parsed, DeltaFrame)
+    assert type(parsed) is type(frame)
     assert type(parsed.payload) is type(payload)
     assert parsed == frame
+
+
+def test_a_payload_without_its_tag_is_refused() -> None:
+    with pytest.raises(ValidationError):
+        TypeAdapter(OutputFrame).validate_python(
+            {"kind": "work_delta", "task_id": "t1", "index": 0, "payload": {"response": "hi"}}
+        )
+
+
+def test_a_delta_index_is_never_negative() -> None:
+    with pytest.raises(ValidationError):
+        WorkDeltaFrame(task_id="t1", index=-1, payload=ResponseEvent(response="hi"))
 
 
 @pytest.mark.parametrize(
     "frame",
     [
+        EntryFrame(seq=1, at=T0, entry=user("u")),
+        EntryUpdatedFrame(
+            seq=1, entry=opened("o").model_copy(update={"text": "done", "revision": 1})
+        ),
         RetractFrame(attempt_id="a"),
-        StateFrame(head=3, display=ConversationDisplay.WORKING, work_phase=WorkPhase.RUNNING),
+        StateFrame(
+            head=3,
+            display=DisplayState.AWAITING_APPROVAL,
+            work=(
+                LiveTask(task_id="t1", awaiting_approval=True),
+                LiveTask(task_id="t2", awaiting_approval=False),
+            ),
+        ),
     ],
     ids=lambda frame: frame.kind,
 )
 def test_output_frames_round_trip_on_their_kind(frame: BaseModel) -> None:
     assert TypeAdapter(OutputFrame).validate_json(frame.model_dump_json()) == frame
-
-
-def test_a_user_message_carries_the_chat_models_reaction() -> None:
-    reaction = Reaction(emoji="+1", by=ReactionBy.CHAT_MODEL)
-    reacted = user("u").model_copy(update={"reaction": reaction})
-    assert user("u").reaction is None
-    assert UserMessage.model_validate_json(reacted.model_dump_json()) == reacted

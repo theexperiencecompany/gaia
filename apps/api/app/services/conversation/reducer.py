@@ -140,7 +140,9 @@ def _finish_work(state: ConversationState, seq: int, entry: WorkFinished) -> Tra
     )
     if entry.outcome is WorkOutcome.CANCELLED:
         return Transition(state=remaining, effects=())
-    result = FinishedWork(seq=seq, task_id=entry.task_id, answers=live.answers)
+    result = FinishedWork(
+        seq=seq, task_id=entry.task_id, cause_through=live.cause_through, answers=live.answers
+    )
     awaiting = remaining.model_copy(update={"finished_work": (*state.finished_work, result)})
     return Transition(state=_wake(awaiting, seq), effects=(KickStep(),))
 

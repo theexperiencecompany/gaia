@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Protocol
 
 from app.constants.hil import ApprovalDecision
-from app.models.conversation_frame_models import DeltaPayload, OutputFrame
+from app.models.conversation_frame_models import OutputFrame, StreamPayload
 from app.models.conversation_log_models import (
     Batch,
     CommsPhase,
@@ -104,7 +104,7 @@ class CancelReason(StrEnum):
 class Streamed:
     """A visible delta of the reply: text, reasoning or a tool card."""
 
-    payload: DeltaPayload
+    payload: StreamPayload
 
 
 @dataclass(frozen=True)
