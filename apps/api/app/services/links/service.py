@@ -286,6 +286,8 @@ async def update_settings(user_id: str, slug: str, change: LinkSettingsUpdate) -
             code="link_expiry_in_past",
         )
     fields = change.model_dump(exclude_unset=True)
+    if not fields:
+        raise AppError(message="Nothing to change", status_code=422, code="link_settings_empty")
     if "grantees" in fields:
         fields["grantees"] = [str(email) for email in change.grantees or []]
     updated = await short_link_repository.update(
@@ -312,7 +314,9 @@ async def rotate(user_id: str, slug: str) -> ShortLink:
     revoked = await short_link_repository.revoke(user_id, slug, RevokeReason.ROTATED)
     if revoked is None:
         raise LinkTargetNotFoundError(message="Link not found")
-    minted = await _insert(link.model_copy(update={"id": None, "created_at": _now()}))
+    minted = await _insert(
+        link.model_copy(update={"id": "", "created_at": _now(), "updated_at": None})
+    )
     if minted is None:
         raise AppError(
             message="This was shared again while the link was being replaced",
@@ -414,6 +418,7 @@ async def resolve(link: ShortLink | None, viewer: LinkViewer) -> LinkEnvelope:
         target_type=granted.target_type,
         view=view,
         content=framed_content(granted.snapshot, granted.access),
+        downloadable=servable(granted.snapshot, granted.access),
         is_owner=kind is LinkViewerKind.OWNER,
     )
 

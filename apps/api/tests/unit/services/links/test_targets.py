@@ -1,4 +1,4 @@
-"""The public projections behind heygaia.link — what a recipient can see.
+"""The link target specs' projections — what a recipient of a heygaia.link can see.
 
 Each test feeds a stored document carrying the private fields a capability URL
 must never serve (canvas Key Details, thread ids, addresses, todo ids, chat
@@ -13,6 +13,7 @@ import pytest
 
 from app.config.settings import settings
 from app.constants.briefing import BriefOutcome
+from app.constants.short_links import MAX_SNAPSHOT_BYTES, MAX_VIEW_TEXT_BYTES
 from app.models.briefing_models import (
     BriefingEvent,
     BriefingItem,
@@ -22,6 +23,7 @@ from app.models.briefing_models import (
 )
 from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (
+    LinkSnapshot,
     PublicBriefing,
     PublicBriefingEvent,
     PublicBriefingItem,
@@ -31,24 +33,25 @@ from app.models.short_link_models import (
     PublicSessionArtifact,
     PublicTodoDeliverable,
     PublicWorkflowRun,
+    RenderMode,
     ShortLinkTargetType,
 )
 from app.models.todo_models import TodoDocument
 from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.services.canvas_markdown import deliverable_markdown
-from app.services.short_link_projections import (
-    PUBLIC_TEXT_MAX_BYTES,
-    project_target,
-    target_file,
-)
+from app.services.links.registry import REGISTRY
+from app.services.links.spec import SnapshotSource
 from app.services.storage import ArtifactInfo
 from app.services.tracked_todo_service import CANVAS_TEMPLATE
-
-_MOD = "app.services.short_link_projections"
 
 PRIVATE_EMAIL = "ceo@acme-secret.com"
 PRIVATE_THREAD = "thread-18c2f9a"
 SESSION = ShortLinkTargetType.SESSION_ARTIFACT
+
+
+async def _project(target_type: ShortLinkTargetType, owner_id: str, target_id: str) -> object:
+    return await REGISTRY[target_type].project(owner_id, target_id, None)
+
 
 CANVAS = (
     CANVAS_TEMPLATE.format(title="Reply to Acme")
@@ -65,9 +68,9 @@ CANVAS = (
 class TestTodoDeliverable:
     async def test_serves_the_result_never_the_working_sections(self):
         todo = TodoDocument(id="t1", user_id="owner", title="Reply to Acme", canvas_content=CANVAS)
-        with patch(f"{_MOD}.todo_repository") as repo:
+        with patch("app.services.links.targets.todo_deliverable.todo_repository") as repo:
             repo.get = AsyncMock(return_value=todo)
-            view = await project_target(ShortLinkTargetType.TODO_DELIVERABLE, "owner", "t1")
+            view = await _project(ShortLinkTargetType.TODO_DELIVERABLE, "owner", "t1")
 
         assert view is not None
         body = view.model_dump_json()
@@ -85,17 +88,17 @@ class TestTodoDeliverable:
 
     async def test_a_todo_with_no_canvas_serves_an_empty_result(self):
         todo = TodoDocument(id="t1", user_id="owner", title="Call mum", canvas_content=None)
-        with patch(f"{_MOD}.todo_repository") as repo:
+        with patch("app.services.links.targets.todo_deliverable.todo_repository") as repo:
             repo.get = AsyncMock(return_value=todo)
-            view = await project_target(ShortLinkTargetType.TODO_DELIVERABLE, "owner", "t1")
+            view = await _project(ShortLinkTargetType.TODO_DELIVERABLE, "owner", "t1")
 
         assert view is not None
         assert view.content == ""
 
     async def test_someone_elses_todo_projects_to_nothing(self):
-        with patch(f"{_MOD}.todo_repository") as repo:
+        with patch("app.services.links.targets.todo_deliverable.todo_repository") as repo:
             repo.get = AsyncMock(return_value=None)
-            assert await project_target(ShortLinkTargetType.TODO_DELIVERABLE, "x", "t1") is None
+            assert await _project(ShortLinkTargetType.TODO_DELIVERABLE, "x", "t1") is None
 
 
 class TestBriefing:
@@ -136,9 +139,9 @@ class TestBriefing:
                 bubbles=[f"hey, I emailed {PRIVATE_EMAIL}"],
             ),
         )
-        with patch(f"{_MOD}.briefing_repository") as repo:
+        with patch("app.services.links.targets.briefing.briefing_repository") as repo:
             repo.get = AsyncMock(return_value=briefing)
-            view = await project_target(ShortLinkTargetType.BRIEFING, "owner", "brief_abc")
+            view = await _project(ShortLinkTargetType.BRIEFING, "owner", "brief_abc")
 
         assert view is not None
         body = view.model_dump_json()
@@ -177,9 +180,9 @@ class TestBriefing:
         )
 
     async def test_someone_elses_brief_projects_to_nothing(self):
-        with patch(f"{_MOD}.briefing_repository") as repo:
+        with patch("app.services.links.targets.briefing.briefing_repository") as repo:
             repo.get = AsyncMock(return_value=None)
-            assert await project_target(ShortLinkTargetType.BRIEFING, "x", "brief_abc") is None
+            assert await _project(ShortLinkTargetType.BRIEFING, "x", "brief_abc") is None
 
 
 class TestWorkflowRun:
@@ -198,12 +201,14 @@ class TestWorkflowRun:
         workflow = AsyncMock()
         workflow.title = "Inbox triage"
         with (
-            patch(f"{_MOD}.workflow_executions_repository") as executions,
-            patch(f"{_MOD}.workflow_repository") as workflows,
+            patch(
+                "app.services.links.targets.workflow_run.workflow_executions_repository"
+            ) as executions,
+            patch("app.services.links.targets.workflow_run.workflow_repository") as workflows,
         ):
             executions.get_for_user = AsyncMock(return_value=execution)
             workflows.get_for_user = AsyncMock(return_value=workflow)
-            view = await project_target(ShortLinkTargetType.WORKFLOW_RUN, "owner", "exec-1")
+            view = await _project(ShortLinkTargetType.WORKFLOW_RUN, "owner", "exec-1")
 
         assert view is not None
         body = view.model_dump_json()
@@ -230,12 +235,14 @@ class TestWorkflowRun:
             started_at=datetime(2026, 10, 14, 8, tzinfo=UTC),
         )
         with (
-            patch(f"{_MOD}.workflow_executions_repository") as executions,
-            patch(f"{_MOD}.workflow_repository") as workflows,
+            patch(
+                "app.services.links.targets.workflow_run.workflow_executions_repository"
+            ) as executions,
+            patch("app.services.links.targets.workflow_run.workflow_repository") as workflows,
         ):
             executions.get_for_user = AsyncMock(return_value=execution)
             workflows.get_for_user = AsyncMock(return_value=None)
-            view = await project_target(ShortLinkTargetType.WORKFLOW_RUN, "owner", "exec-1")
+            view = await _project(ShortLinkTargetType.WORKFLOW_RUN, "owner", "exec-1")
 
         assert view is None
 
@@ -253,12 +260,14 @@ class TestWorkflowRunStillFinishing:
         workflow = AsyncMock()
         workflow.title = "Inbox triage"
         with (
-            patch(f"{_MOD}.workflow_executions_repository") as executions,
-            patch(f"{_MOD}.workflow_repository") as workflows,
+            patch(
+                "app.services.links.targets.workflow_run.workflow_executions_repository"
+            ) as executions,
+            patch("app.services.links.targets.workflow_run.workflow_repository") as workflows,
         ):
             executions.get_for_user = AsyncMock(return_value=execution)
             workflows.get_for_user = AsyncMock(return_value=workflow)
-            view = await project_target(ShortLinkTargetType.WORKFLOW_RUN, "owner", "exec-1")
+            view = await _project(ShortLinkTargetType.WORKFLOW_RUN, "owner", "exec-1")
 
         assert view is not None
         assert view.status == "running"
@@ -270,13 +279,22 @@ def _info(path: str, *, size: int, content_type: str | None) -> ArtifactInfo:
     return ArtifactInfo(path=path, size_bytes=size, mtime=0.0, content_type=content_type)
 
 
+_SESSION_MOD = "app.services.links.targets.session_artifact"
+
+
+async def _source(owner_id: str, target_id: str) -> SnapshotSource | None:
+    read = REGISTRY[SESSION].source
+    assert read is not None
+    return await read(owner_id, target_id)
+
+
 @pytest.fixture
 def workspace(tmp_path):
     """Patch the artifact storage seam onto one file on disk; yields (file, stat, resolve)."""
     host_file = tmp_path / "q3.html"
     with (
-        patch(f"{_MOD}.stat_artifact", AsyncMock()) as stat,
-        patch(f"{_MOD}.resolve_session_path", AsyncMock(return_value=host_file)) as resolve,
+        patch(f"{_SESSION_MOD}.stat_artifact", AsyncMock()) as stat,
+        patch(f"{_SESSION_MOD}.resolve_session_path", AsyncMock(return_value=host_file)) as resolve,
     ):
         yield host_file, stat, resolve
 
@@ -297,107 +315,163 @@ class TestEscapingTargetIds:
     @pytest.mark.parametrize(
         "target_id", ["conv-1/../../../../secret.txt", "conv-1/../../other-user/x", "..%2f/x"]
     )
-    async def test_projects_to_nothing(self, target_id: str) -> None:
-        assert await project_target(SESSION, "owner", target_id) is None
-
-    async def test_the_public_file_route_finds_nothing(self) -> None:
-        assert await target_file(SESSION, "owner", "conv-1/../../../../secret.txt") is None
+    async def test_reads_nothing(self, target_id: str) -> None:
+        assert await _source("owner", target_id) is None
 
 
-class TestSessionArtifact:
+class TestSessionArtifactSource:
+    """The live file is read only to publish a snapshot of it."""
+
     @pytest.mark.parametrize("target_id", ["no-path", "conv-1/", "/reports/q3.html"])
-    async def test_a_malformed_target_id_projects_to_nothing(self, target_id):
-        with patch(f"{_MOD}.stat_artifact", AsyncMock()) as stat:
-            view = await project_target(SESSION, "owner", target_id)
-        assert view is None
+    async def test_a_malformed_target_id_reads_nothing(self, target_id):
+        with patch(f"{_SESSION_MOD}.stat_artifact", AsyncMock()) as stat:
+            assert await _source("owner", target_id) is None
         stat.assert_not_awaited()
 
-    async def test_a_text_file_ships_its_contents_read_from_the_owners_workspace(self, workspace):
+    async def test_reads_the_owners_bytes_and_declared_type(self, workspace):
         host_file, stat, resolve = workspace
-        host_file.write_bytes("<h1>Q3 — done</h1>".encode() + bytes([0xFF]))
-        stat.return_value = _info("reports/q3.html", size=12, content_type="text/html")
+        host_file.write_bytes(b"<h1>Q3</h1>")
+        stat.return_value = _info("reports/q3.html", size=11, content_type="text/html")
 
-        view = await project_target(SESSION, "owner", "conv-1/reports/q3.html")
+        source = await _source("owner", "conv-1/reports/q3.html")
 
-        assert view == PublicSessionArtifact(
-            target_type=SESSION,
-            filename="q3.html",
-            content_type="text/html",
-            size_bytes=12,
-            content="<h1>Q3 — done</h1>\N{REPLACEMENT CHARACTER}",
+        assert source == SnapshotSource(
+            filename="q3.html", declared_mime="text/html", size_bytes=11, data=b"<h1>Q3</h1>"
         )
         stat.assert_awaited_once_with("owner", "conv-1", "reports/q3.html")
         resolve.assert_awaited_once_with("owner", "conv-1", "artifacts", "reports/q3.html")
 
-    async def test_a_text_file_at_exactly_the_cap_still_ships_inline(self, workspace):
+    async def test_a_file_at_the_cap_is_read(self, workspace):
         host_file, stat, _ = workspace
-        host_file.write_text("body")
-        stat.return_value = _info("q3.html", size=PUBLIC_TEXT_MAX_BYTES, content_type="text/html")
+        host_file.write_bytes(b"x")
+        stat.return_value = _info("q3.html", size=MAX_SNAPSHOT_BYTES, content_type="text/html")
 
-        view = await project_target(SESSION, "owner", "conv-1/q3.html")
+        source = await _source("owner", "conv-1/q3.html")
 
-        assert view is not None
-        assert view.content == "body"
+        assert source is not None
+        assert source.data == b"x"
 
-    async def test_a_text_file_over_the_cap_is_a_metadata_card(self, workspace):
+    async def test_a_file_over_the_cap_is_never_read(self, workspace):
         host_file, stat, _ = workspace
-        host_file.write_text("body")
-        stat.return_value = _info(
-            "q3.html", size=PUBLIC_TEXT_MAX_BYTES + 1, content_type="text/html"
-        )
+        host_file.write_bytes(b"x")
+        stat.return_value = _info("q3.html", size=MAX_SNAPSHOT_BYTES + 1, content_type="text/html")
 
-        view = await project_target(SESSION, "owner", "conv-1/q3.html")
+        source = await _source("owner", "conv-1/q3.html")
 
-        assert view is not None
-        assert view.content is None
+        assert source is not None
+        assert source.data is None
+        assert source.size_bytes == MAX_SNAPSHOT_BYTES + 1
 
-    async def test_a_binary_file_is_a_metadata_card_never_its_bytes(self, workspace):
-        host_file, stat, _ = workspace
-        host_file.write_bytes(b"%PDF-1.7")
-        stat.return_value = _info("deck.pdf", size=8, content_type="application/pdf")
-
-        view = await project_target(SESSION, "owner", "conv-1/deck.pdf")
-
-        assert view is not None
-        assert view.content is None
-        assert view.content_type == "application/pdf"
-
-    async def test_an_untyped_file_is_served_as_opaque_bytes(self, workspace):
+    async def test_an_untyped_file_declares_opaque_bytes(self, workspace):
         host_file, stat, _ = workspace
         host_file.write_bytes(b"\x00")
         stat.return_value = _info("blob", size=1, content_type=None)
 
-        view = await project_target(SESSION, "owner", "conv-1/blob")
+        source = await _source("owner", "conv-1/blob")
 
-        assert view is not None
-        assert view.content_type == "application/octet-stream"
-        assert view.content is None
+        assert source is not None
+        assert source.declared_mime == "application/octet-stream"
 
-    async def test_a_deleted_file_projects_to_nothing(self, workspace):
+    async def test_a_deleted_file_reads_nothing(self, workspace):
         _, stat, resolve = workspace
         stat.return_value = None
 
-        assert await project_target(SESSION, "owner", "conv-1/q3.html") is None
-        assert await target_file(SESSION, "owner", "conv-1/q3.html") is None
+        assert await _source("owner", "conv-1/q3.html") is None
         resolve.assert_not_awaited()
 
-    async def test_the_public_file_route_streams_the_owners_host_file(self, workspace):
-        host_file, stat, resolve = workspace
-        stat.return_value = _info("reports/q3.html", size=1, content_type="text/html")
+    @pytest.mark.parametrize("target_type", [t for t in ShortLinkTargetType if t is not SESSION])
+    def test_no_other_type_serves_bytes(self, target_type):
+        assert REGISTRY[target_type].source is None
 
-        assert await target_file(SESSION, "owner", "conv-1/reports/q3.html") == host_file
-        resolve.assert_awaited_once_with("owner", "conv-1", "artifacts", "reports/q3.html")
 
-    @pytest.mark.parametrize(
-        "target_type",
-        [t for t in ShortLinkTargetType if t is not ShortLinkTargetType.SESSION_ARTIFACT],
-    )
-    async def test_a_target_type_with_no_bytes_has_no_file(self, workspace, target_type):
-        _, stat, resolve = workspace
+def _snapshot(**overrides: object) -> LinkSnapshot:
+    data: dict[str, object] = {
+        "filename": "notes.md",
+        "mime": "text/markdown",
+        "size_bytes": 5,
+        "render": RenderMode.TEXT,
+        "content_id": "a" * 26,
+    }
+    data.update(overrides)
+    return LinkSnapshot.model_validate(data)
 
-        assert await target_file(target_type, "owner", "conv-1/q3.html") is None
-        stat.assert_not_awaited()
-        resolve.assert_not_awaited()
+
+class TestSessionArtifactProjection:
+    """Opening a file link reads the pinned snapshot, never the live file."""
+
+    @pytest.fixture
+    def stored(self):
+        with patch(f"{_SESSION_MOD}.read_snapshot", AsyncMock(return_value=b"# Hi\xff")) as read:
+            yield read
+
+    @pytest.fixture
+    def no_origin(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "LINK_CONTENT_URL_TEMPLATE", None)
+
+    @pytest.fixture
+    def origin(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "LINK_CONTENT_URL_TEMPLATE", "https://{content_id}.u.test")
+        monkeypatch.setattr(settings, "LINK_CONTENT_SIGNING_KEY", "k" * 32)
+
+    async def _view(self, snapshot: LinkSnapshot | None) -> PublicSessionArtifact | None:
+        view = await REGISTRY[SESSION].project("owner", "conv-1/notes.md", snapshot)
+        assert view is None or isinstance(view, PublicSessionArtifact)
+        return view
+
+    async def test_a_link_with_no_snapshot_shows_nothing(self, stored):
+        assert await self._view(None) is None
+        stored.assert_not_awaited()
+
+    async def test_text_ships_from_the_snapshot_store(self, stored, no_origin):
+        view = await self._view(_snapshot())
+
+        assert view == PublicSessionArtifact(
+            target_type=SESSION,
+            filename="notes.md",
+            content_type="text/markdown",
+            size_bytes=5,
+            text="# Hi\N{REPLACEMENT CHARACTER}",
+        )
+        stored.assert_awaited_once_with("owner", "a" * 26)
+
+    async def test_html_is_framed_from_the_content_origin_not_shipped_as_text(self, stored, origin):
+        view = await self._view(_snapshot(mime="text/html", render=RenderMode.FRAME_ACTIVE))
+
+        assert view is not None
+        assert view.text is None
+        stored.assert_not_awaited()
+
+    async def test_without_a_content_origin_html_ships_as_its_source(self, stored, no_origin):
+        view = await self._view(_snapshot(mime="text/html", render=RenderMode.FRAME_ACTIVE))
+
+        assert view is not None
+        assert view.text == "# Hi\N{REPLACEMENT CHARACTER}"
+
+    async def test_bytes_the_link_may_not_serve_ship_no_text(self, stored, no_origin):
+        view = await self._view(_snapshot(content_id=None))
+
+        assert view is not None
+        assert view.text is None
+        stored.assert_not_awaited()
+
+    async def test_text_over_the_view_cap_is_a_metadata_card(self, stored, no_origin):
+        view = await self._view(_snapshot(size_bytes=MAX_VIEW_TEXT_BYTES + 1))
+
+        assert view is not None
+        assert view.text is None
+
+    async def test_text_at_the_view_cap_still_ships(self, stored, no_origin):
+        view = await self._view(_snapshot(size_bytes=MAX_VIEW_TEXT_BYTES))
+
+        assert view is not None
+        assert view.text is not None
+
+    async def test_a_binary_file_is_a_metadata_card_never_its_bytes(self, stored, no_origin):
+        view = await self._view(_snapshot(mime="application/pdf", render=RenderMode.PDF))
+
+        assert view is not None
+        assert view.text is None
+        stored.assert_not_awaited()
 
 
 class TestOpenUIArtifact:
@@ -416,12 +490,14 @@ class TestOpenUIArtifact:
         owner.name = "Maya Chen"
         owner.email = "maya@example.com"
         with (
-            patch(f"{_MOD}.openui_artifact_repository") as artifacts,
-            patch(f"{_MOD}.user_repository") as users,
+            patch(
+                "app.services.links.targets.openui_artifact.openui_artifact_repository"
+            ) as artifacts,
+            patch("app.services.links.targets.openui_artifact.user_repository") as users,
         ):
             artifacts.get = AsyncMock(return_value=artifact)
             users.get = AsyncMock(return_value=owner)
-            view = await project_target(ShortLinkTargetType.OPENUI_ARTIFACT, "owner", "a1")
+            view = await _project(ShortLinkTargetType.OPENUI_ARTIFACT, "owner", "a1")
 
         assert isinstance(view, PublicOpenUIArtifact)
         assert (view.shared_by, view.program) == ("Maya Chen", artifact.program)
@@ -444,12 +520,14 @@ class TestOpenUIArtifact:
         owner = AsyncMock()
         owner.name = owner_name
         with (
-            patch(f"{_MOD}.openui_artifact_repository") as artifacts,
-            patch(f"{_MOD}.user_repository") as users,
+            patch(
+                "app.services.links.targets.openui_artifact.openui_artifact_repository"
+            ) as artifacts,
+            patch("app.services.links.targets.openui_artifact.user_repository") as users,
         ):
             artifacts.get = AsyncMock(return_value=artifact)
             users.get = AsyncMock(return_value=owner)
-            view = await project_target(ShortLinkTargetType.OPENUI_ARTIFACT, "owner", "a1")
+            view = await _project(ShortLinkTargetType.OPENUI_ARTIFACT, "owner", "a1")
 
         assert view is not None and view.shared_by is None
         users.get.assert_awaited_once_with("owner")
@@ -465,16 +543,20 @@ class TestOpenUIArtifact:
             model="gpt-6-luna",
         )
         with (
-            patch(f"{_MOD}.openui_artifact_repository") as artifacts,
-            patch(f"{_MOD}.user_repository") as users,
+            patch(
+                "app.services.links.targets.openui_artifact.openui_artifact_repository"
+            ) as artifacts,
+            patch("app.services.links.targets.openui_artifact.user_repository") as users,
         ):
             artifacts.get = AsyncMock(return_value=artifact)
             users.get = AsyncMock(return_value=None)
-            view = await project_target(ShortLinkTargetType.OPENUI_ARTIFACT, "owner", "a1")
+            view = await _project(ShortLinkTargetType.OPENUI_ARTIFACT, "owner", "a1")
 
         assert view is not None and view.shared_by is None
 
     async def test_someone_elses_artifact_projects_to_nothing(self):
-        with patch(f"{_MOD}.openui_artifact_repository") as artifacts:
+        with patch(
+            "app.services.links.targets.openui_artifact.openui_artifact_repository"
+        ) as artifacts:
             artifacts.get = AsyncMock(return_value=None)
-            assert await project_target(ShortLinkTargetType.OPENUI_ARTIFACT, "x", "a1") is None
+            assert await _project(ShortLinkTargetType.OPENUI_ARTIFACT, "x", "a1") is None

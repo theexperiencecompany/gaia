@@ -10903,6 +10903,47 @@ export interface components {
             size_bytes: number;
         };
         /**
+         * LinkDenial
+         * @description Why a link did not open; each is one ErrorEnvelope code and one page the viewer sees.
+         * @enum {string}
+         */
+        LinkDenial: "link_not_found" | "link_revoked" | "link_expired" | "link_removed" | "link_target_deleted" | "link_sign_in_required" | "link_forbidden";
+        /**
+         * LinkDenialEnvelope
+         * @description A link denial's body: code names the page the viewer sees.
+         */
+        LinkDenialEnvelope: {
+            code: components["schemas"]["LinkDenial"];
+            /**
+             * Errors
+             * @description Field-level failures; present only on 422.
+             */
+            errors?: components["schemas"]["ValidationIssue"][] | null;
+            /** Fix */
+            fix?: string | null;
+            /**
+             * Integration Id
+             * @description Integration an INTEGRATION_NOT_CONNECTED error asks to connect.
+             */
+            integration_id?: string | null;
+            /**
+             * Message
+             * @description Human-readable description of the failure.
+             */
+            message: string;
+            /** Signed In As */
+            signed_in_as?: string | null;
+            /**
+             * Toolkit
+             * @description Composio toolkit an INTEGRATION_NOT_CONNECTED error is about.
+             */
+            toolkit?: string | null;
+            /** Why */
+            why?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * LinkedUsersResponse
          * @description Response model for the list of platform_user_ids linked on a platform.
          */
@@ -10920,6 +10961,8 @@ export interface components {
         LinkEnvelope: {
             access: components["schemas"]["LinkAccess"];
             content: components["schemas"]["LinkContent"] | null;
+            /** Downloadable */
+            downloadable: boolean;
             /** Is Owner */
             is_owner: boolean;
             target_type: components["schemas"]["ShortLinkTargetType"];
@@ -18083,6 +18126,8 @@ export type LinearIssueCreatedConfig = components['schemas']['LinearIssueCreated
 export type LinearIssueUpdatedConfig = components['schemas']['LinearIssueUpdatedConfig'];
 export type LinkAccess = components['schemas']['LinkAccess'];
 export type LinkContent = components['schemas']['LinkContent'];
+export type LinkDenial = components['schemas']['LinkDenial'];
+export type LinkDenialEnvelope = components['schemas']['LinkDenialEnvelope'];
 export type LinkedUsersResponse = components['schemas']['LinkedUsersResponse'];
 export type LinkEnvelope = components['schemas']['LinkEnvelope'];
 export type LinkPlatformRequest = components['schemas']['LinkPlatformRequest'];
@@ -24437,7 +24482,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description You don't have access to this. */
@@ -24446,7 +24491,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description This link doesn't exist. */
@@ -24455,7 +24500,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description The link is dead: revoked, expired, removed or its target deleted */
@@ -24464,7 +24509,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -24584,7 +24629,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description You don't have access to this. */
@@ -24593,7 +24638,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description This link doesn't exist. */
@@ -24602,7 +24647,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description The link is dead: revoked, expired, removed or its target deleted */
@@ -24611,7 +24656,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -24669,7 +24714,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description You don't have access to this. */
@@ -24678,7 +24723,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description This link doesn't exist. */
@@ -24687,7 +24732,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description The link is dead: revoked, expired, removed or its target deleted */
@@ -24696,7 +24741,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -24801,7 +24846,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description You don't have access to this. */
@@ -24810,7 +24855,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description This link doesn't exist. */
@@ -24819,7 +24864,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description The link is dead: revoked, expired, removed or its target deleted */
@@ -24828,7 +24873,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -24886,7 +24931,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description You don't have access to this. */
@@ -24895,7 +24940,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description This link doesn't exist. */
@@ -24904,7 +24949,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description The link is dead: revoked, expired, removed or its target deleted */
@@ -24913,7 +24958,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -24973,7 +25018,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description You don't have access to this. */
@@ -24982,7 +25027,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description This link doesn't exist. */
@@ -24991,7 +25036,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description The link is dead: revoked, expired, removed or its target deleted */
@@ -25000,7 +25045,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description Unprocessable Entity */

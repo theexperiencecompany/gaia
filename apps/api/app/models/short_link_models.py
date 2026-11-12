@@ -23,6 +23,7 @@ from app.models.briefing_models import BriefingItemKind, BriefingKind, BriefingM
 from app.models.openui_artifact_models import ArtifactKind
 from app.models.workflow_execution_models import WorkflowExecutionStatus
 from app.schemas.common import ResponseModel
+from app.schemas.errors import ErrorEnvelope
 
 
 class ShortLinkTargetType(StrEnum):
@@ -313,8 +314,18 @@ class LinkEnvelope(ResponseModel):
     target_type: ShortLinkTargetType
     view: PublicShortLinkView
     content: LinkContent | None
+    #: The link's file can be saved (GET /l/{slug}/download); False for every non-file type.
+    downloadable: bool
     #: The viewer is the link's owner, so the page offers its share settings.
     is_owner: bool
+
+
+class LinkDenialEnvelope(ErrorEnvelope):
+    """A link denial's body: code names the page the viewer sees."""
+
+    code: LinkDenial
+    #: Set on FORBIDDEN only: the account the viewer is signed in as.
+    signed_in_as: str | None = None
 
 
 class LinkPreviewMeta(ResponseModel):

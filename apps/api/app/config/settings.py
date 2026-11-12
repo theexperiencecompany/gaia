@@ -688,20 +688,37 @@ class Settings(BrowserHostSettings):
             self.SHORTLINK_BASE_URL = f"{self.FRONTEND_URL}{SHORTLINK_WEB_ROUTE}"
         return self
 
+    @field_validator("LINK_CONTENT_URL_TEMPLATE", "LINK_CONTENT_SIGNING_KEY", mode="after")
+    @classmethod
+    def _blank_link_content_setting_is_unset(cls, v: str | None) -> str | None:
+        # A templated deploy spells "unset" as blank; failing on "" once took the whole API down.
+        return v or None
+
     @model_validator(mode="after")
     def _link_content_origin_is_complete(self) -> Self:
-        """Refuse a content origin that cannot sign its tokens or name a snapshot's host."""
+        """Turn off a content origin that cannot name a snapshot's host or sign its tokens.
+
+        A self-host refuses to boot (its .env is CLI-written); GAIA Cloud logs the
+        error and serves shared files as text or downloads until it is fixed.
+        """
         template = self.LINK_CONTENT_URL_TEMPLATE
         if template is None:
             return self
-        if "{content_id}" not in template:
-            raise ValueError("LINK_CONTENT_URL_TEMPLATE must contain {content_id}")
         key = self.LINK_CONTENT_SIGNING_KEY
-        if key is None or len(key) < MIN_LINK_CONTENT_SIGNING_KEY_LENGTH:
-            raise ValueError(
+        problem = None
+        if "{content_id}" not in template:
+            problem = "LINK_CONTENT_URL_TEMPLATE must contain {content_id}"
+        elif key is None or len(key) < MIN_LINK_CONTENT_SIGNING_KEY_LENGTH:
+            problem = (
                 "LINK_CONTENT_URL_TEMPLATE is set but LINK_CONTENT_SIGNING_KEY is missing or "
                 f"shorter than {MIN_LINK_CONTENT_SIGNING_KEY_LENGTH} characters"
             )
+        if problem is None:
+            return self
+        if self.deployment.requires_complete_config:
+            raise RuntimeError(problem)
+        log.error(f"{LogTag.STARTUP} link content origin turned off", problem=problem)
+        self.LINK_CONTENT_URL_TEMPLATE = None
         return self
 
     @model_validator(mode="before")

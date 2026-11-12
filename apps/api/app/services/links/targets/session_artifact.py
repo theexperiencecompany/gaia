@@ -20,7 +20,8 @@ from app.services.links.content import (
     thumbnail_url,
 )
 from app.services.links.spec import LinkTargetSpec, PreviewFacts, SnapshotSource
-from app.services.storage import resolve_session_path, stat_artifact
+from app.services.storage import JuiceFSUnavailable, resolve_session_path, stat_artifact
+from app.utils.errors import AppError
 
 _DEFAULT_CONTENT_TYPE = "application/octet-stream"
 
@@ -36,18 +37,25 @@ def session_artifact_target_id(conversation_id: str, path: str) -> str:
 async def _source(owner_id: str, target_id: str) -> SnapshotSource | None:
     """Read the owner's file now; None once it is gone or the id names no artifact.
 
-    Raises JuiceFSUnavailable when workspace storage is offline: an outage, not a missing file.
+    Workspace storage being offline is an outage, not a missing file: a 503 the caller sees.
     """
     conversation_id, _, path = target_id.partition("/")
     if not conversation_id or not path:
         return None
     try:
         info = await stat_artifact(owner_id, conversation_id, path)
+        if info is None:
+            return None
+        host_path = await resolve_session_path(owner_id, conversation_id, "artifacts", path)
     except ValueError:
         return None
-    if info is None:
-        return None
-    host_path = await resolve_session_path(owner_id, conversation_id, "artifacts", path)
+    except JuiceFSUnavailable as e:
+        raise AppError(
+            message="Workspace storage is offline, so this file can't be shared right now",
+            fix="Try again in a minute",
+            status_code=503,
+            code="workspace_storage_offline",
+        ) from e
     data = (
         await asyncio.to_thread(host_path.read_bytes)
         if info.size_bytes <= MAX_SNAPSHOT_BYTES

@@ -6,11 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
-from app.models.short_link_models import ShortLinkTargetType
 from app.services.openui_artifacts.export import (
     owner_artifact_pdf,
     pdf_download_headers,
-    public_artifact_pdf,
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.artifacts import ArtifactPdfExported
@@ -61,26 +59,6 @@ async def test_an_export_reads_the_callers_artifact_prints_it_and_counts_it() ->
     read.assert_awaited_once_with(OWNER, "a1")
     capture.assert_called_once_with(UserId(OWNER), ArtifactPdfExported(kind="report", pages=2))
     assert event["artifact"] == {"pdf_rendered": True, "pages": 2, "pdf_bytes": 8}
-
-
-async def test_a_live_link_exports_the_artifact_it_points_at() -> None:
-    link = MagicMock(user_id=OWNER, target_id="a1")
-    with (
-        patch(f"{_SVC}.live_link_for_slug", AsyncMock(return_value=link)) as live,
-        patch(f"{_SVC}.get_owned_artifact", AsyncMock(return_value=ARTIFACT)) as read,
-        patch(f"{_SVC}.render_program_to_pdf", AsyncMock(return_value=(b"%PDF-1.7", 1))),
-        patch(f"{_SVC}.capture"),
-    ):
-        exported = await public_artifact_pdf("slug")
-
-    assert exported == (ARTIFACT, b"%PDF-1.7")
-    live.assert_awaited_once_with("slug", ShortLinkTargetType.OPENUI_ARTIFACT)
-    read.assert_awaited_once_with(OWNER, "a1")
-
-
-async def test_a_slug_that_is_no_live_artifact_link_exports_nothing() -> None:
-    with patch(f"{_SVC}.live_link_for_slug", AsyncMock(return_value=None)):
-        assert await public_artifact_pdf("slug") is None
 
 
 def test_the_download_is_named_after_the_title_and_never_cached() -> None:

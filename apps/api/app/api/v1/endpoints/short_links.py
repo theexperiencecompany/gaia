@@ -24,6 +24,7 @@ from app.constants.short_links import (
 from app.models.short_link_models import (
     ContentTokenResponse,
     LinkDenial,
+    LinkDenialEnvelope,
     LinkEnvelope,
     LinkPreviewMeta,
     LinkReportRequest,
@@ -78,14 +79,15 @@ router = APIRouter(prefix=SHORT_LINK_ROUTE_PREFIX, tags=["Short Links"])
 _NO_STORE = "private, no-store"
 _META_CACHE = "public, max-age=300"
 _DEAD_META_CACHE = "public, max-age=60"
-_DENIALS = error_responses(
-    {
-        401: LinkDeniedError.for_denial(LinkDenial.SIGN_IN_REQUIRED).message,
-        403: LinkDeniedError.for_denial(LinkDenial.FORBIDDEN).message,
-        404: LinkDeniedError.for_denial(LinkDenial.NOT_FOUND).message,
-        410: "The link is dead: revoked, expired, removed or its target deleted",
-    }
-)
+_DENIALS: dict[int | str, dict[str, object]] = {
+    status_code: {"model": LinkDenialEnvelope, "description": description}
+    for status_code, description in (
+        (401, LinkDeniedError.for_denial(LinkDenial.SIGN_IN_REQUIRED).message),
+        (403, LinkDeniedError.for_denial(LinkDenial.FORBIDDEN).message),
+        (404, LinkDeniedError.for_denial(LinkDenial.NOT_FOUND).message),
+        (410, "The link is dead: revoked, expired, removed or its target deleted"),
+    )
+}
 
 
 def _user_key(request: Request) -> str:
@@ -286,11 +288,13 @@ async def report_link_route(
 ) -> None:
     """Report a link that breaks GAIA's terms; enough distinct reporters suspend it."""
     log.set(short_link={"operation": "report", "slug_hash": hash_short_link_slug(slug)})
-    if settings.deployment.gaia_support:
-        await verify_turnstile_token(body.turnstile_token or "", viewer_ip(request))
     viewer = _viewer(request, user)
+    # A signed-out reporter proves they are human on GAIA Cloud; a signed-in one is their account.
+    if viewer.user_id is None and settings.deployment.gaia_support:
+        await verify_turnstile_token(body.turnstile_token or "", viewer.ip)
     link = await openable_link(await get_link(slug), viewer)
-    reporter_key = viewer.user_id or hash_link_viewer(viewer.ip, viewer.user_agent)
+    # One report per account, or per address for a signed-out reporter, however their browser varies.
+    reporter_key = viewer.user_id or hash_link_viewer(viewer.ip, "")
     await abuse.report(link, body.reason, reporter_key, signed_in=viewer.user_id is not None)
 
 

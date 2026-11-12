@@ -600,3 +600,35 @@ def test_boot_judges_the_configuration_against_its_own_deployment(monkeypatch) -
     assert "MongoDB Connection" not in {
         group.name for group, _ in settings_validator.missing_groups
     }
+
+
+_ORIGIN = "https://{content_id}.u.heygaia.test"
+
+
+def test_a_content_origin_with_its_signing_key_is_kept() -> None:
+    key = "k" * 32
+    settings_obj = _prod_settings(LINK_CONTENT_URL_TEMPLATE=_ORIGIN, LINK_CONTENT_SIGNING_KEY=key)
+    assert settings_obj.LINK_CONTENT_URL_TEMPLATE == _ORIGIN
+
+
+@pytest.mark.parametrize(
+    ("template", "key"),
+    [(_ORIGIN, None), (_ORIGIN, "short"), ("https://u.heygaia.test", "k" * 32)],
+)
+def test_gaia_cloud_turns_off_a_content_origin_it_cannot_use(
+    template: str, key: str | None
+) -> None:
+    """One feature's misconfig must not take the API down; files fall back to text and downloads."""
+    settings_obj = _prod_settings(LINK_CONTENT_URL_TEMPLATE=template, LINK_CONTENT_SIGNING_KEY=key)
+    assert settings_obj.LINK_CONTENT_URL_TEMPLATE is None
+
+
+def test_a_selfhost_refuses_to_boot_with_a_content_origin_it_cannot_sign() -> None:
+    with pytest.raises(RuntimeError, match="LINK_CONTENT_SIGNING_KEY is missing"):
+        _selfhost_settings("local", LINK_CONTENT_URL_TEMPLATE=_ORIGIN)
+
+
+def test_a_blank_content_origin_reads_as_unset() -> None:
+    settings_obj = _prod_settings(LINK_CONTENT_URL_TEMPLATE="", LINK_CONTENT_SIGNING_KEY="")
+    assert settings_obj.LINK_CONTENT_URL_TEMPLATE is None
+    assert settings_obj.LINK_CONTENT_SIGNING_KEY is None

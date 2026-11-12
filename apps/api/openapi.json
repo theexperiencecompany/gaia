@@ -10232,6 +10232,112 @@
         "title": "LinkContent",
         "type": "object"
       },
+      "LinkDenial": {
+        "description": "Why a link did not open; each is one ErrorEnvelope code and one page the viewer sees.",
+        "enum": [
+          "link_not_found",
+          "link_revoked",
+          "link_expired",
+          "link_removed",
+          "link_target_deleted",
+          "link_sign_in_required",
+          "link_forbidden"
+        ],
+        "title": "LinkDenial",
+        "type": "string"
+      },
+      "LinkDenialEnvelope": {
+        "additionalProperties": true,
+        "description": "A link denial's body: code names the page the viewer sees.",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/LinkDenial"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ValidationIssue"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Field-level failures; present only on 422.",
+            "title": "Errors"
+          },
+          "fix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix"
+          },
+          "integration_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Integration an INTEGRATION_NOT_CONNECTED error asks to connect.",
+            "title": "Integration Id"
+          },
+          "message": {
+            "description": "Human-readable description of the failure.",
+            "title": "Message",
+            "type": "string"
+          },
+          "signed_in_as": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed In As"
+          },
+          "toolkit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Composio toolkit an INTEGRATION_NOT_CONNECTED error is about.",
+            "title": "Toolkit"
+          },
+          "why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why"
+          }
+        },
+        "required": [
+          "message",
+          "code"
+        ],
+        "title": "LinkDenialEnvelope",
+        "type": "object"
+      },
       "LinkEnvelope": {
         "description": "What opening a link returns: its access level, the target's public view and any framed content.",
         "properties": {
@@ -10247,6 +10353,10 @@
                 "type": "null"
               }
             ]
+          },
+          "downloadable": {
+            "title": "Downloadable",
+            "type": "boolean"
           },
           "is_owner": {
             "title": "Is Owner",
@@ -10291,6 +10401,7 @@
           "target_type",
           "view",
           "content",
+          "downloadable",
           "is_owner"
         ],
         "title": "LinkEnvelope",
@@ -32589,7 +32700,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -32599,7 +32710,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -32609,7 +32720,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -32619,7 +32730,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -32773,7 +32884,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -32783,7 +32894,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -32793,7 +32904,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -32803,7 +32914,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -32872,7 +32983,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -32882,7 +32993,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -32892,7 +33003,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -32902,7 +33013,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -33031,7 +33142,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -33041,7 +33152,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -33051,7 +33162,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -33061,7 +33172,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -33130,7 +33241,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -33140,7 +33251,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -33150,7 +33261,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -33160,7 +33271,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -33236,7 +33347,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -33246,7 +33357,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -33256,7 +33367,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },
@@ -33266,7 +33377,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
                 }
               }
             },

@@ -93,7 +93,7 @@ def link_store(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     A rescan re-lists every historical artifact; minting there would share them all.
     """
     store = MagicMock()
-    monkeypatch.setattr("app.services.short_link_service.short_link_repository", store)
+    monkeypatch.setattr("app.services.links.service.short_link_repository", store)
     return store
 
 
