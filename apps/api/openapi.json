@@ -458,7 +458,8 @@
         "required": [
           "action",
           "headline",
-          "confirm"
+          "confirm",
+          "details"
         ],
         "title": "ApprovalDescription",
         "type": "object"

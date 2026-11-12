@@ -48,7 +48,7 @@ const card = (
     feedback: null,
     auto_reason: null,
     asked_at: "2026-09-19T00:00:00Z",
-  },
+  } as ApprovalRequestData,
 });
 
 const message = (id: string, tool_data: IMessage["tool_data"]): IMessage => ({

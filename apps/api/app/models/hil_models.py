@@ -227,7 +227,7 @@ class ApprovalDescription(BaseModel):
     headline: str
     # Closing verb for a single-action prompt, e.g. "send it".
     confirm: str
-    details: list[ApprovalDetail] = Field(default_factory=list)
+    details: list[ApprovalDetail]
 
 
 class ApprovalProposal(BaseModel):

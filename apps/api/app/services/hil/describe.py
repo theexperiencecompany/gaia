@@ -70,7 +70,7 @@ def _describe_browser_task(args: Mapping[str, object]) -> ApprovalDescription:
     task = _BrowserTaskArgs.model_validate(args).task.strip()
     action = "Start a browser task"
     if not task:
-        return ApprovalDescription(action=action, headline=action, confirm="start it")
+        return ApprovalDescription(action=action, headline=action, confirm="start it", details=[])
     first = task.split(". ")[0].strip().rstrip(".")
     concise = first if 0 < len(first) <= 140 else clip_text(task, 140)
     return ApprovalDescription(

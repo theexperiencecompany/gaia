@@ -6112,7 +6112,7 @@ export interface components {
             /** Confirm */
             confirm: string;
             /** Details */
-            details?: components["schemas"]["ApprovalDetail"][];
+            details: components["schemas"]["ApprovalDetail"][];
             /** Headline */
             headline: string;
         };
