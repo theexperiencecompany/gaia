@@ -11,6 +11,7 @@ import pytest
 from app.agents.core.background.executor_channel import drain_inbox_hook
 from app.agents.core.background.subagent_channel import drain_subagent_inbox_hook
 from app.agents.core.nodes.adapt_media import adapt_media_node
+from app.agents.core.nodes.drain_conversation_log import drain_conversation_log_hook
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.agents.core.nodes.pre_model_hooks import comms_pre_model_hooks, worker_pre_model_hooks
@@ -22,8 +23,12 @@ class TestTheChainsAreExactlyThese:
     """Spelled out end to end: a weaker assertion leaves room for an extra, missing, or None hook to slip through."""
 
     def test_comms(self) -> None:
-        """Its live-work status rides the turn-start context, so no hook adds per-call frames."""
-        assert comms_pre_model_hooks() == [filter_messages_node, manage_system_prompts_node]
+        """Its live-work status rides the turn-start context; only inputs the step absorbed join mid-run."""
+        assert comms_pre_model_hooks() == [
+            filter_messages_node,
+            drain_conversation_log_hook,
+            manage_system_prompts_node,
+        ]
 
     def test_a_worker(self) -> None:
         assert worker_pre_model_hooks() == [

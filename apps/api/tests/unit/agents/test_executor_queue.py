@@ -425,6 +425,11 @@ class TestSafeConfigurable:
 
         assert safe_configurable(cast(AgentConfigurable, configurable)) == {"thread_id": "t"}
 
+    def test_drops_the_comms_attempt_feed_a_queued_run_could_never_drain(self) -> None:
+        configurable = {"thread_id": "t", "comms_run": "attempt-1"}
+
+        assert safe_configurable(cast(AgentConfigurable, configurable)) == {"thread_id": "t"}
+
     def test_warns_and_drops_a_value_that_cannot_be_serialized(self) -> None:
         configurable = {"thread_id": "t", "model_kwargs": {"provider": object()}}
 

@@ -16,6 +16,7 @@ import pytest
 from app.agents.core.background.executor_channel import drain_inbox_hook
 from app.agents.core.graph_builder.build_graph import build_executor_graph
 from app.agents.core.nodes.adapt_media import adapt_media_node
+from app.agents.core.nodes.drain_conversation_log import drain_conversation_log_hook
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.agents.middleware.factory import SubagentStackOptions
@@ -500,7 +501,11 @@ class TestBuildCommsGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             pre_model_hooks = kwargs["hooks_config"].pre_model_hooks
-            assert pre_model_hooks == [filter_messages_node, manage_system_prompts_node]
+            assert pre_model_hooks == [
+                filter_messages_node,
+                drain_conversation_log_hook,
+                manage_system_prompts_node,
+            ]
 
     async def test_comms_middleware_passed_to_create_agent(self):
         mock_mw = [MagicMock(name="mw1")]

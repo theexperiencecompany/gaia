@@ -40,3 +40,6 @@ class DetachedStreamKind(StrEnum):
 # — see models/stream_events.py.
 SSE_KEEPALIVE_INTERVAL_SECONDS: Final[float] = 15.0
 SSE_KEEPALIVE_FRAME: Final[str] = 'data: {"keepalive":true}\n\n'
+
+# Every chat stream frame is one "data: <json>" line.
+SSE_DATA_PREFIX: Final[str] = "data: "
