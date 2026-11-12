@@ -196,11 +196,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
                 size="sm"
                 variant="tertiary"
                 className="text-zinc-300 group-hover:text-white"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  handleDownload();
-                }}
+                onPress={handleDownload}
                 aria-label="Download artifact"
               >
                 <Download01Icon size={16} />

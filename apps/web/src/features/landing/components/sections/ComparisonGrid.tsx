@@ -251,19 +251,19 @@ export default function ComparisonGrid() {
                       <Tooltip.Trigger
                         aria-label={c.slug ? `Compare with ${c.name}` : c.name}
                       >
-                      {c.slug ? (
-                        <SiteLink
-                          href={`/compare/${c.slug}`}
-                          aria-label={`Compare with ${c.name}`}
-                          className="inline-flex transition-transform hover:scale-110"
-                        >
-                          <BrandLogo competitor={c} alt="" />
-                        </SiteLink>
-                      ) : (
-                        <span className="inline-flex">
-                          <BrandLogo competitor={c} alt={c.name} />
-                        </span>
-                      )}
+                        {c.slug ? (
+                          <SiteLink
+                            href={`/compare/${c.slug}`}
+                            aria-label={`Compare with ${c.name}`}
+                            className="inline-flex transition-transform hover:scale-110"
+                          >
+                            <BrandLogo competitor={c} alt="" />
+                          </SiteLink>
+                        ) : (
+                          <span className="inline-flex">
+                            <BrandLogo competitor={c} alt={c.name} />
+                          </span>
+                        )}
                       </Tooltip.Trigger>
                       <Tooltip.Content placement="top">
                         {c.name}

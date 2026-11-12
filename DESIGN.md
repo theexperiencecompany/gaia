@@ -478,7 +478,7 @@ Never use `rounded-lg` on card containers — that's the Shadcn base radius, vis
 
 ## Components
 
-GAIA composes from three component families: **Shadcn** (`src/components/ui/`) for layout primitives, **HeroUI** (`@heroui/*`) for richer in-card UI (chips, accordions, progress, tabs), and a small set of GAIA-native cards built directly to the dark card contract. Pick the right overlay for the context — `Dialog` for focus, `Sheet` for side panels, `Popover` for inline pickers, `Tooltip` for labels only.
+GAIA composes from three component families: **Shadcn** (`src/components/ui/`) for layout primitives, **HeroUI v3** (`@heroui/react`) for richer in-card UI (chips, accordions, progress, tabs), and a small set of GAIA-native cards built directly to the dark card contract. Pick the right overlay for the context — `Dialog` for focus, `Sheet` for side panels, `Popover` for inline pickers, `Tooltip` for labels only.
 
 ### Dark Card Styling Contract
 
@@ -497,7 +497,7 @@ Most data cards, tool sections, and info panels follow this two-tone zinc patter
 | Meta / timestamp | `text-xs text-zinc-500` |
 | Item spacing | `space-y-2` |
 | Status badge | `rounded-full px-2 py-0.5 text-xs` + status color |
-| Section divider | `<Divider className="bg-zinc-700/50" />` (HeroUI) |
+| Section divider | `<Separator className="bg-zinc-700/50" />` (HeroUI) |
 | Glass variant | `rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl` |
 | Hoverable list item | `p-4 transition-all hover:bg-white/5` (no bg, just overlay on hover) |
 
@@ -563,17 +563,17 @@ Style: `new-york`, base: `zinc`, CSS variables on.
 | `ScrollArea` | Radix scrollable with edge shadows |
 | `Sidebar` | Collapsible, `Cmd/Ctrl+B` toggle, cookie-persisted |
 
-### HeroUI (`@heroui/*`)
+### HeroUI v3 (`@heroui/react`)
 
 Used for richer UI inside cards.
 
 | Component | Standard usage |
 |---|---|
-| `Chip` | Status badges · `variant="flat"` |
-| `Button` | Card actions · `variant="flat"` or `variant="solid"` |
-| `Accordion` / `AccordionItem` | Expandable card sections |
-| `Progress` | Progress bars |
-| `Tabs` / `Tab` | Tabbed card content |
+| `Chip` | Status badges · `variant="tertiary"`, text in `<Chip.Label>` |
+| `Button` | Card actions · `variant="tertiary"` or `variant="primary"` |
+| `Accordion` / `Accordion.Item` | Expandable card sections |
+| `ProgressBar` | Progress bars |
+| `Tabs` / `Tabs.Tab` / `Tabs.Panel` | Tabbed card content |
 | `Avatar` | Contact / user avatars |
 | `ScrollShadow` | Wraps overflowing lists |
 

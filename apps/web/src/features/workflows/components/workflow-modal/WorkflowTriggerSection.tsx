@@ -1,6 +1,5 @@
 import { Tabs } from "@heroui/react";
 import { Clock01Icon, Cursor02Icon, FlashIcon } from "@icons";
-import type { ReactElement } from "react";
 import { PanelRowGroup } from "@/components/shared/PanelRowGroup";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import type { Workflow } from "../../api/workflowApi";

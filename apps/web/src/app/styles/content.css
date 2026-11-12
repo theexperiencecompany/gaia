@@ -1,13 +1,7 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities) source(none);
 @import "./theme.css";
-@reference "@heroui/styles/themes/default";
-@reference "@heroui/styles/utilities";
-@reference "@heroui/styles/variants";
 
-@custom-variant dark (&:is(.dark *));
-@plugin "tailwindcss-animate";
-@plugin "@tailwindcss/typography";
 @import "@heroui/styles/components/accordion.css" layer(components);
 @import "@heroui/styles/components/avatar.css" layer(components);
 @import "@heroui/styles/components/avatar-group.css" layer(components);
@@ -39,11 +33,17 @@
 @import "@heroui/styles/components/textfield.css" layer(components);
 @import "@heroui/styles/components/tooltip.css" layer(components);
 
+@reference "@heroui/styles/themes/default";
+@reference "@heroui/styles/utilities";
+@reference "@heroui/styles/variants";
+
+@custom-variant dark (&:is(.dark *));
+@plugin "tailwindcss-animate";
+@plugin "@tailwindcss/typography";
+
 @source "../[locale]/(landing)/blog";
 @source "../[locale]/(landing)/marketplace";
 @source "../[locale]/(landing)/learn";
-@source "../[locale]/(landing)/glossary";
-@source "../[locale]/(landing)/guides";
 @source "../[locale]/(landing)/alternative-to";
 @source "../[locale]/(landing)/automate";
 @source "../[locale]/(landing)/ai-assistant-like-jarvis";
@@ -62,7 +62,7 @@
 @source "../[locale]/(landing)/discord-bot";
 @source "../[locale]/(landing)/slack-bot";
 @source "../../features/blog";
-@source "../../features/marketplace";
+@source "../../features/integrations/components/MarketplaceDirectory.tsx";
 @source "../../features/comparisons";
 @source "../../features/glossary";
 @source "../../features/guides";

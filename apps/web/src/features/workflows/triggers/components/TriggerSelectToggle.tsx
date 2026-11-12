@@ -32,9 +32,12 @@ export function TriggerSelectToggle({
   } = selectProps;
 
   if (!allowManualInput || !useManualInput) {
-    const selectedItems = options
-      .filter((option) => selectedValues.includes(option.value))
-      .map((option) => ({ key: option.value, textValue: option.label }));
+    const selected = new Set(selectedValues);
+    const selectedItems = options.flatMap((option) =>
+      selected.has(option.value)
+        ? [{ key: option.value, textValue: option.label }]
+        : [],
+    );
 
     const valueContent = renderValue
       ? renderValue(selectedItems)

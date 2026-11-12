@@ -92,13 +92,11 @@ function OnboardingProgressImpl({
             }
             aria-label="Account"
           >
-            {isMobile ? (
-              !isRestarting && <UserCircleIcon size={16} />
-            ) : isRestarting ? (
-              "Restarting…"
-            ) : (
-              (email ?? "Account")
-            )}
+            {isMobile
+              ? !isRestarting && <UserCircleIcon size={16} />
+              : isRestarting
+                ? "Restarting…"
+                : (email ?? "Account")}
           </Button>
         </Dropdown.Trigger>
         <Dropdown.Popover placement={isMobile ? "bottom end" : "top end"}>

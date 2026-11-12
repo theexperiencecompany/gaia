@@ -1,13 +1,7 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities) source(none);
 @import "./theme.css";
-@reference "@heroui/styles/themes/default";
-@reference "@heroui/styles/utilities";
-@reference "@heroui/styles/variants";
 
-@custom-variant dark (&:is(.dark *));
-@plugin "tailwindcss-animate";
-@plugin "@tailwindcss/typography";
 @import "@heroui/styles/components/accordion.css" layer(components);
 @import "@heroui/styles/components/avatar.css" layer(components);
 @import "@heroui/styles/components/avatar-group.css" layer(components);
@@ -39,12 +33,19 @@
 @import "@heroui/styles/components/textfield.css" layer(components);
 @import "@heroui/styles/components/tooltip.css" layer(components);
 
+@reference "@heroui/styles/themes/default";
+@reference "@heroui/styles/utilities";
+@reference "@heroui/styles/variants";
+
+@custom-variant dark (&:is(.dark *));
+@plugin "tailwindcss-animate";
+@plugin "@tailwindcss/typography";
+
 @source "../[locale]/(landing)";
+@source "../[locale]/(unindexed)";
 @source not "../[locale]/(landing)/blog";
 @source not "../[locale]/(landing)/marketplace";
 @source not "../[locale]/(landing)/learn";
-@source not "../[locale]/(landing)/glossary";
-@source not "../[locale]/(landing)/guides";
 @source not "../[locale]/(landing)/alternative-to";
 @source not "../[locale]/(landing)/automate";
 @source not "../[locale]/(landing)/ai-assistant-like-jarvis";
@@ -66,6 +67,7 @@
 @source "../../features/comparisons";
 @source "../../features/alternatives";
 @source "../../features/about";
+@source "../../features/auth";
 @source "../../features/contact";
 @source "../../features/download";
 @source "../../features/faq";
@@ -75,6 +77,7 @@
 @source "../../features/team";
 @source "../../features/thanks";
 @source "../../features/use-cases";
+@source "../../features/integrations/components/IntegrationChipLink.tsx";
 @source "../../components/common";
 @source "../../components/layout";
 @source "../../components/layouts";

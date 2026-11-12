@@ -85,10 +85,10 @@ export default function Footer() {
               Modern work is scattered across inboxes, calendars, documents,
               chats, issue trackers, and a growing collection of specialised
               tools. The cost is not only the time spent switching between them,
-              but the attention lost while remembering what needs to happen next.
-              A useful assistant has to understand the context around that work:
-              the people involved, the deadlines, the commitments, and the small
-              decisions that are easy to forget.
+              but the attention lost while remembering what needs to happen
+              next. A useful assistant has to understand the context around that
+              work: the people involved, the deadlines, the commitments, and the
+              small decisions that are easy to forget.
             </p>
             <p className="mb-3">
               GAIA connects the tools people already use and turns that context
@@ -103,9 +103,10 @@ export default function Footer() {
               The assistant works across email, calendar, notes, project
               management, engineering, sales, and personal productivity. Teams
               can start with a single workflow and add tools as their needs
-              change. Because GAIA is source-available, organisations can inspect
-              how it works, connect their own services, and choose a hosting model
-              that fits their privacy and operational requirements.
+              change. Because GAIA is source-available, organisations can
+              inspect how it works, connect their own services, and choose a
+              hosting model that fits their privacy and operational
+              requirements.
             </p>
             <p>
               Whether the task is preparing for a one-to-one, triaging a busy

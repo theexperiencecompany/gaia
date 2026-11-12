@@ -148,38 +148,42 @@ Types are split into three directories:
 - Use `tailwind-merge` (`twMerge`) to merge conditional class names; use `clsx` for conditionals.
 - `class-variance-authority` (CVA) for variant-based component APIs.
 - HeroUI and Radix UI are both present — prefer HeroUI for standard UI primitives before reaching for Radix directly.
-- **Never use icon components as spinners** (e.g. `Loading02Icon` with `animate-spin`). Always use `<Spinner>` from `@heroui/spinner` for loading states, or `<Skeleton>` from `@heroui/skeleton` for content placeholders. Icon-based spinners look wrong and are not consistent with the design system.
+- **Never use icon components as spinners** (e.g. `Loading02Icon` with `animate-spin`). Always use `<Spinner>` from `@heroui/react` for loading states, or `<Skeleton>` for content placeholders. Icon-based spinners look wrong and are not consistent with the design system.
 - Use Framer Motion (`motion/react`) for transitions; `AnimatePresence` is required for exit animations.
 - Design tokens, the chat tool-card contract, status colors, `cn()` / `cva`, animation classes and easing live in **`DESIGN.md`** at the repo root — read it before writing UI, do not restate it here.
 
 ### HeroUI Components
 
-Always use HeroUI over raw HTML or custom implementations. HeroUI handles accessibility, keyboard navigation, focus management, and theming for you. Only reach for raw HTML when there is no HeroUI equivalent. Docs: https://v2.heroui.com/docs/guide/introduction
+Always use HeroUI over raw HTML or custom implementations. HeroUI handles accessibility, keyboard navigation, focus management, and theming for you. Only reach for raw HTML when there is no HeroUI equivalent. Everything imports from the one package, `@heroui/react` (v3, compound components). Docs: https://heroui.com/docs/react/getting-started. The v2 → v3 prop and variant mapping is `tools/heroui-migration/decisions.json`; the shapes are in `tools/heroui-migration/V3-API.md`.
 
-| Need | HeroUI component | Never use |
+| Need | HeroUI component (`@heroui/react`) | Never use |
 |---|---|---|
-| Button / icon button | `<Button>`, `<Button isIconOnly>` from `@heroui/button` | `<button>` |
-| Link | `<Link>` from `@heroui/link` (or Next.js `Link`) | `<a>` |
-| Dropdown menu | `<Dropdown>` + `<DropdownTrigger>` + `<DropdownMenu>` + `<DropdownItem>` from `@heroui/dropdown` | Manual state + click-outside handler |
-| Tooltip | `<Tooltip>` from `@heroui/tooltip` | Custom hover state |
-| Modal / dialog | `<Modal>` + `<ModalContent>` from `@heroui/modal` | Custom overlay + z-index |
-| Divider | `<Divider>` from `@heroui/divider` | `<hr>` |
-| Loading spinner | `<Spinner>` from `@heroui/spinner` | Icon with `animate-spin` |
-| Skeleton placeholder | `<Skeleton>` from `@heroui/skeleton` | Custom shimmer div |
-| Select / combobox | `<Select>` + `<SelectItem>` from `@heroui/select` | `<select>` |
-| Input / textarea | `<Input>` / `<Textarea>` from `@heroui/input` | `<input>` / `<textarea>` |
-| Checkbox | `<Checkbox>` from `@heroui/checkbox` | `<input type="checkbox">` |
-| Tabs | `<Tabs>` + `<Tab>` from `@heroui/tabs` | Manual active-tab state |
-| Accordion | `<Accordion>` + `<AccordionItem>` from `@heroui/accordion` | Manual expand state |
+| Button / icon button | `<Button variant=… onPress={…} isPending={…}>`, `<Button isIconOnly>` | `<button>` |
+| Button that navigates | `<Button render={(props) => <Link {...props} href=… />}>` or `buttonVariants()` on a Next.js `Link` | `<a>` styled as a button |
+| Link | `<Link>` (or Next.js `Link`) | `<a>` |
+| Dropdown menu | `<Dropdown>` + `<Dropdown.Trigger>` + `<Dropdown.Popover>` + `<Menu>` / `<Menu.Item id textValue>` | Manual state + click-outside handler |
+| Tooltip | `<Tooltip>` + `<Tooltip.Trigger>` + `<Tooltip.Content>` | Custom hover state |
+| Modal / dialog | `<Modal>` + `<Modal.Backdrop>` / `<Modal.Container>` / `<Modal.Dialog>` + `Header` / `Body` / `Footer` | Custom overlay + z-index |
+| Open/close state | `useOverlayState` | Hand-rolled `isOpen` booleans for overlays |
+| Divider | `<Separator>` | `<hr>` |
+| Loading spinner | `<Spinner>` | Icon with `animate-spin` |
+| Skeleton placeholder | `<Skeleton>` | Custom shimmer div |
+| Select / combobox | `<Select>` + `<Select.Trigger>` / `<Select.Popover>` + `<ListBox.Item id textValue>` | `<select>` |
+| Input / textarea | `<TextField>` + `<Label>` + `<Input>` / `<TextArea>` + `<FieldError>` | `<input>` / `<textarea>` |
+| Checkbox | `<Checkbox>` + `<Checkbox.Control>` + `<Checkbox.Indicator>` | `<input type="checkbox">` |
+| Tabs | `<Tabs>` + `<Tabs.List>` / `<Tabs.Tab id>` / `<Tabs.Panel id>` | Manual active-tab state |
+| Accordion | `<Accordion>` + `<Accordion.Item>` / `Heading` / `Trigger` / `Panel` | Manual expand state |
 
-**`DropdownTrigger` rule** — always pass a HeroUI `<Button>` (or a component using `useButton`) as the child, never a raw `<button>` or `<div>`. HeroUI propagates `onPress`, `ref`, and ARIA attributes to its own Button; raw elements miss the keyboard/accessibility wiring.
+v3 has no `color` on Button (colour folds into `variant`), no `radius`, no `classNames` (style the sub-component's `className`), no `startContent`/`endContent` (icons are children), `onPress` not `onClick`, `isPending` not `isLoading`.
+
+**`Dropdown.Trigger` rule** — `Dropdown.Trigger` is itself a pressable; put its content inside it (or a HeroUI `<Button>`), never a raw `<button>` or `<div>` with its own click handler. Press events stop propagation by default, so no `stopPropagation` wrapper is needed.
 
 **Raw `<button>` is a documented exception, never a default.** A raw `<button>` is allowed ONLY where HeroUI `<Button>` provably cannot reproduce the required layout/styling without fighting the component. Every such instance must be listed here so the exception stays auditable:
 
 - Clickable card/list-row/chip containers converted from `div[role="button"]` to raw `<button type="button">` during the React Doctor a11y sweep (calendar event bars/cards/rows, chat tool-card rows like Todo/Twitter sections, composer items like LockedToolItem/SlashCommandDropdown/SelectedReplyIndicator, HoloCard flip container) — HeroUI `<Button>` cannot reproduce these full-card layouts; the native element supplies click + Enter/Space semantics.
 - Clickable rows/cards converted from `div onClick` for Sonar S1082 (click without keyboard support): landing demo rows (DemoSidebar integrations, DemoIntegrationsView, DemoTodosView, DummySlashCommandDropdown tools), the CLI install page's click-to-copy code block, and the WorkflowDraftCard body — same full-row layout constraint as above. Where the row also holds a HeroUI control, only the non-interactive part is the `<button>` and the control stays its sibling (never a button inside a button).
 
-**Do not override HeroUI default styling.** Use variant/color props (`variant="flat"`, `color="primary"`, etc.) first. Custom `classNames` / `className` / inline `style` are acceptable only for one-off layout adjustments (`w-full`, `max-w-*`) or when the user explicitly asks for a visual customisation — never to override HeroUI's internal color or shape tokens. Overrides make components fragile across theme changes and upgrades.
+**Do not override HeroUI default styling.** Use variant props (`variant="tertiary"`, `variant="danger-soft"`, etc.) first. Custom `className` / inline `style` are acceptable only for one-off layout adjustments (`w-full`, `max-w-*`) or when the user explicitly asks for a visual customisation — never to override HeroUI's internal color or shape tokens. Overrides make components fragile across theme changes and upgrades.
 
 **OpenUI components** must render **outside** the `imessage-bubble` wrapper, never inside it. Both use `bg-zinc-800`, so rendering inside makes them invisible against the bubble. See `apps/web/src/config/openui/CLAUDE.md` for the full OpenUI lifecycle and component checklist.
 

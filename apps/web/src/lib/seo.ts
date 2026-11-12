@@ -279,7 +279,9 @@ export function generatePageMetadata({
       : { absolute: minimumTitle };
 
   // Full title for OpenGraph, suffixed by the same rule
-  const fullTitle = isHomepage ? siteConfig.fullName : brandedTitle(minimumTitle);
+  const fullTitle = isHomepage
+    ? siteConfig.fullName
+    : brandedTitle(minimumTitle);
 
   const allKeywords = [...commonKeywords, ...keywords];
 

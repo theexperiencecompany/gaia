@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/react";
-import { Popover, PopoverContent, PopoverTrigger } from "@heroui/react";
+import { Button, Popover } from "@heroui/react";
 import { FilterHorizontalIcon } from "@icons";
 import type { AuthoredGateView, SystemGateView } from "@shared/api/generated";
 import { PanelRowContent } from "@/components/shared/PanelRow";
@@ -42,12 +41,12 @@ export function GateRow({ saved, watchesMail, ...rule }: GateRowProps) {
       </Popover.Trigger>
       <Popover.Content placement="bottom" offset={6}>
         <Popover.Dialog className="w-80 rounded-2xl bg-zinc-900 p-0 shadow-xl">
-        <GateDetail
-          {...rule}
-          skips={skips}
-          editedByUser={shown?.kind === "authored" && shown.author === "user"}
-          copy={copy}
-        />
+          <GateDetail
+            {...rule}
+            skips={skips}
+            editedByUser={shown?.kind === "authored" && shown.author === "user"}
+            copy={copy}
+          />
         </Popover.Dialog>
       </Popover.Content>
     </Popover>

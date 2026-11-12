@@ -47,7 +47,7 @@ Styling: the dark-card pattern in `DESIGN.md` (outer `rounded-2xl bg-zinc-800 p-
 - **A renderer returning `null`** (unregistered tool, or `getTypedData` mismatch) silently renders nothing. If a card does not appear, confirm the `tool_name` is in both `TOOL_REGISTRY` and `TOOL_RENDERERS`.
 - **`GROUPED_TOOLS` changes your data shape.** A grouped renderer gets `Data[]` (or `Data[][]` for already-batched payloads like `email_fetch_data`); flatten/dedup inside the renderer as the existing entries do.
 - **Cards must dedup their own merged input.** Grouped streams can repeat items (see the `Set`-based dedup in `search_results`, `integration_connection_required`, `rate_limit_data`).
-- **HeroUI for every primitive** (`Button`, `Chip`, `Divider`, `Tooltip`, `Spinner`), never raw HTML or icon-based spinners. **Icons only from `@icons`.** No Unicode glyphs (`→`, `•`, `×`) as UI — use icon components. These are house rules, not lint-caught.
+- **HeroUI for every primitive** (`Button`, `Chip`, `Separator`, `Tooltip`, `Spinner`), never raw HTML or icon-based spinners. **Icons only from `@icons`.** No Unicode glyphs (`→`, `•`, `×`) as UI — use icon components. These are house rules, not lint-caught.
 
 ## Which path do I use
 

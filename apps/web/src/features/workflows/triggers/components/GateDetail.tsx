@@ -1,9 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/react";
-import { Separator } from "@heroui/react";
-import { TextArea } from "@heroui/react";
-import { Switch } from "@heroui/react";
+import { Button, Separator, Switch, TextArea } from "@heroui/react";
 import type { GateSkipRecord } from "@shared/api/generated";
 import { type KeyboardEvent, useState } from "react";
 import {

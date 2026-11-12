@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/react";
-import { Skeleton } from "@heroui/react";
+import { Button, Skeleton } from "@heroui/react";
 
 /** The cards a loading grid stands in for: Pro, then Enterprise beside it. */
 const PLACEHOLDER_TIERS = ["pro", "enterprise"] as const;
@@ -43,10 +42,7 @@ export function PricingCardsFallback({
           Unable to load pricing plans. Please refresh the page or try again
           later.
         </p>
-        <Button
-          variant="danger"
-          onPress={() => window.location.reload()}
-        >
+        <Button variant="danger" onPress={() => window.location.reload()}>
           Refresh page
         </Button>
       </div>

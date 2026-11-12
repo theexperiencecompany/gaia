@@ -74,7 +74,7 @@ export function FirstStepsWidget() {
                 size="sm"
               >
                 <ProgressBar.Track className="bg-zinc-700">
-                  <ProgressBar.Fill className="bg-success transition-all duration-500 ease-out" />
+                  <ProgressBar.Fill className="bg-success transition-[width] duration-500 ease-out" />
                 </ProgressBar.Track>
               </ProgressBar>
             </m.div>

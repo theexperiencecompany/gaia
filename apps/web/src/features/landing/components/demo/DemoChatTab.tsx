@@ -40,7 +40,6 @@ export default function DemoChatTab({ label, active }: DemoChatTabProps) {
         <Dropdown>
           <Dropdown.Trigger
             className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 text-zinc-400 hover:bg-zinc-700 hover:text-white ${buttonHovered ? "backdrop-blur-lg" : ""}`}
-            onClick={(e) => e.stopPropagation()}
             aria-label="Chat options"
           >
             <MoreVerticalIcon

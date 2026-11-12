@@ -1,7 +1,6 @@
 "use client";
 
-import { Slider } from "@heroui/react";
-import { Switch } from "@heroui/react";
+import { Slider, Switch } from "@heroui/react";
 import { Moon02Icon } from "@icons";
 import { useQuietHours } from "@/features/settings/hooks/useQuietHours";
 import {
@@ -81,10 +80,16 @@ export function QuietHoursSettings() {
           step={1}
           value={toAxis(hours)}
           isDisabled={!hours.enabled}
-          onChange={(value) => {
+          onChange={(value) =>
+            Array.isArray(value) &&
+            preview({ ...hours, ...fromAxis([value[0], value[1]]) })
+          }
+          onChangeEnd={(value) => {
             if (!Array.isArray(value)) return;
             const next = { ...hours, ...fromAxis([value[0], value[1]]) };
-            preview(next.start_hour === next.end_hour ? null : next);
+            // Thumbs that meet span no hours; the stored window stays.
+            if (next.start_hour === next.end_hour) preview(null);
+            else save(next);
           }}
         >
           <Slider.Track>
@@ -92,6 +97,17 @@ export function QuietHoursSettings() {
             <Slider.Thumb className="bg-indigo-300" />
             <Slider.Thumb className="bg-indigo-300" />
           </Slider.Track>
+          <Slider.Marks className="pointer-events-none">
+            {QUIET_AXIS_MARKS.map((value) => (
+              <Slider.Mark
+                key={value}
+                value={value}
+                className="whitespace-nowrap text-[11px] text-zinc-500 tabular-nums"
+              >
+                {markLabel(value)}
+              </Slider.Mark>
+            ))}
+          </Slider.Marks>
         </Slider>
       </div>
     </section>

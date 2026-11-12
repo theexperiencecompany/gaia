@@ -59,7 +59,10 @@ export function LinkButton({
   return (
     <Link
       href={href}
-      className={cn(classes, "text-medium text-start font-medium text-zinc-300")}
+      className={cn(
+        classes,
+        "text-medium text-start font-medium text-zinc-300",
+      )}
       style={{ padding: "9px", height: "30px", width: "fit-content" }}
       {...props}
     >

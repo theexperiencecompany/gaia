@@ -9,8 +9,7 @@
 
 "use client";
 
-import { Button } from "@heroui/react";
-import { Spinner } from "@heroui/react";
+import { Button, Spinner } from "@heroui/react";
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import { useEffect, useRef, useState } from "react";

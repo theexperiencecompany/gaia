@@ -1,13 +1,7 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities) source(none);
 @import "./theme.css";
-@reference "@heroui/styles/themes/default";
-@reference "@heroui/styles/utilities";
-@reference "@heroui/styles/variants";
 
-@custom-variant dark (&:is(.dark *));
-@plugin "tailwindcss-animate";
-@plugin "@tailwindcss/typography";
 @import "@heroui/styles/components/accordion.css" layer(components);
 @import "@heroui/styles/components/alert.css" layer(components);
 @import "@heroui/styles/components/autocomplete.css" layer(components);
@@ -50,6 +44,14 @@
 @import "@heroui/styles/components/textfield.css" layer(components);
 @import "@heroui/styles/components/tooltip.css" layer(components);
 
+@reference "@heroui/styles/themes/default";
+@reference "@heroui/styles/utilities";
+@reference "@heroui/styles/variants";
+
+@custom-variant dark (&:is(.dark *));
+@plugin "tailwindcss-animate";
+@plugin "@tailwindcss/typography";
+
 /* These are ALLOWLISTS: `source(none)` means a directory not named here emits
    zero CSS, and Tailwind reports nothing. Anything a page imports must be
    reachable from one of these lines (and the marketing/content bundles use
@@ -61,6 +63,8 @@
 @source "../[locale]/file-icons";
 @source "../[locale]/(desktop)";
 @source "../[locale]/(live)";
+@source "../[locale]/dev";
+@source "../connect";
 @source "../../features/auth";
 @source "../../features/browser";
 @source "../../features/calendar";

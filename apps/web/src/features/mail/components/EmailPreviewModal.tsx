@@ -3,6 +3,7 @@
 import {
   Button,
   Chip,
+  CloseButton,
   FieldError,
   Input,
   Label,
@@ -82,13 +83,13 @@ function RecipientsField({
             >
               <Chip.Label className="truncate text-xs">{chip.email}</Chip.Label>
               {mode === "edit" && (
-                <button
-                  type="button"
-                  onClick={() => onRemoveChip(chip.email)}
-                  className="ml-1 rounded-full p-0.5 transition-colors hover:bg-white/20"
+                <CloseButton
+                  aria-label={`Remove ${chip.email}`}
+                  onPress={() => onRemoveChip(chip.email)}
+                  className="ml-1 size-auto rounded-full p-0.5 transition-colors hover:bg-white/20"
                 >
                   <Cancel01Icon size={12} />
-                </button>
+                </CloseButton>
               )}
             </Chip>
           ))}

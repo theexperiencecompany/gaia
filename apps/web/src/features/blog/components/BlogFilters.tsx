@@ -89,7 +89,9 @@ export function BlogFilters({ blogs, onFilterChange }: BlogFiltersProps) {
         className="w-full max-w-sm"
       >
         <Label className="sr-only">Search posts</Label>
-        <Description className="sr-only">Search blog posts by title or topic</Description>
+        <Description className="sr-only">
+          Search blog posts by title or topic
+        </Description>
         <InputGroup>
           <InputGroup.Prefix>
             <SearchIcon className="size-5 text-default-400" />

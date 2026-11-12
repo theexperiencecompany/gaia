@@ -1,10 +1,19 @@
 "use client";
 
-/**
- * HeroUI v3 needs no provider: components read theme tokens directly from CSS
- * and get their router integration from React Aria's own defaults. This stays as
- * a pass-through so the layout tree and its import sites are unchanged.
- */
+import { useRouter } from "next/navigation";
+import { RouterProvider } from "react-aria-components";
+
+declare module "react-aria-components" {
+  interface RouterConfig {
+    routerOptions: NonNullable<
+      Parameters<ReturnType<typeof useRouter>["push"]>[1]
+    >;
+  }
+}
+
+/** Route HeroUI's href props (Link, Menu.Item, Tabs.Tab) through the Next.js router instead of a full page load. */
 export function HeroUIProvider({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  const router = useRouter();
+
+  return <RouterProvider navigate={router.push}>{children}</RouterProvider>;
 }

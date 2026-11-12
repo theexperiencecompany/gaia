@@ -1,6 +1,13 @@
 "use client";
 
-import { Chip, Description, InputGroup, Kbd, Label, TextField } from "@heroui/react";
+import {
+  Chip,
+  Description,
+  InputGroup,
+  Kbd,
+  Label,
+  TextField,
+} from "@heroui/react";
 import { ArrowRight02Icon, Search01Icon } from "@icons";
 import type { Easing, Variants } from "motion/react";
 import * as m from "motion/react-m";
@@ -126,7 +133,9 @@ export function FeaturesGrid({ children }: { children?: ReactNode }) {
         >
           <TextField value={search} onChange={setSearch} className="max-w-md">
             <Label className="sr-only">Search features</Label>
-            <Description className="sr-only">Search features by name or category</Description>
+            <Description className="sr-only">
+              Search features by name or category
+            </Description>
             <InputGroup>
               <InputGroup.Prefix>
                 <Search01Icon className="size-4 shrink-0" />
