@@ -19,7 +19,6 @@ from app.models.chat_models import MessageModel, ToolDataEntry
 from app.models.conversation_models import (
     ConversationDescriptionHit,
     ConversationDocument,
-    ConversationEntry,
 )
 from app.utils.errors import (
     ConversationNotFoundError,
@@ -727,7 +726,6 @@ async def test_a_created_conversation_head_holds_no_messages_and_an_empty_log(
             "user_id": f"u-{uuid.uuid4().hex}",
             "conversation_id": f"c-{uuid.uuid4().hex}",
             "createdAt": datetime.now(UTC).isoformat(),
-            "messages": [ConversationEntry.committed(_message("m1"), 1)],
         }
     )
 
