@@ -172,7 +172,7 @@ def test_display_puts_comms_first_then_approvals_then_work(
     assert state.display is display
 
 
-_PAYLOADS: list[BaseModel] = [
+_PAYLOADS: list[StreamPayload] = [
     ResponseEvent(response="hi"),
     ReasoningEvent(reasoning=ReasoningPayload(content="thinking")),
     ToolDataEvent(tool_data={"tool_name": "search", "data": {"q": "x"}, "tool_category": "web"}),
@@ -213,7 +213,8 @@ def test_every_delta_round_trips_with_its_payload_type(
     payload: StreamPayload, frame_of: Callable[[StreamPayload], ReplyDeltaFrame | WorkDeltaFrame]
 ) -> None:
     frame = frame_of(payload)
-    parsed = TypeAdapter(OutputFrame).validate_json(frame.model_dump_json())
+    parsed: OutputFrame = TypeAdapter(OutputFrame).validate_json(frame.model_dump_json())
+    assert isinstance(parsed, ReplyDeltaFrame | WorkDeltaFrame)
     assert type(parsed) is type(frame)
     assert type(parsed.payload) is type(payload)
     assert parsed == frame
