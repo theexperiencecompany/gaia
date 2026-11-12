@@ -13,6 +13,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+import pytest
 
 from app.agents.core.interruption import (
     INTERRUPTED_TOOL_RESULT,
@@ -136,11 +137,12 @@ def _snapshot(messages: list[Any] | None) -> MagicMock:
 
 
 class TestRecordInterruption:
-    async def test_the_record_is_written_to_the_tool_node_with_ids(self) -> None:
+    @pytest.mark.regression
+    async def test_the_record_rewrites_the_dangling_call_so_no_backfill_is_orphaned(self) -> None:
+        """Regression: a call only in pending writes was dropped, leaving its backfill answering nothing."""
         graph = MagicMock()
-        graph.aget_state = AsyncMock(
-            return_value=_snapshot([AIMessage(content="", tool_calls=[_call("c1")])])
-        )
+        cut = AIMessage(content="", tool_calls=[_call("c1")], id="ai-1")
+        graph.aget_state = AsyncMock(return_value=_snapshot([cut]))
         graph.aupdate_state = AsyncMock()
         config = {"configurable": {"thread_id": "thread-1"}}
 
@@ -148,7 +150,9 @@ class TestRecordInterruption:
             await record_interruption(graph, config)
 
         written = graph.aupdate_state.await_args.args[1]["messages"]
-        assert [type(m) for m in written] == [ToolMessage, HumanMessage]
+        assert [type(m) for m in written] == [AIMessage, ToolMessage, HumanMessage]
+        assert written[0].id == "ai-1"
+        assert written[1].tool_call_id == "c1"
         assert all(m.id for m in written)
         graph.aupdate_state.assert_awaited_once()
         assert graph.aupdate_state.await_args.args[0] == config
