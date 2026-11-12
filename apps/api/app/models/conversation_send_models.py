@@ -52,6 +52,20 @@ class BotMessageAccepted(MessageAccepted):
     session_token: str
 
 
+class ActiveBotConversation(ResponseModel):
+    """A bot session's conversation still answering; a restarted bot follows its events after after_seq.
+
+    The log does not record what a platform delivered: after_seq is the newest settled reply's
+    seq, so the follower replays the reply in flight and everything after it.
+    """
+
+    conversation_id: str
+    platform_user_id: str
+    channel_id: str | None
+    is_dm: bool
+    after_seq: int = Field(ge=0)
+
+
 class ConversationEvent(ResponseModel):
     """One frame on a conversation's events stream; stream_id is the cursor to resume after, None for a log replay."""
 

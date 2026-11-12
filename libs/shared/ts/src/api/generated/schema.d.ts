@@ -339,6 +339,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bot/conversations/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Active Bot Conversations
+         * @description The platform's conversations still answering or working, with the seq to follow after.
+         */
+        get: operations["bot_list_active_conversations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bot/create-link-token": {
         parameters: {
             query?: never;
@@ -5974,6 +5994,25 @@ export interface components {
          * @enum {string}
          */
         ActionType: "redirect" | "api_call" | "modal";
+        /**
+         * ActiveBotConversation
+         * @description A bot session's conversation still answering; a restarted bot follows its events after after_seq.
+         *
+         *     The log does not record what a platform delivered: after_seq is the newest settled reply's
+         *     seq, so the follower replays the reply in flight and everything after it.
+         */
+        ActiveBotConversation: {
+            /** After Seq */
+            after_seq: number;
+            /** Channel Id */
+            channel_id: string | null;
+            /** Conversation Id */
+            conversation_id: string;
+            /** Is Dm */
+            is_dm: boolean;
+            /** Platform User Id */
+            platform_user_id: string;
+        };
         /**
          * ActivityDay
          * @description One UTC day of the heatmap: actions plus the tokens they burned.
@@ -17376,6 +17415,7 @@ export type ActionConfig = components['schemas']['ActionConfig'];
 export type ActionExecutionResponse = components['schemas']['ActionExecutionResponse'];
 export type ActionStyle = components['schemas']['ActionStyle'];
 export type ActionType = components['schemas']['ActionType'];
+export type ActiveBotConversation = components['schemas']['ActiveBotConversation'];
 export type ActivityDay = components['schemas']['ActivityDay'];
 export type AddIntegrationResponse = components['schemas']['AddIntegrationResponse'];
 export type AddUserIntegrationRequest = components['schemas']['AddUserIntegrationRequest'];
@@ -18779,6 +18819,55 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    bot_list_active_conversations: {
+        parameters: {
+            query: {
+                platform: components["schemas"]["ConversationSource"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveBotConversation"][];
+                };
             };
             /** @description Unprocessable Entity */
             422: {

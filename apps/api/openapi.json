@@ -89,6 +89,48 @@
         "title": "ActionType",
         "type": "string"
       },
+      "ActiveBotConversation": {
+        "description": "A bot session's conversation still answering; a restarted bot follows its events after after_seq.\n\nThe log does not record what a platform delivered: after_seq is the newest settled reply's\nseq, so the follower replays the reply in flight and everything after it.",
+        "properties": {
+          "after_seq": {
+            "minimum": 0.0,
+            "title": "After Seq",
+            "type": "integer"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "is_dm": {
+            "title": "Is Dm",
+            "type": "boolean"
+          },
+          "platform_user_id": {
+            "title": "Platform User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "platform_user_id",
+          "channel_id",
+          "is_dm",
+          "after_seq"
+        ],
+        "title": "ActiveBotConversation",
+        "type": "object"
+      },
       "ActivityDay": {
         "description": "One UTC day of the heatmap: actions plus the tokens they burned.\n\nToken counts are the *charged* ones only \u2014 the same spend the budget\npercentage is measured against \u2014 so background work (memory extraction,\nonboarding) never shows up as something the user did. Cached and reasoning\ntokens are broken out because they explain an otherwise surprising input\ntotal; ``tokens`` is input + output, matching how the per-request ceiling\ncounts them (``cost_budget.record_model_call_usage``).",
         "properties": {
@@ -25137,6 +25179,72 @@
           }
         },
         "summary": "Streaming Bot Chat",
+        "tags": [
+          "Bot"
+        ]
+      }
+    },
+    "/api/v1/bot/conversations/active": {
+      "get": {
+        "description": "The platform's conversations still answering or working, with the seq to follow after.",
+        "operationId": "bot_list_active_conversations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "platform",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ConversationSource"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ActiveBotConversation"
+                  },
+                  "title": "Response Bot List Active Conversations",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "List Active Bot Conversations",
         "tags": [
           "Bot"
         ]

@@ -26,6 +26,7 @@ from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
 from app.constants.graphs import GraphName
 from app.db.redis import redis_cache
+from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.models.agent_config import StepTurnRef
 from app.models.agent_models import AgentRunnableConfig
@@ -51,6 +52,7 @@ from app.models.conversation_send_models import SendMessageRequest
 from app.models.message_models import ReplyToMessageData
 from app.models.tool_data_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
+from app.services.conversation.bot_followers import list_active_bot_conversations
 from app.services.conversation.comms_runner import CommsGraphRunner, CommsTurn
 from app.services.conversation.comms_turn import step_turn_ref
 from app.services.conversation.composition import RuntimeEffects, running_steps
@@ -685,3 +687,45 @@ async def test_a_pinned_tool_and_a_replied_to_message_reframe_the_turn_as_a_chat
     assert 'earlier message: "Sam asked about Friday"' in said
     assert "Gmail" in said
     assert (message.reply_to, message.selected_tool) == ("old-b", "gmail")
+
+
+@pytest.mark.service
+async def test_a_restarted_bot_finds_the_conversation_whose_work_is_still_running(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    model = gated("on it", "here are your flights")
+    rig = await rig_for(model)
+    await mongo_db["conversations"].update_one(
+        {"conversation_id": rig.conversation_id}, {"$set": {"source": "telegram"}}
+    )
+    platform_user = f"tg-{uuid4().hex[:8]}"
+    await bot_session_repository.claim_session(
+        session_key=f"telegram:{platform_user}:{platform_user}",
+        platform="telegram",
+        platform_user_id=platform_user,
+        channel_id=None,
+        candidate_conversation_id=rig.conversation_id,
+        timestamp=_now().isoformat(),
+    )
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "find me flights")
+    await rig.settle()
+    [active] = [
+        a
+        for a in await list_active_bot_conversations("telegram")
+        if a.conversation_id == rig.conversation_id
+    ]
+    await record_work_finished(
+        rig.conversation_id, rig.user_id, "t1", WorkOutcome.DONE, "3 flights"
+    )
+    await rig.settle()
+    after = await rig.ports.log.read_after(rig.conversation_id, rig.user_id, active.after_seq)
+    assert (active.platform_user_id, active.is_dm) == (platform_user, True)
+    assert [type(e.entry).__name__ for e in after if not isinstance(e.entry, WorkStarted)][:2] == [
+        "WorkFinished",
+        "Reply",
+    ]
+    assert all(
+        a.conversation_id != rig.conversation_id
+        for a in await list_active_bot_conversations("telegram")
+    )

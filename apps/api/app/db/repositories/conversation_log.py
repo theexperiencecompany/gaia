@@ -229,6 +229,34 @@ class ConversationLogRepository(ConversationRepository):
             for row in rows
         ]
 
+    async def list_live_heads(self, source: str, limit: int) -> list[SweepHead]:
+        """Return the source's heads with live work or unanswered inputs (an open reply has its inputs unsettled)."""
+        with store_errors("log live heads"):  # pragma: no mutate — error label
+            cursor = self._raw_collection().find(
+                {"source": source, **SWEEP_DUE_FILTER},
+                # Equivalent under mutation: any truthy flag projects the field.
+                {
+                    "_id": 0,
+                    "conversation_id": 1,
+                    "user_id": 1,
+                    OUTBOX_FIELD: 1,
+                    STATE_FIELD: 1,
+                },  # pragma: no mutate
+                limit=limit,
+                hint=SWEEP_INDEX_NAME,
+            )
+            rows = [row async for row in cursor]
+        heads = [
+            SweepHead(
+                conversation_id=str(row["conversation_id"]),
+                user_id=str(row["user_id"]),
+                has_outbox=bool(row.get(OUTBOX_FIELD)),
+                state=_state(row),
+            )
+            for row in rows
+        ]
+        return [head for head in heads if head.state.work or head.state.unsettled_waking]
+
     async def list_integration_entries(
         self, *, user_id: str, integration_id: str, since: datetime
     ) -> list[tuple[str, LoggedEntry]]:

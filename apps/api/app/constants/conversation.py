@@ -82,6 +82,8 @@ CLASSIFIER_LOOKBACK_SEQS = 20
 STEP_TICK_SECONDS = 0.25
 # Heads one sweep reads; the sweep runs every SWEEP_SECONDS, so a backlog drains over a few runs.
 SWEEP_BATCH = 200
+# Conversations one active-conversations read returns to a restarting bot.
+ACTIVE_BOT_CONVERSATIONS_LIMIT = 500
 SWEEP_SECONDS = frozenset({0, 15, 30, 45})
 WORK_LOST_REPORT = (
     "The background work stopped unexpectedly when the server running it went down, "
