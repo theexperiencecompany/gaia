@@ -26,6 +26,15 @@ from tests.helpers import (
 )
 
 
+@pytest.fixture
+def origin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give the deployment a content origin, so links frame their files and sign content URLs."""
+    monkeypatch.setattr(
+        settings, "LINK_CONTENT_URL_TEMPLATE", "https://{content_id}.u.heygaia.test"
+    )
+    monkeypatch.setattr(settings, "LINK_CONTENT_SIGNING_KEY", "k" * 32)
+
+
 @pytest.fixture(autouse=True)
 def recorded_activity() -> Iterator[AsyncMock]:
     """Stand in for the middleware's activity write, which needs Mongo; yields it for assertions."""

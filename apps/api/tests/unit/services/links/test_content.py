@@ -307,14 +307,6 @@ class TestQuota:
         assert not await content._within_quota(OWNER, 1)
 
 
-@pytest.fixture
-def origin(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        settings, "LINK_CONTENT_URL_TEMPLATE", "https://{content_id}.u.heygaia.test"
-    )
-    monkeypatch.setattr(settings, "LINK_CONTENT_SIGNING_KEY", "k" * 32)
-
-
 CID = "abcdefghijklmnopqrstuvwxyz"
 LINK = ShortLink(
     slug="abcdefghijk",

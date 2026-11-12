@@ -5,6 +5,7 @@ tests/integration/real/test_links_real.py; here it is mocked at the route's
 import so the request shape, status codes and log fields are pinned alone.
 """
 
+from datetime import UTC, datetime
 from typing import Final
 from unittest.mock import AsyncMock, patch
 
@@ -13,11 +14,16 @@ from httpx import AsyncClient
 import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_optional_user
+from app.config.settings import settings
 from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (
+    LinkAccess,
     LinkDenial,
+    LinkEnvelope,
+    LinkSettings,
     LinkViewer,
     LinkViewerKind,
+    PublicTodoDeliverable,
     ShortLink,
     ShortLinkTargetType,
 )
@@ -32,6 +38,19 @@ SLUG = "abcdefghijk"
 TODO: Final = ShortLinkTargetType.TODO_DELIVERABLE
 _ENDPOINT = "app.api.v1.endpoints.short_links"
 _LINK = ShortLink(slug=SLUG, user_id="owner", target_type=TODO, target_id="t1")
+_SIGNED_OUT = LinkViewer(user_id=None, email=None, ip="127.0.0.1", user_agent="Safari/605")
+_EXPIRES = datetime(2030, 1, 1, tzinfo=UTC)
+_SHARED = _LINK.model_copy(
+    update={"access": LinkAccess.PEOPLE, "grantees": ["a@example.com"], "expires_at": _EXPIRES}
+)
+_SHARED_JSON = {
+    "url": f"{settings.SHORTLINK_BASE_URL}/{SLUG}",
+    "slug": SLUG,
+    "access": "people",
+    "grantees": ["a@example.com"],
+    "expires_at": "2030-01-01T00:00:00Z",
+    "content_max_access": None,
+}
 
 
 @pytest.fixture
@@ -64,11 +83,10 @@ class TestRecordOpen:
                 )
 
         assert response.status_code == 204
+        known_slug.assert_awaited_once_with(SLUG)
         ((link, viewer), _) = record.await_args
         assert link == _LINK
-        assert viewer == LinkViewer(
-            user_id=None, email=None, ip="127.0.0.1", user_agent="Safari/605"
-        )
+        assert viewer == _SIGNED_OUT
         assert event["short_link"] == {
             "operation": "opened",
             "slug_hash": hash_short_link_slug(SLUG),
@@ -91,6 +109,7 @@ class TestRecordOpen:
         assert response.status_code == 204
         ((_, viewer), _) = record.await_args
         assert (viewer.user_id, viewer.email) == (FAKE_USER.user_id, FAKE_USER.email)
+        assert viewer.signed_in_as == FAKE_USER.email
 
     async def test_a_denial_answers_with_its_code(
         self, unauthed_client: AsyncClient, known_slug: AsyncMock
@@ -139,7 +158,87 @@ class TestResolve:
         no_lockout.assert_not_awaited()
 
 
+class TestResolveOpens:
+    async def test_an_open_link_answers_with_its_envelope_uncached(
+        self, unauthed_client: AsyncClient, known_slug: AsyncMock
+    ) -> None:
+        envelope = LinkEnvelope(
+            access=LinkAccess.UNLISTED,
+            target_type=TODO,
+            view=PublicTodoDeliverable(
+                target_type=TODO, title="Plan", completed=True, content="Done"
+            ),
+            content=None,
+            downloadable=False,
+            is_owner=False,
+            owner_target_id=None,
+        )
+        with (
+            patch(f"{_ENDPOINT}.abuse.refuse_when_locked_out", AsyncMock()) as lockout,
+            patch(f"{_ENDPOINT}.abuse.record_miss", AsyncMock()) as miss,
+            patch(f"{_ENDPOINT}.resolve", AsyncMock(return_value=envelope)) as resolve,
+        ):
+            async with captured_wide_event() as event:
+                response = await unauthed_client.get(
+                    f"{BASE}/{SLUG}", headers={"user-agent": "Safari/605"}
+                )
+
+        assert response.status_code == 200
+        assert response.json() == envelope.model_dump(mode="json")
+        assert response.headers["cache-control"] == "private, no-store"
+        assert response.headers["vary"] == "Cookie"
+        lockout.assert_awaited_once_with("127.0.0.1")
+        known_slug.assert_awaited_once_with(SLUG)
+        miss.assert_not_awaited()
+        resolve.assert_awaited_once_with(_LINK, _SIGNED_OUT)
+        assert event["short_link"] == {
+            "operation": "resolve",
+            "slug_hash": hash_short_link_slug(SLUG),
+            "target_type": "todo_deliverable",
+            "access": "unlisted",
+        }
+
+    async def test_a_signed_in_viewer_opens_as_themself(
+        self, client: AsyncClient, test_app: FastAPI, known_slug: AsyncMock, no_lockout: AsyncMock
+    ) -> None:
+        test_app.dependency_overrides[get_optional_user] = lambda: FAKE_USER
+        denied = LinkDeniedError.for_denial(LinkDenial.FORBIDDEN)
+        try:
+            with patch(f"{_ENDPOINT}.resolve", AsyncMock(side_effect=denied)) as resolve:
+                await client.get(f"{BASE}/{SLUG}")
+        finally:
+            del test_app.dependency_overrides[get_optional_user]
+
+        ((_, viewer), _) = resolve.await_args
+        assert viewer.user_id == FAKE_USER.user_id
+
+
 class TestShare:
+    async def test_sharing_mints_with_the_given_settings_and_answers_with_the_link(
+        self, client: AsyncClient
+    ) -> None:
+        with patch(f"{_ENDPOINT}.share", AsyncMock(return_value=_SHARED)) as share:
+            async with captured_wide_event() as event:
+                response = await client.post(
+                    BASE,
+                    json={
+                        "target_type": TODO.value,
+                        "target_id": "t1",
+                        "settings": {"access": "people", "grantees": ["a@example.com"]},
+                    },
+                )
+
+        assert response.status_code == 200
+        assert response.json() == _SHARED_JSON
+        share.assert_awaited_once_with(
+            FAKE_USER.user_id,
+            TODO,
+            "t1",
+            LinkSettings(access=LinkAccess.PEOPLE, grantees=["a@example.com"]),
+        )
+        assert event["user"] == {"id": FAKE_USER.user_id}
+        assert event["short_link"] == {"operation": "create", "target_type": "todo_deliverable"}
+
     async def test_workspace_storage_offline_is_503_not_500(self, client: AsyncClient) -> None:
         with (
             patch(
@@ -203,6 +302,30 @@ class TestShareState:
         assert response.json() == {"link": None}
         live.assert_awaited_once_with(FAKE_USER.user_id, TODO, "t1")
 
+    async def test_a_shared_target_answers_with_its_live_link(self, client: AsyncClient) -> None:
+        with patch(f"{_ENDPOINT}.live_share_link", AsyncMock(return_value=_SHARED)):
+            async with captured_wide_event() as event:
+                response = await client.get(
+                    f"{BASE}/state", params={"target_type": TODO.value, "target_id": "t1"}
+                )
+
+        assert response.json() == {"link": _SHARED_JSON}
+        assert event["user"] == {"id": FAKE_USER.user_id}
+        assert event["short_link"] == {
+            "operation": "share_state",
+            "target_type": "todo_deliverable",
+            "shared": True,
+        }
+
+    async def test_an_unshared_target_is_logged_as_not_shared(self, client: AsyncClient) -> None:
+        with patch(f"{_ENDPOINT}.live_share_link", AsyncMock(return_value=None)):
+            async with captured_wide_event() as event:
+                await client.get(
+                    f"{BASE}/state", params={"target_type": TODO.value, "target_id": "t1"}
+                )
+
+        assert event["short_link"]["shared"] is False
+
     async def test_a_missing_target_is_422(self, client: AsyncClient) -> None:
         response = await client.get(f"{BASE}/state", params={"target_type": "briefing"})
         assert response.status_code == 422
@@ -258,13 +381,31 @@ class TestShortLinkPdf:
                 f"{_ENDPOINT}.owner_artifact_pdf", AsyncMock(return_value=(artifact, b"%PDF-1.7"))
             ) as export,
         ):
-            response = await unauthed_client.get(f"{BASE}/{SLUG}/pdf")
+            response = await unauthed_client.get(
+                f"{BASE}/{SLUG}/pdf", headers={"user-agent": "Safari/605"}
+            )
 
         assert response.status_code == 200
+        known_slug.assert_awaited_once_with(SLUG)
+        assert openable.await_args.args[:2] == (_LINK, _SIGNED_OUT)
         assert response.content == b"%PDF-1.7"
         assert response.headers["content-disposition"] == 'attachment; filename="Q3 plan.pdf"'
         assert openable.await_args.args[2] is ShortLinkTargetType.OPENUI_ARTIFACT
         export.assert_awaited_once_with("owner", "t1")
+
+    async def test_a_signed_in_viewer_is_checked_as_themself(
+        self, client: AsyncClient, test_app: FastAPI, known_slug: AsyncMock
+    ) -> None:
+        test_app.dependency_overrides[get_optional_user] = lambda: FAKE_USER
+        denied = LinkDeniedError.for_denial(LinkDenial.FORBIDDEN)
+        try:
+            with patch(f"{_ENDPOINT}.openable_link", AsyncMock(side_effect=denied)) as openable:
+                response = await client.get(f"{BASE}/{SLUG}/pdf")
+        finally:
+            del test_app.dependency_overrides[get_optional_user]
+
+        assert response.status_code == 403
+        assert openable.await_args.args[1].user_id == FAKE_USER.user_id
 
     async def test_a_gated_link_refuses_a_signed_out_viewer(
         self, unauthed_client: AsyncClient, known_slug: AsyncMock
