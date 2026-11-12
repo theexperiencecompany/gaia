@@ -70,8 +70,9 @@ function sizeOf(rel) {
 
 async function snapshot(label) {
   const base = arg("base", process.env.WEB_BASE_URL || "http://localhost:3000");
-  const routesFile = join(OUT_DIR, "routes.json");
-  const routes = JSON.parse(readFileSync(routesFile, "utf8"));
+  // The review harness's route inventory (review/inventory.mjs) is the one route list.
+  const inventoryFile = arg("inventory", join(process.env.HOME ?? ".", "v3review", "out", "inventory.json"));
+  const routes = [...new Set(JSON.parse(readFileSync(inventoryFile, "utf8")).targets.map((t) => t.url))];
 
   const sizes = new Map(); // chunk url -> bytes
   const perRoute = [];

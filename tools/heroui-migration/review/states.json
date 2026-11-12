@@ -1,0 +1,1610 @@
+{
+  "/": [
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Telegram",
+      "nth": 0
+    },
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Slack",
+      "nth": 0
+    },
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Discord",
+      "nth": 0
+    },
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "iMessage",
+      "nth": 0
+    },
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Yearly",
+      "nth": 0
+    },
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Chat options",
+      "nth": 0
+    }
+  ],
+  "/about": [],
+  "/ai-assistant-like-jarvis": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Is there an AI assistant like Jarvis for Windows?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Can I talk to GAIA like Jarvis?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/ai-assistant-that-can-see-your-screen": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Does GAIA record my screen all the time?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Can it see my screen on Windows?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/ai-assistant-that-uses-your-computer": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Does GAIA use my own browser?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Will GAIA buy things or sign in without asking?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/ai-assistant-whatsapp-telegram-imessage": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Can GAIA read my WhatsApp or iMessage chats with other people?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Does the Telegram bot do everything the web app does?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/ai-assistant-with-memory": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Can I see and delete what GAIA remembers about me?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Does GAIA remember things between different chats?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/ai-chief-of-staff": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "What does GAIA do automatically vs what do I need to ask?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Can GAIA send me a daily briefing of my email and calendar?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/alternative-to": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/alternative-to/airtable": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Is GAIA cheaper than Airtable?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Does GAIA have Airtable's gallery and Gantt views?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/auth/link-platform": [
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Default profile picture Alex Morgan GAIA Pro",
+      "nth": 0,
+      "chrome": "app"
+    }
+  ],
+  "/automate": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/automate/airtable-google-calendar": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Does GAIA add Google Meet links to calendar events?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "What happens if an Airtable record is deleted?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/automate/page/2": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/automate/with/airtable": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/best-ai-assistant": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "What is the best ChatGPT alternative for productivity?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "What are the top rated AI personal assistants right now?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/best-ai-calendar-assistant": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "What is the best AI scheduling assistant?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Can I use GAIA alongside Motion, Sunsama, or Akiflow?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/best-ai-email-assistant": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Is there an AI email assistant that handles my inbox automatically?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Which AI drafts email replies for me in Gmail?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/best-ai-executive-assistant": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "What is the best AI assistant for managing email and calendar?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Is there a free AI executive assistant?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/blog": [],
+  "/blog/create": [
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "combobox",
+      "name": "Search and select authors",
+      "nth": 0
+    },
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Show suggestions",
+      "nth": 0
+    }
+  ],
+  "/blog/desktop": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/bots": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Do people in one channel share a conversation?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Can I send voice notes and files?",
+      "nth": 0
+    }
+  ],
+  "/brand": [],
+  "/c": [],
+  "/c/5eed0000-0000-4000-8000-000000000001": [
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Search Info",
+      "nth": 0
+    },
+    {
+      "kind": "popup:menu",
+      "action": "click",
+      "role": "button",
+      "name": "Temperature settings",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Additional Information",
+      "nth": 0
+    }
+  ],
+  "/c/5eed0000-0000-4000-8000-000000000002": [],
+  "/c/5eed0000-0000-4000-8000-000000000003": [],
+  "/c/5eed0000-0000-4000-8000-000000000004": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Toggle Sidebar",
+      "nth": 0,
+      "chrome": "app"
+    }
+  ],
+  "/c/5eed0000-0000-4000-8000-000000000005": [
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Dynamic 1",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Executed Code",
+      "nth": 0
+    }
+  ],
+  "/c/5eed0000-0000-4000-8000-000000000006": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Available 36",
+      "nth": 0
+    },
+    {
+      "kind": "modal",
+      "action": "click",
+      "role": "button",
+      "name": "Simpler Self-Hosting & a Rebuilt Browser Dismiss what's new What's new Oct 26, 2026 Simpler Self-Hosting & a Rebuilt Browser",
+      "nth": 0,
+      "chrome": "app"
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Search",
+      "nth": 0,
+      "chrome": "app"
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "Pinned Messages",
+      "nth": 0,
+      "chrome": "app"
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Pinned Messages",
+      "nth": 0,
+      "chrome": "app"
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "Create new chat",
+      "nth": 0,
+      "chrome": "app"
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Create new chat",
+      "nth": 0,
+      "chrome": "app"
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Notifications",
+      "nth": 0,
+      "chrome": "app"
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "More approval options",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Copy to clipboard",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Voice Mode",
+      "nth": 0
+    }
+  ],
+  "/c/5eed0000-0000-4000-8000-000000000007": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Mute microphone",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Select microphone",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "End voice session",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Collapse first steps",
+      "nth": 0,
+      "chrome": "app"
+    }
+  ],
+  "/calendar": [],
+  "/cli": [
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "npm",
+      "nth": 0
+    },
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "pnpm",
+      "nth": 0
+    },
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "bun",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Do I need an API key?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Who can sign in?",
+      "nth": 0
+    }
+  ],
+  "/compare": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/compare/activepieces": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "How is GAIA's automation different from Activepieces flows?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Which is better for self-hosting, GAIA or Activepieces?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/compare/category/ai-assistants": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/compare/page/2": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/connect": [],
+  "/contact": [
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Select a request type Request Type*",
+      "nth": 0
+    }
+  ],
+  "/dashboard": [
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Ask GAIA",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Add context or attach files",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Browse all tools",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Send message",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Start a conversation",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Open todo Read the new design system doc",
+      "nth": 0
+    }
+  ],
+  "/desktop-login": [],
+  "/desktop-popup": [],
+  "/desktop-popup/feed": [],
+  "/download": [
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Chevron Down",
+      "nth": 0
+    }
+  ],
+  "/faq": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Can GAIA really run my whole day?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "What does that look like on a normal day?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/features": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/features/calendar": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Can GAIA find a time that works for multiple people?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Can I reschedule or cancel an event through chat?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/file-icons": [],
+  "/for": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/for/adhd-professionals": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Is there a personal assistant for adults with ADHD?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "How is GAIA different from a regular task manager for ADHD?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/how-to-use-ai-as-a-personal-assistant": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "How long does it take to set up an AI personal assistant?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Is it safe to give an AI assistant access to my email?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/inbox-zero-ai": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Can I customize how GAIA triages my inbox?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Will GAIA accidentally delete important emails?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/integrations": [
+    {
+      "kind": "modal",
+      "action": "click",
+      "role": "button",
+      "name": "Create Integration",
+      "nth": 0,
+      "chrome": "app"
+    }
+  ],
+  "/learn": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/learn/accountability-partner": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "How is GAIA's accountability different from a reminder?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/learn/category/ai-concepts": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/learn/page/2": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/login": [],
+  "/manifesto": [],
+  "/marketplace": [
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Most Popular Sort by",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/marketplace/agentmail": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Does AgentMail require an API key?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "How is AgentMail different from connecting Gmail?",
+      "nth": 0
+    }
+  ],
+  "/notifications": [
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "All",
+      "nth": 0,
+      "chrome": "app"
+    },
+    {
+      "kind": "modal",
+      "action": "click",
+      "role": "button",
+      "name": "Contact Support",
+      "nth": 0,
+      "chrome": "app"
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Dismiss",
+      "nth": 0
+    }
+  ],
+  "/onboarding": [
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Account",
+      "nth": 0,
+      "chrome": "app"
+    }
+  ],
+  "/open-source-ai-assistant": [
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Is GAIA really free to self-host?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Can I host an AI assistant on my own server?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/payment/success": [],
+  "/pins": [],
+  "/pricing": [
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Yearly",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "Can GAIA really run my whole day?",
+      "nth": 0
+    },
+    {
+      "kind": "popup:disclosure",
+      "action": "click",
+      "role": "button",
+      "name": "What does that look like on a normal day?",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "Compare with OpenClaw",
+      "nth": 0
+    }
+  ],
+  "/privacy": [],
+  "/profile/6af604c153e70cf25a68fb99": [],
+  "/redirect": [],
+  "/settings": [],
+  "/settings/account": [],
+  "/settings/browser": [
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Saved sites actions",
+      "nth": 0
+    }
+  ],
+  "/settings/desktop": [],
+  "/settings/devices": [],
+  "/settings/devices/approve": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Copy to clipboard",
+      "nth": 0
+    }
+  ],
+  "/settings/devices/approve?code": [],
+  "/settings/experimental": [],
+  "/settings/instructions": [],
+  "/settings/integrations-setup": [],
+  "/settings/linked-accounts": [],
+  "/settings/members": [],
+  "/settings/memory": [
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Documents",
+      "nth": 0
+    },
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Graph",
+      "nth": 0
+    },
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Journal",
+      "nth": 0
+    },
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "All",
+      "nth": 0
+    }
+  ],
+  "/settings/notifications": [],
+  "/settings/preferences": [
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Select your profession",
+      "nth": 0
+    },
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Kolkata (UTC+05:30) - 00:56",
+      "nth": 0
+    },
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Allow always Approval mode",
+      "nth": 0
+    }
+  ],
+  "/settings/profile": [
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Share",
+      "nth": 0
+    },
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Color Picker",
+      "nth": 0
+    }
+  ],
+  "/settings/providers": [],
+  "/settings/skills": [
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Built-in",
+      "nth": 0
+    }
+  ],
+  "/settings/subscription": [],
+  "/settings/usage": [
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Today",
+      "nth": 0
+    },
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Tokens",
+      "nth": 0
+    },
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Week",
+      "nth": 0
+    },
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Year",
+      "nth": 0
+    },
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Month",
+      "nth": 2
+    }
+  ],
+  "/settings/voice": [
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "All genders Filter by gender",
+      "nth": 0
+    },
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "combobox",
+      "name": "Filter by country",
+      "nth": 0
+    },
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Show suggestions",
+      "nth": 0
+    }
+  ],
+  "/setup": [],
+  "/signup": [],
+  "/terms": [],
+  "/thanks": [],
+  "/todos": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "button",
+      "name": "Open todo Read the new design system doc",
+      "nth": 0
+    }
+  ],
+  "/todos/completed": [],
+  "/todos/label/design": [],
+  "/todos/priority/high": [
+    {
+      "kind": "modal",
+      "action": "click",
+      "role": "button",
+      "name": "Add Task",
+      "nth": 0,
+      "chrome": "app"
+    }
+  ],
+  "/todos/project/6af604c153e70cf25a68fb9c": [],
+  "/todos/today": [],
+  "/todos/upcoming": [],
+  "/use-cases": [],
+  "/use-cases/morning-inbox-digest-be2c99": [
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on X",
+      "nth": 0
+    },
+    {
+      "kind": "tooltip",
+      "action": "hover",
+      "role": "link",
+      "name": "GAIA on GitHub",
+      "nth": 0
+    }
+  ],
+  "/wake-listener": [],
+  "/workflows": [],
+  "/workflows/wf_50e21fb517cb": [
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Manual",
+      "nth": 0
+    },
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "Event",
+      "nth": 0
+    },
+    {
+      "kind": "tabs",
+      "action": "click",
+      "role": "tab",
+      "name": "History",
+      "nth": 0
+    },
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Add workflow icon",
+      "nth": 0
+    },
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Every Select every or once or custom",
+      "nth": 0
+    },
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Day Select day or week or month",
+      "nth": 0
+    },
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "combobox",
+      "name": "Timezone",
+      "nth": 0
+    },
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Show suggestions",
+      "nth": 0
+    },
+    {
+      "kind": "popup:dialog",
+      "action": "click",
+      "role": "button",
+      "name": "Regenerate",
+      "nth": 0
+    },
+    {
+      "kind": "modal",
+      "action": "click",
+      "role": "button",
+      "name": "Dismiss",
+      "nth": 0
+    },
+    {
+      "kind": "modal",
+      "action": "click",
+      "role": "button",
+      "name": "Connect Gmail",
+      "nth": 0
+    },
+    {
+      "kind": "modal",
+      "action": "click",
+      "role": "button",
+      "name": "Improve with AI",
+      "nth": 0
+    },
+    {
+      "kind": "modal",
+      "action": "click",
+      "role": "tab",
+      "name": "Schedule",
+      "nth": 0
+    },
+    {
+      "kind": "modal",
+      "action": "click",
+      "role": "tab",
+      "name": "Steps",
+      "nth": 0
+    },
+    {
+      "kind": "modal",
+      "action": "click",
+      "role": "button",
+      "name": "Save",
+      "nth": 0
+    }
+  ]
+}
