@@ -17,7 +17,6 @@ import hashlib
 import json
 
 from bson import ObjectId
-from pymongo import ReplaceOne
 
 from app.db.repositories.conversation_entries import (
     EMBEDDED_LAST_ID,
@@ -31,6 +30,16 @@ from app.db.repositories.conversations import ConversationRepository
 
 #: The id given to a legacy element stored without a message_id: stable, so every pass agrees.
 _LEGACY_ID_PREFIX = "legacy-"
+#: A scan reads only what a HeadRef holds, never the embedded array it is about to copy.
+_HEAD_REF_FIELDS: dict[str, object] = {"_id": 1, "conversation_id": 1, "user_id": 1}
+_BY_HEAD_ID: list[tuple[str, int]] = [("_id", 1)]
+_BY_SEQ: list[tuple[str, int]] = [("seq", 1)]
+#: Fields an entry carries that the embedded element it came from did not.
+_ENTRY_ONLY_FIELDS = frozenset(
+    {"_id", "conversation_id", "user_id", "seq", "at", "id", MIGRATION_HASH_FIELD}
+)
+_UNSET_EMBEDDED: dict[str, object] = {"messages": "", MIGRATED_LAST_ID_FIELD: ""}
+_UNSET_LOG: dict[str, object] = {LOG_HEAD_FIELD: "", OUTBOX_FIELD: "", MIGRATED_LAST_ID_FIELD: ""}
 
 
 class MigrationAction(StrEnum):
@@ -97,6 +106,18 @@ def last_embedded_id(elements: Sequence[Mapping[str, object]]) -> object:
     return present[-1] if present else None
 
 
+def entry_at(element: Mapping[str, object]) -> datetime:
+    """Return when an embedded element was written: its ISO date (a naive one read as UTC), else now."""
+    raw = element.get("date")
+    if not isinstance(raw, str):
+        return datetime.now(UTC)
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return datetime.now(UTC)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
 def _elements(head: Mapping[str, object]) -> list[dict[str, object]]:
     embedded = head.get("messages")
     return (
@@ -104,16 +125,18 @@ def _elements(head: Mapping[str, object]) -> list[dict[str, object]]:
     )
 
 
-def _entry_at(element: Mapping[str, object]) -> datetime:
-    raw = element.get("date")
-    if isinstance(raw, str):
-        try:
-            parsed = datetime.fromisoformat(raw)
-        except ValueError:
-            parsed = None
-        if parsed is not None:
-            return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
-    return datetime.now(UTC)
+def _of(ref: HeadRef) -> dict[str, str]:
+    """Match the entries of ref's conversation."""
+    return {"user_id": ref.user_id, "conversation_id": ref.conversation_id}
+
+
+def _embedded_element(entry: Mapping[str, object]) -> dict[str, object]:
+    """Turn an entry back into the embedded element it was: no entry fields, its id as message_id."""
+    element = {k: v for k, v in entry.items() if k not in _ENTRY_ONLY_FIELDS}
+    entry_id = str(entry["id"])
+    if not entry_id.startswith(_LEGACY_ID_PREFIX):
+        element["message_id"] = entry_id
+    return element
 
 
 class ConversationEntriesMigration(ConversationRepository):
@@ -124,22 +147,19 @@ class ConversationEntriesMigration(ConversationRepository):
     ) -> list[HeadRef]:
         """Return the next batch of heads still holding an embedded array, in _id order after after_head_id."""
         match: dict[str, object] = {"messages.0": {"$exists": True}}
-        if after_head_id is not None:
-            match["_id"] = {"$gt": ObjectId(after_head_id)}
         if since is not None:
             match["updatedAt"] = {"$gte": since}
-        with store_errors("migration scan"):
-            rows = (
-                await self._raw_collection()
-                .find(match, {"_id": 1, "conversation_id": 1, "user_id": 1})
-                .sort("_id", 1)
-                .limit(batch)
-                .to_list(length=batch)
-            )
-        return [
-            HeadRef(str(row["_id"]), str(row["conversation_id"]), str(row["user_id"]))
-            for row in rows
-        ]
+        return await self._scan(match, after_head_id=after_head_id, batch=batch)
+
+    async def heads_without_embedded(
+        self, *, after_head_id: str | None, batch: int
+    ) -> list[HeadRef]:
+        """Return the next batch of migrated heads whose embedded array is gone, for the rollback rebuild."""
+        match: dict[str, object] = {
+            LOG_HEAD_FIELD: {"$exists": True},
+            "messages": {"$exists": False},
+        }
+        return await self._scan(match, after_head_id=after_head_id, batch=batch)
 
     async def migrate(self, ref: HeadRef, *, apply: bool) -> MigrationOutcome:
         """Copy or merge one conversation's embedded array into its entries (only report when not apply)."""
@@ -174,58 +194,32 @@ class ConversationEntriesMigration(ConversationRepository):
             return report
         if head.get(MIGRATED_LAST_ID_FIELD) != last_embedded_id(elements):
             report.mismatches.append("written by the old build since its last pass: run --since")
-        previous_seq = 0
-        for position, (entry_id, element) in enumerate(zip(element_ids(elements), elements), 1):
+        seqs: list[int] = []
+        for entry_id, element in zip(element_ids(elements), elements, strict=True):
             entry = by_id.get(entry_id)
             if entry is None:
-                report.mismatches.append(f"element {position} ({entry_id}) has no entry")
+                report.mismatches.append(f"{entry_id} has no entry")
                 continue
-            seq = int(str(entry["seq"]))
-            if seq <= previous_seq:
-                report.mismatches.append(
-                    f"element {position} ({entry_id}) is out of order: seq {seq}"
-                )
-            previous_seq = seq
+            seqs.append(int(str(entry["seq"])))
             if entry.get(MIGRATION_HASH_FIELD) != element_hash(element):
-                report.mismatches.append(f"element {position} ({entry_id}) differs from its entry")
+                report.mismatches.append(f"{entry_id} differs from its entry")
+        if seqs != sorted(seqs):
+            report.mismatches.append("the entries are not in the embedded array's order")
         return report
 
     async def drop_embedded(self, ref: HeadRef) -> bool:
         """Unset the embedded array once verify passes; False when it does not, or the old build wrote since."""
         if not (await self.verify(ref)).ok:
             return False
-        with store_errors("drop embedded"):
+        with store_errors("drop embedded"):  # pragma: no mutate — error label only
             result = await self._raw_collection().update_one(
                 {
                     "_id": ObjectId(ref.head_id),
                     "$expr": {"$eq": [EMBEDDED_LAST_ID, f"${MIGRATED_LAST_ID_FIELD}"]},
                 },
-                {"$unset": {"messages": "", MIGRATED_LAST_ID_FIELD: ""}},
+                {"$unset": _UNSET_EMBEDDED},
             )
         return result.modified_count > 0
-
-    async def heads_without_embedded(
-        self, *, after_head_id: str | None, batch: int
-    ) -> list[HeadRef]:
-        """Return the next batch of migrated heads whose embedded array is gone, for the rollback rebuild."""
-        match: dict[str, object] = {
-            LOG_HEAD_FIELD: {"$exists": True},
-            "messages": {"$exists": False},
-        }
-        if after_head_id is not None:
-            match["_id"] = {"$gt": ObjectId(after_head_id)}
-        with store_errors("rebuild scan"):
-            rows = (
-                await self._raw_collection()
-                .find(match, {"_id": 1, "conversation_id": 1, "user_id": 1})
-                .sort("_id", 1)
-                .limit(batch)
-                .to_list(length=batch)
-            )
-        return [
-            HeadRef(str(row["_id"]), str(row["conversation_id"]), str(row["user_id"]))
-            for row in rows
-        ]
 
     async def rebuild_embedded(self, ref: HeadRef, *, apply: bool) -> int:
         """Rollback: write the entries back as the embedded array and leave the head unmigrated; returns the count."""
@@ -233,58 +227,36 @@ class ConversationEntriesMigration(ConversationRepository):
         entries = await self._stored(ref)
         if not apply:
             return len(entries)
-        messages = [
-            {
-                **{
-                    k: v
-                    for k, v in entry.items()
-                    if k
-                    not in {
-                        "_id",
-                        "conversation_id",
-                        "user_id",
-                        "seq",
-                        "at",
-                        "id",
-                        MIGRATION_HASH_FIELD,
-                    }
-                },
-                **(
-                    {}
-                    if str(entry["id"]).startswith(_LEGACY_ID_PREFIX)
-                    else {"message_id": entry["id"]}
-                ),
-            }
-            for entry in entries
-        ]
-        with store_errors("rebuild embedded"):
+        messages = [_embedded_element(entry) for entry in entries]
+        with store_errors("rebuild embedded"):  # pragma: no mutate — error label only
             await self._raw_collection().update_one(
                 {"_id": ObjectId(ref.head_id)},
-                {
-                    "$set": {"messages": messages},
-                    "$unset": {LOG_HEAD_FIELD: "", OUTBOX_FIELD: "", MIGRATED_LAST_ID_FIELD: ""},
-                },
+                {"$set": {"messages": messages}, "$unset": _UNSET_LOG},
             )
-            await self._entries().delete_many(
-                {"user_id": ref.user_id, "conversation_id": ref.conversation_id}
-            )
+            await self._entries().delete_many(_of(ref))
         return len(messages)
 
+    async def _scan(
+        self, match: dict[str, object], *, after_head_id: str | None, batch: int
+    ) -> list[HeadRef]:
+        if after_head_id is not None:
+            match["_id"] = {"$gt": ObjectId(after_head_id)}
+        with store_errors("migration scan"):  # pragma: no mutate — error label only
+            cursor = self._raw_collection().find(match, _HEAD_REF_FIELDS)
+            rows = await cursor.sort(_BY_HEAD_ID).limit(batch).to_list(None)
+        return [
+            HeadRef(str(row["_id"]), str(row["conversation_id"]), str(row["user_id"]))
+            for row in rows
+        ]
+
     async def _embedded_head(self, ref: HeadRef) -> dict[str, object]:
-        with store_errors("migration read"):
+        with store_errors("migration read"):  # pragma: no mutate — error label only
             head = await self._raw_collection().find_one({"_id": ObjectId(ref.head_id)})
-        if head is None:
-            return {}
-        return dict(head)
+        return dict(head or {})
 
     async def _stored(self, ref: HeadRef) -> list[dict[str, object]]:
-        with store_errors("migration read"):
-            rows = (
-                await self._entries()
-                .find({"user_id": ref.user_id, "conversation_id": ref.conversation_id})
-                .sort("seq", 1)
-                .to_list(length=None)
-            )
+        with store_errors("migration read"):  # pragma: no mutate — error label only
+            rows = await self._entries().find(_of(ref)).sort(_BY_SEQ).to_list(None)
         return [dict(row) for row in rows]
 
     def _entry(
@@ -293,28 +265,28 @@ class ConversationEntriesMigration(ConversationRepository):
         payload = {k: v for k, v in element.items() if k != "message_id"}
         return {
             **payload,
-            "conversation_id": ref.conversation_id,
-            "user_id": ref.user_id,
+            **_of(ref),
             "seq": seq,
             "id": entry_id,
-            "at": _entry_at(element),
+            "at": entry_at(element),
             MIGRATION_HASH_FIELD: element_hash(element),
         }
 
     async def _copy(
         self, ref: HeadRef, elements: Sequence[Mapping[str, object]], ids: Sequence[str]
     ) -> bool:
-        """First pass: entries at seq 1..n (replacing a crashed pass's), then log_head, if the array is unchanged."""
-        writes = [
-            ReplaceOne(
-                {"user_id": ref.user_id, "conversation_id": ref.conversation_id, "seq": seq},
-                self._entry(ref, element, entry_id, seq),
-                upsert=True,
-            )
-            for seq, (entry_id, element) in enumerate(zip(ids, elements), 1)
+        """First pass: entries at seq 1..n, then log_head, if the array is still the one copied.
+
+        No append reaches an unmigrated head, so its entries can only be a pass that
+        died before marking: they are replaced, never merged.
+        """
+        entries = [
+            self._entry(ref, element, entry_id, seq)
+            for seq, (entry_id, element) in enumerate(zip(ids, elements, strict=True), 1)
         ]
-        with store_errors("migration copy"):
-            await self._entries().bulk_write(writes, ordered=True)
+        with store_errors("migration copy"):  # pragma: no mutate — error label only
+            await self._entries().delete_many(_of(ref))
+            await self._entries().insert_many(entries)
             result = await self._raw_collection().update_one(
                 {
                     "_id": ObjectId(ref.head_id),
@@ -342,47 +314,39 @@ class ConversationEntriesMigration(ConversationRepository):
         """Later pass: append elements the entries lack, rewrite ones the old build changed, then re-mark the head."""
         await self.flush_outbox(ref.conversation_id, user_id=ref.user_id)
         by_id = {str(entry["id"]): entry for entry in await self._stored(ref)}
-        fresh = [(i, e) for i, e in zip(ids, elements) if i not in by_id]
+        pairs = list(zip(ids, elements, strict=True))
+        fresh = [(i, e) for i, e in pairs if i not in by_id]
         changed = [
             (i, e)
-            for i, e in zip(ids, elements)
+            for i, e in pairs
             if i in by_id and by_id[i].get(MIGRATION_HASH_FIELD) != element_hash(e)
         ]
-        stale = head.get(MIGRATED_LAST_ID_FIELD) != last_embedded_id(elements)
-        if not (fresh or changed or stale):
+        last_id = last_embedded_id(elements)
+        if not fresh and not changed and head.get(MIGRATED_LAST_ID_FIELD) == last_id:
             return MigrationOutcome(ref.conversation_id, MigrationAction.UNCHANGED)
         outcome = MigrationOutcome(
             ref.conversation_id, MigrationAction.MERGED, copied=len(fresh), rewritten=len(changed)
         )
         if not apply:
             return outcome
-        with store_errors("migration merge"):
+        with store_errors("migration merge"):  # pragma: no mutate — error label only
             for entry_id, element in changed:
                 seq = int(str(by_id[entry_id]["seq"]))
                 await self._entries().replace_one(
-                    {"user_id": ref.user_id, "conversation_id": ref.conversation_id, "seq": seq},
-                    self._entry(ref, element, entry_id, seq),
+                    {**_of(ref), "seq": seq}, self._entry(ref, element, entry_id, seq)
                 )
-        log_head = head.get(LOG_HEAD_FIELD)
+        log_head = int(str(head[LOG_HEAD_FIELD]))
+        seqs = {i: log_head + n for n, (i, _) in enumerate(fresh, 1)}
+        appended = [(i, self._entry(ref, e, i, seqs[i])) for i, e in fresh]
         if fresh and not await self._commit(
-            ref.conversation_id,
-            ref.user_id,
-            log_head if isinstance(log_head, int) else 0,
-            [(i, {**self._entry(ref, e, i, 0), "id": i}) for i, e in fresh],
-            {
-                i: (log_head if isinstance(log_head, int) else 0) + n
-                for n, (i, _) in enumerate(fresh, 1)
-            },
+            ref.conversation_id, ref.user_id, log_head, appended, seqs
         ):
             return MigrationOutcome(ref.conversation_id, MigrationAction.RACED)
         await self.flush_outbox(ref.conversation_id, user_id=ref.user_id)
-        with store_errors("migration merge"):
+        with store_errors("migration merge"):  # pragma: no mutate — error label only
             marked = await self._raw_collection().update_one(
-                {
-                    "_id": ObjectId(ref.head_id),
-                    "$expr": {"$eq": [EMBEDDED_LAST_ID, last_embedded_id(elements)]},
-                },
-                {"$set": {MIGRATED_LAST_ID_FIELD: last_embedded_id(elements)}},
+                {"_id": ObjectId(ref.head_id), "$expr": {"$eq": [EMBEDDED_LAST_ID, last_id]}},
+                {"$set": {MIGRATED_LAST_ID_FIELD: last_id}},
             )
         if not marked.matched_count:
             return MigrationOutcome(ref.conversation_id, MigrationAction.RACED)

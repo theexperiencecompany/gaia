@@ -22,7 +22,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections import Counter
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from datetime import datetime
 
 from app.db.repositories.conversation_entries_migration import (
@@ -147,7 +147,7 @@ async def _run(args: argparse.Namespace) -> int:
     return await _migrate(args)
 
 
-def main() -> None:
+def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="Write (otherwise dry run).")
     parser.add_argument(
@@ -169,7 +169,11 @@ def main() -> None:
         action="store_true",
         help="Rollback: rebuild embedded arrays from entries.",
     )
-    raise SystemExit(asyncio.run(_run(parser.parse_args())))
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    raise SystemExit(asyncio.run(_run(_parser().parse_args(argv))))
 
 
 if __name__ == "__main__":
