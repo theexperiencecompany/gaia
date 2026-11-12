@@ -27,6 +27,8 @@ LOG_HEAD_FIELD = "log_head"
 OUTBOX_FIELD = "outbox"
 #: The message_id the migration last copied from the embedded array, so a later write by the old build shows.
 MIGRATED_LAST_ID_FIELD = "migrated_last_id"
+#: On a migrated entry: the hash of the embedded element it was copied from (verify compares it).
+MIGRATION_HASH_FIELD = "migration_hash"
 _EMBEDDED_FIELD = "_embedded"
 #: Head fields that never reach a ConversationDocument (or the client it is returned to).
 HEAD_INTERNAL_FIELDS = (
@@ -36,7 +38,7 @@ HEAD_INTERNAL_FIELDS = (
     MIGRATED_LAST_ID_FIELD,
     _EMBEDDED_FIELD,
 )
-_ENTRY_KEY_FIELDS = ("_id", "conversation_id", "user_id", "seq", "id", "at")
+_ENTRY_KEY_FIELDS = ("_id", "conversation_id", "user_id", "seq", "id", "at", MIGRATION_HASH_FIELD)
 
 #: The last embedded message_id, as the migration records it; missing when the array holds none.
 EMBEDDED_LAST_ID: dict[str, object] = {

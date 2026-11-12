@@ -339,10 +339,14 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
     async def flush_outbox(self, conversation_id: str, *, user_id: str) -> None:
         """Copy every outbox entry into conversation_entries, then drop it from the head: insert first, always."""
-        heads = await self._read_heads({"conversation_id": conversation_id, "user_id": user_id})
-        if not heads or not heads[0].outbox:
+        # Reads only the outbox: what is committed is flushed whatever the embedded array holds.
+        with store_errors("flush"):
+            raw = await self._raw_collection().find_one(
+                {"conversation_id": conversation_id, "user_id": user_id}, {OUTBOX_FIELD: 1}
+            )
+        outbox = head_from_raw({OUTBOX_FIELD: (raw or {}).get(OUTBOX_FIELD)}).outbox
+        if not outbox:
             return
-        outbox = heads[0].outbox
         with store_errors("flush"):
             await self._insert_entries([dict(entry) for entry in outbox.values()])
             unset = await self._raw_collection().update_one(
