@@ -9,14 +9,17 @@ that must be escaped or spawnXanything matches too.
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 from langgraph.checkpoint.base.id import uuid6
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg_pool import AsyncConnectionPool
 import pytest
 
 from app.workers.tasks import checkpoint_retention_tasks as tasks
 from app.workers.tasks.checkpoint_retention_tasks import (
+    SpawnSweep,
     _checkpoint_written_at,
     prune_checkpoint_versions,
     sweep_stale_spawn_threads,
@@ -83,6 +86,12 @@ class FakeCheckpointer:
         self.deleted.append(thread_id)
 
 
+async def sweep(cursor: FakeCursor, checkpointer: FakeCheckpointer) -> SpawnSweep:
+    return await sweep_stale_spawn_threads(
+        cast(AsyncConnectionPool, FakePool(cursor)), cast(AsyncPostgresSaver, checkpointer)
+    )
+
+
 class TestCheckpointWrittenAt:
     def test_a_real_uuid6_decodes_to_its_mint_time(self) -> None:
         # The saver's own generator, not a hand-rolled id — if LangGraph ever
@@ -110,7 +119,7 @@ class TestSweepStaleSpawnThreads:
         )
         checkpointer = FakeCheckpointer()
 
-        result = await sweep_stale_spawn_threads(FakePool(cursor), checkpointer)
+        result = await sweep(cursor, checkpointer)
 
         assert sorted(checkpointer.deleted) == ["spawn_conv1_old", "spawn_conv2_just_stale"]
         assert result == {"spawn_threads_total": 4, "spawn_threads_deleted": 2}
@@ -119,7 +128,7 @@ class TestSweepStaleSpawnThreads:
         # Without ESCAPE, `spawn_%` also matches `spawnX...` — `_` is a wildcard.
         cursor = FakeCursor([])
 
-        await sweep_stale_spawn_threads(FakePool(cursor), FakeCheckpointer())
+        await sweep(cursor, FakeCheckpointer())
 
         sql, params = cursor.executed[0]
         assert "ESCAPE" in sql
@@ -130,7 +139,7 @@ class TestSweepStaleSpawnThreads:
         cursor = FakeCursor([("spawn_a_1", uuid6_aged(30)), ("spawn_b_2", uuid6_aged(30))])
         checkpointer = FakeCheckpointer()
 
-        result = await sweep_stale_spawn_threads(FakePool(cursor), checkpointer)
+        result = await sweep(cursor, checkpointer)
 
         assert len(checkpointer.deleted) == 1
         assert result["spawn_threads_deleted"] == 1
@@ -140,7 +149,8 @@ class TestNightlyJobComposition:
     async def test_the_nightly_job_runs_all_three_phases(self) -> None:
         # The cron table wires the job; this pins that the job itself still calls
         # every phase — the stale-spawn sweep has no other trigger.
-        manager = SimpleNamespace(pool=object(), get_checkpointer=lambda: object())
+        pool, checkpointer = object(), object()
+        manager = SimpleNamespace(pool=pool, get_checkpointer=lambda: checkpointer)
         orphan = AsyncMock(
             return_value={
                 "threads_total": 5,
@@ -167,7 +177,7 @@ class TestNightlyJobComposition:
         ):
             summary = await prune_checkpoint_versions({})
 
-        orphan.assert_awaited_once()
-        spawn.assert_awaited_once()
-        prune.assert_awaited_once()
+        orphan.assert_awaited_once_with(pool, checkpointer)
+        spawn.assert_awaited_once_with(pool, checkpointer)
+        prune.assert_awaited_once_with(pool)
         assert "stale_spawns=2" in summary

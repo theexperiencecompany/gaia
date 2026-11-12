@@ -456,7 +456,6 @@ apps/api/tests/unit/utils/test_stream_utils.py	arg-type
 apps/api/tests/unit/utils/test_webpage_fetch.py	arg-type
 apps/api/tests/unit/workers/test_browser_worker.py	arg-type
 apps/api/tests/unit/workers/test_browser_worker.py	attr-defined
-apps/api/tests/unit/workers/test_checkpoint_retention_tasks.py	arg-type
 apps/api/tests/unit/workers/test_cleanup_tasks.py	arg-type
 apps/api/tests/unit/workers/test_memory_sweep_tasks.py	attr-defined
 apps/api/tests/unit/workers/test_memory_sweep_tasks.py	func-returns-value
