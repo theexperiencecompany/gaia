@@ -1807,3 +1807,50 @@ groups:
         labels:
           severity: critical
           service: arq_worker
+
+      # 29. A comms model call ran over a minute. A chat reply that long is a
+      # runaway: the 3,998-break replies of October ran ~100 s to the output
+      # limit. Counted per call, not as a p95, so a single one shows up.
+      - uid: gaia-comms-reply-runaway
+        title: A chat reply ran to an abnormal length
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(llm_call_seconds_count{agent="comms_agent"}[15m])) - sum(increase(llm_call_seconds_bucket{agent="comms_agent",le="60.0"}[15m]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        # Rides out the counter reset of a Prometheus restart; one slow call
+        # stays in the 15m window long past it.
+        for: 2m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} chat model calls
+            ran over 60s in the last 15 minutes (threshold: the first one){{ else }}Unable
+            to read the comms model call durations — this rule could not be evaluated,
+            which almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            The front chat model took over a minute on one reply, which in practice
+            means it generated to its output limit (a loop of repeated text or bubble
+            breaks) while the user waited. Find the call in the llm_calls ledger
+            (comms_agent, duration_ms over 60000) and read its output tokens and
+            finish reason.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-comms-reply-runaway
+        labels:
+          severity: warning
+          service: api
