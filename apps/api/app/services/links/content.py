@@ -50,6 +50,7 @@ from app.models.short_link_models import (
     LinkSnapshot,
     PublishRejection,
     RenderMode,
+    ShortLink,
     ShortLinkTargetType,
 )
 from app.services.analytics_service import analytics_day_start, capture
@@ -395,26 +396,32 @@ def thumbnail_url(content_id: str) -> str:
     return f"{content_origin_base(content_id)}/{THUMBNAIL_PATH}"
 
 
-def _signature(content_id: str, expires: int) -> str:
+def _link_version(link: ShortLink) -> str:
+    """Name the link as a token binds to it: slug and last change, so rotating or narrowing voids old tokens."""
+    changed = link.updated_at or link.created_at
+    return f"{link.slug}:{int(changed.timestamp() * 1000)}"
+
+
+def _signature(content_id: str, link: ShortLink, expires: int) -> str:
     key = settings.LINK_CONTENT_SIGNING_KEY
     if key is None:
         raise RuntimeError("LINK_CONTENT_SIGNING_KEY is unset; check active_link_content() first")
-    message = f"{CONTENT_HMAC_DOMAIN}:{content_id}:{expires}".encode()
+    message = f"{CONTENT_HMAC_DOMAIN}:{content_id}:{_link_version(link)}:{expires}".encode()
     digest = hmac.new(key.encode(), message, hashlib.sha256).digest()
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
 
-def issue_content_url(content_id: str, now: datetime) -> tuple[str, datetime]:
-    """Sign a URL that loads content_id from its origin until the returned time."""
+def issue_content_url(link: ShortLink, content_id: str, now: datetime) -> tuple[str, datetime]:
+    """Sign a URL that loads content_id through link from its origin until the returned time."""
     expires_at = now + timedelta(seconds=CONTENT_TOKEN_TTL_SECONDS)
     expires = int(expires_at.timestamp())
-    token = f"{expires}.{_signature(content_id, expires)}"
+    token = f"{expires}.{_signature(content_id, link, expires)}"
     return f"{content_origin_base(content_id)}/?t={token}", expires_at
 
 
-def token_valid(content_id: str, token: str, now: datetime) -> bool:
-    """Whether token was signed for content_id and has not expired."""
+def token_valid(link: ShortLink, content_id: str, token: str, now: datetime) -> bool:
+    """Whether token was signed for content_id through link as it is now, and has not expired."""
     expires_text, _, signature = token.partition(".")
     if not expires_text.isdigit() or int(expires_text) <= now.timestamp():
         return False
-    return hmac.compare_digest(signature, _signature(content_id, int(expires_text)))
+    return hmac.compare_digest(signature, _signature(content_id, link, int(expires_text)))

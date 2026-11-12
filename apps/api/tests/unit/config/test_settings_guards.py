@@ -632,3 +632,20 @@ def test_a_blank_content_origin_reads_as_unset() -> None:
     settings_obj = _prod_settings(LINK_CONTENT_URL_TEMPLATE="", LINK_CONTENT_SIGNING_KEY="")
     assert settings_obj.LINK_CONTENT_URL_TEMPLATE is None
     assert settings_obj.LINK_CONTENT_SIGNING_KEY is None
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        "https://api.heygaia.io/api/v1/usercontent/{content_id}",
+        "https://heygaia.io/u/{content_id}",
+    ],
+)
+def test_a_content_origin_on_a_cookie_host_is_refused(template: str) -> None:
+    settings_obj = _prod_settings(
+        LINK_CONTENT_URL_TEMPLATE=template,
+        LINK_CONTENT_SIGNING_KEY="k" * 32,
+        HOST="https://api.heygaia.io",
+        FRONTEND_URL="https://heygaia.io",
+    )
+    assert settings_obj.LINK_CONTENT_URL_TEMPLATE is None

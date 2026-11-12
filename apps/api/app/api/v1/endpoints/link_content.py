@@ -74,7 +74,7 @@ async def serve_link_content_route(
     if snapshot is None or not servable(snapshot, link.access):
         raise _not_found()
     link_url = build_url(link.slug)
-    if not token_valid(content_id, t, datetime.now(UTC)):
+    if not token_valid(link, content_id, t, datetime.now(UTC)):
         log.set(link_content={"signed_url": "stale"})
         return RedirectResponse(link_url, status_code=status.HTTP_302_FOUND)
     log.set(link_content={"render": snapshot.render.value})

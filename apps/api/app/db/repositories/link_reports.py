@@ -24,8 +24,8 @@ class LinkReportsRepository(MongoRepository[LinkReport, LinkReportUpdate]):
             return False
         return True
 
-    async def distinct_reporters(self, slug: str) -> int:
-        return await self._count({"slug": slug})
+    async def signed_in_reporters(self, slug: str) -> int:
+        return await self._count({"slug": slug, "signed_in": True})
 
 
 link_report_repository = LinkReportsRepository()

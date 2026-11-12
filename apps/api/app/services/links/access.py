@@ -69,8 +69,8 @@ def _may_open(link: ShortLink, viewer: LinkViewer) -> LinkDenial | None:
             if viewer.user_id is None:
                 return LinkDenial.SIGN_IN_REQUIRED
             email = (viewer.email or "").lower()
-            granted = email and email in {grantee.lower() for grantee in link.grantees}
-            return None if granted else LinkDenial.FORBIDDEN
+            by_email = bool(email) and email in {grantee.lower() for grantee in link.grantees}
+            return None if by_email or viewer.user_id in link.grantee_ids else LinkDenial.FORBIDDEN
         case LinkAccess.OWNER:
             return LinkDenial.SIGN_IN_REQUIRED if viewer.user_id is None else LinkDenial.FORBIDDEN
 

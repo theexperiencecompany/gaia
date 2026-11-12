@@ -106,9 +106,13 @@ async def _notify_support(link: ShortLink, reporters: int) -> None:
 async def report(
     link: ShortLink, reason: ReportReason, reporter_key: str, *, signed_in: bool
 ) -> None:
-    """Record a report; the threshold-th distinct reporter suspends the link."""
+    """Record a report; the threshold-th distinct signed-in reporter suspends the link.
+
+    A signed-out report is kept and counted in analytics but never suspends: three
+    addresses are cheap, three accounts are not.
+    """
     added = await link_report_repository.add(
-        LinkReport(slug=link.slug, reason=reason, reporter_key=reporter_key)
+        LinkReport(slug=link.slug, reason=reason, reporter_key=reporter_key, signed_in=signed_in)
     )
     if not added:
         return
@@ -118,7 +122,7 @@ async def report(
             target_type=link.target_type.value, reason=reason.value, reporter_signed_in=signed_in
         ),
     )
-    reporters = await link_report_repository.distinct_reporters(link.slug)
+    reporters = await link_report_repository.signed_in_reporters(link.slug)
     if link.suspended or reporters < _threshold(link):
         return
     await short_link_repository.update(

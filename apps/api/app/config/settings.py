@@ -9,6 +9,7 @@ app/config/capability_requirements.py.
 from functools import lru_cache
 import time
 from typing import Literal, Self, TypedDict, cast
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 from pydantic import Field, ValidationInfo, computed_field, field_validator, model_validator
@@ -708,6 +709,12 @@ class Settings(BrowserHostSettings):
         problem = None
         if "{content_id}" not in template:
             problem = "LINK_CONTENT_URL_TEMPLATE must contain {content_id}"
+        elif urlsplit(template.format(content_id="x")).netloc.lower() in {
+            urlsplit(self.HOST).netloc.lower(),
+            urlsplit(self.FRONTEND_URL).netloc.lower(),
+        }:
+            # The API and app hosts carry the session; user bytes there are the stored XSS this origin exists to stop.
+            problem = "LINK_CONTENT_URL_TEMPLATE must name a host other than HOST and FRONTEND_URL"
         elif key is None or len(key) < MIN_LINK_CONTENT_SIGNING_KEY_LENGTH:
             problem = (
                 "LINK_CONTENT_URL_TEMPLATE is set but LINK_CONTENT_SIGNING_KEY is missing or "

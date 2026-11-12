@@ -22,6 +22,7 @@ from app.models.short_link_models import (
     LinkAccess,
     PublishRejection,
     RenderMode,
+    ShortLink,
     ShortLinkTargetType,
 )
 from app.services.blob_store import LocalVolumeBlobStore
@@ -316,39 +317,53 @@ def origin(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 CID = "abcdefghijklmnopqrstuvwxyz"
+LINK = ShortLink(
+    slug="abcdefghijk",
+    user_id=OWNER,
+    target_type=SESSION,
+    target_id="conv-1/r.html",
+    created_at=NOW - timedelta(days=1),
+)
 
 
 class TestContentTokens:
     def test_a_fresh_url_carries_a_token_for_its_own_origin(self, origin: None) -> None:
-        url, expires_at = issue_content_url(CID, NOW)
+        url, expires_at = issue_content_url(LINK, CID, NOW)
         assert url.startswith(f"https://{CID}.u.heygaia.test/?t=")
         assert expires_at == NOW + timedelta(seconds=CONTENT_TOKEN_TTL_SECONDS)
         token = url.split("?t=", 1)[1]
-        assert token_valid(CID, token, NOW + timedelta(seconds=CONTENT_TOKEN_TTL_SECONDS - 1))
+        assert token_valid(LINK, CID, token, NOW + timedelta(seconds=CONTENT_TOKEN_TTL_SECONDS - 1))
 
     def test_a_token_dies_at_its_expiry(self, origin: None) -> None:
-        token = issue_content_url(CID, NOW)[0].split("?t=", 1)[1]
-        assert not token_valid(CID, token, NOW + timedelta(seconds=CONTENT_TOKEN_TTL_SECONDS))
+        token = issue_content_url(LINK, CID, NOW)[0].split("?t=", 1)[1]
+        assert not token_valid(LINK, CID, token, NOW + timedelta(seconds=CONTENT_TOKEN_TTL_SECONDS))
 
     def test_a_token_opens_no_other_snapshot(self, origin: None) -> None:
-        token = issue_content_url(CID, NOW)[0].split("?t=", 1)[1]
-        assert not token_valid("b" * 26, token, NOW)
+        token = issue_content_url(LINK, CID, NOW)[0].split("?t=", 1)[1]
+        assert not token_valid(LINK, "b" * 26, token, NOW)
 
     @pytest.mark.parametrize("token", ["", "garbage", "9999999999.", "9999999999.forged"])
     def test_a_forged_token_opens_nothing(self, origin: None, token: str) -> None:
-        assert not token_valid(CID, token, NOW)
+        assert not token_valid(LINK, CID, token, NOW)
 
     def test_extending_the_expiry_breaks_the_signature(self, origin: None) -> None:
-        token = issue_content_url(CID, NOW)[0].split("?t=", 1)[1]
+        token = issue_content_url(LINK, CID, NOW)[0].split("?t=", 1)[1]
         expires, _, signature = token.partition(".")
-        assert not token_valid(CID, f"{int(expires) + 3600}.{signature}", NOW)
+        assert not token_valid(LINK, CID, f"{int(expires) + 3600}.{signature}", NOW)
+
+    def test_changing_the_link_voids_its_tokens(self, origin: None) -> None:
+        token = issue_content_url(LINK, CID, NOW)[0].split("?t=", 1)[1]
+        narrowed = LINK.model_copy(update={"updated_at": NOW})
+        rotated = LINK.model_copy(update={"slug": "zyxwvutsrqp"})
+        assert not token_valid(narrowed, CID, token, NOW)
+        assert not token_valid(rotated, CID, token, NOW)
 
     def test_a_rotated_key_kills_old_tokens(
         self, origin: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        token = issue_content_url(CID, NOW)[0].split("?t=", 1)[1]
+        token = issue_content_url(LINK, CID, NOW)[0].split("?t=", 1)[1]
         monkeypatch.setattr(settings, "LINK_CONTENT_SIGNING_KEY", "j" * 32)
-        assert not token_valid(CID, token, NOW)
+        assert not token_valid(LINK, CID, token, NOW)
 
 
 def _snapshot(render: RenderMode, **overrides: object) -> content.LinkSnapshot:

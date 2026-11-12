@@ -21,6 +21,7 @@ from app.db.repositories.short_links import (
     SLUG_UNIQUE_INDEX,
     short_link_repository,
 )
+from app.db.repositories.users import user_repository
 from app.models.short_link_models import (
     LinkDenial,
     LinkEnvelope,
@@ -101,6 +102,33 @@ def link_response(link: ShortLink) -> ShortLinkResponse:
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+async def _grantee_ids(emails: list[str]) -> list[str]:
+    """Resolve grantees to accounts where emails are unverified; raise naming any with no account.
+
+    Granting an address nobody holds yet would hand the link to whoever registers it first.
+    """
+    if not settings.deployment.local_auth:
+        return []
+    ids: list[str] = []
+    missing: list[str] = []
+    for email in emails:
+        # Exactly one account: two differing only in case cannot say which person was meant.
+        matches = await user_repository.find_by_email_ignoring_case(email)
+        if len(matches) == 1:
+            ids.append(matches[0].id)
+        else:
+            missing.append(email)
+    if missing:
+        raise AppError(
+            message="Some of these people have no account on this GAIA",
+            fix="Add them after they have joined, or share with anyone who has the link",
+            status_code=422,
+            code="link_grantee_not_a_member",
+            public={"missing": missing},
+        )
+    return ids
 
 
 async def _snapshot_for(
@@ -184,6 +212,7 @@ async def share(
         target_id=target_id,
         access=link_settings.access,
         grantees=[str(email) for email in link_settings.grantees],
+        grantee_ids=await _grantee_ids([str(email) for email in link_settings.grantees]),
         expires_at=link_settings.expires_at,
         snapshot=snapshot,
     )
@@ -290,6 +319,7 @@ async def update_settings(user_id: str, slug: str, change: LinkSettingsUpdate) -
         raise AppError(message="Nothing to change", status_code=422, code="link_settings_empty")
     if "grantees" in fields:
         fields["grantees"] = [str(email) for email in change.grantees or []]
+        fields["grantee_ids"] = await _grantee_ids(fields["grantees"])
     updated = await short_link_repository.update(
         slug, user_id=user_id, update=ShortLinkUpdate(**fields)
     )

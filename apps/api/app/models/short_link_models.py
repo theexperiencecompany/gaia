@@ -110,7 +110,11 @@ class ReportReason(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class LinkViewer:
-    """Whoever opened a link: their session user and verified email (None when signed out), address and browser."""
+    """Whoever opened a link: their session user (None when signed out), address and browser.
+
+    email is set only where the deployment verifies account emails; elsewhere a
+    grant names accounts (ShortLink.grantee_ids), never an address anyone can register.
+    """
 
     user_id: str | None
     email: str | None
@@ -134,7 +138,7 @@ class LinkSnapshot(BaseModel):
     mime: str
     size_bytes: int
     render: RenderMode
-    content_id: str | None
+    content_id: str | None = None
     #: sha256 of the bytes, so republishing an unchanged file is skipped.
     digest: str | None = None
     has_thumbnail: bool = False
@@ -165,6 +169,8 @@ class ShortLink(UserScopedDocument):
     #: Defaults carry a pre-access link as exactly what it was: unlisted, never expiring.
     access: LinkAccess = LinkAccess.UNLISTED
     grantees: list[str] = Field(default_factory=list)
+    #: The grantees' accounts, resolved when granted, where account emails are unverified (local sign-in).
+    grantee_ids: list[str] = Field(default_factory=list)
     expires_at: datetime | None = None
     snapshot: LinkSnapshot | None = None
     #: Reports crossed the threshold; the link shows "removed" until an admin restores it.
@@ -181,6 +187,7 @@ class ShortLinkUpdate(BaseModel):
     revoked_reason: RevokeReason | None = None
     access: LinkAccess | None = None
     grantees: list[str] | None = None
+    grantee_ids: list[str] | None = None
     expires_at: datetime | None = None
     snapshot: LinkSnapshot | None = None
     suspended: bool | None = None
@@ -436,6 +443,8 @@ class LinkReport(MongoDocument):
     reason: ReportReason
     #: The signed-in reporter's user id, else a keyed hash of their address and browser.
     reporter_key: str
+    #: Only signed-in reports suspend a link: accounts cost more to fake than addresses.
+    signed_in: bool
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

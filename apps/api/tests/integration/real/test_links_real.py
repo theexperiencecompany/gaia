@@ -24,7 +24,13 @@ from app.config.settings import settings
 from app.constants.short_links import MAX_RESOLVE_MISSES
 from app.db.repositories.short_links import short_link_repository
 from app.db.repositories.todos import todo_repository
-from app.models.short_link_models import LinkAccess, RevokeReason, ShortLink, ShortLinkTargetType
+from app.models.short_link_models import (
+    LinkAccess,
+    ReportReason,
+    RevokeReason,
+    ShortLink,
+    ShortLinkTargetType,
+)
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.blob_store import LocalVolumeBlobStore
@@ -283,6 +289,51 @@ class TestAccessLevels:
             },
         )
         assert response.status_code == 422
+
+
+class TestLocalSignIn:
+    """Where account emails are unverified, a grant names accounts, never an address anyone can register."""
+
+    @pytest.fixture(autouse=True)
+    async def local_auth(self, monkeypatch: pytest.MonkeyPatch, mongo_db) -> AsyncIterator[None]:
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        await mongo_db["users"].delete_many({"email": "friend@example.com"})
+        yield
+        await mongo_db["users"].delete_many({"email": "friend@example.com"})
+
+    async def test_an_address_with_no_account_cannot_be_granted(self, client: AsyncClient) -> None:
+        response = await client.post(
+            "/api/v1/l",
+            json={
+                "target_type": TODO,
+                "target_id": await _todo(),
+                "settings": {"access": "people", "grantees": ["friend@example.com"]},
+            },
+        )
+        assert (response.status_code, response.json()["code"]) == (422, "link_grantee_not_a_member")
+        assert response.json()["missing"] == ["friend@example.com"]
+
+    async def test_the_grant_follows_the_account_not_the_email(
+        self, client: AsyncClient, viewer: Viewer, mongo_db
+    ) -> None:
+        inserted = await mongo_db["users"].insert_one({"email": "friend@example.com", "name": "F"})
+        member_id = str(inserted.inserted_id)
+        link = await _share(
+            client, TODO, await _todo(), access="people", grantees=["friend@example.com"]
+        )
+
+        viewer.user = AuthenticatedUser(
+            user_id="507f1f77bcf86cd799439077", email="friend@example.com", auth_provider="local"
+        )
+        impostor = await _open(client, link["slug"])
+        viewer.user = AuthenticatedUser(
+            user_id=member_id, email="friend@example.com", auth_provider="local"
+        )
+        member = await _open(client, link["slug"])
+
+        assert impostor.status_code == 403
+        assert member.status_code == 200
+        assert (await _stored(link["slug"])).grantee_ids == [member_id]
 
 
 class TestRevokeRotateExpire:
@@ -714,6 +765,19 @@ class TestReportsAndTakedown:
             event for _, event in captured if type(event).__name__ == "ShortLinkTakenDown"
         ]
         assert [event.reason for event in taken_down] == ["reports_threshold"]
+
+    async def test_signed_out_reports_never_suspend(
+        self, client: AsyncClient, viewer: Viewer, workspace: Workspace, store: LocalVolumeBlobStore
+    ) -> None:
+        slug = (await _share(client, SESSION, workspace.write("r.html", b"<p>x</p>")))["slug"]
+        viewer.user = None
+        assert (
+            await client.post(f"/api/v1/l/{slug}/report", json={"reason": "phishing"})
+        ).status_code == 204
+        link = await _stored(slug)
+        for n in range(5):
+            await abuse.report(link, ReportReason.PHISHING, f"address-{n}", signed_in=False)
+        assert (await _stored(slug)).suspended is False
 
     async def test_a_link_without_active_content_needs_five_reporters(
         self, client: AsyncClient, viewer: Viewer

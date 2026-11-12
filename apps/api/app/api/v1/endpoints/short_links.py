@@ -103,7 +103,8 @@ def _slug_key(request: Request) -> str:
 def _viewer(request: Request, user: AuthenticatedUser | None) -> LinkViewer:
     return LinkViewer(
         user_id=user.user_id if user else None,
-        email=user.email if user else None,
+        # A local sign-in's email is whatever was typed at signup, so it grants nothing there.
+        email=user.email if user and not settings.deployment.local_auth else None,
         ip=viewer_ip(request),
         user_agent=request.headers.get("user-agent", ""),
     )
@@ -255,7 +256,7 @@ async def content_token_route(
     content = framed_content(link.snapshot, link.access) if active_link_content() else None
     if content is None:
         raise LinkDeniedError.for_denial(LinkDenial.NOT_FOUND)
-    url, expires_at = issue_content_url(content.content_id, datetime.now(UTC))
+    url, expires_at = issue_content_url(link, content.content_id, datetime.now(UTC))
     return ContentTokenResponse(content_url=url, expires_at=expires_at)
 
 
