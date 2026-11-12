@@ -3,9 +3,10 @@
 import asyncio
 from collections.abc import Mapping
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
+from prometheus_client import REGISTRY
 from pydantic import ValidationError
 import pytest
 
@@ -47,6 +48,18 @@ def _body(
     return JevDecisionsResponse.model_validate(
         reaction_answers(upset=upset, task=task, sign_off=sign_off, emoji=emoji)
     )
+
+
+def _kind_answer(probabilities: dict[str, float]) -> JevDecisionsResponse:
+    body = _body()
+    body.answers[REACTION_KIND_QUESTION_KEY] = JevDecisionsResponse.model_validate(
+        {
+            "answers": {
+                "k": {"type": "choice", "choice": "needs_words", "probabilities": probabilities}
+            }
+        }
+    ).answers["k"]
+    return body
 
 
 def _failures(event: Mapping[str, object]) -> list[dict[str, object]]:
@@ -133,9 +146,52 @@ class TestReadReaction:
         assert decision.emoji is None
         assert decision.reason is ReactionReason.BELOW_THRESHOLD
 
+    def test_upset_exactly_at_the_threshold_is_not_upset(self) -> None:
+        decision = read_reaction(_body(upset=0.5, task=0.8))
+
+        assert decision.emoji is None
+        assert decision.reason is ReactionReason.BELOW_THRESHOLD
+
+    def test_wordless_exactly_at_the_threshold_does_not_need_words(self) -> None:
+        decision = read_reaction(_body(upset=0.2, task=0.25, sign_off=0.25))
+
+        assert decision.emoji is None
+        assert decision.reason is ReactionReason.BELOW_THRESHOLD
+
+    def test_a_certainly_upset_user_gets_no_reaction(self) -> None:
+        decision = read_reaction(_body(upset=1.0, task=1.0))
+
+        assert decision.emoji is None
+        assert decision.reason is ReactionReason.UPSET
+
+    def test_a_kind_answer_without_sign_off_counts_it_as_zero(self) -> None:
+        decision = read_reaction(_kind_answer({"task": 0.4, "needs_words": 0.6}))
+
+        assert (decision.p_task, decision.p_sign_off) == (0.4, 0.0)
+        assert decision.reason is ReactionReason.NEEDS_WORDS
+
+    def test_a_kind_answer_without_task_counts_it_as_zero(self) -> None:
+        decision = read_reaction(_kind_answer({"sign_off": 0.4, "needs_words": 0.6}))
+
+        assert (decision.p_task, decision.p_sign_off) == (0.0, 0.4)
+        assert decision.reason is ReactionReason.NEEDS_WORDS
+
     def test_an_emoji_outside_the_palette_raises(self) -> None:
-        with pytest.raises(ValueError, match="choice"):
+        with pytest.raises(ValueError) as raised:
             read_reaction(_body(emoji="🍕"))
+
+        assert str(raised.value) == "unknown JEV reaction emoji choice: '🍕'"
+
+    def test_a_kind_outside_the_rule_raises(self) -> None:
+        body = _body()
+        body.answers[REACTION_KIND_QUESTION_KEY] = JevDecisionsResponse.model_validate(
+            {"answers": {"k": {"type": "choice", "choice": "chat", "probabilities": {"chat": 1.0}}}}
+        ).answers["k"]
+
+        with pytest.raises(ValueError) as raised:
+            read_reaction(body)
+
+        assert str(raised.value) == "unknown JEV reaction kind choice: 'chat'"
 
     @pytest.mark.parametrize(
         "question",
@@ -160,7 +216,7 @@ class TestReadReaction:
 
 class TestReactionDecision:
     def test_an_emoji_without_a_reaction_cannot_be_built(self) -> None:
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError, match="emoji '🔎' contradicts reason 'upset'"):
             ReactionDecision(emoji=SEARCH, reason=ReactionReason.UPSET)
 
     def test_a_reaction_without_an_emoji_cannot_be_built(self) -> None:
@@ -170,20 +226,34 @@ class TestReactionDecision:
 
 class TestDecideReaction:
     async def test_a_clear_task_reacts_and_records_the_decision(self) -> None:
-        with patch(_POST, AsyncMock(return_value=_body(upset=0.1, task=0.9))) as post:
+        clock = Mock(perf_counter=Mock(side_effect=[100.0, 102.0]))
+        post = AsyncMock(return_value=_body(upset=0.1, task=0.9))
+        with patch(_POST, post), patch.object(ack, "time", clock):
             async with captured_wide_event() as event:
                 decision = await decide_reaction("find my flight email", "")
 
         assert decision.emoji == SEARCH
+        assert post.await_args is not None
         assert post.await_args.args == reaction_request("find my flight email", "")
-        recorded = event["reaction_ack"]
-        assert recorded["outcome"] == "reacted"
-        assert recorded["reason"] == "reacted"
-        assert recorded["upset"] == 0.1
-        assert recorded["p_task"] == 0.9
-        assert recorded["p_sign_off"] == 0.0
-        assert isinstance(recorded["latency_ms"], int)
+        assert event["reaction_ack"] == {
+            "outcome": "reacted",
+            "reason": "reacted",
+            "emoji": SEARCH,
+            "upset": 0.1,
+            "p_task": 0.9,
+            "p_sign_off": 0.0,
+            "latency_ms": 2000,
+        }
         assert _failures(event) == []
+
+    async def test_each_decision_is_counted_under_its_outcome_and_reason(self) -> None:
+        labels = {"outcome": "none", "reason": "jev_malformed"}
+        before = REGISTRY.get_sample_value("reaction_ack_decision_total", labels) or 0.0
+
+        with patch(_POST, AsyncMock(return_value=_body(emoji="🍕"))):
+            await decide_reaction("order pizza", "")
+
+        assert REGISTRY.get_sample_value("reaction_ack_decision_total", labels) == before + 1
 
     @pytest.mark.parametrize(
         ("error", "reason"),
@@ -213,7 +283,16 @@ class TestDecideReaction:
         assert event["reaction_ack"]["reason"] == reason.value
         (failure,) = _failures(event)
         assert failure["reason"] == reason.value
+        assert failure["error"] == str(error)
         assert failure["error_type"] == type(error).__name__
+
+    async def test_a_long_failure_message_is_cut_to_300_characters(self) -> None:
+        with patch(_POST, AsyncMock(side_effect=RuntimeError("x" * 400))):
+            async with captured_wide_event() as event:
+                await decide_reaction("send it", "")
+
+        (failure,) = _failures(event)
+        assert failure["error"] == "x" * 300
 
     async def test_an_out_of_palette_emoji_is_malformed(self) -> None:
         with patch(_POST, AsyncMock(return_value=_body(emoji="🍕"))):
