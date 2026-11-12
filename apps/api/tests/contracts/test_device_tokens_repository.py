@@ -14,6 +14,7 @@ import pytest
 from app.db.mongodb.indexes import create_device_token_indexes
 from app.db.repositories.device_tokens import DeviceTokensRepository
 from app.models.device_token_models import PlatformType
+from tests.helpers import local_timezone
 
 USER = "6812f0b3c9a14e2b7d5a91cc"
 OTHER = "6812f0b3c9a14e2b7d5a91cd"
@@ -45,7 +46,9 @@ class TestDeviceTokensRepository:
     ):
         before = datetime.now(UTC).replace(microsecond=0)
 
-        is_new = await _register(repo)
+        with local_timezone("Asia/Kolkata"):
+            is_new = await _register(repo)
+        after = datetime.now(UTC)
 
         assert is_new is True
         raw = await raw_collection.find_one({"token": TOKEN})
@@ -59,7 +62,8 @@ class TestDeviceTokensRepository:
             "device_id": None,
             "is_active": True,
         }
-        assert created_at >= before and updated_at >= before
+        assert before <= created_at <= after
+        assert before <= updated_at <= after
 
     async def test_registering_a_known_token_updates_it_in_place_and_keeps_created_at(
         self, repo, raw_collection

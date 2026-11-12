@@ -64,6 +64,7 @@ class TestNotifyApprovalPending:
                 },
             },
         )
+        mock_channels.device.list_active_tokens.assert_awaited_once_with(USER_ID)
         mock_expo.post.assert_awaited_once()
 
 
@@ -151,6 +152,7 @@ class TestSendExpoPush:
         delivered.json.return_value = {"data": [{"status": "ok"}] * 100}
         one_dead.json.return_value = {
             "data": [{"status": "error", "details": {"error": "DeviceNotRegistered"}}]
+            + [{"status": "ok"}] * 49
         }
         mock_expo.post.side_effect = [delivered, one_dead]
 
@@ -202,6 +204,13 @@ class TestDeadTokensFromReceipts:
 
     def test_a_reply_that_is_not_ticket_shaped_reports_none(self):
         assert _dead_tokens_from_receipts(["a"], self._response({"data": "unavailable"})) == []
+
+    def test_a_reply_without_one_ticket_per_message_reports_none(self):
+        response = self._response(
+            {"data": [{"status": "error", "details": {"error": "DeviceNotRegistered"}}]}
+        )
+
+        assert _dead_tokens_from_receipts(["a", "b"], response) == []
 
     def test_an_error_ticket_without_details_is_not_dead(self):
         response = self._response(
