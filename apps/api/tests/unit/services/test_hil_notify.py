@@ -12,6 +12,8 @@ import pytest
 
 from app.services.hil.notify import (
     _dead_tokens_from_receipts,
+    _ExpoPushData,
+    _ExpoPushMessage,
     _send_expo_push,
     notify_approval_pending,
 )
@@ -21,6 +23,16 @@ USER_ID = "507f1f77bcf86cd799439011"
 CONVERSATION_ID = "conv-1"
 APPROVAL_ID = "appr-1"
 SUMMARY = "Send the deck to bob"
+
+
+def _message(token: str) -> _ExpoPushMessage:
+    return _ExpoPushMessage(
+        to=token,
+        title="GAIA needs your approval",
+        body=SUMMARY,
+        category_id="hil_approval",
+        data=_ExpoPushData(conversation_id=CONVERSATION_ID, approval_id=APPROVAL_ID),
+    )
 
 
 @pytest.fixture
@@ -140,7 +152,7 @@ class TestDeadTokensFromReceipts:
         return response
 
     def test_returns_device_not_registered_tokens(self):
-        batch = [{"to": "a"}, {"to": "b"}, {"to": "c"}]
+        batch = [_message("a"), _message("b"), _message("c")]
         response = self._response(
             {
                 "data": [
@@ -154,10 +166,10 @@ class TestDeadTokensFromReceipts:
         assert _dead_tokens_from_receipts(batch, response) == ["b"]
 
     def test_empty_data(self):
-        assert _dead_tokens_from_receipts([{"to": "a"}], self._response({})) == []
+        assert _dead_tokens_from_receipts([_message("a")], self._response({})) == []
 
     def test_non_json_body(self):
         response = MagicMock()
         response.json.side_effect = ValueError("not json")
 
-        assert _dead_tokens_from_receipts([{"to": "a"}], response) == []
+        assert _dead_tokens_from_receipts([_message("a")], response) == []

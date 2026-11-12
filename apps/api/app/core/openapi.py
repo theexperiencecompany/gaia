@@ -7,12 +7,8 @@ tag and the handler name are what a reader already knows the operation by.
 
 from enum import Enum
 import re
-from typing import Any
 
-from fastapi import FastAPI
 from fastapi.routing import APIRoute
-from pydantic import BaseModel
-from pydantic.json_schema import models_json_schema
 
 
 def _slug(text: str | Enum) -> str:
@@ -30,28 +26,3 @@ def api_operation_id(route: APIRoute) -> str:
     if not route.tags:
         return _slug(route.name)
     return f"{_slug(route.tags[0])}_{_slug(route.name)}"
-
-
-class StreamFrameFastAPI(FastAPI):
-    """FastAPI whose document also carries the SSE frame models no route returns.
-
-    Clients then get generated types for stream frames like every other wire shape.
-    """
-
-    stream_frame_models: tuple[type[BaseModel], ...] = ()
-
-    def openapi(self) -> dict[str, Any]:
-        """Build the route document once, then add the frame models' schemas to it."""
-        if self.openapi_schema:
-            return self.openapi_schema
-        schema = super().openapi()
-        _, frames = models_json_schema(
-            [(model, "serialization") for model in self.stream_frame_models],
-            ref_template="#/components/schemas/{model}",
-        )
-        components: dict[str, Any] = schema.setdefault("components", {}).setdefault("schemas", {})
-        for name, body in frames.get("$defs", {}).items():
-            # A route that returns the same model already published it; the export
-            # refuses two models sharing a class name, so the name is the same model.
-            components.setdefault(name, body)
-        return schema
