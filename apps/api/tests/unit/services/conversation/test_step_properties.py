@@ -196,13 +196,12 @@ class World:
             assert (state.comms, state.unsettled_waking) == (CommsPhase.IDLE, ())
 
 
-def _outcome(kind: str) -> RunOutcome:
-    return {
-        "replied": Replied("an answer"),
-        "empty": Replied(""),
-        "reacted": Reacted("👍"),
-        "silent": Silent(),
-    }[kind]
+OUTCOMES: dict[str, RunOutcome] = {
+    "replied": Replied("an answer"),
+    "empty": Replied(""),
+    "reacted": Reacted("👍"),
+    "silent": Silent(),
+}
 
 
 @st.composite
@@ -242,7 +241,7 @@ def _script(world: World, plan: Sequence[tuple[str, str]]) -> list[ScriptItem]:
             case "fail":
                 items.append(Fail(RuntimeError("model down")))
             case _:
-                items.append(Finished(_outcome(step)))
+                items.append(Finished(OUTCOMES[step]))
     return items
 
 
