@@ -8,6 +8,7 @@ import {
 } from "@heroui/react";
 import type React from "react";
 import { ComboBoxInput } from "@/components/shared/ComboBoxInput";
+import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useTriggerFilter } from "@/features/workflows/hooks/useTriggerFilter";
 import type { TriggerSchema } from "@/features/workflows/triggers/types/base";
@@ -42,7 +43,7 @@ function renderTriggerSections(
     })
     .map(([integrationId, schemas]) => (
       <ListBox.Section key={integrationId} id={integrationId}>
-        <Header className="px-2 py-1 text-tiny font-medium text-zinc-500">
+        <Header className={toneVariants({ tone: "faint" })}>
           {formatIntegrationName(integrationId)}
         </Header>
         {(schemas || []).map((schema) => (
@@ -146,11 +147,11 @@ export function TriggerAutocomplete({
         <ComboBox.Popover>
           <ListBox
             aria-label="Triggers"
-            className={`${
+            className={
               Object.keys(groupedTriggers).length > 2
                 ? "min-h-[300px]"
                 : "h-fit"
-            } p-1`}
+            }
             renderEmptyState={() => (
               <EmptyState>No matching triggers found.</EmptyState>
             )}

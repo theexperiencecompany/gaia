@@ -115,35 +115,33 @@ export default function AddProjectModal({
                   >
                     Project Color
                   </label>
-                  <RadioGroup
-                    id="radiogroupcolorpicker"
-                    value={formData.color}
-                    onChange={(value) =>
-                      setFormData((prev) => ({ ...prev, color: value }))
-                    }
-                    orientation="horizontal"
-                    className="flex gap-8 p-3"
-                  >
-                    {colorOptions.map((option) => (
-                      <Radio
-                        key={option.value}
-                        value={option.value}
-                        className="p-0"
-                      >
-                        <Radio.Content>
-                          <Radio.Control>
-                            <Radio.Indicator />
-                          </Radio.Control>
-                          <div className="flex h-full w-full items-center">
-                            <div
-                              className="h-7 w-7 rounded-full"
-                              style={{ backgroundColor: option.value }}
-                            />
-                          </div>
-                        </Radio.Content>
-                      </Radio>
-                    ))}
-                  </RadioGroup>
+                  <div className="p-3">
+                    <RadioGroup
+                      id="radiogroupcolorpicker"
+                      value={formData.color}
+                      onChange={(value) =>
+                        setFormData((prev) => ({ ...prev, color: value }))
+                      }
+                      orientation="horizontal"
+                      className="flex gap-8"
+                    >
+                      {colorOptions.map((option) => (
+                        <Radio key={option.value} value={option.value}>
+                          <Radio.Content>
+                            <Radio.Control>
+                              <Radio.Indicator />
+                            </Radio.Control>
+                            <div className="flex h-full w-full items-center">
+                              <div
+                                className="h-7 w-7 rounded-full"
+                                style={{ backgroundColor: option.value }}
+                              />
+                            </div>
+                          </Radio.Content>
+                        </Radio>
+                      ))}
+                    </RadioGroup>
+                  </div>
                 </div>
               </div>
             </Modal.Body>

@@ -143,14 +143,9 @@ export function SystemWorkflowChip({ size = "sm" }: SystemWorkflowChipProps) {
   return (
     <Tooltip delay={300} closeDelay={0}>
       <Tooltip.Trigger>
-        <Chip
-          color="accent"
-          variant="soft"
-          size={size}
-          className="text-primary"
-        >
+        <Chip color="accent" variant="soft" size={size}>
           <Image src="/brand/gaia_logo.svg" alt="GAIA" width={14} height={14} />
-          <Chip.Label className="pl-0.5">System</Chip.Label>
+          <Chip.Label>System</Chip.Label>
         </Chip>
       </Tooltip.Trigger>
       <Tooltip.Content

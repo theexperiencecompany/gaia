@@ -44,7 +44,8 @@ export default function RedditCreatedCard({
               <Chip
                 size="sm"
                 variant="soft"
-                className="ml-auto bg-green-900/30 text-xs text-green-300"
+                color="success"
+                className="ml-auto text-xs"
               >
                 Just now
               </Chip>

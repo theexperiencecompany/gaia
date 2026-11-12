@@ -125,7 +125,6 @@ export const NaturalLanguageDateInput: React.FC<
               value={inputValue}
               onChange={(e) => handleInputChange(e.target.value)}
               placeholder={placeholder}
-              className="text-zinc-200 placeholder:text-zinc-600 pr-10"
             />
             <InputGroup.Suffix>
               <PopoverTrigger asChild>
@@ -302,7 +301,6 @@ export const NaturalLanguageDateRangeInput: React.FC<
               value={inputValue}
               onChange={(e) => handleInputChange(e.target.value)}
               placeholder={placeholder}
-              className="text-zinc-200 placeholder:text-zinc-600 pr-10"
             />
             <InputGroup.Suffix>
               <PopoverTrigger asChild>

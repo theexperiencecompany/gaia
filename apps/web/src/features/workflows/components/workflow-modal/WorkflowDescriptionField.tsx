@@ -1,4 +1,4 @@
-import { Button, Tooltip } from "@heroui/react";
+import { Tooltip } from "@heroui/react";
 import { SparklesIcon } from "@icons";
 import type { PromptTriggerHint } from "@shared/api/generated";
 import { useMemo, useState } from "react";
@@ -10,6 +10,7 @@ import {
   useWatch,
 } from "react-hook-form";
 import { TextMorph } from "torph/react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { MentionEditor } from "@/features/integrations/components/MentionEditor";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -146,10 +147,10 @@ export default function WorkflowDescriptionField({
       <Tooltip.Trigger>
         {/* span wrapper keeps the tooltip hoverable while the button is disabled */}
         <span className="inline-flex">
-          <Button
+          <GaiaButton
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-xs"
+            className="h-7 text-xs"
             isPending={isGenerating}
             isDisabled={isGenerating || !canGenerate}
             onPress={handleGenerate}
@@ -158,7 +159,7 @@ export default function WorkflowDescriptionField({
             <TextMorph duration={300}>
               {hasExistingPrompt ? "Improve with AI" : "Generate with AI"}
             </TextMorph>
-          </Button>
+          </GaiaButton>
         </span>
       </Tooltip.Trigger>
       <Tooltip.Content placement="top">
