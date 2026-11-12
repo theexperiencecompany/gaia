@@ -1,7 +1,7 @@
 """Ledger branch of the approval gate (flag on: register, never interrupt)."""
 
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain.agents.middleware.types import ToolCallRequest
@@ -10,7 +10,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 import pytest
 
-from app.constants.hil import HIL_STATUS_KWARG
+from app.constants.hil import AUTO_ASK_NOTE, HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
 from app.models.hil_models import (
     ApprovalLedgerDocument,
@@ -23,7 +23,7 @@ from app.services.hil.bridge import ApprovalOutcome, GatedApproval
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import AutoContext, IntentDecision, JudgedCall, summarize_history
 from app.services.hil.jev_judge import JevIntentJudge
-from app.services.hil.prompts import AUTO_REJECT_TEMPLATE, DENIED_TEMPLATE, GATE_ERROR_TEMPLATE
+from app.services.hil.prompts import DENIED_TEMPLATE, GATE_ERROR_TEMPLATE
 from app.services.hil.utils import GatedCall
 from app.utils.general_utils import ELLIPSIS
 
@@ -635,19 +635,6 @@ class TestLedgerDeclineMemory:
         assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
         gate_seams.ledger.register.assert_not_awaited()
 
-    async def test_an_auto_refusal_without_words_is_repeated_as_auto(
-        self, gate_seams: GateSeams
-    ) -> None:
-        gate_seams.recall.return_value = ApprovalOutcome(
-            status=HILApprovalStatus.DENIED, feedback=None, auto=True
-        )
-
-        result = await gate.decide_tool_call(gated_request())
-
-        assert result is not None
-        assert result.content == AUTO_REJECT_TEMPLATE.format(tool=GATED_TOOL, reason="")
-        assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
-
 
 @pytest.mark.unit
 class TestLedgerValidatesArgsAgainstTheRealTool:
@@ -737,14 +724,11 @@ class TestLedgerAutoMode:
         gate_seams.ledger.register.assert_not_awaited()
 
     @pytest.mark.regression
-    @pytest.mark.parametrize(
-        ("outcome", "decision"), [("accept", "approved"), ("reject", "denied")]
-    )
-    async def test_an_auto_decision_is_counted_as_a_decision_made_by_auto(
-        self, gate_seams: GateSeams, outcome: Literal["accept", "reject"], decision: str
+    async def test_an_auto_run_is_counted_as_a_decision_made_by_auto(
+        self, gate_seams: GateSeams
     ) -> None:
         gate_seams.policy.return_value = "auto"
-        gate_seams.judge.return_value = IntentDecision(outcome, "asked")
+        gate_seams.judge.return_value = IntentDecision("accept", "asked")
         posthog = MagicMock()
 
         with patch("app.services.analytics_service._get_posthog_client", return_value=posthog):
@@ -753,7 +737,7 @@ class TestLedgerAutoMode:
         [sent] = [c.kwargs for c in posthog.capture.call_args_list]
         assert (sent["event"], sent["distinct_id"]) == ("hil:decision_submitted", USER_ID)
         decided = {key: sent["properties"].get(key) for key in ("decision", "tool_name", "via")}
-        assert decided == {"decision": decision, "tool_name": GATED_TOOL, "via": "auto"}
+        assert decided == {"decision": "approved", "tool_name": GATED_TOOL, "via": "auto"}
 
     async def test_an_unsure_judge_decides_nothing(self, gate_seams: GateSeams) -> None:
         gate_seams.policy.return_value = "auto"
@@ -784,54 +768,27 @@ class TestLedgerAutoMode:
         result = await gate.decide_tool_call(gated_request())
 
         _assert_pending(result)
-        assert (
-            gate_seams.publish_ledger.await_args.kwargs["auto_reason"]
-            == "Auto mode wasn't sure: the recipient is new"
-        )
+        assert gate_seams.publish_ledger.await_args.kwargs["auto_reason"] == AUTO_ASK_NOTE
+        assert "Auto mode wasn't sure: the recipient is new" in str(result.content)
 
-    async def test_an_unsure_judge_with_no_reason_adds_nothing(self, gate_seams: GateSeams) -> None:
+    async def test_an_unsure_judge_with_no_reason_still_notes_the_card(
+        self, gate_seams: GateSeams
+    ) -> None:
         gate_seams.policy.return_value = "auto"
 
         result = await gate.decide_tool_call(gated_request())
 
         _assert_pending(result)
+        assert gate_seams.publish_ledger.await_args.kwargs["auto_reason"] == AUTO_ASK_NOTE
+        assert "Auto mode wasn't sure" not in str(result.content)
+
+    async def test_a_policy_that_never_judged_puts_no_note_on_the_card(
+        self, gate_seams: GateSeams
+    ) -> None:
+        result = await gate.decide_tool_call(gated_request())
+
+        _assert_pending(result)
         assert gate_seams.publish_ledger.await_args.kwargs["auto_reason"] is None
-
-    async def test_a_rejected_call_is_refused_and_remembered_as_auto(
-        self, gate_seams: GateSeams
-    ) -> None:
-        gate_seams.policy.return_value = "auto"
-        gate_seams.judge.return_value = IntentDecision("reject", "you said never email b@x")
-
-        result = await gate.decide_tool_call(gated_request())
-
-        assert result is not None
-        assert result.content == AUTO_REJECT_TEMPLATE.format(
-            tool=GATED_TOOL, reason="you said never email b@x"
-        )
-        gate_seams.remember.assert_awaited_once_with(
-            STREAM_ID, GATED_TOOL, GATED_ARGS, "you said never email b@x", auto=True
-        )
-        gate_seams.ledger.register.assert_not_awaited()
-
-    async def test_a_lost_decline_memory_is_reported_but_still_refuses(
-        self, gate_seams: GateSeams
-    ) -> None:
-        gate_seams.policy.return_value = "auto"
-        gate_seams.judge.return_value = IntentDecision("reject", "no")
-        gate_seams.remember.side_effect = RuntimeError("redis down")
-
-        result = await gate.decide_tool_call(gated_request())
-
-        assert result is not None
-        assert result.content == AUTO_REJECT_TEMPLATE.format(tool=GATED_TOOL, reason="no")
-        gate_seams.log.warning.assert_called_once()
-        assert "decline memory write failed" in gate_seams.log.warning.call_args.args[0]
-        assert gate_seams.log.warning.call_args.kwargs == {
-            "tool_name": GATED_TOOL,
-            "error": "redis down",
-            "error_type": "RuntimeError",
-        }
 
     async def test_unreadable_memory_and_prefs_are_reported_and_judged_without(
         self, gate_seams: GateSeams

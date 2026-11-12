@@ -1,8 +1,7 @@
 """Auto mode v2 outcomes (app/services/hil/intent.py).
 
-The judge returns accept / reject / ask — never a bare boolean — so the gate
-can refuse with a reason (no card) distinctly from asking (card). Tests here
-pin the outcome vocabulary; the adversarial LLM-judge tests live in
+The judge returns accept (run it) or ask (card) and never refuses on its own.
+Tests here pin the outcome vocabulary; the adversarial LLM-judge tests live in
 test_hil_intent.py.
 """
 
@@ -11,10 +10,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain.agents.middleware.types import ToolCallRequest
 
-from app.constants.hil import HIL_STATUS_KWARG
-from app.models.hil_models import HILApprovalStatus, HILPreferences
+from app.constants.hil import AUTO_ASK_NOTE, HIL_STATUS_KWARG, JevChoice
+from app.models.hil_models import HILPreferences
 from app.services.hil import gate
-from app.services.hil.bridge import ApprovalOutcome
 from app.services.hil.intent import (
     AutoContext,
     AutoHistory,
@@ -23,6 +21,7 @@ from app.services.hil.intent import (
     JudgedCall,
     judge_intent,
 )
+from app.services.hil.jev_judge import JevCase, JevVerdict, decide_from_verdict
 from app.services.hil.utils import PriorCall, unpack_tool_call
 
 from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_request, make_tool
@@ -61,7 +60,7 @@ def _call() -> JudgedCall:
 
 
 async def test_injected_judge_decides_without_calling_the_llm() -> None:
-    fake = FakeJudge(IntentDecision(outcome="reject", reason="nope"))
+    fake = FakeJudge(IntentDecision(outcome="ask", reason="nope"))
     with patch(f"{MODULE}.ainvoke_structured", new=AsyncMock()) as llm:
         d = await judge_intent(
             AutoContext(user_id="u"),
@@ -70,7 +69,7 @@ async def test_injected_judge_decides_without_calling_the_llm() -> None:
             prior_calls=[],
             judge=fake,
         )
-    assert d.outcome == "reject"
+    assert d.outcome == "ask"
     assert llm.await_count == 0
     assert fake.calls == 1
 
@@ -200,9 +199,20 @@ def _auto_ledger() -> MagicMock:
     return ledger
 
 
-async def test_auto_reject_registers_no_card_and_arms_decline_memory() -> None:
-    # A refusal is not a question: no row, no card — but the retry must refuse
-    # without spending another judge call.
+def _forbidden_jev_decision() -> IntentDecision:
+    """Return what the real JEV mapping decides for a confident forbidden verdict."""
+    return decide_from_verdict(
+        JevVerdict(choice=JevChoice.FORBIDDEN, confidence=0.95),
+        JevCase(
+            call=_call(),
+            user_messages=["never email bob", "send it"],
+            prior_calls=[],
+            history=AutoHistory(),
+        ),
+    )
+
+
+async def test_a_forbidden_verdict_asks_with_the_plain_note_on_the_ledger_path() -> None:
     ledger = _auto_ledger()
     with (
         patch("app.services.hil.gate.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
@@ -213,8 +223,7 @@ async def test_auto_reject_registers_no_card_and_arms_decline_memory() -> None:
             new=AsyncMock(return_value="gmail"),
         ),
         patch(
-            "app.services.hil.gate._judge",
-            new=AsyncMock(return_value=IntentDecision(outcome="reject", reason="stop spamming")),
+            "app.services.hil.gate._judge", new=AsyncMock(return_value=_forbidden_jev_decision())
         ),
         patch("app.services.hil.gate.publish_ledger_request", new=AsyncMock()) as pub,
         patch("app.services.hil.gate.remember_declined_call", new=AsyncMock()) as remember,
@@ -223,15 +232,11 @@ async def test_auto_reject_registers_no_card_and_arms_decline_memory() -> None:
         result = await gate.decide_tool_call(_auto_request())
 
     assert result is not None
-    assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
-    assert "Auto-approve declined" in result.content
-    assert "stop spamming" in result.content
-    ledger.register.assert_not_awaited()
-    pub.assert_not_awaited()
+    assert result.additional_kwargs[HIL_STATUS_KWARG] == "pending"
+    ledger.register.assert_awaited_once()
+    assert pub.await_args.kwargs["auto_reason"] == AUTO_ASK_NOTE
+    remember.assert_not_awaited()
     intr.assert_not_called()
-    remember.assert_awaited_once_with(
-        "stream-1", "GMAIL_SEND_EMAIL", {"to": "b@x"}, "stop spamming", auto=True
-    )
 
 
 async def test_a_throwing_judge_fails_closed_to_ask() -> None:
@@ -278,33 +283,5 @@ async def test_ask_carries_auto_mode_reason_to_card_and_model() -> None:
     assert result is not None
     assert result.additional_kwargs[HIL_STATUS_KWARG] == "pending"
     assert "Auto mode wasn't sure: vague scope" in result.content
-    assert pub.await_args.kwargs["auto_reason"] == "Auto mode wasn't sure: vague scope"
-    intr.assert_not_called()
-
-
-async def test_remembered_auto_reject_refuses_a_retry_without_rejudge_or_card() -> None:
-    ledger = _auto_ledger()
-    declined = ApprovalOutcome(status=HILApprovalStatus.DENIED, feedback="stop spamming", auto=True)
-    with (
-        patch("app.services.hil.gate.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
-        patch("app.services.hil.gate.resolve_policy", new=AsyncMock(return_value="auto")),
-        patch("app.services.hil.gate.approval_ledger_repository", new=ledger),
-        patch(
-            "app.services.hil.gate.recall_declined_call",
-            new=AsyncMock(return_value=declined),
-        ),
-        patch("app.services.hil.gate._judge", new=AsyncMock()) as judge,
-        patch("app.services.hil.gate.publish_ledger_request", new=AsyncMock()) as pub,
-        patch("app.services.hil.gate.interrupt") as intr,
-    ):
-        result = await gate.decide_tool_call(_auto_request())
-
-    assert result is not None
-    assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
-    # The user was never asked — the retry must not claim they declined.
-    assert "Auto-approve declined" in result.content
-    assert "The user declined" not in result.content
-    judge.assert_not_awaited()
-    ledger.register.assert_not_awaited()
-    pub.assert_not_awaited()
+    assert pub.await_args.kwargs["auto_reason"] == AUTO_ASK_NOTE
     intr.assert_not_called()

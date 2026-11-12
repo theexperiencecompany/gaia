@@ -29,6 +29,7 @@ from langgraph.types import Command, interrupt
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.execute.dispatch import _validate_args
 from app.constants.hil import (
+    AUTO_ASK_NOTE,
     HIL_EXEMPT_TOOLS,
     HIL_STATUS_KWARG,
     SUBAGENT_RESUME_CONFIG_KEY,
@@ -78,7 +79,6 @@ from app.services.hil.policy import (
 )
 from app.services.hil.preferences import get_hil_preferences, set_tool_override
 from app.services.hil.prompts import (
-    AUTO_REJECT_TEMPLATE,
     DENIED_TEMPLATE,
     GATE_ERROR_TEMPLATE,
     TIMEOUT_TEMPLATE,
@@ -233,7 +233,7 @@ async def _decide_ledger(
 ) -> ToolMessage | None:
     """Ledger verdict: register PENDING and return, or clear an auto-aligned call.
 
-    Executor-free path: dedup against live rows, surface reject memory, refuse
+    Executor-free path: dedup against live rows, surface decline memory, refuse
     same-run nag re-issues, else register and hand the model a pending id. Any
     failure fails closed (deny), never open. Returns None only for the
     auto-aligned case (the tool may run).
@@ -242,14 +242,10 @@ async def _decide_ledger(
         declined = await recall_declined_call(context.stream_id, call.name, call.args)
         if declined is not None:
             log.info(f"{LogTag.HIL} auto-denying : declined earlier this turn", name=call.name)
-            return (
-                _auto_reject_message(call, declined.feedback or "")
-                if declined.auto
-                else _refusal_message(call, declined)
-            )
+            return _refusal_message(call, declined)
         auto = await _auto_ledger_verdict(request, context, call, policy)
-        if auto.settled:
-            return auto.message
+        if auto.runs:
+            return None
         auto_note = auto.note
         invalid = await _invalid_args_message(request, context.user_id, call)
         if invalid is not None:
@@ -307,7 +303,7 @@ async def _decide_ledger(
                 summary=summary,
                 integration_name=integration_name,
             ),
-            auto_reason=auto_note.strip() or None,
+            auto_reason=AUTO_ASK_NOTE if auto.asked else None,
             owner_run_type=context.owner_run_type,
             owner_id=context.owner_id,
             # Live runs hold the card until the run ends (a mid-run revoke is
@@ -415,8 +411,6 @@ async def _decide(
         declined = await recall_declined_call(context.stream_id, call.name, call.args)
         if declined is not None:
             log.info(f"{LogTag.HIL} auto-denying : declined earlier this turn", name=call.name)
-            if declined.auto:
-                return _auto_reject_message(call, declined.feedback or "")
             return _refusal_message(call, declined)
 
         invalid = await _invalid_args_message(request, context.user_id, call)
@@ -450,19 +444,7 @@ async def _decide(
             await publish_auto_approval(approval, reason=decision.reason)
             return None
 
-        if decision is not None and decision.outcome == "reject":
-            log.info(
-                f"{LogTag.HIL} auto-rejected",
-                call_name=call.name,
-                reason=decision.reason,
-            )
-            return await _auto_reject(context, call, decision.reason)
-
-        auto_reason = (
-            f"Auto mode wasn't sure: {decision.reason}"
-            if decision is not None and decision.outcome == "ask" and decision.reason
-            else None
-        )
+        auto_reason = AUTO_ASK_NOTE if decision is not None else None
         await publish_approval_request(
             approval,
             auto_reason=auto_reason,
@@ -556,15 +538,11 @@ async def _judge(
         prior_calls=prior_tool_calls(request.state, call.id),
         assistant_turns=recent_assistant_turns(request.state),
     )
-    if decision.outcome != "ask":
-        # A settled auto decision has no card and no ledger row; this is its only record.
+    if decision.outcome == "accept":
+        # An auto-run call has no card and no ledger row; this is its only record.
         capture(
             UserId(context.user_id),
-            HilDecisionSubmitted(
-                decision="approved" if decision.outcome == "accept" else "denied",
-                tool_name=call.name,
-                via="auto",
-            ),
+            HilDecisionSubmitted(decision="approved", tool_name=call.name, via="auto"),
         )
     return decision
 
@@ -625,29 +603,6 @@ def _outcome_from_record(record: HILApprovalRecord) -> ApprovalOutcome:
 # --- what a blocked call tells the model (text lives in prompts.py) ---------------------
 
 
-def _auto_reject_message(call: GatedCall, reason: str) -> ToolMessage:
-    """Tell the model auto mode declined the call — refused, not asked."""
-    return _tool_message(call, AUTO_REJECT_TEMPLATE.format(tool=call.name, reason=reason), "denied")
-
-
-async def _auto_reject(context: GateContext, call: GatedCall, reason: str) -> ToolMessage:
-    """Refuse with the reason and arm decline memory against a retry.
-
-    The memory write is best-effort: losing it degrades to re-judging the
-    retry, never to running it — the refusal itself is the decision.
-    """
-    try:
-        await remember_declined_call(context.stream_id, call.name, call.args, reason, auto=True)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} decline memory write failed; the retry will re-judge",
-            tool_name=call.name,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-    return _auto_reject_message(call, reason)
-
-
 def _refusal_message(call: GatedCall, outcome: ApprovalOutcome) -> ToolMessage:
     """Tell the model a denied or timed-out call did not run, and why."""
     timed_out = outcome.status is HILApprovalStatus.TIMEOUT
@@ -661,17 +616,17 @@ def _refusal_message(call: GatedCall, outcome: ApprovalOutcome) -> ToolMessage:
 
 @dataclass(frozen=True)
 class _AutoVerdict:
-    """Auto mode's conclusion: either it settled the call, or it left a note for the ask."""
+    """Auto mode's conclusion: run the call, or ask (asked) with a model-facing note."""
 
-    settled: bool = False
-    message: ToolMessage | None = None
+    runs: bool = False
+    asked: bool = False
     note: str = ""
 
 
 async def _auto_ledger_verdict(
     request: ToolCallRequest, context: GateContext, call: GatedCall, policy: GatingPolicy
 ) -> _AutoVerdict:
-    """Let auto mode settle a ledger-path call, or say why it still needs the user."""
+    """Let auto mode run a ledger-path call, or say why it still needs the user."""
     if policy != "auto":
         return _AutoVerdict()
     integration_name = await _integration_name_for(request, context.user_id, call.name)
@@ -685,22 +640,9 @@ async def _auto_ledger_verdict(
             call_name=call.name,
             reason=decision.reason,
         )
-        return _AutoVerdict(settled=True)
-    if decision.outcome == "reject":
-        log.info(
-            f"{LogTag.HIL} auto-rejected (ledger path)",
-            call_name=call.name,
-            reason=decision.reason,
-        )
-        return _AutoVerdict(
-            settled=True, message=await _auto_reject(context, call, decision.reason)
-        )
-    note = (
-        f" Auto mode wasn't sure: {decision.reason}"
-        if decision.outcome == "ask" and decision.reason
-        else ""
-    )
-    return _AutoVerdict(note=note)
+        return _AutoVerdict(runs=True)
+    note = f" Auto mode wasn't sure: {decision.reason}" if decision.reason else ""
+    return _AutoVerdict(asked=True, note=note)
 
 
 def _live_envelope_message(

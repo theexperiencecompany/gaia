@@ -127,7 +127,7 @@ class TestLedgerPathResolvesForTheRunsUser:
                 _execute_request(), _context(), _call(), "auto"
             )
 
-        assert verdict.settled is True
+        assert verdict.runs is True
         assert judged.await_args.args[4] == SUMMARY
 
 
