@@ -59,6 +59,7 @@ from app.models.chat_models import (
     ToolDataEntry,
     UpdateMessagesRequest,
 )
+from app.models.conversation_models import ConversationEntry
 from app.models.hil_models import HILApprovalStatus
 from app.models.message_models import ReplyToMessageData, TodoRunWake
 from app.models.user_models import AuthenticatedUser
@@ -154,7 +155,8 @@ async def _record_todo_run_report(
         message_id=run.render_message_id,
         tool_data=tool_data or None,
     )
-    if not await _save_message(run.conversation_id, run.user, bot_message):
+    saved = await _save_message(run.conversation_id, run.user, bot_message)
+    if saved is None:
         return
     await _broadcast_bot_message(
         target=_DeliveryTarget(
@@ -163,9 +165,9 @@ async def _record_todo_run_report(
             task_id=run.task_id,
             emit_task_id=True,
         ),
-        bot_message=bot_message,
-        notification_text=bot_message.response,
-        tool_data=bot_message.tool_data,
+        bot_message=saved,
+        notification_text=saved.response,
+        tool_data=saved.tool_data,
     )
 
 
@@ -182,7 +184,8 @@ async def record_todo_run_wake(
         message_id=str(uuid4()),
         todo_run_wake=wake,
     )
-    if not await _save_message(conversation_id, user, message):
+    saved = await _save_message(conversation_id, user, message)
+    if saved is None:
         return
     await _broadcast_message(
         user.user_id,
@@ -193,6 +196,7 @@ async def record_todo_run_wake(
                 "type": "user",
                 "response": "",
                 "message_id": message.message_id,
+                "seq": saved.seq,
                 "date": message.date,
                 "todo_run_wake": wake.model_dump(mode="json"),
             },
@@ -282,7 +286,8 @@ async def deliver_message_to_conversation(
     )
     bot_message.message_id = str(uuid4())
 
-    if not await _save_message(conversation_id, user, bot_message):
+    saved = await _save_message(conversation_id, user, bot_message)
+    if saved is None:
         return None
 
     source = await _get_conversation_source(conversation_id, user_id)
@@ -300,7 +305,7 @@ async def deliver_message_to_conversation(
     else:
         await _broadcast_bot_message(
             target=target,
-            bot_message=bot_message,
+            bot_message=saved,
             notification_text=text,
             tool_data=cards,
         )
@@ -403,10 +408,15 @@ async def _narrate_and_deliver(
         if follow_up_actions:
             bot_message.follow_up_actions = follow_up_actions
 
-    fresh_append, tool_data = await _resolve_append_mode(
+    merged_seq, tool_data = await _resolve_append_mode(
         run, bot_message, tool_data, is_hil_resume=is_hil_resume
     )
-    if fresh_append and not await _save_message(run.conversation_id, run.user, bot_message):
+    saved = (
+        ConversationEntry.committed(bot_message, merged_seq)
+        if merged_seq is not None
+        else await _save_message(run.conversation_id, run.user, bot_message)
+    )
+    if saved is None:
         return None, None
 
     # The bot message is already saved above, for the notification's "View Results".
@@ -422,7 +432,7 @@ async def _narrate_and_deliver(
         await _deliver_over_conversation_transport(
             conversation_source,
             target,
-            bot_message,
+            saved,
             _Reply(text=notification_text, tool_data=tool_data, result_type=result_type),
             is_react=is_react,
         )
@@ -445,7 +455,7 @@ class _Reply:
 async def _deliver_over_conversation_transport(
     conversation_source: ConversationSource | None,
     target: _DeliveryTarget,
-    bot_message: MessageModel,
+    saved: ConversationEntry,
     reply: _Reply,
     *,
     is_react: bool,
@@ -469,7 +479,7 @@ async def _deliver_over_conversation_transport(
     else:
         await _broadcast_and_defer_follow_ups(
             target=target,
-            bot_message=bot_message,
+            bot_message=saved,
             notification_text=reply.text,
             tool_data=reply.tool_data,
             result_type=reply.result_type,
@@ -478,7 +488,7 @@ async def _deliver_over_conversation_transport(
         delivered, transport = True, "websocket"
     _log_delivery_verdict(
         target=target,
-        message_id=bot_message.message_id,
+        message_id=saved.message_id,
         conversation_source=conversation_source,
         transport=transport,
         delivered=delivered,
@@ -594,7 +604,7 @@ async def _react_to_request(
 async def _broadcast_and_defer_follow_ups(
     *,
     target: _DeliveryTarget,
-    bot_message: MessageModel,
+    bot_message: ConversationEntry,
     notification_text: str,
     tool_data: list[ToolDataEntry] | None,
     result_type: str,
@@ -725,17 +735,18 @@ async def _resolve_append_mode(
     tool_data: list[ToolDataEntry] | None,
     *,
     is_hil_resume: bool,
-) -> tuple[bool, list[ToolDataEntry] | None]:
+) -> tuple[int | None, list[ToolDataEntry] | None]:
     """Merge a HIL-resumed result onto the original message where possible.
 
-    Returns (fresh_append, tool_data) — fresh_append False only when the
-    merge landed, in which case tool_data is the FULL merged card set.
+    Returns (merged_seq, tool_data): merged_seq is the original's seq when the merge
+    landed, in which case tool_data is the FULL merged card set; None means append.
     """
     if not is_hil_resume:
-        return True, tool_data
-    merged_tool_data = await _merge_resumed_result(run, bot_message, tool_data)
-    if merged_tool_data is not None:
-        return False, merged_tool_data
+        return None, tool_data
+    merged = await _merge_resumed_result(run, bot_message, tool_data)
+    if merged is not None:
+        merged_tool_data, merged_seq = merged
+        return merged_seq, merged_tool_data
     # Original bubble gone or update matched nothing. The approved action
     # already RAN — append a fresh message rather than discard its report. A
     # deleted conversation still 404s cleanly in the save.
@@ -746,18 +757,18 @@ async def _resolve_append_mode(
         original_message_id=bot_message.message_id,
     )
     bot_message.message_id = str(uuid4())
-    return True, tool_data
+    return None, tool_data
 
 
 async def _save_message(
     conversation_id: str,
     user: AuthenticatedUser,
     message: MessageModel,
-) -> bool:
-    """Append the message to the conversation; False when it wasn't saved."""
+) -> ConversationEntry | None:
+    """Append the message to the conversation, returning it at its seq; None when it wasn't saved."""
     persist_start = time.perf_counter()
     try:
-        await update_messages(
+        saved = await update_messages(
             UpdateMessagesRequest(
                 conversation_id=conversation_id,
                 messages=[message],
@@ -770,15 +781,15 @@ async def _save_message(
                 f"{LogTag.AGENT} conversation deleted, skipping message save",
                 conversation_id=conversation_id,
             )
-            return False
+            return None
         log.error(f"{LogTag.AGENT} deliver_result: failed to save message", error=str(e))
-        return False
+        return None
     except Exception as e:
         log.error(f"{LogTag.AGENT} deliver_result: failed to save message", error=str(e))
-        return False
+        return None
     finally:
         observe_delivery_persist(time.perf_counter() - persist_start, op="save_bot_message")
-    return True
+    return ConversationEntry.committed(message, saved.message_seqs[0])
 
 
 def _log_delivery_verdict(
@@ -823,12 +834,12 @@ async def _merge_resumed_result(
     run: ExecutorRun,
     bot_message: MessageModel,
     new_tool_data: list[ToolDataEntry] | None,
-) -> list[ToolDataEntry] | None:
+) -> tuple[list[ToolDataEntry], int] | None:
     """In-place update the ORIGINAL live message with a HIL-resumed run's result.
 
     $push-based append would duplicate the message instead of merging (the trap
     _persist_follow_up_actions also guards against). Returns the FULL merged
-    tool_data, since the WebSocket push replaces the client's message wholesale.
+    tool_data (the WebSocket push replaces the client's message wholesale) and the original's seq.
     """
     user_id = run.user.user_id
     message_id = bot_message.message_id
@@ -879,7 +890,7 @@ async def _merge_resumed_result(
             actions=bot_message.follow_up_actions,
         )
 
-    return merged
+    return merged, existing.seq
 
 
 # Approval statuses that outrank "pending" when the same approval_id appears
@@ -1079,7 +1090,7 @@ async def _build_follow_up_actions(
 
 def _spawn_deferred_follow_ups(
     *,
-    bot_message: MessageModel,
+    bot_message: ConversationEntry,
     result_type: str,
     tool_data: list[ToolDataEntry] | None,
     target: _DeliveryTarget,
@@ -1101,7 +1112,7 @@ def _spawn_deferred_follow_ups(
 
 async def _generate_and_push_follow_ups(
     *,
-    bot_message: MessageModel,
+    bot_message: ConversationEntry,
     result_type: str,
     tool_data: list[ToolDataEntry] | None,
     target: _DeliveryTarget,
@@ -1233,16 +1244,17 @@ async def _dispatch_workflow_notification(
 async def _broadcast_bot_message(
     *,
     target: _DeliveryTarget,
-    bot_message: MessageModel,
+    bot_message: ConversationEntry,
     notification_text: str,
     tool_data: list[ToolDataEntry] | None,
     follow_up_actions: list[str] | None = None,
 ) -> None:
-    """Push the bot message to web/mobile/system clients over the WebSocket."""
+    """Push the bot message, at its seq, to web/mobile/system clients over the WebSocket."""
     ws_payload: dict[str, Any] = {
         "type": "bot",
         "response": notification_text,
         "message_id": bot_message.message_id,
+        "seq": bot_message.seq,
         "date": bot_message.date,
     }
     if bot_message.error:

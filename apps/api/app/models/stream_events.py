@@ -266,9 +266,17 @@ class ConversationInitializedFrame(BaseModel):
     # Single identity: this IS the client's send id (turn_id) when the client
     # provided one — the optimistic record already carries the final key.
     user_message_id: str
+    # The saved user message's place in the conversation's order.
+    user_message_seq: int
     # The user message text. Makes the event log a complete record of the
     # turn: a client that reloads before its local write ever committed can
     # reconstruct the user message from replay alone.
     user_message_content: str
     bot_message_id: str
     stream_id: str
+
+
+class ReplyPlacedFrame(BaseModel):
+    """The reply took its place in the order, when first shown or else when saved: the seq its bubble sorts by."""
+
+    bot_message_seq: int

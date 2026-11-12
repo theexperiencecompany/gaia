@@ -15,6 +15,8 @@ export interface TurnMessageMeta {
   conversationId: string;
   botMessageId: string;
   createdAt: Date;
+  /** The reply's place in the order; absent until the server has placed it. */
+  seq?: number;
   options: TurnOptions;
 }
 
@@ -50,6 +52,7 @@ export const buildTurnMessageRecord = (
   createdAt: meta.createdAt,
   updatedAt: new Date(),
   messageId: meta.botMessageId,
+  seq: meta.seq,
   fileIds: meta.options.fileData.map((file) => file.fileId),
   fileData: meta.options.fileData,
   toolName: meta.options.selectedTool,
@@ -113,6 +116,7 @@ export const buildUserMessageRecord = (
   conversationId: string,
   userMessage: MessageType,
   createdAt: Date,
+  seq?: number,
 ): IMessage => ({
   id: userMessageId,
   conversationId,
@@ -122,6 +126,7 @@ export const buildUserMessageRecord = (
   createdAt,
   updatedAt: new Date(),
   messageId: userMessageId,
+  seq,
   fileIds: userMessage.fileIds,
   fileData: userMessage.fileData,
   toolName: userMessage.selectedTool ?? null,

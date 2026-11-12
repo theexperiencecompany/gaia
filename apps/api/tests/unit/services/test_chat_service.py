@@ -2,7 +2,7 @@
 
 Tests cover the core orchestration logic in chat_service.py:
 - run_chat_stream_background: end-to-end background streaming coordination
-- _initialize_new_conversation: conversation creation and init chunk format
+- _initialize_new_conversation: conversation creation and its description
 - save_user_message / save_bot_reply: MongoDB persistence with correct message structure
 - extract_tool_data: JSON parsing and tool field extraction
 - _extract_response_text: response text extraction from SSE chunks
@@ -282,80 +282,22 @@ class TestExtractResponseText:
 
 
 class TestInitializeNewConversation:
-    async def test_returns_sse_formatted_init_chunk(self, test_user, basic_body):
-        mock_conv = _created_conversation("conv_new_xyz", "New Chat")
-        with patch(
-            "app.services.chat.persistence.create_conversation",
-            new=AsyncMock(return_value=mock_conv),
-        ):
-            chunk = await _initialize_new_conversation(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_new_xyz",
-                user_message_id="umsg_1",
-                bot_message_id="bmsg_1",
-                stream_id="stream_abc",
-            )
-
-        assert chunk.startswith("data: ")
-        assert chunk.endswith("\n\n")
-        payload = json.loads(chunk[6:])
-        assert payload["conversation_id"] == "conv_new_xyz"
-        assert payload["user_message_id"] == "umsg_1"
-        assert payload["bot_message_id"] == "bmsg_1"
-        assert payload["stream_id"] == "stream_abc"
-
-    async def test_passes_generate_description_false(self, test_user, basic_body):
-        """The new-conversation path must pass generate_description=False."""
-        mock_conv = _created_conversation("conv_new_xyz", "New Chat")
+    async def test_creates_the_conversation_and_returns_its_description(
+        self, test_user, basic_body
+    ):
+        mock_conv = _created_conversation("conv_new_xyz", "Chat about the weather")
         with patch(
             "app.services.chat.persistence.create_conversation",
             new=AsyncMock(return_value=mock_conv),
         ) as mock_create:
-            await _initialize_new_conversation(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_new_xyz",
-                user_message_id="u1",
-                bot_message_id="b1",
-                stream_id="s1",
+            description = await _initialize_new_conversation(
+                body=basic_body, user=test_user, conversation_id="conv_new_xyz"
             )
+
+        assert description == "Chat about the weather"
         call_kwargs = mock_create.call_args.kwargs
         assert call_kwargs.get("generate_description") is False
-
-    async def test_uses_provided_conversation_id(self, test_user, basic_body):
-        mock_conv = _created_conversation("forced_id", "New Chat")
-        with patch(
-            "app.services.chat.persistence.create_conversation",
-            new=AsyncMock(return_value=mock_conv),
-        ) as mock_create:
-            await _initialize_new_conversation(
-                body=basic_body,
-                user=test_user,
-                conversation_id="forced_id",
-                user_message_id="u1",
-                bot_message_id="b1",
-                stream_id="s1",
-            )
-        call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs.get("conversation_id") == "forced_id"
-
-    async def test_description_included_in_init_chunk(self, test_user, basic_body):
-        mock_conv = _created_conversation("conv_id", "Chat about the weather")
-        with patch(
-            "app.services.chat.persistence.create_conversation",
-            new=AsyncMock(return_value=mock_conv),
-        ):
-            chunk = await _initialize_new_conversation(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_id",
-                user_message_id="u1",
-                bot_message_id="b1",
-                stream_id="s1",
-            )
-        payload = json.loads(chunk[6:])
-        assert payload["conversation_description"] == "Chat about the weather"
+        assert call_kwargs.get("conversation_id") == "conv_new_xyz"
 
 
 # ---------------------------------------------------------------------------
@@ -371,7 +313,7 @@ async def _saved_user_message(body: MessageRequestWithHistory, user: Authenticat
     request_arg = mock_update.call_args.args[0]
     assert request_arg.conversation_id == "conv_x"
     (user_msg,) = request_arg.messages
-    # Stamped in UTC so it sorts against replies saved by other processes.
+    # The display time, in UTC; order is the seq the save returns, never this date.
     assert datetime.fromisoformat(user_msg.date).utcoffset() == timedelta(0)
     return user_msg
 
@@ -525,8 +467,18 @@ class TestRunChatStreamBackground:
     @pytest.fixture(autouse=True)
     def saved_user_message(self) -> Iterator[AsyncMock]:
         """Stub the turn-start user-message write; these tests assert on the reply."""
-        with patch("app.services.chat.stream.save_user_message", new=AsyncMock()) as mock_save:
+        with patch(
+            "app.services.chat.stream.save_user_message", new=AsyncMock(return_value=1)
+        ) as mock_save:
             yield mock_save
+
+    @pytest.fixture(autouse=True)
+    def opened_reply(self) -> Iterator[AsyncMock]:
+        """Stub the write that opens the reply's entry at its first shown frame."""
+        with patch(
+            "app.services.chat.stream.open_bot_reply", new=AsyncMock(return_value=2)
+        ) as mock_open:
+            yield mock_open
 
     async def test_the_user_message_is_saved_before_the_agent_runs(
         self, test_user, existing_conv_body, saved_user_message
@@ -559,7 +511,7 @@ class TestRunChatStreamBackground:
         self, test_user, existing_conv_body
     ):
         sm = _make_stream_manager_mock()
-        update = AsyncMock(side_effect=[RuntimeError("document too large"), None])
+        fill = AsyncMock(side_effect=[RuntimeError("document too large"), True])
 
         with (
             _patch_stream_manager(sm),
@@ -567,7 +519,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.call_agent",
                 new=MagicMock(return_value=_text_then_nostream("Reminder set.", "Reminder set.")),
             ),
-            patch("app.services.chat.persistence.update_messages", new=update),
+            patch("app.services.chat.persistence.conversation_repository.fill_message", new=fill),
             patch("app.services.chat.stream.log.error") as log_error,
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
@@ -578,21 +530,19 @@ class TestRunChatStreamBackground:
                 conversation_id="conv_existing_123",
             )
 
-        lost, replacement = (c.args[0] for c in update.await_args_list)
-        assert all(c.kwargs == {"user": test_user} for c in update.await_args_list)
-        assert replacement.conversation_id == "conv_existing_123"
-        (lost_reply,) = lost.messages
-        (error_reply,) = replacement.messages
+        # The reply was shown, so both writes fill its opened entry in place.
+        assert all(
+            c.args == ("conv_existing_123",) and c.kwargs["user_id"] == test_user.user_id
+            for c in fill.await_args_list
+        )
+        lost_reply, error_reply = (c.kwargs["message"] for c in fill.await_args_list)
         assert (error_reply.type, error_reply.response, error_reply.error) == (
             "bot",
             "",
             TURN_REPLY_NOT_SAVED,
         )
         assert (error_reply.tool_data, error_reply.metadata) == (None, {})
-        assert (error_reply.message_id, error_reply.date) == (
-            lost_reply.message_id,
-            lost_reply.date,
-        )
+        assert error_reply.message_id == lost_reply.message_id
         log_error.assert_any_call(
             "[CHAT] Reply could not be saved; saving its error instead",
             stream_id="stream_rs",
@@ -2182,14 +2132,49 @@ class TestRunChatStreamBackground:
         ]
 
     async def test_a_reaction_turn_that_did_no_work_saves_no_bot_message(
-        self, test_user: AuthenticatedUser
+        self, test_user: AuthenticatedUser, opened_reply: AsyncMock
     ) -> None:
         frames, save, capture = await self._run_turn(test_user, "REACT: 😎")
 
+        # No entry is opened either, so nothing is left in progress for the sweeper to fail.
+        opened_reply.assert_not_awaited()
+        assert [frame for _, frame in frames if "bot_message_seq" in frame] == []
         save.assert_not_awaited()
         assert [frame for _, frame in frames if "response" in frame] == []
         capture.assert_any_call(UserId(USER_ID), ChatTurnReacted(emoji="😎"))
         assert [type(c.args[1]) for c in capture.call_args_list].count(ChatTurnReacted) == 1
+
+    async def test_the_reply_streams_while_the_instant_reaction_is_still_deciding(
+        self, test_user: AuthenticatedUser, instant_decision: AsyncMock
+    ) -> None:
+        decision: list[str] = []
+
+        async def undecided(*_: object) -> ReactionDecision:
+            decision.append("deciding")
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                decision.append("cancelled")
+                raise
+            return _reacted("🔎")
+
+        instant_decision.side_effect = undecided
+        seen_by_model: list[list[str]] = []
+
+        async def before_model() -> None:
+            await asyncio.sleep(0)
+            seen_by_model.append(list(decision))
+
+        with patch("app.services.chat.stream.REACTION_SETTLE_SECONDS", 0.01):
+            frames, save, _ = await self._run_turn(test_user, "Found it.", setup=before_model)
+
+        # The model ran while the decision was still out: the turn never waited on it.
+        assert seen_by_model == [["deciding"]]
+        # Only the bounded wait at the turn's end, which then gives up on it.
+        assert decision == ["deciding", "cancelled"]
+        assert "".join(f["response"] for _, f in frames if "response" in f) == "Found it."
+        assert _reactions(frames) == []
+        assert save.await_args.kwargs["reply"].complete_message == "Found it."
 
     async def test_a_reaction_turn_that_handed_off_work_saves_a_cards_only_message(
         self, test_user: AuthenticatedUser
@@ -2324,7 +2309,7 @@ class TestTurnLatencyHelpers:
         assert state.e2e_full_ms is None
         assert state.delegated is False
         assert state.queued is False
-        assert state.turn_completed_at is None
+        assert state.reply_opened is False
         assert state.is_cancelled is False
 
     def test_stamp_turn_latencies_computes_exact_ms(self) -> None:

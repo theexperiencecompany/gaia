@@ -24,6 +24,8 @@ interface BgMessageEvent {
     type: "bot" | "user";
     response: string;
     message_id: string;
+    /** The message's place in the conversation's order. */
+    seq: number;
     date: string;
     task_id?: string;
     /** Why a run that produced no reply failed — rendered instead of an empty bubble. */
@@ -87,6 +89,7 @@ export function useBgMessageWebSocket() {
       createdAt: new Date(message.date),
       updatedAt: new Date(message.date),
       messageId: message.message_id,
+      seq: message.seq,
       tool_data: message.tool_data ?? null,
       error: message.error ?? null,
       follow_up_actions: message.follow_up_actions ?? null,

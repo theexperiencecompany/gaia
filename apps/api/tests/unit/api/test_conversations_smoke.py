@@ -19,10 +19,10 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.models.chat_models import MessageModel
 from app.models.conversation_models import (
     ConversationActionResponse,
     ConversationDocument,
+    ConversationEntry,
     ConversationListResponse,
     ConversationMessageHit,
     CreateConversationResponse,
@@ -330,7 +330,7 @@ class TestPinnedMessages:
             results=[
                 ConversationMessageHit(
                     conversation_id="conv_123",
-                    message=MessageModel(type="bot", response="pinned answer"),
+                    message=ConversationEntry(type="bot", response="pinned answer", seq=3),
                 )
             ]
         )

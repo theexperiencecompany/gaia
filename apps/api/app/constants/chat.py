@@ -126,6 +126,12 @@ USER_MESSAGE_TYPE = "user"
 # own. Names the exception type so a support report still identifies the failure.
 GENERIC_TURN_ERROR = "Something went wrong while generating this response ({error_type})."
 
+# Saved on a reply whose turn died (a crashed process) after the user saw it begin.
+TURN_INTERRUPTED = (
+    "My reply was cut off before I could finish it. Anything I started for it may "
+    "already be done, so check before asking again."
+)
+
 # Saved in place of a reply that could not be written. The work the turn did
 # (a reminder, a todo) stands, so the user must be told to look before re-asking.
 TURN_REPLY_NOT_SAVED = (

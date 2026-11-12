@@ -177,6 +177,9 @@ class MessageModel(BaseModel):
     # True on a bot turn the user stopped with Stop; the client shows a quiet
     # "Stopped" line under it. None everywhere else.
     stopped: bool | None = None
+    # True on a bot reply whose entry holds its place in the order (opened when the
+    # user first saw it) while its turn is still running. None once the turn saves it.
+    in_progress: bool | None = None
     # Set by the pin-message endpoint on the embedded message; absent on most
     # messages, so it reads back as None unless the user pinned this one.
     pinned: bool | None = None

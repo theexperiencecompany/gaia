@@ -79,6 +79,8 @@ export class TurnSession {
   private botMessageId: string | null = null;
   private streamId: string | null = null;
   private botCreatedAt: Date | null = null;
+  /** The reply's place in the order, once the server has placed it (reply_placed). */
+  private botSeq: number | undefined = undefined;
 
   private acc: TurnAccumulator = createTurnAccumulator();
   private flushHandle: number | null = null;
@@ -389,6 +391,11 @@ export class TurnSession {
         this.handleConversationDescription(event.description);
         return undefined;
 
+      case "reply_placed":
+        this.botSeq = event.seq;
+        this.flush();
+        return undefined;
+
       case "desktop_tool_request":
         // Fire-and-forget: the desktop executes while the stream stays live.
         void relayDesktopToolRequest(event.request);
@@ -453,6 +460,7 @@ export class TurnSession {
     conversation_id?: string;
     conversation_description?: string | null;
     user_message_id?: string;
+    user_message_seq?: number;
     user_message_content?: string;
     bot_message_id?: string;
     stream_id?: string;
@@ -477,6 +485,7 @@ export class TurnSession {
         event.conversation_description ?? null,
         event.user_message_id,
         event.bot_message_id,
+        event.user_message_seq,
       );
       return;
     }
@@ -485,6 +494,7 @@ export class TurnSession {
       await this.bindExistingConversationIds(
         event.user_message_id,
         event.bot_message_id,
+        event.user_message_seq,
       );
     }
   }
@@ -494,6 +504,7 @@ export class TurnSession {
     description: string | null,
     userMessageId?: string,
     botMessageId?: string,
+    userMessageSeq?: number,
   ): Promise<void> {
     this.conversationId = conversationId;
     streamLog("lifecycle", "turn:bound-new-conversation", {
@@ -524,8 +535,7 @@ export class TurnSession {
     const userCreatedAt = this.args.userMessage.date
       ? new Date(this.args.userMessage.date)
       : new Date();
-    // Bot message sorts directly after the user message.
-    this.botCreatedAt = new Date(userCreatedAt.getTime() + 1);
+    this.botCreatedAt = new Date();
 
     const userRecord = userMessageId
       ? buildUserMessageRecord(
@@ -533,6 +543,7 @@ export class TurnSession {
           conversationId,
           this.args.userMessage,
           userCreatedAt,
+          userMessageSeq,
         )
       : null;
 
@@ -565,6 +576,7 @@ export class TurnSession {
   private async bindExistingConversationIds(
     userMessageId: string,
     botMessageId: string,
+    userMessageSeq?: number,
   ): Promise<void> {
     if (!this.conversationId) return;
     this.botMessageId = botMessageId;
@@ -572,7 +584,7 @@ export class TurnSession {
     const userCreatedAt = this.args.userMessage.date
       ? new Date(this.args.userMessage.date)
       : new Date();
-    this.botCreatedAt = new Date(userCreatedAt.getTime() + 1);
+    this.botCreatedAt = new Date();
 
     // Single identity: the send id IS the user_message_id, so confirm the
     // optimistic record in place; only rebuild from the replayed frame if
@@ -581,6 +593,7 @@ export class TurnSession {
       const confirmed = await db.updateMessage(userMessageId, {
         status: "sent",
         optimistic: false,
+        seq: userMessageSeq,
       });
       if (!confirmed && this.args.userMessage.response) {
         const userRecord = buildUserMessageRecord(
@@ -588,6 +601,7 @@ export class TurnSession {
           this.conversationId,
           this.args.userMessage,
           userCreatedAt,
+          userMessageSeq,
         );
         useChatStore.getState().addOrUpdateMessage(userRecord);
         await db.putMessage(userRecord);
@@ -704,6 +718,7 @@ export class TurnSession {
       conversationId: this.conversationId,
       botMessageId: this.botMessageId,
       createdAt: this.botCreatedAt ?? new Date(),
+      seq: this.botSeq,
       options: this.args.options,
     };
     return buildTurnMessageRecord(meta, this.acc, status, error, stopped);

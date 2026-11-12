@@ -189,9 +189,15 @@ const ConversationInitializedFrameSchema = z.object({
   conversation_id: z.string().optional(),
   conversation_description: z.string().nullish(),
   user_message_id: z.string(),
+  user_message_seq: z.number().optional(),
   user_message_content: z.string(),
   bot_message_id: z.string(),
   stream_id: z.string(),
+});
+
+/** The reply took its place in the conversation's order: the seq its bubble sorts by. */
+const ReplyPlacedFrameSchema = z.object({
+  bot_message_seq: z.number(),
 });
 
 export const ChatStreamFrameSchema = z.union([
@@ -212,6 +218,7 @@ export const ChatStreamFrameSchema = z.union([
   SubagentEndFrameSchema,
   DesktopToolRequestFrameSchema,
   ConversationInitializedFrameSchema,
+  ReplyPlacedFrameSchema,
   ConversationDescriptionFrameSchema,
   MessageBoundaryFrameSchema,
   BashDataFrameSchema,

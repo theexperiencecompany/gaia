@@ -13,7 +13,6 @@ on completion, even if the client disconnects mid-stream.
 import asyncio
 import contextlib
 from dataclasses import dataclass
-from datetime import UTC, datetime
 import json
 import time
 from typing import Any
@@ -58,14 +57,21 @@ from app.models.stream_events import (
     ConversationInitializedFrame,
     ErrorFrame,
     MainResponseCompleteFrame,
+    ReplyPlacedFrame,
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.chat.artifact_forwarder import forward_artifact_events
-from app.services.chat.chunks import ChunkAccumulators, extract_response_text, process_data_chunk
+from app.services.chat.chunks import (
+    ChunkAccumulators,
+    extract_response_text,
+    extract_tool_data,
+    process_data_chunk,
+)
 from app.services.chat.persistence import (
     BotReply,
     initialize_new_conversation,
+    open_bot_reply,
     save_bot_reply,
     save_user_message,
     user_message_content_from,
@@ -243,6 +249,7 @@ class _StreamState:
         "instant_reaction",
         "is_cancelled",
         "queued",
+        "reply_opened",
         "saved",
         "t0_perf",
         "todo_progress_accumulated",
@@ -251,7 +258,6 @@ class _StreamState:
         "tool_outputs",
         "ttft_ms",
         "ttft_perf",
-        "turn_completed_at",
         "usage_metadata",
         "user_message_id",
     )
@@ -273,6 +279,9 @@ class _StreamState:
         # Whether the turn was persisted in the try block (early save). When
         # False, the finally block does a fallback save.
         self.saved: bool = False
+        # Whether the reply's entry was opened at its first shown frame (open_bot_reply):
+        # its place in the order is then taken, and the save fills it in place.
+        self.reply_opened: bool = False
         # Whether executor tool_data (browser cards etc.) was attached to the
         # saved message. Separate from saved: a turn cut short during the
         # executor wait would otherwise skip the attach backstop and lose it.
@@ -284,10 +293,6 @@ class _StreamState:
         self.bot_message_id: str = str(uuid4())
         # The instant reaction placed beside the pre-model work; its result is the emoji placed.
         self.instant_reaction: asyncio.Task[str | None] | None = None
-        # When comms finished — stamped before any voice-mode executor wait so
-        # the saved user/comms messages keep timestamps EARLIER than a delegated
-        # executor's answer (saved mid-wait). The frontend sorts by createdAt.
-        self.turn_completed_at: datetime | None = None
         # Monotonic stamps (never logged raw) and their ms derivations. A None
         # ms means the span never happened — never zero-filled.
         self.t0_perf: float | None = None
@@ -393,14 +398,9 @@ async def _run_chat_stream(
         )
         state.usage_metadata = usage_callback.usage_metadata or {}
         _log_usage_summary(state)
-        # Stamp turn completion BEFORE any executor wait so the user/comms
-        # messages sort ahead of a delegated executor's mid-wait answer.
-        state.turn_completed_at = datetime.now(UTC)
         state.ack_perf = time.perf_counter()
 
-        # Early save: persist the comms ack immediately after the streaming loop
-        # so its array position is correct even if a concurrent stream finishes
-        # while we wait for the executor below.
+        # Saved before the executor wait: a reload during the wait shows the comms ack.
         await _persist_turn(stream_id, body, user, conversation_id, state)
         await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
         # A stop pressed during the executor wait arrives after the consume
@@ -542,8 +542,8 @@ async def _resolve_pending_approval_turn(
 
     ack = HIL_ACK_APPROVED if action == "approve" else HIL_ACK_DENIED
     state.complete_message = ack
-    state.turn_completed_at = datetime.now(UTC)
     state.ack_perf = time.perf_counter()
+    await _open_reply(stream_id, body, user, conversation_id, state)
     await stream_manager.publish_chunk(stream_id, format_sse_response(ack))
     if state.ttft_perf is None:
         state.ttft_perf = state.ack_perf
@@ -659,34 +659,62 @@ async def _publish_init_chunk(
     state: _StreamState,
     is_new_conversation: bool,
 ) -> None:
-    """Save the user message, then append the identity frame (conversation id + message ids) to the log.
+    """Save the user message, then append the identity frame (conversation id, message ids, user seq) to the log.
 
     No subscriber coordination needed: frames land in a replayable event log,
     so a client attaching at any point receives this frame first.
     """
-    if is_new_conversation:
-        init_data = await initialize_new_conversation(
-            body=body,
-            user=user,
-            conversation_id=conversation_id,
-            user_message_id=state.user_message_id,
-            bot_message_id=state.bot_message_id,
-            stream_id=stream_id,
-        )
-    else:
-        init_frame = ConversationInitializedFrame(
-            user_message_id=state.user_message_id,
-            user_message_content=user_message_content_from(body),
-            bot_message_id=state.bot_message_id,
-            stream_id=stream_id,
-        )
-        init_payload = init_frame.model_dump(
-            exclude={"conversation_id", "conversation_description"}
-        )
-        init_data = f"data: {json.dumps(init_payload)}\n\n"
+    description = (
+        await initialize_new_conversation(body, user, conversation_id)
+        if is_new_conversation
+        else None
+    )
+    user_message_seq = await save_user_message(body, user, conversation_id, state.user_message_id)
+    init_frame = ConversationInitializedFrame(
+        conversation_id=conversation_id,
+        conversation_description=description,
+        user_message_id=state.user_message_id,
+        user_message_seq=user_message_seq,
+        user_message_content=user_message_content_from(body),
+        bot_message_id=state.bot_message_id,
+        stream_id=stream_id,
+    )
+    resumed_exclude = (
+        None if is_new_conversation else {"conversation_id", "conversation_description"}
+    )
+    await stream_manager.publish_chunk(
+        stream_id, format_sse_data(init_frame.model_dump(exclude=resumed_exclude))
+    )
 
-    await save_user_message(body, user, conversation_id, state.user_message_id)
-    await stream_manager.publish_chunk(stream_id, init_data)
+
+async def _open_reply(
+    stream_id: str,
+    body: MessageRequestWithHistory,
+    user: AuthenticatedUser,
+    conversation_id: str,
+    state: _StreamState,
+) -> None:
+    """Give the reply its place in the order as the user first sees it, and tell the client its seq."""
+    if state.reply_opened:
+        return
+    seq = await open_bot_reply(body, user, conversation_id, state.bot_message_id)
+    state.reply_opened = True
+    await _publish_reply_seq(stream_id, seq)
+
+
+async def _publish_reply_seq(stream_id: str, seq: int) -> None:
+    await stream_manager.publish_chunk(
+        stream_id, format_sse_data(ReplyPlacedFrame(bot_message_seq=seq).model_dump())
+    )
+
+
+def _shows_reply(chunk: str) -> bool:
+    """Whether a frame puts reply text or a tool card in front of the user."""
+    if not chunk.startswith("data: "):
+        return False
+    return bool(extract_response_text(chunk)) or bool(
+        extract_tool_data(chunk.removeprefix("data: ")).tool_data
+    )
 
 
 async def _consume_agent_stream(
@@ -735,6 +763,8 @@ async def _consume_agent_stream(
             state.is_cancelled = state.is_cancelled or was_cancelled
             continue
 
+        if not state.reply_opened and _shows_reply(chunk):
+            await _open_reply(stream_id, body, user, turn.conversation_id, state)
         await _dispatch_stream_chunk(chunk, stream_id, turn, state)
     return description_task
 
@@ -1065,7 +1095,7 @@ async def _persist_turn(
     Callers guard re-entry with state.saved.
     """
     try:
-        await _save_reply(stream_id, body, user, conversation_id, state)
+        seq = await _save_reply(stream_id, body, user, conversation_id, state)
     except Exception as e:  # recovered: the error stands in for the lost reply
         log.error(
             f"{LogTag.CHAT} Reply could not be saved; saving its error instead",
@@ -1077,18 +1107,21 @@ async def _persist_turn(
         await stream_manager.publish_chunk(
             stream_id, format_sse_data(ErrorFrame(error=TURN_REPLY_NOT_SAVED).model_dump())
         )
-        await save_bot_reply(
+        seq = await save_bot_reply(
             body=body,
             user=user,
             conversation_id=conversation_id,
             reply=BotReply(
                 complete_message="",
                 bot_message_id=state.bot_message_id,
-                bot_timestamp=state.turn_completed_at,
                 error=TURN_REPLY_NOT_SAVED,
+                opened=state.reply_opened,
             ),
         )
     state.saved = True
+    # A reply first shown at its save takes its place now, at the end.
+    if seq is not None:
+        await _publish_reply_seq(stream_id, seq)
 
 
 async def _save_reply(
@@ -1097,8 +1130,8 @@ async def _save_reply(
     user: AuthenticatedUser,
     conversation_id: str,
     state: _StreamState,
-) -> None:
-    """Recover final state, group subagents, and save the reply as the user saw it.
+) -> int | None:
+    """Recover final state, group subagents, and save the reply as the user saw it; its seq when appended.
 
     On cancellation/error paths complete_message may be empty because the
     nostream marker never arrived — recover_stream_state rebuilds it from
@@ -1113,12 +1146,12 @@ async def _save_reply(
     reconstruct_subagent_groups(state.tool_data)
     if reaction is not None:
         await _react_as_chat_model(stream_id, user, conversation_id, state, reaction)
-        # The reaction is the whole answer; only the turn's cards still need a message.
-        if not _turn_did_work(stream_id, state):
-            return
+        # The reaction is the whole answer; only a reply already shown, or the turn's cards, need a message.
+        if not state.reply_opened and not _turn_did_work(stream_id, state):
+            return None
     else:
         await _substitute_empty_completion(stream_id, state)
-    await save_bot_reply(
+    return await save_bot_reply(
         body=body,
         user=user,
         conversation_id=conversation_id,
@@ -1127,10 +1160,10 @@ async def _save_reply(
             bot_message_id=state.bot_message_id,
             tool_data=state.tool_data,
             metadata=state.usage_metadata,
-            bot_timestamp=state.turn_completed_at,
             error=state.error or None,
             follow_up_actions=state.follow_up_actions or None,
             stopped=state.is_cancelled,
+            opened=state.reply_opened,
         ),
     )
 

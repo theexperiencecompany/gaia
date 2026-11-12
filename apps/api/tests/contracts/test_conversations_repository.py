@@ -73,10 +73,10 @@ async def _seed_subagent_group(repo: ConversationRepository, doc: ConversationDo
     assert await repo.append_message_tool_data(
         doc.conversation_id,
         user_id=doc.user_id,
-        message_id=ids[0],
+        message_id=list(ids)[0],
         entries=[_subagent_group("row-1")],
     )
-    return ids[0]
+    return list(ids)[0]
 
 
 async def _seed_user_message(repo: ConversationRepository) -> tuple[ConversationDocument, str]:
@@ -434,7 +434,7 @@ class TestMessages:
         fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert fetched is not None
         assert [m.response for m in fetched.messages] == ["hi", "hello"]
-        assert [m.message_id for m in fetched.messages] == ids
+        assert [m.message_id for m in fetched.messages] == list(ids)
 
     async def test_a_tool_data_entry_holding_a_model_is_stored_as_its_dump(self, repo):
         doc = _doc()
@@ -469,7 +469,7 @@ class TestMessages:
             messages=[MessageModel(type="bot", response="pin me")],
         )
         assert ids is not None
-        mid = ids[0]
+        mid = list(ids)[0]
         assert await repo.set_message_pinned(
             doc.conversation_id, user_id=doc.user_id, message_id=mid, pinned=True
         )
@@ -528,7 +528,7 @@ class TestMessages:
             messages=[MessageModel(type="bot", response="r")],
         )
         assert ids is not None
-        mid = ids[0]
+        mid = list(ids)[0]
         assert await repo.append_message_tool_data(
             doc.conversation_id,
             user_id=doc.user_id,
@@ -553,7 +553,7 @@ class TestMessages:
             messages=[MessageModel(type="bot", response="r")],
         )
         assert ids is not None
-        mid = ids[0]
+        mid = list(ids)[0]
         assert await repo.append_message_tool_data(
             doc.conversation_id,
             user_id=doc.user_id,
@@ -605,7 +605,7 @@ class TestMessages:
         assert not await repo.extend_subagent_group(
             doc.conversation_id,
             user_id=doc.user_id,
-            message_id=ids[0],
+            message_id=list(ids)[0],
             group=SavedSubagentGroup(subagent_id="missing"),
         )
 
@@ -646,7 +646,7 @@ class TestMessages:
         )
         assert ids is not None
 
-        stored = await repo.get_message(doc.conversation_id, ids[0], user_id=doc.user_id)
+        stored = await repo.get_message(doc.conversation_id, list(ids)[0], user_id=doc.user_id)
         assert stored is not None and stored.tool_data is not None
         entry = stored.tool_data[0]
         assert entry.get("tool_category") == "gmail"
@@ -663,7 +663,7 @@ class TestMessages:
             messages=[MessageModel(type="bot", response="owned")],
         )
         assert ids is not None
-        found = await repo.find_owner_of_message(doc.user_id, ids[0])
+        found = await repo.find_owner_of_message(doc.user_id, list(ids)[0])
         assert found == doc.conversation_id
         assert await repo.find_owner_of_message(doc.user_id, "no-such") is None
 
@@ -690,7 +690,7 @@ class TestMessageSettlementWrites:
             ],
         )
         assert ids is not None and len(ids) == 2
-        return doc, ids[0], ids[1]
+        return doc, list(ids)[0], list(ids)[1]
 
     async def test_set_response_writes_only_the_named_message(self, repo):
         doc, user_mid, bot_mid = await self._seed(repo)
