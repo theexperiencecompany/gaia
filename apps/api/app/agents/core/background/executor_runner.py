@@ -13,6 +13,7 @@ The executor:busy Redis key prevents concurrent executor spawns per
 conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 import time
 from typing import NamedTuple
@@ -29,7 +30,7 @@ from app.agents.core.background.executor_capture import (
     drain_executor_tool_data,
 )
 from app.agents.core.background.executor_channel import ExecutorInbox, decide_drain
-from app.agents.core.background.executor_progress import ProgressRecorder
+from app.agents.core.background.executor_progress import ProgressRecorder, StreamWriter
 from app.agents.core.background.executor_queue import (
     LockClaim,
     PreparedQueuedTask,
@@ -88,11 +89,12 @@ from app.models.conversation_log_models import WorkOutcome
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
 from app.services.browser.job_stop import stop_browser_job
+from app.services.conversation.work_deltas import WorkDeltas
 from app.services.conversation.work_log import (
     record_approval_requested,
     record_work_finished,
 )
-from app.services.hil.approvals_store import set_resume_item
+from app.services.hil.approvals_store import get_approval, set_resume_item
 from app.services.hil.resume_slot import release_resume_dispatch
 from app.services.latency_metrics import (
     observe_executor_active,
@@ -433,12 +435,16 @@ async def _execute_executor(
         progress = ProgressRecorder(
             run.conversation_id, build_lock_value(stream_id, run.task_id or "")
         )
-        writer = progress.wrap(make_redis_stream_writer(stream_id))
+        writer, drain_deltas = _stream_writer(run)
         try:
-            outcome = await execute_subagent_stream(ctx=ctx, stream_writer=writer, resume=resume)
+            outcome = await execute_subagent_stream(
+                ctx=ctx, stream_writer=progress.wrap(writer), resume=resume
+            )
         finally:
             # Before finalize renews (a pause) or deletes (an ending) the record.
             await progress.settle()
+            # The task's live cards reach the stream before its WorkFinished.
+            await drain_deltas()
         if outcome.paused:
             approval_ids = paused_approval_ids(outcome.interrupt or {})
             if not approval_ids:
@@ -482,6 +488,19 @@ async def _execute_executor(
         return _ExecutorResult(
             EXECUTOR_CRASH_MESSAGE, "error", ctx=ctx, error_type=type(e).__name__
         )
+
+
+async def _nothing_to_drain() -> None:
+    return None
+
+
+def _stream_writer(run: ExecutorRun) -> tuple[StreamWriter, Callable[[], Awaitable[None]]]:
+    """Return the run's stream writer and what drains it; a step-dispatched run also publishes its cards."""
+    writer = make_redis_stream_writer(run.stream_id)
+    if run.conversation_step is None or not run.task_id:
+        return writer, _nothing_to_drain
+    deltas = WorkDeltas(run.conversation_id, run.task_id)
+    return deltas.wrap(writer), deltas.drain
 
 
 async def _finalize_executor_run(
@@ -628,8 +647,16 @@ async def _log_approvals_requested(run: ExecutorRun, approval_ids: tuple[str, ..
     if run.conversation_step is None or not run.task_id:
         return
     for approval_id in approval_ids:
+        record = await get_approval(approval_id)
+        if record is None:
+            raise LookupError(f"approval {approval_id} the run paused on has no record")
         await record_approval_requested(
-            run.conversation_id, run.user.user_id, run.task_id, approval_id
+            run.conversation_id,
+            run.user.user_id,
+            run.task_id,
+            approval_id,
+            summary=record.summary,
+            expires_at=record.expires_at,
         )
 
 
@@ -741,6 +768,7 @@ async def _log_work_finished(
         run.task_id,
         _work_outcome(outcome, stopped=stopped),
         report,
+        outcome.tool_data or (),
     )
 
 

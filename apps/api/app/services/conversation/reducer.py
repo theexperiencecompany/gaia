@@ -91,7 +91,12 @@ def _stop(state: ConversationState, seq: int, entry: StopRequested) -> Transitio
     covers = seq - 1 if entry.covers_through is None else entry.covers_through
     if covers >= seq:
         return Rejected(reason=RejectReason.STOP_COVERS_FUTURE)
-    cancelled = tuple(item.task_id for item in state.work if item.cause_through <= covers)
+    cancelled = tuple(
+        task_id
+        for item in state.work
+        if item.cause_through <= covers
+        for task_id in (item.task_id, *item.joined)
+    )
     stopped = _drop_waking_through(state, covers).model_copy(
         update={
             "stopped_through": max(state.stopped_through, covers),
@@ -109,6 +114,8 @@ def _start_work(state: ConversationState, seq: int, entry: WorkStarted) -> Trans
         return Rejected(reason=RejectReason.CAUSE_STOPPED)
     if _live(state, entry.task_id) is not None:
         return Rejected(reason=RejectReason.TASK_ALREADY_LIVE)
+    if entry.joins is not None:
+        return _join_work(state, entry, entry.joins)
     work = LiveWork(
         task_id=entry.task_id,
         cause_through=entry.cause_through,
@@ -116,6 +123,24 @@ def _start_work(state: ConversationState, seq: int, entry: WorkStarted) -> Trans
         pending_approvals=frozenset(),
     )
     return Transition(state=state.model_copy(update={"work": (*state.work, work)}), effects=())
+
+
+def _join_work(state: ConversationState, entry: WorkStarted, joins: str) -> Transition | Rejected:
+    """Fold the handed-over task into the live work it joined: its answers, and its stop."""
+    if _live(state, joins) is None:
+        return Rejected(reason=RejectReason.TASK_NOT_LIVE)
+    work = tuple(
+        item.model_copy(
+            update={
+                "answers": tuple(dict.fromkeys((*item.answers, *entry.answers))),
+                "joined": (*item.joined, entry.task_id),
+            }
+        )
+        if item.task_id == joins
+        else item
+        for item in state.work
+    )
+    return Transition(state=state.model_copy(update={"work": work}), effects=())
 
 
 def _request_approval(state: ConversationState, entry: ApprovalRequested) -> Transition | Rejected:

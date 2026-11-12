@@ -46,6 +46,7 @@ from app.schemas.hil_schemas import (
     BatchDecisionOutcome,
 )
 from app.services.analytics_service import capture
+from app.services.conversation.work_log import record_approval_decided
 from app.services.hil.bridge import (
     SettledApprovalCard,
     _approval_entry,
@@ -184,6 +185,8 @@ async def _commit_decision(
         )
 
     log.set(hil={"approval_id": approval_id, "decision": kind, "tool": row.tool_name})
+    if row.task_id is not None:
+        await record_approval_decided(row.conversation_id, user_id, approval_id, kind)
     # Server-owned funnel event: exactly once per committed decision (stale-v
     # and lost-CAS returns above emit nothing). Explicit user_id: the decide
     # path resolves its user from the row, not a session.

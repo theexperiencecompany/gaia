@@ -6,7 +6,10 @@ import contextlib
 from dataclasses import dataclass, replace
 import itertools
 
+from langgraph.errors import GraphRecursionError
+
 from app.constants.chat import BOT_CONVERSATION_SOURCES, EMPTY_RESPONSE_FALLBACK
+from app.constants.conversation import CLASSIFIER_LOOKBACK_SEQS
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
@@ -27,6 +30,7 @@ from app.models.conversation_log_models import (
     CommsPhase,
     ConversationState,
     Entry,
+    FailureReason,
     IntegrationConnected,
     LoggedEntry,
     MergeGroup,
@@ -43,6 +47,8 @@ from app.models.conversation_log_models import (
     WorkFinished,
     WorkflowFired,
 )
+from app.models.message_models import MessageDict
+from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.log import publish_appended, state_frame
 from app.services.conversation.ports import (
     CancelReason,
@@ -98,6 +104,8 @@ class _Attempt:
     # A Stop or another group's input ended the run of joinable entries.
     closed: bool = False
     deltas: int = 0
+    # The cards of the work whose reply this is (reply_id = task_id); the reply opens with them.
+    work_cards: tuple[ToolDataEntry, ...] = ()
 
     @property
     def committed(self) -> CommitReason | None:
@@ -177,6 +185,7 @@ async def _recover(ports: RuntimePorts, claim: StepClaim) -> None:
             answers=(),
             through=state.settled_through,
             quote_target=None,
+            failure=FailureReason.SERVER_RESTART,
         )
         await _append(ports, claim, recovered)
     elif state.comms is not CommsPhase.IDLE:
@@ -194,13 +203,15 @@ async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool
     if await _answered_as_approval(ports, claim, state, pending[0], attempt_id):
         return False
     batch = _batch(pending)
+    reply_id = _reply_id(batch, entries, attempt_id)
     attempt = _Attempt(
         claim=claim,
         attempt_id=attempt_id,
-        reply_id=_reply_id(batch, entries, attempt_id),
+        reply_id=reply_id,
         batch=batch,
         covers=batch.waking,
         seen=batch.end,
+        work_cards=_work_cards(batch, reply_id),
     )
     # Everything since the last settled input that no batch carries: notes, stops, a dead attempt.
     context = [
@@ -239,6 +250,32 @@ def _reply_id(batch: Batch, entries: Sequence[LoggedEntry], attempt_id: str) -> 
     return next((task for task in tasks if task not in used), f"r{attempt_id}")
 
 
+def _work_cards(batch: Batch, reply_id: str) -> tuple[ToolDataEntry, ...]:
+    """Return the cards of the finished work this reply answers in its own reply."""
+    return next(
+        (
+            logged.entry.tool_data
+            for logged in batch.waking
+            if isinstance(logged.entry, WorkFinished) and logged.entry.task_id == reply_id
+        ),
+        (),
+    )
+
+
+async def _turns_before(ports: RuntimePorts, claim: StepClaim, seq: int) -> list[MessageDict]:
+    """Return the user messages and shown replies logged shortly before seq, as chat turns."""
+    since = max(0, seq - 1 - CLASSIFIER_LOOKBACK_SEQS)
+    entries = await ports.log.read_after(claim.conversation_id, claim.user_id, since)
+    turns: list[MessageDict] = []
+    for logged in entries:
+        match logged.entry:
+            case UserMessage(text=text) if logged.seq < seq:
+                turns.append({"role": "user", "content": text})
+            case Reply(text=text) if logged.seq < seq and text:
+                turns.append({"role": "assistant", "content": text})
+    return turns
+
+
 async def _answered_as_approval(
     ports: RuntimePorts,
     claim: StepClaim,
@@ -255,7 +292,10 @@ async def _answered_as_approval(
         and awaiting
     ):
         return False
-    decision = await ports.approvals.classify(claim.conversation_id, claim.user_id, message.text)
+    history = await _turns_before(ports, claim, first.seq)
+    decision = await ports.approvals.classify(
+        claim.conversation_id, claim.user_id, message.text, history
+    )
     if decision is None:
         return False
     for approval_id in awaiting:
@@ -411,7 +451,7 @@ async def _handle(
         case ModelOutput(has_tool_calls=has_tool_calls):
             _commit_quietly(attempt)
             if has_tool_calls and attempt.joiners:
-                run.absorb(attempt.joiners)
+                await run.absorb(attempt.joiners)
                 attempt.covers = (*attempt.covers, *attempt.joiners)
                 attempt.joiners = ()
         case Streamed(payload=payload):
@@ -426,7 +466,7 @@ def _commit_quietly(attempt: _Attempt) -> None:
 async def _show(ports: RuntimePorts, attempt: _Attempt, payload: StreamPayload) -> None:
     """Open the reply on the first visible delta, then stream the delta into it."""
     if not isinstance(attempt.progress, _Showing):
-        reply = _empty_reply(attempt)
+        reply = await _opening_reply(ports, attempt, _empty_reply(attempt))
         opened = await _append(ports, attempt.claim, reply)
         attempt.progress = _Showing(reply=reply, seq=opened.seq)
     shown = attempt.progress
@@ -524,7 +564,7 @@ def _final_reply(attempt: _Attempt, outcome: RunOutcome) -> tuple[Reply, ReplyOu
         filled = filled.model_copy(
             update={
                 "text": outcome.text,
-                "tool_data": outcome.tool_data,
+                "tool_data": (*attempt.work_cards, *outcome.tool_data),
                 "follow_up_actions": outcome.follow_up_actions,
             }
         )
@@ -557,11 +597,20 @@ async def _fail(ports: RuntimePorts, attempt: _Attempt, error: Exception) -> Non
         conversation_id=attempt.claim.conversation_id,
         attempt_id=attempt.attempt_id,
     )
-    await _conclude(ports, attempt, _base_reply(attempt), ReplyOutcome.FAILED)
+    failure = (
+        FailureReason.STEP_LIMIT
+        if isinstance(error, GraphRecursionError)
+        else FailureReason.MODEL_ERROR
+    )
+    await _conclude(ports, attempt, _base_reply(attempt), ReplyOutcome.FAILED, failure)
 
 
 async def _conclude(
-    ports: RuntimePorts, attempt: _Attempt, reply: Reply, settled_as: ReplyOutcome
+    ports: RuntimePorts,
+    attempt: _Attempt,
+    reply: Reply,
+    settled_as: ReplyOutcome,
+    failure: FailureReason | None = None,
 ) -> None:
     """Save the reply's final content and settle it as answering everything the attempt covered."""
     stored = await _put_reply(ports, attempt, reply)
@@ -569,7 +618,9 @@ async def _conclude(
     if settled_as is ReplyOutcome.SILENT:
         quote = None
     await _append(
-        ports, attempt.claim, _settled(attempt, settled_as, answers, attempt.through, quote)
+        ports,
+        attempt.claim,
+        _settled(attempt, settled_as, answers, attempt.through, quote, failure),
     )
 
 
@@ -579,6 +630,7 @@ def _settled(
     answers: tuple[str, ...],
     through: int,
     quote: str | None,
+    failure: FailureReason | None = None,
 ) -> ReplySettled:
     return ReplySettled(
         id=f"{attempt.attempt_id}:settled",
@@ -587,6 +639,7 @@ def _settled(
         answers=answers,
         through=through,
         quote_target=quote,
+        failure=failure,
     )
 
 
@@ -634,7 +687,10 @@ def _fold(reply: Reply, payload: StreamPayload) -> Reply:
 
 def _empty_reply(attempt: _Attempt) -> Reply:
     return Reply(
-        id=f"{attempt.attempt_id}:reply", reply_id=attempt.reply_id, attempt_id=attempt.attempt_id
+        id=f"{attempt.attempt_id}:reply",
+        reply_id=attempt.reply_id,
+        attempt_id=attempt.attempt_id,
+        tool_data=attempt.work_cards,
     )
 
 
@@ -646,7 +702,14 @@ def _base_reply(attempt: _Attempt) -> Reply:
 async def _put_reply(ports: RuntimePorts, attempt: _Attempt, reply: Reply) -> LoggedEntry:
     if isinstance(attempt.progress, _Showing):
         return await _amend(ports, attempt.claim, reply)
-    return await _append(ports, attempt.claim, reply)
+    return await _append(ports, attempt.claim, await _opening_reply(ports, attempt, reply))
+
+
+async def _opening_reply(ports: RuntimePorts, attempt: _Attempt, reply: Reply) -> Reply:
+    """Stamp the reply about to open with the message it quotes, as if it took the next seq."""
+    state = await ports.log.state(attempt.claim.conversation_id, attempt.claim.user_id)
+    _, quote = await _answers_and_quote(ports, attempt, state.head + 1)
+    return reply.model_copy(update={"quote_target": quote})
 
 
 async def _append(ports: RuntimePorts, claim: StepClaim, entry: Entry) -> LoggedEntry:

@@ -6,7 +6,6 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from app.config.rate_limits import PRIMARY_METERED_FEATURE
-from app.constants.conversation import ConversationRuntime
 from app.db.redis import redis_cache
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversations import conversation_repository
@@ -119,11 +118,10 @@ class BotService:
         user: AuthenticatedUser,
         *,
         is_dm: bool = False,
-        runtime: ConversationRuntime | None = None,
     ) -> str:
         """Return the conversation id for this bot session, creating one if needed.
 
-        channel_id=None means the session is a DM; runtime is what runs a conversation created here.
+        channel_id=None means the session is a DM.
         """
         if is_dm:
             await BotService._absorb_channel_keyed_dm(platform, platform_user_id, channel_id)
@@ -166,7 +164,7 @@ class BotService:
             description=f"{platform.capitalize()} Chat",
             source=ConversationSource(platform),
         )
-        await create_conversation_service(conversation, user, runtime=runtime)
+        await create_conversation_service(conversation, user)
 
         log.set(
             bot={
@@ -186,9 +184,8 @@ class BotService:
         user: AuthenticatedUser,
         *,
         is_dm: bool = False,
-        runtime: ConversationRuntime | None = None,
     ) -> str:
-        """Delete the session and return a freshly created conversation id, run by runtime."""
+        """Delete the session and return a freshly created conversation id."""
         if is_dm:
             # The channel-keyed legacy row IS this DM: left in place, the next
             # inbound merge would resurrect the conversation the user just reset.
@@ -198,9 +195,7 @@ class BotService:
         session_key = BotService.build_session_key(platform, platform_user_id, channel_id)
         await bot_session_repository.delete_by_session_key(session_key)
 
-        return await BotService.get_or_create_session(
-            platform, platform_user_id, channel_id, user, runtime=runtime
-        )
+        return await BotService.get_or_create_session(platform, platform_user_id, channel_id, user)
 
 
 async def charge_bot_turn(user_id: str, body: BotChatRequest, stream_id: str) -> None:

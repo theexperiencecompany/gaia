@@ -89,6 +89,48 @@
         "title": "ActionType",
         "type": "string"
       },
+      "ActiveBotConversation": {
+        "description": "A bot session's conversation still answering; a restarted bot follows its events after after_seq.\n\nThe log does not record what a platform delivered: after_seq is the newest settled reply's\nseq, so the follower replays the reply in flight and everything after it.",
+        "properties": {
+          "after_seq": {
+            "minimum": 0.0,
+            "title": "After Seq",
+            "type": "integer"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "is_dm": {
+            "title": "Is Dm",
+            "type": "boolean"
+          },
+          "platform_user_id": {
+            "title": "Platform User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "platform_user_id",
+          "channel_id",
+          "is_dm",
+          "after_seq"
+        ],
+        "title": "ActiveBotConversation",
+        "type": "object"
+      },
       "ActivityDay": {
         "description": "One UTC day of the heatmap: actions plus the tokens they burned.\n\nToken counts are the *charged* ones only \u2014 the same spend the budget\npercentage is measured against \u2014 so background work (memory extraction,\nonboarding) never shows up as something the user did. Cached and reasoning\ntokens are broken out because they explain an otherwise surprising input\ntotal; ``tokens`` is input + output, matching how the per-request ceiling\ncounts them (``cost_budget.record_model_call_usage``).",
         "properties": {
@@ -479,6 +521,18 @@
             "title": "Approval Id",
             "type": "string"
           },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
           "id": {
             "description": "Producer-minted idempotency key",
             "minLength": 1,
@@ -489,6 +543,11 @@
             "const": "approval_requested",
             "default": "approval_requested",
             "title": "Kind",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
             "type": "string"
           },
           "task_id": {
@@ -3891,16 +3950,6 @@
             "title": "Messages",
             "type": "array"
           },
-          "runtime": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConversationRuntime"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "source": {
             "anyOf": [
               {
@@ -4283,6 +4332,7 @@
           "frame": {
             "discriminator": {
               "mapping": {
+                "conversation_updated": "#/components/schemas/ConversationUpdatedFrame",
                 "entry": "#/components/schemas/EntryFrame",
                 "entry_updated": "#/components/schemas/EntryUpdatedFrame",
                 "reply_delta": "#/components/schemas/ReplyDeltaFrame",
@@ -4310,6 +4360,9 @@
               },
               {
                 "$ref": "#/components/schemas/StateFrame"
+              },
+              {
+                "$ref": "#/components/schemas/ConversationUpdatedFrame"
               }
             ],
             "title": "Frame"
@@ -4455,14 +4508,6 @@
         ],
         "title": "ConversationModel",
         "type": "object"
-      },
-      "ConversationRuntime": {
-        "description": "What runs a conversation: absent on the head means the legacy per-turn stream.",
-        "enum": [
-          "step"
-        ],
-        "title": "ConversationRuntime",
-        "type": "string"
       },
       "ConversationSource": {
         "description": "Client or channel a conversation originated from.",
@@ -4808,6 +4853,27 @@
           "source"
         ],
         "title": "ConversationSyncRow",
+        "type": "object"
+      },
+      "ConversationUpdatedFrame": {
+        "additionalProperties": false,
+        "description": "The conversation's own metadata changed: its title, once generated from the first message.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "kind": {
+            "const": "conversation_updated",
+            "default": "conversation_updated",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "description"
+        ],
+        "title": "ConversationUpdatedFrame",
         "type": "object"
       },
       "CreateCheckoutSessionRequest": {
@@ -7110,6 +7176,16 @@
         ],
         "title": "EventUpdateRequest",
         "type": "object"
+      },
+      "FailureReason": {
+        "description": "Why a reply failed; a client words the line it shows under the reply from it.",
+        "enum": [
+          "model_error",
+          "step_limit",
+          "server_restart"
+        ],
+        "title": "FailureReason",
+        "type": "string"
       },
       "FeaturePeriodUsage": {
         "description": "One feature's usage within one window (day or month).",
@@ -16389,6 +16465,17 @@
             "title": "Kind",
             "type": "string"
           },
+          "quote_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote Target"
+          },
           "reply_id": {
             "title": "Reply Id",
             "type": "string"
@@ -16528,6 +16615,16 @@
             },
             "title": "Answers",
             "type": "array"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FailureReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "id": {
             "description": "Producer-minted idempotency key",
@@ -17402,6 +17499,16 @@
             ],
             "title": "Reply To"
           },
+          "reply_to_message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplyToMessageData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "retry_of": {
             "anyOf": [
               {
@@ -17413,10 +17520,54 @@
             ],
             "title": "Retry Of"
           },
+          "selected_calendar_event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectedCalendarEventData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selected_tool": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Tool"
+          },
+          "selected_workflow": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectedWorkflowDataInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "text": {
             "maxLength": 32768,
             "title": "Text",
             "type": "string"
+          },
+          "tool_category": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Category"
           },
           "voice": {
             "default": false,
@@ -22235,6 +22386,14 @@
             "title": "File Ids",
             "type": "array"
           },
+          "files": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FileData"
+            },
+            "title": "Files",
+            "type": "array"
+          },
           "id": {
             "description": "Producer-minted idempotency key",
             "minLength": 1,
@@ -22279,6 +22438,16 @@
             ],
             "title": "Reply To"
           },
+          "reply_to_message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplyToMessageData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "retry_of": {
             "anyOf": [
               {
@@ -22296,12 +22465,56 @@
             "title": "Revision",
             "type": "integer"
           },
+          "selected_calendar_event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectedCalendarEventData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selected_tool": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Tool"
+          },
+          "selected_workflow": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectedWorkflowDataOutput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "surface": {
             "$ref": "#/components/schemas/ConversationSource"
           },
           "text": {
             "title": "Text",
             "type": "string"
+          },
+          "tool_category": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Category"
           },
           "voice": {
             "default": false,
@@ -22951,6 +23164,14 @@
           "task_id": {
             "title": "Task Id",
             "type": "string"
+          },
+          "tool_data": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ToolDataEntry"
+            },
+            "title": "Tool Data",
+            "type": "array"
           }
         },
         "required": [
@@ -22995,6 +23216,17 @@
             "minLength": 1,
             "title": "Id",
             "type": "string"
+          },
+          "joins": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joins"
           },
           "kind": {
             "const": "work_started",
@@ -24892,6 +25124,72 @@
           }
         },
         "summary": "Check Auth Status",
+        "tags": [
+          "Bot"
+        ]
+      }
+    },
+    "/api/v1/bot/conversations/active": {
+      "get": {
+        "description": "The platform's conversations still answering or working, with the seq to follow after.",
+        "operationId": "bot_list_active_conversations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "platform",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ConversationSource"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ActiveBotConversation"
+                  },
+                  "title": "Response Bot List Active Conversations",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "List Active Bot Conversations",
         "tags": [
           "Bot"
         ]

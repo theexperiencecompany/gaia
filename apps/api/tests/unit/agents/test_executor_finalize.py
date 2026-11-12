@@ -14,6 +14,7 @@ import asyncio
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 import time
 from types import SimpleNamespace
 from typing import Any
@@ -491,6 +492,23 @@ class TestBackgroundRunCardsSurviveTheCommsDrain:
 
         saved = save.await_args.args[0].messages[0]
         assert [entry["tool_name"] for entry in (saved.tool_data or [])] == ["tool_calls_data"]
+
+
+async def test_a_step_dispatched_live_run_logs_its_cards_on_work_finished(boundaries) -> None:
+    session = create_session("s1", RunKind.LIVE)
+    session.tool_events.append(
+        {"tool_data": {"tool_name": "tool_calls_data", "data": {"tool_call_id": "tc-1"}}}
+    )
+    run = replace(
+        _run(RunKind.LIVE),
+        conversation_step={"epoch": 1, "batch_start": 1, "cause_through": 1, "answers": ["m1"]},
+    )
+    with patch.object(er, "record_work_finished", new_callable=AsyncMock) as finished:
+        await er._finalize_executor_run(run, TASK, "the digest", "final")
+    logged = finished.await_args
+    assert logged is not None
+    assert [card["tool_name"] for card in logged.args[5]] == ["tool_calls_data"]
+    boundaries.deliver.assert_not_awaited()
 
 
 class TestCancelStillCarriesHandedOverWork:
@@ -1426,3 +1444,20 @@ class TestARunHandsFinalizeWhatItProduced:
 
         assert self._delivered(h.deliver) == (EXECUTOR_APPROVAL_LOST_MESSAGE, "error")
         h.spawn.assert_called_once()
+
+
+async def test_a_step_run_paused_on_an_approval_logs_the_cards_summary_and_expiry() -> None:
+    expires = datetime.now(UTC) + timedelta(hours=1)
+    record = MagicMock(summary="Send the invoice to Sam", expires_at=expires)
+    run = replace(
+        _run(RunKind.LIVE),
+        conversation_step={"epoch": 1, "batch_start": 1, "cause_through": 1, "answers": ["m1"]},
+    )
+    with (
+        patch.object(er, "get_approval", AsyncMock(return_value=record)),
+        patch.object(er, "record_approval_requested", new_callable=AsyncMock) as requested,
+    ):
+        await er._log_approvals_requested(run, ("ap1",))
+    requested.assert_awaited_once_with(
+        "conv-1", USER_ID, "task-1", "ap1", summary="Send the invoice to Sam", expires_at=expires
+    )

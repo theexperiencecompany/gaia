@@ -32,6 +32,7 @@ from app.models.conversation_log_models import (
     ConversationState,
     DisplayState,
     Entry,
+    FailureReason,
     LiveWork,
     LoggedEntry,
     Reaction,
@@ -99,7 +100,13 @@ def _work(*approvals: str) -> LiveWork:
 
 def _settle(outcome: ReplyOutcome) -> ReplySettled:
     return ReplySettled(
-        id="s", reply_id="r", outcome=outcome, answers=(), through=1, quote_target=None
+        id="s",
+        reply_id="r",
+        outcome=outcome,
+        answers=(),
+        through=1,
+        quote_target=None,
+        failure=FailureReason.MODEL_ERROR if outcome is ReplyOutcome.FAILED else None,
     )
 
 
@@ -118,6 +125,25 @@ def test_a_stopped_or_failed_reply_may_settle_answering_nothing(outcome: ReplyOu
 def test_an_answered_or_silent_reply_must_name_what_it_answers(outcome: ReplyOutcome) -> None:
     with pytest.raises(ValidationError, match=f"a {outcome} reply answers at least one entry"):
         _settle(outcome)
+
+
+@pytest.mark.parametrize(
+    ("outcome", "failure"),
+    [(ReplyOutcome.FAILED, None), (ReplyOutcome.STOPPED, FailureReason.MODEL_ERROR)],
+)
+def test_a_failure_reason_is_named_exactly_when_the_reply_failed(
+    outcome: ReplyOutcome, failure: FailureReason | None
+) -> None:
+    with pytest.raises(ValidationError, match="names its failure"):
+        ReplySettled(
+            id="s",
+            reply_id="r",
+            outcome=outcome,
+            answers=(),
+            through=1,
+            quote_target=None,
+            failure=failure,
+        )
 
 
 def test_a_settled_reply_must_state_its_quote_target() -> None:

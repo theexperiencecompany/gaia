@@ -24,6 +24,8 @@ from app.models.conversation_log_models import (
     ConversationState,
     Entry,
     EntryKind,
+    IntegrationConnected,
+    IntegrationNeeded,
     LoggedEntry,
     Rejected,
     Reply,
@@ -416,6 +418,10 @@ def _every_kind() -> list[Entry]:
         fired("wf"),
         todo_woke("tw"),
         notice("n"),
+        IntegrationNeeded(id="in", integration_id="gmail", integration_name="Gmail"),
+        IntegrationConnected(
+            id="ic", integration_id="gmail", integration_name="Gmail", needed_id="in"
+        ),
         stop("st"),
     ]
 

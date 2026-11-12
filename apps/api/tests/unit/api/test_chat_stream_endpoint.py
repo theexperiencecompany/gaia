@@ -349,7 +349,7 @@ def no_approvals() -> Iterator[ApprovalSeams]:
     yield from approval_seams(pending=False)
 
 
-@pytest.mark.usefixtures("fake_redis", "no_approvals")
+@pytest.mark.usefixtures("fake_redis", "no_approvals", "logged_stops")
 class TestCancelStream:
     async def test_stopping_a_turn_stops_the_conversations_whole_set_of_work(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch

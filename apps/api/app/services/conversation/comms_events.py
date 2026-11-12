@@ -29,6 +29,7 @@ from app.models.conversation_frame_models import (
     ToolDataEvent,
 )
 from app.models.tool_data_models import ToolDataEntry
+from app.services.chat.chunks import normalize_custom_event
 from app.services.conversation.ports import (
     Finished,
     ModelOutput,
@@ -57,10 +58,25 @@ def payload_from_frame(frame: str) -> StreamPayload | None:
     data = json.loads(frame.removeprefix(SSE_DATA_PREFIX))
     if not isinstance(data, dict):
         return None
-    key = next((key for key in data if key in _PAYLOAD_KEYS), None)
+    key = _payload_key(data)
     if key is None:
         return None
     return _PAYLOADS.validate_python({"type": key, key: data[key]})
+
+
+def payloads_from_event(data: dict[str, object]) -> list[StreamPayload]:
+    """Decode one raw executor stream event into its payloads: one per card when it carries several."""
+    normalized = normalize_custom_event(data)
+    key = _payload_key(normalized)
+    if key is None:
+        return []
+    value = normalized[key]
+    values = value if key == StreamPayloadType.TOOL_DATA and isinstance(value, list) else [value]
+    return [_PAYLOADS.validate_python({"type": key, key: item}) for item in values]
+
+
+def _payload_key(data: Mapping[str, object]) -> str | None:
+    return next((key for key in data if key in _PAYLOAD_KEYS), None)
 
 
 class CommsEventMapper:

@@ -270,7 +270,9 @@ async def _dispatch_executor(
         # turn (reject it — the first dispatch covers the turn); a different one
         # means a new request while busy, handed to the live run's inbox.
         held_value = await redis_cache.client.get(lock_key)
-        held_stream_id = parse_lock_value(decode_raw_item(held_value))[0] if held_value else ""
+        held_stream_id, held_task_id = (
+            parse_lock_value(decode_raw_item(held_value)) if held_value else ("", "")
+        )
         if stream_id and held_stream_id == stream_id:
             log.warning(
                 f"{LogTag.TOOL} Duplicate call_executor in same turn — ignored, not queued",
@@ -308,6 +310,11 @@ async def _dispatch_executor(
         else:
             # The executor is mid-run on a different turn: hand this to that run,
             # whose drain hook reads the inbox before every model call.
+            step = configurable.get("conversation_step")
+            if step is not None and not await record_work_started(
+                step, conversation_id, configurable.get("user_id", ""), task_id, joins=held_task_id
+            ):
+                return _NOT_STARTED_STOPPED
             await ExecutorInbox(conversation_id).append(task_id, task)
             log.info(
                 f"{LogTag.TOOL} Executor busy — task handed to the live run",

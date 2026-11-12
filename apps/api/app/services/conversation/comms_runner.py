@@ -17,11 +17,12 @@ from langgraph.types import StreamMode
 
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.interruption import record_interruption
+from app.agents.core.messages import MessageAttachments, MessageScope, human_content
 from app.agents.core.nodes.drain_conversation_log import close_feed, feed, open_feed
 from app.constants.conversation import COMMS_CANCEL_CONFIRM_SECONDS, TURN_CONTEXT_ID_SUFFIX
 from app.constants.graphs import GraphName
 from app.models.agent_models import AgentConfigurable, AgentRunnableConfig, agent_configurable
-from app.models.conversation_log_models import Batch, LoggedEntry, StepClaim
+from app.models.conversation_log_models import Batch, LoggedEntry, StepClaim, UserMessage
 from app.services.conversation.comms_events import CommsEventMapper, GraphEvent
 from app.services.conversation.comms_input import (
     absorbed_messages,
@@ -60,17 +61,18 @@ class CommsGraphRun:
 
     def __init__(
         self,
+        claim: StepClaim,
         graph: CompiledAgentGraph,
         config: AgentRunnableConfig,
         state: dict[str, object],
-        mapper: CommsEventMapper,
         cancel_confirm_seconds: float,
     ) -> None:
+        self._claim = claim
         self._graph = graph
         self._config = config
         configurable: AgentConfigurable = agent_configurable(config)
         self._run_id = configurable["comms_run"]
-        self._mapper = mapper
+        self._mapper = CommsEventMapper(claim.user_id)
         self._confirm = cancel_confirm_seconds
         self._out: asyncio.Queue[RunEvent | Exception] = asyncio.Queue()
         self._wanted: asyncio.Queue[None] = asyncio.Queue()
@@ -91,11 +93,12 @@ class CommsGraphRun:
             yield item
             self._wanted.put_nowait(None)
 
-    def absorb(self, entries: Sequence[LoggedEntry]) -> None:
+    async def absorb(self, entries: Sequence[LoggedEntry]) -> None:
         """Feed entries to the next model call, never past a Stop; nothing joins once the run is stopping."""
         if self._sealed or self.task.done():
             return
-        messages, stopped = absorbed_messages(entries)
+        said = await reframed_messages(self._claim, entries)
+        messages, stopped = absorbed_messages(entries, said)
         feed(self._run_id, messages)
         self._sealed = stopped
 
@@ -168,18 +171,53 @@ class CommsGraphRunner:
         snapshot = await graph.aget_state(config)
         values: _ThreadValues = cast(_ThreadValues, snapshot.values or {})
         thread = values.get("messages", [])
+        said = await reframed_messages(claim, [*context, *batch.waking])
         messages = [
             *_turn_context(turn.opening, batch, 0),
-            *attempt_messages(batch, context, thread),
+            *attempt_messages(batch, context, thread, said),
             *_turn_context(turn.closing, batch, len(turn.opening)),
         ]
         return CommsGraphRun(
-            graph,
-            config,
-            {**turn.state, "messages": messages},
-            CommsEventMapper(claim.user_id),
-            self._confirm,
+            claim, graph, config, {**turn.state, "messages": messages}, self._confirm
         )
+
+
+async def reframed_messages(claim: StepClaim, entries: Sequence[LoggedEntry]) -> dict[str, str]:
+    """Return, per user message that carries more than text, what the model reads, built as a chat turn builds it.
+
+    Its files are listed, and a pinned tool, a workflow, a calendar event or a replied-to message reframe its text.
+    """
+    reframed = [
+        logged.entry
+        for logged in entries
+        if isinstance(logged.entry, UserMessage) and _reframes(logged.entry)
+    ]
+    scope = MessageScope(user_id=claim.user_id, conversation_id=claim.conversation_id)
+    contents = await asyncio.gather(
+        *(human_content(scope, _attachments(message), message.text) for message in reframed)
+    )
+    return {message.id: content for message, content in zip(reframed, contents, strict=True)}
+
+
+def _reframes(message: UserMessage) -> bool:
+    return bool(
+        message.file_ids
+        or message.selected_tool
+        or message.selected_workflow
+        or message.selected_calendar_event
+        or message.reply_to_message
+    )
+
+
+def _attachments(message: UserMessage) -> MessageAttachments:
+    return MessageAttachments(
+        selected_tool=message.selected_tool,
+        tool_category=message.tool_category,
+        selected_workflow=message.selected_workflow,
+        selected_calendar_event=message.selected_calendar_event,
+        reply_to_message=message.reply_to_message,
+        currently_uploaded_file_ids=list(message.file_ids),
+    )
 
 
 def _turn_context(messages: Sequence[AnyMessage], batch: Batch, first: int) -> list[AnyMessage]:
