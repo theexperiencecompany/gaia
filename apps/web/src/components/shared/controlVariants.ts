@@ -52,3 +52,9 @@ export const inputVariants = tv({
   },
   defaultVariants: { size: "md", variant: "default" },
 });
+
+/** v2's quieter divider inside a zinc-800 card (zinc-700 at 50%); gaia-separator-subtle in base.css. */
+export const separatorVariants = tv({
+  variants: { tone: { default: "", subtle: "gaia-separator-subtle" } },
+  defaultVariants: { tone: "default" },
+});

@@ -9,6 +9,7 @@
 import { Input, ListBox, Select } from "@heroui/react";
 import { useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
@@ -103,9 +104,13 @@ export function LinearSettings({
             </Select.Trigger>
             <Select.Popover>
               <ListBox>
-                <ListBox.Item key="loading" id="loading" textValue="Loading...">
+                <GaiaListBoxItem
+                  key="loading"
+                  id="loading"
+                  textValue="Loading..."
+                >
                   Loading...
-                </ListBox.Item>
+                </GaiaListBoxItem>
               </ListBox>
             </Select.Popover>
           </Select>
@@ -136,13 +141,13 @@ export function LinearSettings({
               <Select.Popover>
                 <ListBox>
                   {teamOptions.map((option) => (
-                    <ListBox.Item
+                    <GaiaListBoxItem
                       key={option.value}
                       id={option.value}
                       textValue={option.label}
                     >
                       {option.label}
-                    </ListBox.Item>
+                    </GaiaListBoxItem>
                   ))}
                 </ListBox>
               </Select.Popover>

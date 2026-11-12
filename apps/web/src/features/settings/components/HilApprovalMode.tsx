@@ -4,6 +4,7 @@ import { Chip, ListBox, Select } from "@heroui/react";
 import type { HilMode } from "@shared/chat";
 import { useRouter } from "next/navigation";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
@@ -71,10 +72,9 @@ export function HilApprovalMode() {
           <Select.Popover>
             <ListBox>
               {MODES.map((m) => (
-                <ListBox.Item key={m.key} id={m.key} textValue={m.label}>
+                <GaiaListBoxItem key={m.key} id={m.key} textValue={m.label}>
                   {m.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
+                </GaiaListBoxItem>
               ))}
             </ListBox>
           </Select.Popover>

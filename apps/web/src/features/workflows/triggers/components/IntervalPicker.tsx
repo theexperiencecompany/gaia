@@ -14,6 +14,7 @@
 import { ListBox, NumberField, Select, Tabs } from "@heroui/react";
 import { useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { TABS_INDICATOR, TABS_LIST } from "@/lib/heroui/tabsParity";
 import { cn } from "@/lib/utils";
@@ -144,9 +145,9 @@ export function IntervalPicker({
             <Select.Popover className="min-w-fit">
               <ListBox>
                 {units.map((u) => (
-                  <ListBox.Item key={u} id={u} textValue={u}>
+                  <GaiaListBoxItem key={u} id={u} textValue={u}>
                     {u}
-                  </ListBox.Item>
+                  </GaiaListBoxItem>
                 ))}
               </ListBox>
             </Select.Popover>

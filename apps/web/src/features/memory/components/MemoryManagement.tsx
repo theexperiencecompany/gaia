@@ -15,7 +15,10 @@ import type { MemoryOverviewResponse } from "@shared/api/generated";
 import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useState } from "react";
-import { tabsVariants } from "@/components/shared/controlVariants";
+import {
+  separatorVariants,
+  tabsVariants,
+} from "@/components/shared/controlVariants";
 import { shapeVariants } from "@/components/shared/shape";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { CoreDocuments } from "@/features/memory/components/CoreDocuments";
@@ -105,7 +108,10 @@ export default function MemoryManagement({
             {index > 0 && (
               <Separator
                 orientation="vertical"
-                className="mx-6 h-8 bg-zinc-700/50"
+                className={separatorVariants({
+                  tone: "subtle",
+                  className: "mx-6 h-8",
+                })}
               />
             )}
             <div className="flex items-center gap-3">

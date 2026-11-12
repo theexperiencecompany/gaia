@@ -4,6 +4,7 @@ import { ListBox, Popover, Select, Switch } from "@heroui/react";
 import { CpuIcon } from "@icons";
 import Image from "next/image";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { toneVariants } from "@/components/shared/tone";
 import { DEV_MODEL_OPTIONS } from "@/features/chat/constants/devModels";
@@ -69,15 +70,15 @@ function ModelSelect({
         <Select.Popover className="bg-zinc-800">
           <ListBox>
             {DEV_MODEL_OPTIONS.map((m) => (
-              <ListBox.Item
+              <GaiaListBoxItem
                 key={m.id}
                 id={m.id}
                 textValue={m.name}
-                className="gap-2 rounded-lg"
+                className="gap-2"
               >
                 <ModelLogo src={m.logo} alt={m.provider} size={18} />
                 <span className="text-xs text-zinc-200">{m.name}</span>
-              </ListBox.Item>
+              </GaiaListBoxItem>
             ))}
           </ListBox>
         </Select.Popover>

@@ -7,6 +7,7 @@ import { formatDistanceToNow } from "date-fns";
 import { type ReactNode, useEffect, useState, useTransition } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { separatorVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { memoryApi } from "@/features/memory/api/memoryApi";
@@ -180,7 +181,12 @@ export function CoreDocuments() {
         {/* Meta row — version + updated timestamp, separated by divider */}
         {document && (
           <>
-            <Separator className="my-3 bg-zinc-700/50" />
+            <Separator
+              className={separatorVariants({
+                tone: "subtle",
+                className: "my-3",
+              })}
+            />
             <div className="flex items-center justify-between gap-3">
               <p className="flex items-center gap-1.5 text-xs text-zinc-500">
                 <span>v{document.version}</span>

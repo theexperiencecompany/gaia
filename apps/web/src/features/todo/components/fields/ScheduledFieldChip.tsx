@@ -186,7 +186,7 @@ export default function ScheduledFieldChip({
           {/* Clear option */}
           {value && (
             <>
-              <Separator className="my-1 bg-zinc-700" />
+              <Separator className="my-1" />
               <Button
                 variant="ghost"
                 fullWidth

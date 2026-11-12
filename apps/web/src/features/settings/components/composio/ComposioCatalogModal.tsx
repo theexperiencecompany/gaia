@@ -11,6 +11,7 @@ import {
 import { Search01Icon } from "@icons";
 import { useDeferredValue, useState } from "react";
 import { modalVariants } from "@/components/shared/controlVariants";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { COMPOSIO_APP_COUNT } from "@/features/settings/api/composioSetupApi";
 import { ComposioKeyMissing } from "@/features/settings/components/composio/ComposioKeyMissing";
@@ -100,9 +101,13 @@ export function ComposioCatalogModal({
                       <Select.Popover>
                         <ListBox>
                           {categories.map((name) => (
-                            <ListBox.Item key={name} id={name} textValue={name}>
+                            <GaiaListBoxItem
+                              key={name}
+                              id={name}
+                              textValue={name}
+                            >
                               {name}
-                            </ListBox.Item>
+                            </GaiaListBoxItem>
                           ))}
                         </ListBox>
                       </Select.Popover>

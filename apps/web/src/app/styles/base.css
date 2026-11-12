@@ -1233,7 +1233,8 @@
   --foreground: #11181c;
   --muted: #71717a;
   --border: hsl(214.3 31.8% 91.4%);
-  --separator: hsl(0 0% 90%);
+  /* v2 --heroui-divider: #111111 at 15%, translucent so it reads on any surface */
+  --separator: rgb(17 17 17 / 0.15);
 }
 
 .dark {
@@ -1245,8 +1246,8 @@
   --surface: hsl(240 5.88% 10%);
   /* v2 --border: 216 34% 17% (subtle blue-grey hairline, not white) */
   --border: hsl(216 34% 17%);
-  /* v2's accordion/dividers rendered as a #262626 hairline on black */
-  --separator: hsl(0 0% 15%);
+  /* v2 --heroui-divider: white at 15% (#262626 on black, lighter on a zinc card) */
+  --separator: rgb(255 255 255 / 0.15);
 }
 
 /* v2 semantic colours and its `flat` tint: v2 painted a flat chip or button as
@@ -1303,6 +1304,11 @@ html {
   --gaia-radius-md: 0.75rem;
   --gaia-radius-lg: 0.875rem;
   --gaia-radius-pill: 9999px;
+  --gaia-list-item-height: 2.125rem;
+  --gaia-table-cell-padding-y: 0.5rem;
+  --gaia-table-cell-padding-x: 0.75rem;
+  --gaia-slider-marks-gap: 0.375rem;
+  --gaia-separator-subtle: color-mix(in oklab, #3f3f46 50%, transparent);
   --gaia-button-weight: 400;
   --gaia-button-sm-height: 2rem;
   --gaia-button-sm-min-width: 4rem;
@@ -1739,6 +1745,50 @@ html {
   .slider.gaia-slider-sm .slider__thumb::after {
     width: var(--gaia-slider-sm-thumb-inner);
     height: var(--gaia-slider-sm-thumb-inner);
+  }
+
+  /* Overlays: v2's radii (popover, select, dropdown and modal lg 14px, tooltip
+     md 12px); v3 rounds them at 24-32px. */
+  .popover,
+  .select__popover,
+  .combo-box__popover,
+  .dropdown__popover,
+  .modal__dialog {
+    border-radius: var(--gaia-radius-lg);
+  }
+  .tooltip {
+    border-radius: var(--gaia-radius-md);
+  }
+
+  /* List and menu items: v2's 34px row on an 8px radius (v3 is 40px on 16px);
+     the selected check is GaiaListBoxItem's ListBox.ItemIndicator. */
+  .list-box-item,
+  .menu-item {
+    min-height: var(--gaia-list-item-height);
+    border-radius: var(--gaia-radius-sm);
+  }
+
+  /* Table: v2's rows, 8px by 12px cells with no row rules, and the selected
+     row on v2's default tint. */
+  .table__cell {
+    padding: var(--gaia-table-cell-padding-y) var(--gaia-table-cell-padding-x);
+    border-bottom-width: 0;
+  }
+  .table__row {
+    border-bottom-width: 0;
+  }
+  .table__row[data-selected="true"] .table__cell {
+    background-color: var(--default-soft);
+  }
+
+  /* separatorVariants({ tone: "subtle" }): v2's zinc-700/50 divider in zinc-800 cards. */
+  .separator.gaia-separator-subtle {
+    background-color: var(--gaia-separator-subtle);
+  }
+
+  /* Slider marks: v2 set them 6px further below the track. */
+  .slider__marks {
+    margin-top: var(--gaia-slider-marks-gap);
   }
 
   /* Modal: v2's section rhythm. The dialog has no padding of its own; the

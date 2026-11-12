@@ -9,6 +9,7 @@ import {
 } from "@icons";
 import { useMemo } from "react";
 import { ComboBoxInput } from "@/components/shared/ComboBoxInput";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
 import {
@@ -116,14 +117,14 @@ export function VoiceFilters({
         </Select.Trigger>
         <Select.Popover>
           <ListBox>
-            <ListBox.Item id={ALL_FILTER} textValue="All genders">
+            <GaiaListBoxItem id={ALL_FILTER} textValue="All genders">
               All genders
-            </ListBox.Item>
+            </GaiaListBoxItem>
             {genderOptions.map((g) => (
-              <ListBox.Item key={g} id={g} textValue={g}>
+              <GaiaListBoxItem key={g} id={g} textValue={g}>
                 <GenderIcon gender={g} />
                 {g}
-              </ListBox.Item>
+              </GaiaListBoxItem>
             ))}
           </ListBox>
         </Select.Popover>
@@ -143,12 +144,12 @@ export function VoiceFilters({
         />
         <ComboBox.Popover>
           <ListBox aria-label="Countries">
-            <ListBox.Item id={ALL_FILTER} textValue="All countries">
+            <GaiaListBoxItem id={ALL_FILTER} textValue="All countries">
               <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
               All countries
-            </ListBox.Item>
+            </GaiaListBoxItem>
             {countryOptions.map(({ accent, countryCode }) => (
-              <ListBox.Item key={accent} id={accent} textValue={accent}>
+              <GaiaListBoxItem key={accent} id={accent} textValue={accent}>
                 {countryCode ? (
                   <Avatar className="h-4 w-4 shrink-0">
                     <Avatar.Image
@@ -161,7 +162,7 @@ export function VoiceFilters({
                   <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
                 )}
                 {accent}
-              </ListBox.Item>
+              </GaiaListBoxItem>
             ))}
           </ListBox>
         </ComboBox.Popover>

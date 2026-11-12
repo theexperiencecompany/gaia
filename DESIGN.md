@@ -612,6 +612,8 @@ Other control options, each one class in the gaia layer and one variant function
 
 Field placeholders are zinc-500 at normal weight everywhere (`--field-placeholder`).
 
+List and menu items are v2's 34px rows on an 8px radius, and every `ListBox.Item` goes through `GaiaListBoxItem` (`components/shared/GaiaListBoxItem.tsx`), which renders v2's selected check. Overlays keep v2's radii: popover, select, dropdown and modal 14px, tooltip 12px. Dividers are v2's translucent `--separator` (white at 15%); `separatorVariants({ tone: "subtle" })` is v2's quieter zinc-700/50 divider inside a zinc-800 card. Tables are v2's: 8px by 12px cells, no row rules, the selected row on `--default-soft`.
+
 Field text is 14px at every width (`--gaia-field-font-size`). A Select trigger renders its value through `GaiaSelectValue` (`components/shared/GaiaSelectValue.tsx`, never bare `Select.Value`): it shows the selected item's `textValue` on one truncated line, as v2 did, so a rich item's description stays in the open list.
 
 ### Overlay Hierarchy

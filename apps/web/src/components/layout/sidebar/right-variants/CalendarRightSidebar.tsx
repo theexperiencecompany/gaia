@@ -13,6 +13,7 @@ import { Delete02Icon, RepeatIcon, UserCircleIcon } from "@icons";
 import React, { useEffectEvent } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import {
   Accordion,
@@ -187,27 +188,27 @@ const RecurrenceSelector: React.FC<RecurrenceSelectorProps> = ({
       </Select.Trigger>
       <Select.Popover className="border border-zinc-800">
         <ListBox>
-          <ListBox.Item id="none" textValue="Does not repeat">
+          <GaiaListBoxItem id="none" textValue="Does not repeat">
             Does not repeat
-          </ListBox.Item>
-          <ListBox.Item id="daily" textValue="Daily">
+          </GaiaListBoxItem>
+          <GaiaListBoxItem id="daily" textValue="Daily">
             Daily
-          </ListBox.Item>
-          <ListBox.Item id="weekdays" textValue="Every weekday (Mon-Fri)">
+          </GaiaListBoxItem>
+          <GaiaListBoxItem id="weekdays" textValue="Every weekday (Mon-Fri)">
             Every weekday (Mon-Fri)
-          </ListBox.Item>
-          <ListBox.Item id="weekly" textValue="Weekly">
+          </GaiaListBoxItem>
+          <GaiaListBoxItem id="weekly" textValue="Weekly">
             Weekly
-          </ListBox.Item>
-          <ListBox.Item id="monthly" textValue="Monthly">
+          </GaiaListBoxItem>
+          <GaiaListBoxItem id="monthly" textValue="Monthly">
             Monthly
-          </ListBox.Item>
-          <ListBox.Item id="yearly" textValue="Yearly">
+          </GaiaListBoxItem>
+          <GaiaListBoxItem id="yearly" textValue="Yearly">
             Yearly
-          </ListBox.Item>
-          <ListBox.Item id="custom" textValue="Custom (select days)">
+          </GaiaListBoxItem>
+          <GaiaListBoxItem id="custom" textValue="Custom (select days)">
             Custom (select days)
-          </ListBox.Item>
+          </GaiaListBoxItem>
         </ListBox>
       </Select.Popover>
     </Select>
@@ -275,7 +276,7 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
       <Select.Popover className="border border-zinc-800">
         <ListBox>
           {calendars.map((cal) => (
-            <ListBox.Item
+            <GaiaListBoxItem
               key={cal.id}
               id={cal.id}
               textValue={`${cal.name || cal.summary}${cal.primary ? " (Primary)" : ""}`}
@@ -288,7 +289,7 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
               />
               {cal.name || cal.summary}
               {cal.primary ? " (Primary)" : ""}
-            </ListBox.Item>
+            </GaiaListBoxItem>
           ))}
         </ListBox>
       </Select.Popover>

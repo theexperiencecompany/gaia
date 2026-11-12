@@ -25,7 +25,6 @@ apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Dialog:border-zinc-
 apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Header:border-zinc-800
 apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Header:pb-3
 apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Heading:text-zinc-200
-apps/web/src/components/layout/headers/ModelSelectorDevControls.tsx:ListBox.Item:rounded-lg
 apps/web/src/components/layout/headers/ModelSelectorDevControls.tsx:Select.Popover:bg-zinc-800
 apps/web/src/components/layout/sidebar/ChatOptionsDropdown.tsx:Dropdown.Item:text-danger
 apps/web/src/components/layout/sidebar/ChatOptionsDropdown.tsx:Modal.Header:pb-0
@@ -91,7 +90,6 @@ apps/web/src/features/browser/components/SavedLogins.tsx:SearchField.Group:bg-zi
 apps/web/src/features/calendar/components/NaturalLanguageDateInput.tsx:InputGroup:bg-zinc-800/30
 apps/web/src/features/calendar/components/NaturalLanguageDateInput.tsx:InputGroup:hover:bg-zinc-800/50
 apps/web/src/features/chat/components/bubbles/bot/BrowserTaskSection.tsx:Chip:bg-zinc-700
-apps/web/src/features/chat/components/bubbles/bot/BrowserTaskSection.tsx:Separator:bg-zinc-700/50
 apps/web/src/features/chat/components/bubbles/bot/DeepResearchResultsTabs.tsx:Tabs:p-0
 apps/web/src/features/chat/components/bubbles/bot/FileArtifactSection.tsx:Card:bg-zinc-900/70
 apps/web/src/features/chat/components/bubbles/bot/FileArtifactSection.tsx:Card:border-zinc-700/80
@@ -101,11 +99,9 @@ apps/web/src/features/chat/components/bubbles/bot/GoogleDocsSection.tsx:LinkButt
 apps/web/src/features/chat/components/bubbles/bot/LivePreview.tsx:Modal.Body:p-4
 apps/web/src/features/chat/components/bubbles/bot/LivePreview.tsx:Modal.Body:sm:p-6
 apps/web/src/features/chat/components/bubbles/bot/LivePreview.tsx:Modal.Dialog:bg-zinc-950
-apps/web/src/features/chat/components/bubbles/bot/MemoryCard.tsx:Separator:bg-zinc-700/50
 apps/web/src/features/chat/components/bubbles/bot/NotificationListSection.tsx:Chip:bg-blue-900/30
 apps/web/src/features/chat/components/bubbles/bot/NotificationListSection.tsx:Chip:bg-zinc-700
 apps/web/src/features/chat/components/bubbles/bot/NotificationListSection.tsx:Chip:text-blue-400
-apps/web/src/features/chat/components/bubbles/bot/RateLimitCard.tsx:Separator:bg-zinc-700/50
 apps/web/src/features/chat/components/bubbles/bot/SearchResultsTabs.tsx:Popover.Content:bg-transparent
 apps/web/src/features/chat/components/bubbles/bot/SearchedImageDialog.tsx:Modal.Dialog:text-foreground
 apps/web/src/features/chat/components/bubbles/bot/TodoProgressSection.tsx:AccordionItem:px-2
@@ -127,7 +123,6 @@ apps/web/src/features/desktop-popup/components/PopupComposer.tsx:InputGroup:bg-t
 apps/web/src/features/desktop-popup/components/PopupComposer.tsx:InputGroup:pl-0.5
 apps/web/src/features/desktop-popup/components/PopupComposer.tsx:InputGroup:pr-2
 apps/web/src/features/desktop-popup/components/PopupComposer.tsx:InputGroup:py-0
-apps/web/src/features/devices/components/ApproveDeviceForm.tsx:Separator:bg-zinc-700/50
 apps/web/src/features/faq/components/FAQPageClient.tsx:Accordion.Panel:text-foreground-500
 apps/web/src/features/faq/components/FAQPageClient.tsx:Accordion:p-0!
 apps/web/src/features/first-steps/components/FirstStepsWidget.tsx:ProgressBar.Fill:bg-success
@@ -198,8 +193,6 @@ apps/web/src/features/landing/components/sections/TiredBoringAssistants.tsx:Tool
 apps/web/src/features/mail/components/EmailComposeCard.tsx:Button:pb-3
 apps/web/src/features/mail/components/EmailComposeCard.tsx:Button:pt-4
 apps/web/src/features/mail/components/EmailComposeCard.tsx:Button:px-6
-apps/web/src/features/memory/components/CoreDocuments.tsx:Separator:bg-zinc-700/50
-apps/web/src/features/memory/components/MemoryManagement.tsx:Separator:bg-zinc-700/50
 apps/web/src/features/notification/components/NotificationCenter.tsx:Popover.Content:bg-zinc-800
 apps/web/src/features/notification/components/NotificationCenter.tsx:Popover.Content:border-zinc-700
 apps/web/src/features/notification/components/NotificationCenter.tsx:Popover.Content:rounded-2xl
@@ -276,7 +269,6 @@ apps/web/src/features/todo/components/fields/BaseFieldChip.tsx:Popover.Content:r
 apps/web/src/features/todo/components/fields/LabelsFieldChip.tsx:Input:focus:bg-zinc-700
 apps/web/src/features/todo/components/fields/LabelsFieldChip.tsx:Input:hover:bg-zinc-700
 apps/web/src/features/todo/components/fields/ScheduledFieldChip.tsx:Button:text-red-400
-apps/web/src/features/todo/components/fields/ScheduledFieldChip.tsx:Separator:bg-zinc-700
 apps/web/src/features/use-cases/components/UseCaseSection.tsx:Chip:bg-white/5!
 apps/web/src/features/use-cases/components/UseCaseSection.tsx:Chip:text-foreground-500
 apps/web/src/features/weather/components/WeatherCard.tsx:Accordion.Indicator:text-white
@@ -290,6 +282,5 @@ apps/web/src/features/workflows/components/shared/WorkflowCardComponents.tsx:Too
 apps/web/src/features/workflows/components/workflow-modal/WorkflowIconPicker.tsx:GaiaButton:style.backgroundColor
 apps/web/src/features/workflows/components/workflow-modal/WorkflowIconPicker.tsx:Input:bg-transparent
 apps/web/src/features/workflows/components/workflow-modal/WorkflowIconPicker.tsx:Popover.Content:bg-zinc-800
-apps/web/src/features/workflows/components/workflow-modal/WorkflowModalFormView.tsx:Separator:bg-zinc-700
 apps/web/src/features/workflows/triggers/components/GateSkipList.tsx:Button:py-1.5
 apps/web/src/layouts/SidebarLayout.tsx:Kbd:rounded-md

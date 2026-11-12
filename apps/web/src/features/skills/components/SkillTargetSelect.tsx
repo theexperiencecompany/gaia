@@ -2,6 +2,7 @@
 
 import { Label, ListBox, Select } from "@heroui/react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import type { SkillTarget } from "../api/types";
 import { SkillTargetIcon } from "./SkillTargetIcon";
@@ -41,10 +42,10 @@ export function SkillTargetSelect({
       <Select.Popover>
         <ListBox>
           {targets.map((t) => (
-            <ListBox.Item key={t.value} id={t.value} textValue={t.label}>
+            <GaiaListBoxItem key={t.value} id={t.value} textValue={t.label}>
               <SkillTargetIcon value={t.value} icon={t.icon} size={16} />
               {t.label}
-            </ListBox.Item>
+            </GaiaListBoxItem>
           ))}
         </ListBox>
       </Select.Popover>

@@ -10,6 +10,7 @@ import { Input, ListBox, Select } from "@heroui/react";
 import { useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { TriggerTagInput } from "./TriggerTagInput";
 import type { TriggerSelectToggleProps } from "./types";
@@ -80,18 +81,18 @@ export function TriggerSelectToggle({
           <Select.Popover>
             <ListBox>
               {isLoading && options.length === 0 ? (
-                <ListBox.Item id="loading" isDisabled textValue="Loading...">
+                <GaiaListBoxItem id="loading" isDisabled textValue="Loading...">
                   Loading...
-                </ListBox.Item>
+                </GaiaListBoxItem>
               ) : (
                 options.map((option) => (
-                  <ListBox.Item
+                  <GaiaListBoxItem
                     key={option.value}
                     id={option.value}
                     textValue={option.label}
                   >
                     {option.label}
-                  </ListBox.Item>
+                  </GaiaListBoxItem>
                 ))
               )}
             </ListBox>

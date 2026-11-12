@@ -8,6 +8,7 @@ import {
 } from "@heroui/react";
 import type React from "react";
 import { ComboBoxInput } from "@/components/shared/ComboBoxInput";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useTriggerFilter } from "@/features/workflows/hooks/useTriggerFilter";
@@ -47,7 +48,7 @@ function renderTriggerSections(
           {formatIntegrationName(integrationId)}
         </Header>
         {(schemas || []).map((schema) => (
-          <ListBox.Item
+          <GaiaListBoxItem
             key={schema.slug}
             id={schema.slug}
             textValue={schema.name}
@@ -64,7 +65,7 @@ function renderTriggerSections(
                 {schema.description}
               </span>
             </div>
-          </ListBox.Item>
+          </GaiaListBoxItem>
         ))}
       </ListBox.Section>
     ));

@@ -4,6 +4,7 @@ import { Button, Chip, Separator } from "@heroui/react";
 import { CheckmarkCircle02Icon, ComputerIcon } from "@icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { separatorVariants } from "@/components/shared/controlVariants";
 import { toast } from "@/lib/toast";
 import { devicesApi } from "../api/devicesApi";
 import {
@@ -99,14 +100,14 @@ export function ApproveDeviceForm() {
         </div>
       </header>
 
-      <Separator className="bg-zinc-700/50" />
+      <Separator className={separatorVariants({ tone: "subtle" })} />
 
       {!cameFromCli && (
         <>
           <div className="py-5">
             <DeviceSetupGuide />
           </div>
-          <Separator className="bg-zinc-700/50" />
+          <Separator className={separatorVariants({ tone: "subtle" })} />
         </>
       )}
 

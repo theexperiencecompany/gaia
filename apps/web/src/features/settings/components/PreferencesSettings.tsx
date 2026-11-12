@@ -4,6 +4,7 @@ import { Button, ListBox, Select } from "@heroui/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { type Key, useCallback, useEffect, useRef, useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { authApi } from "@/features/auth/api/authApi";
 import {
@@ -114,13 +115,13 @@ function IdentitySettingsSection({
           <Select.Popover className="bg-zinc-800 z-50">
             <ListBox className="bg-zinc-800">
               {professionOptions.map((profession) => (
-                <ListBox.Item
+                <GaiaListBoxItem
                   key={profession.value}
                   id={profession.value}
                   textValue={profession.label}
                 >
                   {profession.label}
-                </ListBox.Item>
+                </GaiaListBoxItem>
               ))}
             </ListBox>
           </Select.Popover>
@@ -159,13 +160,13 @@ function IdentitySettingsSection({
             <Select.Popover className="bg-zinc-800 z-50">
               <ListBox className="bg-zinc-800">
                 {timezoneOptions.map((timezone) => (
-                  <ListBox.Item
+                  <GaiaListBoxItem
                     key={timezone.value}
                     id={timezone.value}
                     textValue={timezone.label}
                   >
                     {timezone.label}
-                  </ListBox.Item>
+                  </GaiaListBoxItem>
                 ))}
               </ListBox>
             </Select.Popover>
@@ -361,7 +362,7 @@ export default function PreferencesSettings({
             <Select.Popover className="bg-zinc-800 z-50">
               <ListBox className="bg-zinc-800">
                 {responseStyleOptions.map((style) => (
-                  <ListBox.Item
+                  <GaiaListBoxItem
                     key={style.value}
                     id={style.value}
                     textValue={
@@ -377,7 +378,7 @@ export default function PreferencesSettings({
                         {style.label.split(" - ")[1]}
                       </div>
                     </div>
-                  </ListBox.Item>
+                  </GaiaListBoxItem>
                 ))}
               </ListBox>
             </Select.Popover>

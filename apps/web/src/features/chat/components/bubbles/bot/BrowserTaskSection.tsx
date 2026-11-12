@@ -4,6 +4,7 @@ import { Accordion, AccordionItem, Chip, Separator } from "@heroui/react";
 import { AiWebBrowsingIcon, Alert01Icon, CheckmarkCircle02Icon } from "@icons";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
+import { separatorVariants } from "@/components/shared/controlVariants";
 import { toneVariants } from "@/components/shared/tone";
 import { BrowserStatusChip } from "@/features/browser/components/BrowserStatusChip";
 import { useLiveView } from "@/features/browser/hooks/useLiveView";
@@ -147,7 +148,9 @@ function StepsAccordion({
 function ResultFooter({ result }: { result: BrowserResultSnapshot }) {
   return (
     <>
-      <Separator className="my-3 bg-zinc-700/50" />
+      <Separator
+        className={separatorVariants({ tone: "subtle", className: "my-3" })}
+      />
       <div className="flex items-start gap-2.5">
         {result.success ? (
           <CheckmarkCircle02Icon className="mt-px size-4 shrink-0 text-emerald-400" />

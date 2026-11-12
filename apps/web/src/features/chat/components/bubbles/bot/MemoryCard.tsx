@@ -13,6 +13,7 @@ import {
 import type { MemoryEntry } from "@shared/api/generated";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
+import { separatorVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toneVariants } from "@/components/shared/tone";
 import type { MemoryData } from "@/config/registries/toolRegistry";
@@ -317,7 +318,14 @@ export default function MemoryCard({ items: rawItems }: MemoryCardProps) {
       <div className="flex flex-col gap-3 p-4">
         {items.map(({ item, index }) => (
           <div key={`${item.action}-${index}`}>
-            {index > 0 && <Separator className="mb-3 bg-zinc-700/50" />}
+            {index > 0 && (
+              <Separator
+                className={separatorVariants({
+                  tone: "subtle",
+                  className: "mb-3",
+                })}
+              />
+            )}
             {item.action === "add" && <AddSection item={item} />}
             {item.action === "search" && <SearchSection item={item} />}
             {item.action === "update" && <UpdateSection item={item} />}
