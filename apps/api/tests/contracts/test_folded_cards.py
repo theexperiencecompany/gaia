@@ -26,6 +26,9 @@ from tests.helpers import captured_wide_event
 
 CARD: dict[str, Any] = {"tool_name": "browser_result", "data": {"summary": "Booked."}}
 
+# Every test here writes entries, so each needs the collection with its unique indexes.
+pytestmark = pytest.mark.usefixtures("entries_collection")
+
 
 @pytest.fixture
 async def conversation(raw_collection: Any) -> ConversationDocument:
@@ -157,22 +160,6 @@ async def test_text_that_looks_like_an_operator_is_stored_verbatim(
     assert saved is not None
     assert saved.response == "$set me {$literal: 1} $$NOW"
     assert saved.tool_data in (None, [])
-
-
-async def test_the_history_cap_still_holds_when_a_save_takes_waiting_cards(
-    conversation: ConversationDocument,
-) -> None:
-    await _append(conversation, _bot("m0"), max_messages=2)
-    await _append(conversation, _bot("m1"), max_messages=2)
-    await save_folded_cards(conversation.conversation_id, conversation.user_id, "m2", [CARD])
-    await _append(conversation, _bot("m2"), max_messages=2)
-
-    fetched = await conversation_repository.get(
-        conversation.conversation_id, user_id=conversation.user_id
-    )
-    assert fetched is not None
-    assert [m.message_id for m in fetched.messages] == ["m1", "m2"]
-    assert fetched.messages[1].tool_data == [CARD]
 
 
 async def test_cards_waiting_a_day_for_a_message_never_saved_are_dropped_by_the_next_save(

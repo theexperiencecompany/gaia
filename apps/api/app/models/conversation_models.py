@@ -63,7 +63,7 @@ class FoldedCards(BaseModel):
 
 
 class ConversationDocument(UserScopedDocument):
-    """A conversation and its embedded message history as stored in MongoDB.
+    """A conversation as the repository returns it: its head fields and, where read, its entries.
 
     ``extra="allow"`` preserves stray/legacy top-level fields (e.g. ``artifacts``,
     ``metadata``) so a full-document read returns them verbatim, matching the
@@ -86,6 +86,7 @@ class ConversationDocument(UserScopedDocument):
     # The tracked todo whose chat this is: its runs execute here. Such a chat is
     # reached only from its todo, never listed (see _listed). Set once at creation.
     todo_id: str | None = None
+    # Assembled from conversation_entries by the reads that need history; never stored on the head.
     messages: list[MessageModel] = Field(default_factory=list)
     # Conversation-level artifact registry: one entry per agent-written file,
     # deduped by path; services/chat/artifacts_registry.py owns every write.
@@ -199,12 +200,16 @@ class _ConversationOwnerRow(_ConversationIdRow):
     user_id: str
 
 
-class _MessageProjectionRow(BaseModel):
-    """Positional ``messages.$`` projection — a one-element messages slice."""
+class ConversationEntry(BaseModel):
+    """One message of a conversation's log, at the seq its append committed it under."""
 
-    model_config = ConfigDict(extra="ignore")
+    seq: int
+    message: MessageModel
 
-    messages: list[MessageModel] = Field(default_factory=list)
+    @field_validator("message", mode="before")
+    @classmethod
+    def _normalize_message(cls, value: object) -> object:
+        return convert_legacy_tool_data(value) if isinstance(value, dict) else value
 
 
 # ---------------------------------------------------------------------------

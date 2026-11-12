@@ -40,7 +40,6 @@ from app.agents.prompts.comms_prompts import (
     PLATFORM_DELIVERY_NOTE,
     SILENCE_NOTE,
 )
-from app.constants.chat import CONVERSATION_MAX_MESSAGES
 from app.constants.comms import CommsDirectiveKind
 from app.constants.executor import (
     EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE,
@@ -48,7 +47,6 @@ from app.constants.executor import (
 )
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
-from app.constants.todos import TODO_CONVERSATION_MAX_MESSAGES
 from app.constants.websocket import WEBSOCKET_BROADCAST_RETRY_DELAY_SECONDS
 from app.core.websocket_manager import websocket_manager
 from app.db.repositories.conversations import conversation_repository
@@ -154,9 +152,7 @@ async def _record_todo_run_report(
         message_id=run.render_message_id,
         tool_data=tool_data or None,
     )
-    if not await _save_message(
-        run.conversation_id, run.user, bot_message, max_messages=TODO_CONVERSATION_MAX_MESSAGES
-    ):
+    if not await _save_message(run.conversation_id, run.user, bot_message):
         return
     await _broadcast_bot_message(
         target=_DeliveryTarget(
@@ -184,9 +180,7 @@ async def record_todo_run_wake(
         message_id=str(uuid4()),
         todo_run_wake=wake,
     )
-    if not await _save_message(
-        conversation_id, user, message, max_messages=TODO_CONVERSATION_MAX_MESSAGES
-    ):
+    if not await _save_message(conversation_id, user, message):
         return
     await _broadcast_message(
         user.user_id,
@@ -235,10 +229,6 @@ async def persist_cancelled_run(run: ExecutorRun, tool_data: list[ToolDataEntry]
                 messages=[bot_message],
             ),
             user=run.user,
-            # A tracked todo's chat is reused by every run, so a stopped one is capped too.
-            max_messages=TODO_CONVERSATION_MAX_MESSAGES
-            if run.todo_run
-            else CONVERSATION_MAX_MESSAGES,
         )
     except HTTPException as e:
         if e.status_code == 404:  # conversation deleted mid-run — expected, not an error
@@ -731,10 +721,8 @@ async def _save_message(
     conversation_id: str,
     user: AuthenticatedUser,
     message: MessageModel,
-    *,
-    max_messages: int = CONVERSATION_MAX_MESSAGES,
 ) -> bool:
-    """Append the message, keeping the conversation's newest max_messages; False when it wasn't saved."""
+    """Append the message to the conversation; False when it wasn't saved."""
     persist_start = time.perf_counter()
     try:
         await update_messages(
@@ -743,7 +731,6 @@ async def _save_message(
                 messages=[message],
             ),
             user=user,
-            max_messages=max_messages,
         )
     except HTTPException as e:
         if e.status_code == 404:  # conversation deleted mid-run — expected, not an error
