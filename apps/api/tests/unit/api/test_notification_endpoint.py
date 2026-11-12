@@ -849,6 +849,21 @@ class TestBriefingScheduleEndpoints:
         )
         log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="update_briefing_schedule")
 
+    async def test_new_deliveries_are_refused_unless_briefs_are_being_turned_off(
+        self, client: AsyncClient
+    ) -> None:
+        with patch(
+            "app.api.v1.endpoints.notification.set_briefing_schedule", new_callable=AsyncMock
+        ) as setter:
+            response = await client.put(
+                f"{NOTIF_BASE}/preferences/briefing-schedule",
+                json={"frequency": "daily", "hour": 7, "workflow_deliveries": {"wf-1": "now"}},
+            )
+
+        assert response.status_code == 422
+        assert "workflow_deliveries is only accepted when frequency is off" in response.text
+        setter.assert_not_awaited()
+
     @pytest.mark.parametrize(
         "body", [{"frequency": "hourly", "hour": 7}, {"frequency": "daily", "hour": 24}]
     )

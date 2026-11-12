@@ -14,6 +14,7 @@ from app.constants.briefing import (
     WEEKLY_DIGEST_WORKFLOW_KEY,
     BriefingFrequency,
 )
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
@@ -24,7 +25,11 @@ from app.models.workflow_models import TriggerConfig, TriggerType
 from app.services.briefing import schedule
 from app.services.workflow.service import WorkflowService
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.settings import SettingsBriefingScheduleUpdated
+from shared.py.analytics.catalog.settings import (
+    SettingsBriefingScheduleUpdated,
+    SettingsBriefsOffBlocked,
+    SettingsBriefsOffResolved,
+)
 
 _USER = "64f1c0ffee0000000000abcd"
 _TZ = "Asia/Kolkata"
@@ -367,3 +372,52 @@ class TestDescribeBriefingSchedule:
         user = UserDocument(briefing_schedule=BriefingSchedule(frequency=frequency, hour=hour))
 
         assert schedule.describe_briefing_schedule(user).startswith(text)
+
+
+class TestTurningBriefsOff:
+    @pytest.fixture
+    def delivering(self, seams: Seams, monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+        monkeypatch.setattr(user_repository, "set_briefing_schedule", AsyncMock())
+        monkeypatch.setattr(
+            user_repository,
+            "get",
+            AsyncMock(return_value=_user(DEFAULT_QUIET_HOURS, frequency=BriefingFrequency.OFF)),
+        )
+        monkeypatch.setattr(schedule, "capture", MagicMock())
+        on_brief = MagicMock(id="wf-digest", title="Digest")
+        find = AsyncMock(return_value=[on_brief])
+        monkeypatch.setattr(workflow_repository, "find_brief_delivery_for_user", find)
+        return find
+
+    async def test_each_brief_workflow_moves_to_its_chosen_delivery_and_the_move_is_reported(
+        self, seams: Seams, delivering: MagicMock
+    ) -> None:
+        await schedule.set_briefing_schedule(
+            _USER,
+            BriefingSchedule(frequency=BriefingFrequency.OFF),
+            via="agent",
+            workflow_deliveries={"wf-digest": WorkflowDelivery.SILENT},
+        )
+
+        delivering.assert_awaited_once_with(_USER)
+        [call] = seams.update.await_args_list
+        assert call.args[0] == "wf-digest"
+        assert call.args[1].delivery is WorkflowDelivery.SILENT
+        assert call.args[2] == _USER
+        schedule.capture.assert_any_call(
+            UserId(_USER),
+            SettingsBriefsOffResolved(moved_to_now=0, moved_to_silent=1, via="agent"),
+        )
+
+    async def test_a_brief_workflow_with_no_chosen_delivery_blocks_turning_briefs_off(
+        self, seams: Seams, delivering: MagicMock
+    ) -> None:
+        with pytest.raises(schedule.BriefDeliveryWorkflowsError):
+            await schedule.set_briefing_schedule(
+                _USER, BriefingSchedule(frequency=BriefingFrequency.OFF), via="settings"
+            )
+
+        seams.update.assert_not_awaited()
+        schedule.capture.assert_called_once_with(
+            UserId(_USER), SettingsBriefsOffBlocked(workflow_count=1, via="settings")
+        )
