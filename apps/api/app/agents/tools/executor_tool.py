@@ -499,6 +499,7 @@ async def _cancel_executor_work(
             user_id=configurable.get("user_id", ""),
             conversation_id=conversation_id,
             cancelled=cancelled,
+            cancel_all=cancel_all,
         )
 
         result = f"Cancelled: {', '.join(cancelled)}."
@@ -519,8 +520,13 @@ async def _broadcast_executor_cancelled(
     user_id: str,
     conversation_id: str,
     cancelled: list[str],
+    cancel_all: bool,
 ) -> None:
-    """Push the executor-cancelled control event to the user's clients."""
+    """Push the executor-cancelled control event to the user's clients.
+
+    cancel_all tells the client every executor wait in the conversation ended,
+    steers' pending work included, not only the oldest one.
+    """
     if not user_id:
         return
     try:
@@ -530,6 +536,7 @@ async def _broadcast_executor_cancelled(
                 "type": WS_EVENT_EXECUTOR_CANCELLED,
                 "conversation_id": conversation_id,
                 "cancelled": cancelled,
+                "cancel_all": cancel_all,
             },
         )
     except Exception as e:  # best-effort UI signal

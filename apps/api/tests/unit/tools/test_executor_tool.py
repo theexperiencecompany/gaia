@@ -1261,6 +1261,28 @@ class TestCancelBroadcast:
                 "type": WS_EVENT_EXECUTOR_CANCELLED,
                 "conversation_id": CONVERSATION_ID,
                 "cancelled": ["running-task"],
+                "cancel_all": True,
+            },
+        )
+
+    async def test_a_targeted_cancel_tells_clients_other_work_may_still_be_waiting(
+        self,
+        fake_redis: AsyncRedisCommands,
+        broadcast: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
+        await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
+
+        await run_cancel_executor(config=config_for(), task_ids=["running-task"])
+
+        broadcast.assert_awaited_once_with(
+            "user-1",
+            {
+                "type": WS_EVENT_EXECUTOR_CANCELLED,
+                "conversation_id": CONVERSATION_ID,
+                "cancelled": ["running-task"],
+                "cancel_all": False,
             },
         )
 

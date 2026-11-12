@@ -17,6 +17,7 @@ import {
 import {
   createIntegrationStatusHandler,
   INTEGRATION_STATUS_UPDATE,
+  invalidateIntegrationCaches,
   subscribeToIntegrationStatus,
 } from "@/features/integrations/hooks/useIntegrationStatusWebSocket";
 
@@ -26,6 +27,8 @@ const harness = vi.hoisted(() => ({
   wsManager: {
     on: vi.fn<(type: string, handler: StatusHandler) => void>(),
     off: vi.fn<(type: string, handler: StatusHandler) => void>(),
+    onConnect: vi.fn<(handler: () => void) => void>(),
+    offConnect: vi.fn<(handler: () => void) => void>(),
   },
 }));
 
@@ -95,6 +98,18 @@ describe("createIntegrationStatusHandler", () => {
   });
 });
 
+describe("invalidateIntegrationCaches", () => {
+  it("marks the integrations and tools caches stale", () => {
+    const queryClient = new QueryClient();
+    seedCaches(queryClient);
+
+    invalidateIntegrationCaches(queryClient);
+
+    expect(isInvalidated(queryClient, integrationKeys.me)).toBe(true);
+    expect(isInvalidated(queryClient, toolKeys.available)).toBe(true);
+  });
+});
+
 describe("subscribeToIntegrationStatus", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -103,7 +118,7 @@ describe("subscribeToIntegrationStatus", () => {
   it("subscribes to integration_status_update with the given handler", () => {
     const handler: StatusHandler = vi.fn();
 
-    subscribeToIntegrationStatus(handler);
+    subscribeToIntegrationStatus(handler, vi.fn());
 
     expect(harness.wsManager.on).toHaveBeenCalledTimes(1);
     expect(harness.wsManager.on).toHaveBeenCalledWith(
@@ -115,7 +130,7 @@ describe("subscribeToIntegrationStatus", () => {
   it("unsubscribes the same handler it subscribed", () => {
     const handler: StatusHandler = vi.fn();
 
-    const unsubscribe = subscribeToIntegrationStatus(handler);
+    const unsubscribe = subscribeToIntegrationStatus(handler, vi.fn());
     expect(harness.wsManager.off).not.toHaveBeenCalled();
 
     unsubscribe();
@@ -125,5 +140,16 @@ describe("subscribeToIntegrationStatus", () => {
       INTEGRATION_STATUS_UPDATE,
       handler,
     );
+  });
+
+  it("refreshes on every socket connect, since a broadcast missed while down is never replayed", () => {
+    const onConnect = vi.fn();
+
+    const unsubscribe = subscribeToIntegrationStatus(vi.fn(), onConnect);
+    expect(harness.wsManager.onConnect).toHaveBeenCalledWith(onConnect);
+
+    unsubscribe();
+
+    expect(harness.wsManager.offConnect).toHaveBeenCalledWith(onConnect);
   });
 });

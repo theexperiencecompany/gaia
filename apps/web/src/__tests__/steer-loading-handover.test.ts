@@ -56,7 +56,9 @@ vi.mock("@/features/chat/stream/unread", () => ({
 }));
 
 import { textSendArgs } from "@/__tests__/helpers/sendArgs";
+import { useExecutorCancelWebSocket } from "@/features/chat/hooks/useExecutorCancelWebSocket";
 import { turnManager } from "@/features/chat/stream/turnManager";
+import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { useChatStore } from "@/stores/chatStore";
 import {
   steerSessionKey,
@@ -102,7 +104,10 @@ const send = (text: string, id: string) => {
 describe("the loading row while a steer outlives the main turn", () => {
   beforeEach(() => {
     streams.length = 0;
-    act(() => useChatStore.setState({ activeConversationId: CONV }));
+    act(() => {
+      useChatStore.setState({ activeConversationId: CONV });
+      useStreamStore.setState({ sessions: {} });
+    });
   });
 
   it("passes to the steer that is still working", async () => {
@@ -150,5 +155,49 @@ describe("the loading row while a steer outlives the main turn", () => {
 
     act(() => useStreamStore.getState().endAwaitingSession(CONV));
     expect(loading.result.current.isLoading).toBe(false);
+  });
+
+  it("ends every waiting slot when the agent cancels everything, and only those", () => {
+    const steer = steerSessionKey(CONV, "s1");
+    const streaming = steerSessionKey(CONV, "s2");
+    const elsewhere = "conv-other";
+    const store = useStreamStore.getState();
+    act(() => {
+      for (const key of [CONV, steer, streaming, elsewhere]) {
+        store.startSession(key);
+      }
+      for (const key of [CONV, steer, elsewhere]) {
+        store.updateSession(key, { phase: "awaiting_executor" });
+      }
+    });
+    const on = vi.spyOn(wsManager, "on");
+    renderHook(() => useExecutorCancelWebSocket());
+    const [, onCancelled] =
+      on.mock.calls.find(([type]) => type === "executor.cancelled") ?? [];
+
+    act(() => onCancelled?.({ conversation_id: CONV, cancel_all: true }));
+
+    expect(Object.keys(useStreamStore.getState().sessions).sort()).toEqual(
+      [elsewhere, streaming].sort(),
+    );
+  });
+
+  it("ends only the oldest waiting slot on a targeted cancel", () => {
+    const steer = steerSessionKey(CONV, "s1");
+    const store = useStreamStore.getState();
+    act(() => {
+      for (const key of [CONV, steer]) {
+        store.startSession(key);
+        store.updateSession(key, { phase: "awaiting_executor" });
+      }
+    });
+    const on = vi.spyOn(wsManager, "on");
+    renderHook(() => useExecutorCancelWebSocket());
+    const [, onCancelled] =
+      on.mock.calls.find(([type]) => type === "executor.cancelled") ?? [];
+
+    act(() => onCancelled?.({ conversation_id: CONV, cancel_all: false }));
+
+    expect(Object.keys(useStreamStore.getState().sessions)).toEqual([steer]);
   });
 });
