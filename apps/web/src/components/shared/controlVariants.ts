@@ -40,7 +40,7 @@ export const sliderVariants = tv({
   defaultVariants: { size: "md", color: "accent" },
 });
 
-/** v2's small text field (32px, 8px inset) on a TextField root or Input; variant bare/underlined goes on the Input or TextArea itself. */
+/** v2's small text field (32px, 8px inset) on a TextField root or Input; variant bare/underlined/translucent goes on the Input, TextArea or Select.Trigger itself. */
 export const inputVariants = tv({
   variants: {
     size: { sm: "gaia-input-sm", md: "" },
@@ -48,6 +48,7 @@ export const inputVariants = tv({
       default: "",
       bare: "gaia-input-bare",
       underlined: "gaia-input-underlined",
+      translucent: "gaia-input-translucent",
     },
   },
   defaultVariants: { size: "md", variant: "default" },
@@ -57,4 +58,10 @@ export const inputVariants = tv({
 export const separatorVariants = tv({
   variants: { tone: { default: "", subtle: "gaia-separator-subtle" } },
   defaultVariants: { tone: "default" },
+});
+
+/** v2's zinc-800 overlay surface on Popover.Content, Tooltip.Content or Select.Popover; gaia-overlay-raised in base.css. */
+export const overlayVariants = tv({
+  variants: { surface: { default: "", raised: "gaia-overlay-raised" } },
+  defaultVariants: { surface: "default" },
 });

@@ -1308,6 +1308,9 @@ html {
   --gaia-table-cell-padding-y: 0.5rem;
   --gaia-table-cell-padding-x: 0.75rem;
   --gaia-slider-marks-gap: 0.375rem;
+  --gaia-field-translucent: color-mix(in oklab, #27272a 50%, transparent);
+  --gaia-field-translucent-hover: color-mix(in oklab, #3f3f46 50%, transparent);
+  --gaia-overlay-raised: #27272a;
   --gaia-separator-subtle: color-mix(in oklab, #3f3f46 50%, transparent);
   --gaia-button-weight: 400;
   --gaia-button-sm-height: 2rem;
@@ -1553,6 +1556,27 @@ html {
   .textarea.gaia-input-underlined:focus,
   .textarea.gaia-input-underlined[data-focused="true"] {
     border-color: var(--foreground);
+  }
+
+  /* inputVariants({ variant: "translucent" }): v2's see-through settings field,
+     zinc-800 at 50% that lifts to zinc-700 at 50% on hover. */
+  .input.gaia-input-translucent,
+  .textarea.gaia-input-translucent,
+  .select__trigger.gaia-input-translucent {
+    background-color: var(--gaia-field-translucent);
+    --input-bg: var(--gaia-field-translucent);
+  }
+  .input.gaia-input-translucent:hover,
+  .textarea.gaia-input-translucent:hover,
+  .select__trigger.gaia-input-translucent:hover {
+    background-color: var(--gaia-field-translucent-hover);
+    --input-bg-hover: var(--gaia-field-translucent-hover);
+  }
+
+  /* overlayVariants({ surface: "raised" }): v2's zinc-800 popover and tooltip
+     surface, lifted off a zinc-900 page (the default overlay is zinc-900). */
+  .gaia-overlay-raised {
+    background-color: var(--gaia-overlay-raised);
   }
 
   /* Field placeholders: v2's zinc-500 at normal weight, in light and dark. */
