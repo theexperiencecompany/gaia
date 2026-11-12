@@ -93,9 +93,9 @@ export function GateDetail({
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onKeyDown}
             maxLength={GATE_CONDITION_MAX_CHARS}
-            rows={5}
+            rows={2}
             autoFocus
-            className="bg-zinc-800 text-sm hover:bg-zinc-800"
+            className="max-h-32 resize-none field-sizing-content bg-zinc-800 text-sm hover:bg-zinc-800"
           />
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="ghost" onPress={() => setDraft(null)}>

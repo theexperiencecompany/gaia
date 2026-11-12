@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Dropdown, Header, Tooltip } from "@heroui/react";
+import { Button, Dropdown, Header, Separator, Tooltip } from "@heroui/react";
 import {
   ArrowUpRight01Icon,
   RedoIcon,
@@ -139,6 +139,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                     <Dropdown.Item id="__empty__">{"" as string}</Dropdown.Item>
                   </Dropdown.Section>
                 )}
+                {hasActions && path ? <Separator /> : null}
                 {path ? (
                   <Dropdown.Section id="navigation">
                     <Header className="px-2 py-1 text-xs text-zinc-500">
@@ -149,11 +150,9 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                       href={path}
                       textValue="View All"
                     >
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-2">
-                          <SquareArrowUpRight02Icon className="size-4 text-primary" />
-                          View All
-                        </div>
+                      <SquareArrowUpRight02Icon className="size-4 text-primary" />
+                      <div className="flex flex-col">
+                        <span>View All</span>
                         <span className="whitespace-normal text-xs text-zinc-500">
                           {`Open full ${title.toLowerCase()} page`}
                         </span>
