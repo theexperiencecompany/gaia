@@ -47,7 +47,7 @@ The **only** agent the user talks to. Owns the conversation thread, narrates pro
 
 ### Where it lives
 
-- `apps/api/app/agents/core/agent.py` — entry points `call_agent()` (live SSE stream) and `call_agent_silent()` (background/workflow).
+- `apps/api/app/agents/core/agent.py` — `call_agent()`, the per-turn SSE stream. A workflow fire is not a chat turn: `execute_workflow_as_chat` (`apps/api/app/workers/tasks/workflow_tasks.py`) appends a `WorkflowFired` entry, the conversation step answers it, and the job reads the outcome off the log (`apps/api/app/services/conversation/outcome.py`).
 - `apps/api/app/agents/core/graph_builder/build_graph.py` — `build_comms_graph()` / `build_comms_agent()`. Comms is built with `disable_retrieve_tools=True` and end-graph hooks `[follow_up_actions_node, memory_node]`.
 - `apps/api/app/override/langgraph_bigtool/utils.py` — `State`, the graph state every tier runs on: `messages` (a `DeltaChannel`, not a plain snapshot channel), `todos`, `intent`, `integration_usernames`, `remaining_steps`. Per-run values like `user_id`, `active_todo_id` and `execution_mode` live in `config["configurable"]` (`AgentConfigurable`), not in state.
 - `apps/api/app/agents/core/messages.py` — `construct_langchain_messages` builds the message array with per-turn context (calendar, reply-to, file refs, timezone).
@@ -422,7 +422,8 @@ Integration tools (Composio + MCP — the thousands) are **never bound** to the 
   - `trigger_service.py` — `TriggerService` (composio triggers: gmail, calendar, slack, github, linear, todoist, sheets, docs).
   - `scheduler.py` — cron-based scheduled workflow execution.
   - `queue_service.py` — workflow execution queue.
-  - `execution_service.py` — `WorkflowExecutionService` (runs workflows).
+  - `execution_service.py` — execution records and the fire's failure types.
+  - A fire runs on the conversation step: `WorkflowFired{run: WorkflowRun}` (`apps/api/app/models/conversation_log_models.py`) carries the workflow card, trigger context, execution id (the run-record key), the fire's busy-lock reservation and timezone; `comms_turn.build_comms_turn` builds the turn from it, and `await_outcome` reports the run back to the ARQ job.
   - `generation_service.py` — AI workflow generation from natural language.
   - `context_extractor.py` — `WorkflowContextExtractor` (extracts context from conversation).
   - `workflow_subagent.py` — `WorkflowSubagentRunner` (subagent that generates workflows).

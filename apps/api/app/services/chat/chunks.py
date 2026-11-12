@@ -4,8 +4,7 @@ The agent emits two flavors of chunk: plain data: {...} SSE frames (forwarded
 to the client) and nostream: {...} markers (consumed by the orchestrator and
 never sent on). process_data_chunk is the per-chunk dispatcher;
 extract_tool_data, normalize_custom_event, and extract_response_text are
-pure parsers reused by the dispatcher, the LangGraph stream processor, and
-the legacy call_agent_silent path.
+pure parsers reused by the dispatcher and the LangGraph stream processor.
 
 The chunk payload stays an open JSON object on purpose (arbitrary JSON,
 passed through when unrecognised); the keys this module acts on are read
