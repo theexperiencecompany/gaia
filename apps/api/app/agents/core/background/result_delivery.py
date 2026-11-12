@@ -35,10 +35,12 @@ from app.agents.core.background.workflow_platform_delivery import (
 )
 from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.core.nodes.follow_up_actions_node import generate_follow_up_actions
+from app.agents.core.outcome_review import NOT_REVIEWED, OutcomeReview
 from app.agents.prompts.comms_prompts import (
     INTERACTIVE_DELIVERY_NOTE,
     PLATFORM_DELIVERY_NOTE,
     SILENCE_NOTE,
+    outcome_delivery_note,
 )
 from app.constants.comms import CommsDirectiveKind
 from app.constants.executor import (
@@ -113,7 +115,7 @@ async def deliver_result(
     returned_note: str = "",
     *,
     tool_data: list[ToolDataEntry] | None,
-    outcome_note: str = "",
+    review: OutcomeReview = NOT_REVIEWED,
 ) -> tuple[str | None, str | None]:
     """Narrate a finished executor run through comms, persist it, and deliver it.
 
@@ -125,10 +127,20 @@ async def deliver_result(
     try:
         if run.todo_run is not None:
             await _record_todo_run_report(run, result_text, result_type, tool_data)
-            await deliver_todo_run_result(run, run.todo_run, result_text, result_type)
+            await deliver_todo_run_result(
+                run,
+                run.todo_run,
+                result_text,
+                result_type,
+                nothing_for_user=review.nothing_for_user,
+            )
             return None, None
         return await _narrate_and_deliver(
-            run, result_text + outcome_note, result_type, tool_data, returned_note
+            run,
+            result_text + outcome_delivery_note(review.declared, review.problem),
+            result_type,
+            tool_data,
+            returned_note,
         )
     except Exception as e:  # delivery is best-effort, never propagates
         log.error(f"{LogTag.AGENT} Background notification delivery failed", error=str(e))

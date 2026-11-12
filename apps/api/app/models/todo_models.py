@@ -585,6 +585,11 @@ class TodoDocument(UserScopedDocument):
         """Whether nothing will wake this todo again: no recurrence and no watch."""
         return not (self.recurrence or self.trigger_subscriptions)
 
+    @property
+    def owns_report_form(self) -> bool:
+        """Whether the outside object this todo is about is a kind whose run guidance sets its report's form."""
+        return self.external_ref is not None and self.external_ref.source.owns_report_form
+
 
 class TodoUpdate(BaseModel):
     """Partial ``$set`` update for a todo — every settable field, all optional."""
