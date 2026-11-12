@@ -842,3 +842,23 @@ async def test_a_deleted_conversations_leftover_entries_never_reach_search_or_pi
     assert [(h.conversation_id, h.message.message_id) for h in found.messages] == [(live, "live-1")]
     assert await repo.list_pinned_messages(uid) == []
     assert await repo.find_owner_of_message(uid, "old-1") is None
+
+
+@pytest.mark.parametrize("flushed", [False, True])
+async def test_a_retried_append_of_a_known_id_with_other_content_fails_instead_of_reporting_it_saved(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    held: _HeldFlushes,
+    flushed: bool,
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    await repo.append(cid, user_id=uid, entries=[_message("r1", "")])
+    if flushed:
+        await held.run_all()
+
+    assert await repo.append(cid, user_id=uid, entries=[_message("r1", "")]) == [1]
+    with pytest.raises(ConversationStoreError, match="r1"):
+        await repo.append(cid, user_id=uid, entries=[_message("r1", "the full reply")])
+
+    kept = await repo.get_message(cid, "r1", user_id=uid)
+    assert kept is not None and kept.response == ""

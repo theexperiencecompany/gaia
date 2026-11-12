@@ -32,6 +32,7 @@ from app.constants.chat import (
 from app.db.repositories.base import UserScopedRepository
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversation_entries import (
+    CONTENT_HASH_FIELD,
     DROP_EMBEDDED_STAGE,
     EMBEDDED_STATE_STAGE,
     FOLDED_CARDS_FIELD,
@@ -44,6 +45,7 @@ from app.db.repositories.conversation_entries import (
     absorbing,
     at_its_seq,
     at_log_head,
+    content_hash,
     head_fields,
     head_from_raw,
     head_with_existing,
@@ -311,14 +313,16 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     ) -> list[int]:
         """Commit entries at consecutive seqs in one conditional head write, returning each one's seq.
 
-        All or none. An id already committed is not appended again; its seq is returned.
-        Raises ConversationNotFoundError for a missing conversation, writing nothing.
+        All or none. An id already committed with the same content is not appended again;
+        its seq is returned. One committed with other content raises ConversationStoreError,
+        writing nothing. Raises ConversationNotFoundError for a missing conversation.
         """
         batch: dict[str, dict[str, object]] = {}
         for message in entries:
             if message.message_id is None:
                 raise ValueError("an appended entry carries its producer-minted id")
-            batch.setdefault(message.message_id, stored_message(message))
+            data = stored_message(message)
+            batch.setdefault(message.message_id, {**data, CONTENT_HASH_FIELD: content_hash(data)})
         ids = [str(message.message_id) for message in entries]
         for _ in range(CONVERSATION_APPEND_MAX_ATTEMPTS):
             head = await self._read_head_for_append(conversation_id, user_id, list(batch))
@@ -328,6 +332,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     meta={"conversation_id": conversation_id},
                 )
             known = head.known_seqs()
+            _refuse_other_content(conversation_id, batch, head.known_content())
             fresh = [(entry_id, data) for entry_id, data in batch.items() if entry_id not in known]
             if not fresh:
                 if head.outbox:
@@ -1171,6 +1176,21 @@ def _backoff() -> float:
     """Return how long a writer that lost the conditional write waits before rereading the head."""
     # Any short wait is correct, so its bounds are not behaviour a test can pin.
     return _JITTER.uniform(0, CONVERSATION_APPEND_JITTER_SECONDS)  # pragma: no mutate
+
+
+def _refuse_other_content(
+    conversation_id: str,
+    batch: Mapping[str, Mapping[str, object]],
+    committed: Mapping[str, str | None],
+) -> None:
+    """Raise when an id in batch is already committed with other content: a retry never reports an unwritten save."""
+    for entry_id, data in batch.items():
+        if entry_id in committed and committed[entry_id] != data[CONTENT_HASH_FIELD]:
+            raise ConversationStoreError(
+                message=f"entry {entry_id} is already committed with other content",
+                why="an append is idempotent only for the same message; fill or edit the entry instead",
+                meta={"conversation_id": conversation_id, "entry_id": entry_id},
+            )
 
 
 def _todo_binding(todo_id: str) -> dict[str, object]:

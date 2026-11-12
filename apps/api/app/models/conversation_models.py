@@ -222,6 +222,7 @@ class StoredEntry(BaseModel):
     seq: int
     id: str
     at: datetime | None = None
+    content_hash: str | None = None
     migration_fields: dict[str, str] | None = None
 
     def message_fields(self) -> dict[str, object]:
@@ -236,12 +237,13 @@ class StoredEntry(BaseModel):
 
 
 class EntryKey(BaseModel):
-    """Which entry holds a seq: the id and seq of a stored entry, projected."""
+    """Which entry holds a seq: the id, seq and committed-content hash of a stored entry, projected."""
 
     model_config = ConfigDict(extra="ignore")
 
     id: str
     seq: int
+    content_hash: str | None = None
 
 
 class EmbeddedState(BaseModel):

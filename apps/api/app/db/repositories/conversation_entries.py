@@ -12,6 +12,8 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
+import hashlib
+import json
 
 from pymongo.errors import PyMongoError
 
@@ -74,7 +76,8 @@ _APPEND_HEAD_FIELDS: dict[str, object] = {
     MIGRATED_FINGERPRINT_FIELD: 1,
     _EMBEDDED_FIELD: 1,
 }
-_EXISTING_FIELDS: dict[str, object] = {"_id": 0, "id": 1, "seq": 1}
+CONTENT_HASH_FIELD = "content_hash"
+_EXISTING_FIELDS: dict[str, object] = {"_id": 0, "id": 1, "seq": 1, CONTENT_HASH_FIELD: 1}
 _HEAD_OF_ENTRY = "_head"
 #: Each outbox entry of a head, one document apiece.
 _OUTBOX_AS_ENTRIES: list[dict[str, object]] = [
@@ -118,6 +121,11 @@ class Head:
         """Every entry id this head's reads saw, outbox and collection both, by seq."""
         stored = {row.id: row.seq for row in self.document.existing}
         return {**stored, **{entry.id: seq for seq, entry in self.outbox.items()}}
+
+    def known_content(self) -> dict[str, str | None]:
+        """Return the committed-content hash of every entry id this head's reads saw."""
+        stored = {row.id: row.content_hash for row in self.document.existing}
+        return {**stored, **{entry.id: entry.content_hash for entry in self.outbox.values()}}
 
     def pending(self) -> list[ConversationEntry]:
         """Read the outbox's committed entries."""
@@ -247,6 +255,13 @@ def stored_message(message: MessageModel) -> dict[str, object]:
     data = {k: v for k, v in message.model_dump().items() if v is not None}
     data["id"] = data.pop("message_id")
     return data
+
+
+def content_hash(stored: Mapping[str, object]) -> str:
+    """Hash a message as append commits it, so a retry can tell the same message from another under its id."""
+    return hashlib.sha256(
+        json.dumps(dict(stored), sort_keys=True, default=str).encode()
+    ).hexdigest()
 
 
 def entry_of(stored: StoredEntry) -> ConversationEntry:
