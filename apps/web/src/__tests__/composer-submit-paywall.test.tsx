@@ -143,7 +143,7 @@ describe("useComposerSubmit paywall pre-check", () => {
 
     result.current.handleFormSubmit();
 
-    // The backend's 402 on chat-stream is the backstop for a genuinely free
+    // The backend's 402 on a send is the backstop for a genuinely free
     // user — a not-yet-resolved plan status must never trap a paying user
     // behind the non-dismissible paywall.
     expect(sendMessage).toHaveBeenCalledTimes(1);

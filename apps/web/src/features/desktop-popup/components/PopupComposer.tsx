@@ -23,7 +23,7 @@ interface PopupComposerProps {
 /**
  * The Siri-style pill: the window's liquid glass is the field itself —
  * glowing orb on the left, the shared send/stop button on the right.
- * Sends through the real chat-stream pipeline.
+ * Sends through the real conversation send pipeline.
  */
 export default function PopupComposer({
   active,

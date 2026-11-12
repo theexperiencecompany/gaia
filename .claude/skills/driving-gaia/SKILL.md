@@ -147,17 +147,20 @@ Stub knobs: `LLM_STUB_PORT` (default 9797) / `LLM_STUB_HOST` (default 127.0.0.1)
 
 All routes under `/api/v1`. Under the bypass, add `-H 'X-Dev-User: <email>'` to act as a specific seeded user; omit it to be `DEV_AUTH_BYPASS_EMAIL`.
 
-**Chat (streaming turn).** `POST /api/v1/chat-stream` (`app/api/v1/endpoints/chat.py:99`). Body is `MessageRequestWithHistory` (`app/models/message_models.py`): `messages` is a list of `{role, content}`; `conversation_id` optional (server mints one if absent); `turn_id` optional idempotency key (duplicate → 409). Response is SSE (`text/event-stream`); the stream id is on the `X-Stream-Id` response header, and the turn **continues in the background and persists to Mongo even if you disconnect**.
+**Chat (send a message, follow its events).** `POST /api/v1/conversations/{id}/messages` (`app/api/v1/endpoints/conversations.py`). Body is `SendMessageRequest` (`app/models/conversation_send_models.py`): a client-minted `message_id` (a resend is a no-op) and `text`; the conversation id is client-minted too and is created on its first message. It returns 202 with the message's `seq`; the reply arrives on the conversation's events stream and **persists to Mongo whether or not anyone is listening**.
 
 ```bash
-curl -sN -X POST "http://localhost:${API_PORT:-8000}/api/v1/chat-stream" \
+CONV=$(uuidgen)
+curl -s -X POST "http://localhost:${API_PORT:-8000}/api/v1/conversations/$CONV/messages" \
   -H 'content-type: application/json' -H 'X-Dev-User: alice@gaia.local' \
-  -d '{"messages":[{"role":"user","content":"[[say:hello from sim]]"}]}'
-# SSE frames stream as `data: ...`; grab X-Stream-Id from the response headers (-D -) to reattach/cancel.
+  -d "{\"message_id\":\"$(uuidgen)\",\"text\":\"[[say:hello from sim]]\"}"
+curl -sN "http://localhost:${API_PORT:-8000}/api/v1/conversations/$CONV/events?after=0" \
+  -H 'X-Dev-User: alice@gaia.local'
+# SSE `data:` lines are ConversationEvent frames; the reply is done at its reply_settled entry.
 ```
 
-- Reattach to a live/finished stream: `GET /api/v1/stream/{stream_id}` (replays the event log).
-- Cancel: `POST /api/v1/cancel-stream/{stream_id}`.
+- Resume: `after=<seq>` replays the log after it; `after=<stream id>` (the frame's `id:`) resumes exactly after that frame.
+- Stop: `POST /api/v1/conversations/{id}/stop`.
 
 **Todos.** `GET /api/v1/todos` (list), `POST /api/v1/todos` (create) (`app/api/v1/endpoints/todos.py`):
 
@@ -182,7 +185,7 @@ mongosh 'mongodb://localhost:27017/GAIA' --quiet --eval \
 
 ## 5. Drive the executor in isolation
 
-The full chain is comms → executor. §4's `/chat-stream` always enters at comms; this dev-only route (same mount gate as the rest of `/dev`, §2) enters at the executor, so you can test it without scripting the comms hop above it. Integrations, including MCP servers, are activated inside the executor with `activate_integration`; there is no per-integration subagent to enter. Responses are plain JSON — the agent's final message — not SSE.
+The full chain is comms → executor. §4's send always enters at comms; this dev-only route (same mount gate as the rest of `/dev`, §2) enters at the executor, so you can test it without scripting the comms hop above it. Integrations, including MCP servers, are activated inside the executor with `activate_integration`; there is no per-integration subagent to enter. Responses are plain JSON — the agent's final message — not SSE.
 
 ```bash
 # run the EXECUTOR directly (skips comms entirely)
@@ -267,7 +270,7 @@ Every way to test or simulate GAIA, in one table — this skill covers the live-
 
 | Surface | Command | Docs |
 |---|---|---|
-| Chat via comms (SSE, full chain) | `curl POST /api/v1/chat-stream` (§4) | this skill |
+| Chat via comms (full chain) | `curl POST /api/v1/conversations/{id}/messages` + `/events` (§4) | this skill |
 | Executor directly | `curl POST /api/v1/dev/executor` (§5) | this skill |
 | Browser (scripted) | `mise e2e:web` / `E2E_SIM=1 mise e2e:web` (§6) | this skill, `apps/web/e2e/` |
 | Bots (emulated platforms) | `pnpm nx run bot-harness:sim -- send\|run` (§7) | this skill, `apps/bots/CLAUDE.md` |

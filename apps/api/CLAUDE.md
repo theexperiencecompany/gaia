@@ -48,14 +48,13 @@ Both graphs are built in `app/agents/core/graph_builder/build_graph.py` and regi
 - `call_agent()` — returns `AsyncGenerator` for SSE streaming (chat endpoint)
 - `call_agent_silent()` — returns `(message, tool_data)` tuple (workflows, background tasks)
 
-### Streaming Architecture
+### Conversation runtime
 
-Chat streaming is **decoupled from the HTTP connection** (see `app/api/v1/endpoints/chat.py`):
+A conversation is an append-only log run by one step (`app/services/conversation/`, design in the plan `conversation-runtime.md`):
 
-1. Endpoint launches an `asyncio.Task` that runs LangGraph and publishes SSE chunks to a Redis channel.
-2. The HTTP response subscribes to that Redis channel and forwards chunks.
-3. If the client disconnects, the background task keeps running and saves the conversation to MongoDB.
-4. Stream cancellation via `POST /api/v1/cancel-stream/{stream_id}` sets a Redis flag that the background task checks.
+1. `POST /api/v1/conversations/{id}/messages` appends the user's message and returns 202 with its `seq`; the step answers it in the background.
+2. `GET /api/v1/conversations/{id}/events?after=<seq|stream id>` streams every frame (entries, reply and work deltas, state) as SSE, replaying from the log, so a client attaches at any point.
+3. `POST /api/v1/conversations/{id}/stop` logs a Stop; the step cancels the reply and the work it covers.
 
 ### Lazy Provider System
 

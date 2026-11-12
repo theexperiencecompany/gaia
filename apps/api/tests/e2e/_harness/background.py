@@ -10,6 +10,7 @@ from app.agents.core.background.executor_runner import (
 )
 from app.agents.core.background.redis_writer import STREAM_PUBLISH_TASK_NAME
 from app.agents.core.subagents.delegation import BACKGROUND_SUBAGENT_TASK_NAME
+from app.services.conversation.composition import running_steps
 from app.services.hil import resolution
 from app.utils import background_tasks
 
@@ -40,11 +41,11 @@ async def drain_publishes() -> None:
 
 
 async def drain_background_runs() -> None:
-    """Wait out every executor and background-subagent run still in flight, whatever spawned it.
+    """Wait out every conversation step, executor and background-subagent run still in flight.
 
     A background subagent's landing can wake a collection executor run, which can
-    hand off again, and HIL's resume set spawns into the same keep-alive set — so
-    this loops until all of them are empty. Callers keep their patches open
+    hand off again, a run's end wakes its conversation's step, and HIL's resume set
+    spawns into the same keep-alive set — so this loops until all of them are empty. Callers keep their patches open
     across it: a run outliving its doubles would reach the real services.
     """
     while pending := [
@@ -55,5 +56,6 @@ async def drain_background_runs() -> None:
             BACKGROUND_SUBAGENT_TASK_NAME,
         ),
         *resolution._resume_tasks,
+        *running_steps(),
     ]:
         await asyncio.gather(*pending, return_exceptions=True)

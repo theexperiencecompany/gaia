@@ -60,11 +60,11 @@ from app.core.websocket_manager import websocket_manager
 from app.db.mongodb import indexes
 from app.db.repositories.todos import todo_repository
 from app.memory.ingestion import RetainedMemory
-from app.models.chat_models import ConversationModel
+from app.models.chat_models import ConversationModel, ConversationSource
+from app.models.conversation_send_models import SendMessageRequest
 from app.models.hil_models import HILPreferences
 from app.models.integration_models import UserIntegrationCapabilities
 from app.models.memory_models import MemoryEntry
-from app.models.message_models import MessageRequestWithHistory
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
     ConditionOperator,
@@ -75,7 +75,9 @@ from app.models.trigger_subscription_models import (
     TriggerSubscription,
 )
 from app.models.user_models import AuthenticatedUser
-from app.services.chat import stream as chat_stream
+from app.services.conversation.composition import build_runtime_ports
+from app.services.conversation.runtime import install_runtime_ports
+from app.services.conversation.send import submit_message
 from app.services.conversation_service import (
     create_conversation_service,
     get_or_create_todo_conversation,
@@ -305,6 +307,7 @@ def open_stack(
                     new=AsyncMock(side_effect=lambda name="default_graph": graphs[name]),
                 )
             )
+            install_runtime_ports(build_runtime_ports())
             try:
                 yield built
             finally:
@@ -349,24 +352,11 @@ async def _chat_of(mongo_db: AsyncIOMotorDatabase, todo_id: str) -> dict[str, An
     return stored
 
 
-async def _follow_up(conversation_id: str, owner: AuthenticatedUser, message: str) -> Transcript:
-    """One chat turn in the conversation, through the real chat stream, read back as the client sees it."""
-    stream_id = str(uuid4())
-    await stream_manager.start_stream(
-        stream_id=stream_id, conversation_id=conversation_id, user_id=owner.user_id
-    )
-    await chat_stream.run_chat_stream_background(
-        stream_id=stream_id,
-        body=MessageRequestWithHistory(
-            message=message,
-            messages=[{"role": "user", "content": message}],
-            conversation_id=conversation_id,
-        ),
-        user=owner,
-        conversation_id=conversation_id,
-    )
-    frames = [chunk async for chunk in stream_manager.subscribe_stream(stream_id)]
-    return Transcript.from_sse("".join(frames))
+async def _follow_up(conversation_id: str, owner: AuthenticatedUser, message: str) -> None:
+    """One message the user sends in the chat, through the send route's service, answered by the step."""
+    body = SendMessageRequest(message_id=str(uuid4()), text=message)
+    await submit_message(conversation_id, owner, body, ConversationSource.WEB)
+    await drain_background_runs()
 
 
 def _reports(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:

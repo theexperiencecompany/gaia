@@ -140,7 +140,7 @@ const warnIfFrameUnrecognized = (payload: JsonObject): void => {
     !ChatStreamFrameSchema.safeParse(payload).success
   ) {
     console.error(
-      "[chat-stream] frame failed schema validation (extend schema.ts if this is a real frame):",
+      "[chat] frame failed schema validation (extend schema.ts if this is a real frame):",
       payload,
     );
   }

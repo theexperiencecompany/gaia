@@ -31,7 +31,7 @@ export interface PopupVoiceSession {
  *
  * Until voice mode lands, "voice" is simulated: activation plays the
  * pre-defined acknowledgment audio and the agent state is derived from
- * the text chat-stream lifecycle (loading → thinking, response
+ * the text chat's lifecycle (loading → thinking, response
  * streaming → speaking). When the LiveKit plumbing merges, only this
  * hook's internals change — the popup UI consumes the same interface.
  */
