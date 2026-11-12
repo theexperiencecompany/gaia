@@ -3,6 +3,7 @@ import { ArrowRight01Icon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
 import { lazy, Suspense, useEffect, useState } from "react";
+import { avatarVariants } from "@/components/shared/controlVariants";
 import { StarFilledIcon } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
 import Spinner from "@/components/ui/spinner";
@@ -36,7 +37,11 @@ const LazyContributors = lazy(() =>
             <Avatar
               key={contributor.login}
               asChild
-              className="cursor-pointer transition-transform hover:scale-110"
+              className={avatarVariants({
+                bordered: true,
+                className:
+                  "cursor-pointer transition-transform hover:scale-110",
+              })}
             >
               <Link
                 href={contributor.html_url}

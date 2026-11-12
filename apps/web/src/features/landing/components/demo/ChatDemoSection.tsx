@@ -25,6 +25,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { chipVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight } from "@/components/shared/icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -806,7 +807,10 @@ function ChatDemoWindow() {
                 size="lg"
                 variant={activeUseCase === i ? "primary" : "soft"}
                 color="default"
-                className="cursor-pointer select-none"
+                className={chipVariants({
+                  isSelected: activeUseCase === i,
+                  className: "cursor-pointer select-none",
+                })}
                 onClick={() => switchUseCase(i)}
               >
                 {useCase.label}
