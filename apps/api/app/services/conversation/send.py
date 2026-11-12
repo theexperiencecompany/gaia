@@ -18,6 +18,7 @@ from app.models.conversation_send_models import (
     MessageAccepted,
     SendMessageRequest,
 )
+from app.models.message_models import FileData
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.bot_service import BotService, charge_bot_turn
@@ -63,17 +64,26 @@ async def send_message(
     platform_message_id: str | None = None,
 ) -> Sent:
     """Append the user's message to the conversation and return its seq; a resend returns the first seq."""
+    files: list[FileData] = []
     if body.file_ids:
         await FileService.attach_uploads(body.file_ids, user.user_id, conversation_id)
+        files = await FileService.get_uploads(body.file_ids, user.user_id, conversation_id)
+    reply_to_message = body.reply_to_message
     message = UserMessage(
         id=body.message_id,
         text=body.text,
         surface=surface,
         platform_message_id=platform_message_id,
-        reply_to=body.reply_to,
+        reply_to=body.reply_to or (reply_to_message.id if reply_to_message else None),
         retry_of=body.retry_of,
         file_ids=tuple(body.file_ids),
+        files=tuple(files),
         voice=body.voice,
+        selected_tool=body.selected_tool,
+        tool_category=body.tool_category,
+        selected_workflow=body.selected_workflow,
+        selected_calendar_event=body.selected_calendar_event,
+        reply_to_message=reply_to_message,
     )
     accepted = await accept(runtime_ports(), conversation_id, user.user_id, message)
     seq = accepted.appended.logged.seq

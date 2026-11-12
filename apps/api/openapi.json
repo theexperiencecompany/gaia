@@ -17384,6 +17384,16 @@
             ],
             "title": "Reply To"
           },
+          "reply_to_message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplyToMessageData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "retry_of": {
             "anyOf": [
               {
@@ -17395,10 +17405,54 @@
             ],
             "title": "Retry Of"
           },
+          "selected_calendar_event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectedCalendarEventData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selected_tool": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Tool"
+          },
+          "selected_workflow": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectedWorkflowDataInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "text": {
             "maxLength": 32768,
             "title": "Text",
             "type": "string"
+          },
+          "tool_category": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Category"
           },
           "voice": {
             "default": false,
@@ -22217,6 +22271,14 @@
             "title": "File Ids",
             "type": "array"
           },
+          "files": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FileData"
+            },
+            "title": "Files",
+            "type": "array"
+          },
           "id": {
             "description": "Producer-minted idempotency key",
             "minLength": 1,
@@ -22261,6 +22323,16 @@
             ],
             "title": "Reply To"
           },
+          "reply_to_message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplyToMessageData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "retry_of": {
             "anyOf": [
               {
@@ -22278,12 +22350,56 @@
             "title": "Revision",
             "type": "integer"
           },
+          "selected_calendar_event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectedCalendarEventData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selected_tool": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Tool"
+          },
+          "selected_workflow": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectedWorkflowDataOutput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "surface": {
             "$ref": "#/components/schemas/ConversationSource"
           },
           "text": {
             "title": "Text",
             "type": "string"
+          },
+          "tool_category": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Category"
           },
           "voice": {
             "default": false,

@@ -14046,10 +14046,17 @@ export interface components {
             message_id: string;
             /** Reply To */
             reply_to?: string | null;
+            reply_to_message?: components["schemas"]["ReplyToMessageData"] | null;
             /** Retry Of */
             retry_of?: string | null;
+            selected_calendar_event?: components["schemas"]["SelectedCalendarEventData"] | null;
+            /** Selected Tool */
+            selected_tool?: string | null;
+            selected_workflow?: components["schemas"]["SelectedWorkflowDataInput"] | null;
             /** Text */
             text: string;
+            /** Tool Category */
+            tool_category?: string | null;
             /**
              * Voice
              * @default false
@@ -16368,6 +16375,11 @@ export interface components {
              */
             file_ids?: string[];
             /**
+             * Files
+             * @default []
+             */
+            files?: components["schemas"]["FileData"][];
+            /**
              * Id
              * @description Producer-minted idempotency key
              */
@@ -16382,6 +16394,7 @@ export interface components {
             reaction?: components["schemas"]["Reaction"] | null;
             /** Reply To */
             reply_to?: string | null;
+            reply_to_message?: components["schemas"]["ReplyToMessageData"] | null;
             /** Retry Of */
             retry_of?: string | null;
             /**
@@ -16389,9 +16402,15 @@ export interface components {
              * @default 0
              */
             revision?: number;
+            selected_calendar_event?: components["schemas"]["SelectedCalendarEventData"] | null;
+            /** Selected Tool */
+            selected_tool?: string | null;
+            selected_workflow?: components["schemas"]["SelectedWorkflowDataOutput"] | null;
             surface: components["schemas"]["ConversationSource"];
             /** Text */
             text: string;
+            /** Tool Category */
+            tool_category?: string | null;
             /**
              * Voice
              * @default false

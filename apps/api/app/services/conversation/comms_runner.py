@@ -17,7 +17,7 @@ from langgraph.types import StreamMode
 
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.interruption import record_interruption
-from app.agents.core.messages import uploaded_files_block
+from app.agents.core.messages import MessageAttachments, MessageScope, human_content
 from app.agents.core.nodes.drain_conversation_log import close_feed, feed, open_feed
 from app.constants.conversation import COMMS_CANCEL_CONFIRM_SECONDS, TURN_CONTEXT_ID_SUFFIX
 from app.constants.graphs import GraphName
@@ -97,8 +97,8 @@ class CommsGraphRun:
         """Feed entries to the next model call, never past a Stop; nothing joins once the run is stopping."""
         if self._sealed or self.task.done():
             return
-        files = await attached_files(self._claim, entries)
-        messages, stopped = absorbed_messages(entries, files)
+        said = await reframed_messages(self._claim, entries)
+        messages, stopped = absorbed_messages(entries, said)
         feed(self._run_id, messages)
         self._sealed = stopped
 
@@ -171,10 +171,10 @@ class CommsGraphRunner:
         snapshot = await graph.aget_state(config)
         values: _ThreadValues = cast(_ThreadValues, snapshot.values or {})
         thread = values.get("messages", [])
-        files = await attached_files(claim, [*context, *batch.waking])
+        said = await reframed_messages(claim, [*context, *batch.waking])
         messages = [
             *_turn_context(turn.opening, batch, 0),
-            *attempt_messages(batch, context, thread, files),
+            *attempt_messages(batch, context, thread, said),
             *_turn_context(turn.closing, batch, len(turn.opening)),
         ]
         return CommsGraphRun(
@@ -182,16 +182,42 @@ class CommsGraphRunner:
         )
 
 
-async def attached_files(claim: StepClaim, entries: Sequence[LoggedEntry]) -> dict[str, str]:
-    """Return, per user message that attached files, the block listing them the way a chat turn does."""
-    said = [logged.entry for logged in entries if isinstance(logged.entry, UserMessage)]
-    blocks = await asyncio.gather(
-        *(
-            uploaded_files_block(message.file_ids, claim.user_id, claim.conversation_id)
-            for message in said
-        )
+async def reframed_messages(claim: StepClaim, entries: Sequence[LoggedEntry]) -> dict[str, str]:
+    """Return, per user message that carries more than text, what the model reads, built as a chat turn builds it.
+
+    Its files are listed, and a pinned tool, a workflow, a calendar event or a replied-to message reframe its text.
+    """
+    reframed = [
+        logged.entry
+        for logged in entries
+        if isinstance(logged.entry, UserMessage) and _reframes(logged.entry)
+    ]
+    scope = MessageScope(user_id=claim.user_id, conversation_id=claim.conversation_id)
+    contents = await asyncio.gather(
+        *(human_content(scope, _attachments(message), message.text) for message in reframed)
     )
-    return {message.id: block for message, block in zip(said, blocks, strict=True) if block}
+    return {message.id: content for message, content in zip(reframed, contents, strict=True)}
+
+
+def _reframes(message: UserMessage) -> bool:
+    return bool(
+        message.file_ids
+        or message.selected_tool
+        or message.selected_workflow
+        or message.selected_calendar_event
+        or message.reply_to_message
+    )
+
+
+def _attachments(message: UserMessage) -> MessageAttachments:
+    return MessageAttachments(
+        selected_tool=message.selected_tool,
+        tool_category=message.tool_category,
+        selected_workflow=message.selected_workflow,
+        selected_calendar_event=message.selected_calendar_event,
+        reply_to_message=message.reply_to_message,
+        currently_uploaded_file_ids=list(message.file_ids),
+    )
 
 
 def _turn_context(messages: Sequence[AnyMessage], batch: Batch, first: int) -> list[AnyMessage]:

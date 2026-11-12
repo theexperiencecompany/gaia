@@ -47,6 +47,7 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.models.conversation_send_models import SendMessageRequest
+from app.models.message_models import ReplyToMessageData
 from app.models.tool_data_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation.comms_runner import CommsGraphRunner, CommsTurn
@@ -650,3 +651,31 @@ async def test_a_ledger_approval_is_held_by_the_step_task_running_in_the_convers
     await real_redis.set(f"{EXECUTOR_BUSY_PREFIX}{rig.conversation_id}", "stream-2:t-legacy")
     legacy = await running_step_task(rig.conversation_id, rig.user_id)
     assert (before_lock, held_by, legacy) == (None, "t1", None)
+
+
+@pytest.mark.service
+async def test_a_pinned_tool_and_a_replied_to_message_reframe_the_turn_as_a_chat_send_did(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("drafting it now")
+    rig = await rig_for(model)
+    await send_message(
+        rig.conversation_id,
+        AuthenticatedUser(user_id=rig.user_id),
+        SendMessageRequest(
+            message_id="m1",
+            text="reply to this one",
+            selected_tool="gmail",
+            tool_category="email",
+            reply_to_message=ReplyToMessageData(
+                id="old-b", content="Sam asked about Friday", role="assistant"
+            ),
+        ),
+        ConversationSource.WEB,
+    )
+    await rig.settle()
+    [said] = [text for text in humans(model.prompts[0]) if "reply to this one" in text]
+    [message] = await rig.of(UserMessage)
+    assert 'earlier message: "Sam asked about Friday"' in said
+    assert "Gmail" in said
+    assert (message.reply_to, message.selected_tool) == ("old-b", "gmail")

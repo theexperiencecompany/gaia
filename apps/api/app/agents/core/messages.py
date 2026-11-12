@@ -155,7 +155,7 @@ async def construct_langchain_messages(
     scope = scope or MessageScope()
     attachments = attachments or MessageAttachments()
     context, content = await asyncio.gather(
-        build_turn_context(query, scope), _human_content(scope, attachments, query.strip())
+        build_turn_context(query, scope), human_content(scope, attachments, query.strip())
     )
     human_msg = HumanMessage(content=content)
     # Read after the context is built, never awaited: a reaction still deciding costs this turn nothing.
@@ -165,7 +165,7 @@ async def construct_langchain_messages(
     return [*context.chain, *turn_msgs, context.clock]
 
 
-async def _human_content(
+async def human_content(
     scope: MessageScope, attachments: MessageAttachments, user_content: str
 ) -> str:
     """Return the user's turn as the model reads it, reframed by what the turn carries."""
@@ -184,7 +184,7 @@ async def _human_content(
         if selected_tool
         else user_content
     )
-    files_block = await uploaded_files_block(
+    files_block = await _uploaded_files_block(
         attachments.currently_uploaded_file_ids, scope.user_id, scope.conversation_id
     )
 
@@ -199,7 +199,7 @@ async def _human_content(
     return "\n\n".join(part for part in (content, files_block) if part)
 
 
-async def uploaded_files_block(
+async def _uploaded_files_block(
     file_ids: Sequence[str] | None, user_id: str | None, conversation_id: str | None
 ) -> str:
     """Describe the files a user turn uploaded, or an empty string when it uploaded none.

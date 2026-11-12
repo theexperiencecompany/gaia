@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from httpx import AsyncClient
+from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 from redis.asyncio import Redis
 
@@ -159,3 +160,32 @@ async def test_a_bot_session_from_before_the_step_keeps_its_conversation(
         accepted = await submit_bot_message(body, user)
     assert accepted.conversation_id == before
     assert accepted.seq == len(_HISTORY) + 1
+
+
+async def test_a_sent_messages_files_are_stored_on_its_entry_for_every_device(
+    client: AsyncClient, sends: Sends, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    conversation_id = f"convrt-{uuid4().hex[:10]}"
+    await mongo_db["files"].insert_one(
+        {
+            "file_id": "f-1",
+            "user_id": FAKE_USER.user_id,
+            "conversation_id": conversation_id,
+            "filename": "invoice-march.pdf",
+            "type": "application/pdf",
+            "size": 10,
+            "url": "https://files.example/f-1",
+            "created_at": datetime.now(UTC),
+        }
+    )
+    with patch("app.services.conversation.send.FileService.attach_uploads", new_callable=AsyncMock):
+        response = await client.post(
+            f"/api/v1/conversations/{conversation_id}/messages",
+            json={**_send("m1"), "file_ids": ["f-1"]},
+        )
+    entries = await conversation_log_repository.read_log(conversation_id, user_id=FAKE_USER.user_id)
+    [message] = [e.entry for e in entries or [] if isinstance(e.entry, UserMessage)]
+    assert response.status_code == 202, response.text
+    assert [(f.fileId, f.filename, f.type, f.url) for f in message.files] == [
+        ("f-1", "invoice-march.pdf", "application/pdf", "https://files.example/f-1")
+    ]

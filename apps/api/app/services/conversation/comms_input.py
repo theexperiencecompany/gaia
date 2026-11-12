@@ -41,8 +41,8 @@ from app.models.conversation_log_models import (
     WorkOutcome,
 )
 
-#: No user message attached files.
-NO_FILES: Mapping[str, str] = MappingProxyType({})
+#: Every user message reads as its text.
+AS_TYPED: Mapping[str, str] = MappingProxyType({})
 #: additional_kwargs key record_interruption tags its marker with.
 _SOURCE_KEY = "lc_source"
 
@@ -56,45 +56,43 @@ def attempt_messages(
     batch: Batch,
     context: Sequence[LoggedEntry],
     thread: Sequence[AnyMessage],
-    files: Mapping[str, str],
+    said: Mapping[str, str],
 ) -> list[AnyMessage]:
     """Render context and batch in seq order; a Stop the thread already records is not said twice.
 
-    files maps a user message's entry id to the block listing the files it attached.
+    said maps a user message's entry id to what the model reads when it is more than its text.
     """
     ordered = sorted([*context, *batch.waking], key=lambda logged: logged.seq)
     return [
         message
         for logged in ordered
         if not (isinstance(logged.entry, StopRequested) and _stop_recorded(thread, logged.seq))
-        for message in entry_messages(logged, files)
+        for message in entry_messages(logged, said)
     ]
 
 
 def absorbed_messages(
-    entries: Sequence[LoggedEntry], files: Mapping[str, str]
+    entries: Sequence[LoggedEntry], said: Mapping[str, str]
 ) -> tuple[list[AnyMessage], bool]:
     """Render entries absorbed into a running attempt up to the first Stop; True when a Stop was reached."""
     messages: list[AnyMessage] = []
     for logged in entries:
         if isinstance(logged.entry, StopRequested):
             return messages, True
-        messages.extend(entry_messages(logged, files))
+        messages.extend(entry_messages(logged, said))
     return messages, False
 
 
-def entry_messages(logged: LoggedEntry, files: Mapping[str, str] = NO_FILES) -> list[AnyMessage]:
+def entry_messages(logged: LoggedEntry, said: Mapping[str, str] = AS_TYPED) -> list[AnyMessage]:
     """Return the messages one log entry shows the model; most bookkeeping entries show nothing."""
     entry = logged.entry
     if isinstance(entry, UserMessage):
-        said = _message(
-            logged, "\n\n".join(part for part in (entry.text, files.get(entry.id, "")) if part)
-        )
+        message = _message(logged, said.get(entry.id, entry.text))
         reaction = entry.reaction
         if reaction is None or reaction.by is not ReactionBy.JEV:
-            return [said]
+            return [message]
         note = REACTION_NOTE.format(emoji=reaction.emoji)
-        return [said, _message(logged, note, REACTION_NOTE_SUFFIX)]
+        return [message, _message(logged, note, REACTION_NOTE_SUFFIX)]
     if isinstance(entry, StopRequested):
         marker = _message(logged, INTERRUPTION_MARKER)
         marker.additional_kwargs[_SOURCE_KEY] = INTERRUPTION_SOURCE

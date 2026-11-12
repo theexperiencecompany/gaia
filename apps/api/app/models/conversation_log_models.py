@@ -8,8 +8,15 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 from app.constants.chat import ConversationSource
 from app.constants.hil import ApprovalResolution
 from app.models.chat_models import ReactionBy
+from app.models.message_models import (
+    FileData,
+    ReplyToMessageData,
+    SelectedCalendarEventData,
+    SelectedWorkflowData,
+)
 from app.models.todo_wake_models import TodoRunWake
 from app.models.tool_data_models import ToolDataEntry
+from shared.py.analytics.catalog.properties import Identifier
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
@@ -86,7 +93,16 @@ class UserMessage(_Entry):
     reply_to: str | None = None
     retry_of: str | None = None
     file_ids: tuple[str, ...] = ()
+    # The attached files as stored when the message was accepted, so every device shows them.
+    files: tuple[FileData, ...] = ()
     voice: bool = False
+    # What reframes the turn, as a chat send carried it: a pinned tool, a workflow to run,
+    # a calendar event, the message replied to.
+    selected_tool: Identifier | None = None
+    tool_category: Identifier | None = None
+    selected_workflow: SelectedWorkflowData | None = None
+    selected_calendar_event: SelectedCalendarEventData | None = None
+    reply_to_message: ReplyToMessageData | None = None
     reaction: Reaction | None = None
     # Bumped on each in-place update; a client applies an update only when it is newer.
     revision: int = Field(default=0, ge=0)
