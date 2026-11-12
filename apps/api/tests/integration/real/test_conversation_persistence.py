@@ -15,6 +15,7 @@ import pytest
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.services.conversation_service import update_messages
 from tests.factories import make_authenticated_user
+from tests.helpers import stored_conversation
 
 
 @pytest.mark.service
@@ -47,7 +48,7 @@ class TestUpdateMessagesReal:
         assert result.modified_count == 1
         assert len(result.message_ids) == 2
 
-        doc = await conversations_collection.find_one({"conversation_id": conv_id})
+        doc = await stored_conversation(conversations_collection, conv_id)
         assert len(doc["messages"]) == 2
         assert doc["messages"][0]["type"] == "user"
         assert doc["messages"][0]["response"] == "Hello GAIA"
@@ -100,7 +101,7 @@ class TestUpdateMessagesReal:
 
         await update_messages(request, user)
 
-        doc = await conversations_collection.find_one({"conversation_id": conv_id})
+        doc = await stored_conversation(conversations_collection, conv_id)
         saved = doc["messages"][0]
         assert saved["tool_data"][0]["tool_name"] == "search_results"
         assert saved["tool_data"][0]["data"]["items"] == ["a", "b"]
@@ -123,7 +124,7 @@ class TestUpdateMessagesReal:
             )
             await update_messages(request, user)
 
-        doc = await conversations_collection.find_one({"conversation_id": conv_id})
+        doc = await stored_conversation(conversations_collection, conv_id)
         assert len(doc["messages"]) == 3
         assert doc["messages"][0]["response"] == "Message 0"
         assert doc["messages"][2]["response"] == "Message 2"
