@@ -3,7 +3,7 @@
  * streams the program as live-only `artifact_delta` frames, then leaves one persisted
  * `artifact_done` tool_data entry. Both fold into a single card entry keyed by stream_id.
  */
-import type { StreamToolDataEntry } from "./streaming";
+import type { StreamToolDataEntry } from "../chat/streaming";
 
 export const ARTIFACT_CARD_TOOL_NAME = "artifact_done";
 

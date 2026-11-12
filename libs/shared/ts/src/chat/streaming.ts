@@ -1,12 +1,12 @@
 import type { ToolDataEntry } from "../api/generated";
 import {
+  type ArtifactDeltaFrame,
+  isArtifactDeltaFrame,
+} from "../artifacts/openuiArtifacts";
+import {
   DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
   type DesktopToolRequest,
 } from "../desktop-tools";
-import {
-  type ArtifactDeltaFrame,
-  isArtifactDeltaFrame,
-} from "./openuiArtifacts";
 import { ChatStreamFrameSchema } from "./schema";
 import type { TodoProgressSnapshot } from "./types";
 

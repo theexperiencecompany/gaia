@@ -180,6 +180,7 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/l/slug",
         "/api/v1/l/slug/file",
         "/api/v1/l/slug/opened",
+        "/api/v1/l/slug/pdf",
         "/api/v1/l/state",
         "/api/v1/l/unshare",
         "/api/v1/mcp/oauth/callback",

@@ -2,6 +2,7 @@
  * What each artifact kind's prompt teaches and how statements are named. Read by the prompt
  * generator and the server-side validator only, so it stays out of the browser chunk.
  */
+import type { ArtifactKind } from "@gaia/shared/api/generated";
 import {
   ARTIFACT_COMPONENT_SPECS,
   REACT_UI_ARTIFACT_COMPONENTS,
@@ -14,8 +15,8 @@ export const ARTIFACT_KINDS = [
   "comparison",
   "memo",
   "document",
-] as const;
-export type ArtifactKind = (typeof ARTIFACT_KINDS)[number];
+] as const satisfies readonly ArtifactKind[];
+export type { ArtifactKind };
 
 /** The components each kind's prompt teaches, besides the Artifact root. */
 export const KIND_COMPONENTS: Record<ArtifactKind, readonly string[]> = {

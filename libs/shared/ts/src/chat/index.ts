@@ -1,4 +1,10 @@
 export type {
+  ArtifactCardData,
+  ArtifactCardStatus,
+  ArtifactDeltaFrame,
+} from "../artifacts/openuiArtifacts";
+export { ARTIFACT_CARD_TOOL_NAME } from "../artifacts/openuiArtifacts";
+export type {
   ApprovalDecision,
   ApprovalDecisionPayload,
   ApprovalRequestData,
@@ -25,12 +31,6 @@ export {
 } from "./approvals";
 export type { ToolFixture } from "./fixtures";
 export { getFixture, TOOL_FIXTURES } from "./fixtures";
-export type {
-  ArtifactCardData,
-  ArtifactCardStatus,
-  ArtifactDeltaFrame,
-} from "./openuiArtifacts";
-export { ARTIFACT_CARD_TOOL_NAME } from "./openuiArtifacts";
 export type {
   ChatStreamEvent,
   StreamToolDataEntry,

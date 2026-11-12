@@ -2,13 +2,13 @@ import type { ImageData } from "../api/generated";
 
 export type { ImageData } from "../api/generated";
 
-import { NEW_MESSAGE_BREAK_TOKEN } from "../utils/messageBreakUtils";
-import { upsertApprovalToolData } from "./approvals";
 import {
   ARTIFACT_CARD_TOOL_NAME,
   applyArtifactDelta,
   upsertArtifactDone,
-} from "./openuiArtifacts";
+} from "../artifacts/openuiArtifacts";
+import { NEW_MESSAGE_BREAK_TOKEN } from "../utils/messageBreakUtils";
+import { upsertApprovalToolData } from "./approvals";
 
 import type {
   ChatStreamEvent,
