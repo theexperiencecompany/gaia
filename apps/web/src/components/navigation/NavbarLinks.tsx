@@ -25,7 +25,10 @@ export function NavbarNavLinks({ pathname }: { pathname: string }) {
         key={link.href}
         size="sm"
         variant="ghost"
+        shape={link.external ? "default" : "sharp"}
+        inset="tight"
         tone={pathname === link.href ? "accent" : "dim"}
+        hoverTone={pathname === link.href ? "none" : "foreground"}
         className="h-[30px] w-fit text-sm font-medium"
         href={link.href}
         {...(link.external

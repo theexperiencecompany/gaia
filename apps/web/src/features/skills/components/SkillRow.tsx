@@ -44,7 +44,11 @@ export function SkillRow({
         <div className="flex items-center gap-2">
           <p className="truncate text-sm text-zinc-100">{skill.name}</p>
           {showTarget && isScoped && targetMeta && (
-            <Chip size="sm" variant="secondary" className="h-5 shrink-0 gap-1">
+            <Chip
+              size="sm"
+              variant="secondary"
+              className="h-5 shrink-0 gap-1 pl-1.5"
+            >
               <SkillTargetIcon
                 value={targetMeta.value}
                 icon={targetMeta.icon}
@@ -53,7 +57,7 @@ export function SkillRow({
               <Chip.Label
                 className={toneVariants({
                   tone: "muted",
-                  className: "text-xs",
+                  className: "px-1 text-xs",
                 })}
               >
                 {targetMeta.label}
@@ -74,7 +78,7 @@ export function SkillRow({
             <Chip
               size="sm"
               variant="secondary"
-              className="h-6 shrink-0 cursor-pointer gap-1"
+              className="h-6 shrink-0 cursor-pointer gap-1 pl-2"
             >
               {skill.source === "github" ? (
                 getToolCategoryIcon("github", {
@@ -89,7 +93,7 @@ export function SkillRow({
               <Chip.Label
                 className={toneVariants({
                   tone: "muted",
-                  className: "text-xs",
+                  className: "px-1 text-xs",
                 })}
               >
                 {skill.source === "github" ? "GitHub" : "Source"}

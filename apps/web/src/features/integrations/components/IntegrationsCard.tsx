@@ -169,7 +169,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
               <Accordion.Indicator />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel>
+          <Accordion.Panel className="pb-1">
             <Accordion.Body>
               <div className="grid grid-cols-2 gap-2 pl-1">
                 {myIntegrations

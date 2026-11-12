@@ -16,10 +16,6 @@ import { useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
-import { tabsVariants } from "@/components/shared/tabsVariants";
-import { cn } from "@/lib/utils";
-
-const tabsStyles = tabsVariants({ variant: "solid" });
 
 const UNIT_FACTOR = { minutes: 1, hours: 60, days: 1440 } as const;
 type TimeUnit = keyof typeof UNIT_FACTOR;
@@ -104,17 +100,24 @@ export function IntervalPicker({
       >
         <Tabs.List
           aria-label="Interval"
-          className={cn(tabsStyles.tabList(), "w-full")}
+          className="rounded-xl bg-zinc-800/60 p-1"
         >
           {presets.map((p) => (
-            <Tabs.Tab key={String(p)} id={String(p)} className="font-medium">
+            <Tabs.Tab
+              key={String(p)}
+              id={String(p)}
+              className="font-medium text-zinc-400 data-[selected=true]:text-white"
+            >
               {presetLabel(p)}
-              <Tabs.Indicator className={tabsStyles.tabIndicator()} />
+              <Tabs.Indicator className="rounded-lg bg-zinc-700 shadow-sm" />
             </Tabs.Tab>
           ))}
-          <Tabs.Tab id="custom" className="font-medium">
+          <Tabs.Tab
+            id="custom"
+            className="font-medium text-zinc-400 data-[selected=true]:text-white"
+          >
             Custom
-            <Tabs.Indicator className={tabsStyles.tabIndicator()} />
+            <Tabs.Indicator className="rounded-lg bg-zinc-700 shadow-sm" />
           </Tabs.Tab>
         </Tabs.List>
       </Tabs>

@@ -68,6 +68,8 @@ export default function IntegrationsSidebar() {
           className="justify-start text-start text-sm"
           variant="ghost"
           tone="faint"
+          hoverTone="dim"
+          inset="tight"
           size="sm"
         >
           <div className="relative">

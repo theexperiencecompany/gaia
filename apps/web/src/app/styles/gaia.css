@@ -475,6 +475,10 @@
   .checkbox.gaia-pill .checkbox__control {
     border-radius: var(--gaia-radius-pill);
   }
+  .button.gaia-sharp,
+  .chip.gaia-sharp {
+    border-radius: var(--gaia-radius-xs);
+  }
   .button-group.gaia-pill {
     overflow: hidden;
   }

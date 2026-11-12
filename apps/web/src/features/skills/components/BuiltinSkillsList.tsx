@@ -72,7 +72,12 @@ export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-900/60 px-6 py-12 text-center">
         <p className="text-sm text-zinc-400">Couldn't load built-in skills.</p>
-        <GaiaButton size="sm" variant="default-soft" onPress={() => load()}>
+        <GaiaButton
+          size="sm"
+          variant="default-soft"
+          className="rounded-xl"
+          onPress={() => load()}
+        >
           Retry
         </GaiaButton>
       </div>

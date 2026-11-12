@@ -110,6 +110,7 @@ export function IntegrationInstructionsSettings() {
             <GaiaButton
               size="sm"
               variant="default-soft"
+              className="rounded-xl"
               onPress={() => router.push("/integrations")}
             >
               Browse integrations

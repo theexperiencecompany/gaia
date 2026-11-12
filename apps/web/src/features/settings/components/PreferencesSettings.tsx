@@ -156,6 +156,7 @@ function IdentitySettingsSection({
             size="sm"
             variant="tertiary"
             tone="dim"
+            className="bg-zinc-800/50 hover:bg-zinc-700/50"
             onPress={handleAutoDetectTimezone}
             isDisabled={isUpdating}
           >

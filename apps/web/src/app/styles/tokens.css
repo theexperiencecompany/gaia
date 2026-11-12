@@ -99,6 +99,7 @@ html {
 /* GAIA control dimensions: v2's sizes on v3's components, which ship pill radii,
    a 36px desktop button and font-weight 500. Read only by gaia.css. */
 :root {
+  --gaia-radius-xs: 0.125rem;
   --gaia-radius-sm: 0.5rem;
   --gaia-radius-md: 0.75rem;
   --gaia-radius-lg: 0.875rem;

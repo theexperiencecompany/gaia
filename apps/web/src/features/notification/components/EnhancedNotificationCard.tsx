@@ -158,12 +158,17 @@ export const EnhancedNotificationCard = ({
                           ? "default"
                           : "muted"
                       }
+                      hoverTone={
+                        action.style === "primary" || action.style === "danger"
+                          ? "none"
+                          : "dim"
+                      }
                       key={action.id}
                       isDisabled={
                         buttonProps.disabled || isLoading || isExecuted
                       }
                       onPress={() => handleActionClick(action.id)}
-                      className={`gap-1.5 text-xs font-normal transition ${showLoading ? "opacity-50" : ""} ${isExecuted ? "cursor-not-allowed opacity-60" : ""}`}
+                      className={`gap-1.5 rounded-lg text-xs font-normal transition ${showLoading ? "opacity-50" : ""} ${isExecuted ? "cursor-not-allowed opacity-60" : ""}`}
                     >
                       {showLoading ? (
                         <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />

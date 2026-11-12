@@ -150,6 +150,7 @@ export default function WorkflowDescriptionField({
           <GaiaButton
             size="sm"
             variant="ghost"
+            inset="tight"
             className="h-7 text-xs"
             isPending={isGenerating}
             isDisabled={isGenerating || !canGenerate}

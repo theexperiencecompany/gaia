@@ -87,6 +87,7 @@ export function ConfirmationDialog({
               <GaiaButton
                 variant="tertiary"
                 tone="dim"
+                className="hover:bg-zinc-700"
                 onPress={() => {
                   onCancel();
                   handleOpenChange(false);

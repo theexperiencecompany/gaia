@@ -38,7 +38,7 @@ export function CopyableContentView(
         shape="pill"
         onPress={copy}
         aria-label={copied ? "Copied" : "Copy content"}
-        className="inline-flex items-center gap-1.5 transition-colors min-w-0 h-auto"
+        className="inline-flex items-center gap-1.5 hover:bg-zinc-700 transition-colors py-1.5 min-w-0 h-auto"
       >
         <span className="font-mono text-xs text-zinc-200 truncate">
           {props.content}

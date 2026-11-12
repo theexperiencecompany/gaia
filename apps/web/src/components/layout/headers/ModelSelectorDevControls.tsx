@@ -113,6 +113,7 @@ export default function ModelSelectorDevControls() {
         // Tint accent when a non-default model is pinned, so it's obvious at a
         // glance that the dev override is active.
         tone={useDefaultModels ? "muted" : "accent"}
+        hoverTone="accent"
       >
         <CpuIcon width={20} height={20} />
       </GaiaButton>

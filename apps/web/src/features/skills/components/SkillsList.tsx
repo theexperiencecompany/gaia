@@ -154,7 +154,7 @@ function EmptyState({
           </p>
           <GaiaButton
             size="sm"
-            className="mt-4"
+            className="mt-4 rounded-xl"
             onPress={onCreate}
             variant="primary"
           >

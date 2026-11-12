@@ -28,10 +28,9 @@ export function GateSkipList({ skips }: { skips: GateSkipRecord[] }) {
               <li key={key}>
                 <GaiaButton
                   variant="ghost"
-                  size="sm"
                   onPress={() => setOpenKey(isOpen ? null : key)}
                   aria-expanded={isOpen}
-                  className="flex h-auto w-full min-w-0 flex-col items-start gap-0.5 py-1.5 text-left"
+                  className="flex h-auto w-full min-w-0 flex-col items-start gap-0.5 px-2 py-1.5 text-left data-[hover=true]:bg-zinc-800/60"
                 >
                   <span className="flex w-full min-w-0 items-baseline text-xs">
                     <span className="truncate text-zinc-300" title={skip.event}>

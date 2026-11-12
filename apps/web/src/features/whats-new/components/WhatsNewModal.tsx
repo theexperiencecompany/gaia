@@ -137,6 +137,7 @@ export function WhatsNewModal() {
                     isIconOnly
                     variant="tertiary"
                     tone="muted"
+                    hoverTone="foreground"
                     size="sm"
                     isDisabled={!canScrollPrev}
                     onPress={scrollPrev}
@@ -149,6 +150,7 @@ export function WhatsNewModal() {
                     isIconOnly
                     variant="tertiary"
                     tone="muted"
+                    hoverTone="foreground"
                     size="sm"
                     isDisabled={!canScrollNext}
                     onPress={scrollNext}

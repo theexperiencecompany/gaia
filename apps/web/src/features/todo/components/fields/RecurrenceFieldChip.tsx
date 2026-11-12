@@ -52,7 +52,7 @@ export default function RecurrenceFieldChip({
                 tone={isOptionSelected ? "default" : "faint"}
                 fullWidth
                 aria-pressed={isOptionSelected}
-                className="justify-start gap-2 text-sm"
+                className="justify-start gap-2 px-3 text-sm"
                 onPress={() => {
                   onChange(option.value);
                   onClose();

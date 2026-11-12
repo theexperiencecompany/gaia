@@ -50,11 +50,12 @@ export function ToolCard({
           {(isClamped || expanded) && (
             <GaiaButton
               shape="pill"
-              variant="ghost"
+              variant="text"
               size="sm"
               tone="faint"
+              hoverTone="dim"
               onPress={() => setExpanded((value) => !value)}
-              className="mt-1 h-auto min-w-0 text-xs"
+              className="mt-1 text-xs"
             >
               {expanded ? "View less" : "View more"}
             </GaiaButton>

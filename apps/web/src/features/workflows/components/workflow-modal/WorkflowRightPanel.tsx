@@ -49,13 +49,19 @@ export default function WorkflowRightPanel({
       >
         <Tabs.List
           aria-label="Workflow info tabs"
-          className="w-full overflow-x-hidden"
+          className="w-full overflow-x-hidden bg-zinc-800/80 p-1"
         >
-          <Tabs.Tab id="steps" className="font-medium">
+          <Tabs.Tab
+            id="steps"
+            className="font-medium text-zinc-400 data-[selected]:text-black"
+          >
             Steps
             <Tabs.Indicator className="shadow-sm" />
           </Tabs.Tab>
-          <Tabs.Tab id="history" className="font-medium">
+          <Tabs.Tab
+            id="history"
+            className="font-medium text-zinc-400 data-[selected]:text-black"
+          >
             <div className="flex items-center gap-2">
               <Clock04Icon className="h-4 w-4" />
               <span>History</span>
@@ -65,7 +71,7 @@ export default function WorkflowRightPanel({
         </Tabs.List>
         <Tabs.Panel
           id="steps"
-          className="scrollbar-hover min-h-0 flex-1 overflow-y-auto"
+          className="scrollbar-hover min-h-0 flex-1 overflow-y-auto px-1 py-2"
         >
           <WorkflowStepsPanel
             workflow={workflow}
@@ -79,7 +85,7 @@ export default function WorkflowRightPanel({
         </Tabs.Panel>
         <Tabs.Panel
           id="history"
-          className="scrollbar-hover min-h-0 flex-1 overflow-y-auto"
+          className="scrollbar-hover min-h-0 flex-1 overflow-y-auto px-1 py-2"
         >
           <WorkflowExecutionHistory workflowId={workflowId} />
         </Tabs.Panel>

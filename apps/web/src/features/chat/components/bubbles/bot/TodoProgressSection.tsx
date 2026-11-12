@@ -166,7 +166,7 @@ function SingleSourceCard({
         <span className="text-xs font-medium text-zinc-400">
           {getSourceLabel(source)}
         </span>
-        <Chip size="sm" variant="soft">
+        <Chip size="sm" variant="soft" className="bg-zinc-700/60">
           <Chip.Label
             className={toneVariants({ tone: "muted", className: "text-xs" })}
           >
@@ -240,7 +240,11 @@ function MultiSourceAccordion({
                         <ProgressBar.Fill />
                       </ProgressBar.Track>
                     </ProgressBar>
-                    <Chip size="sm" variant="soft" className="shrink-0">
+                    <Chip
+                      size="sm"
+                      variant="soft"
+                      className="shrink-0 bg-zinc-700/60"
+                    >
                       <Chip.Label
                         className={toneVariants({
                           tone: "faint",

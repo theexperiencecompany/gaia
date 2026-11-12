@@ -76,6 +76,8 @@ export function GateDetail({
                   size="sm"
                   variant="ghost"
                   tone="muted"
+                  hoverTone="foreground"
+                  inset="tight"
                   aria-label={GATE_EDIT_LABEL}
                   className="h-6 min-w-0 text-xs"
                   onPress={() => setDraft(condition)}

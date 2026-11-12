@@ -10,6 +10,7 @@ interface CopyButtonProps {
 const CopyButton: React.FC<CopyButtonProps> = ({ copied, onPress }) => (
   <GaiaButton
     className="text-xs"
+    hoverTone="dim"
     size="sm"
     isIconOnly
     variant="ghost"

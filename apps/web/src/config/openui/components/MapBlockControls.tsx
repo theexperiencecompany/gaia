@@ -35,7 +35,7 @@ export function MapBlockControls({
         variant="tertiary"
         onPress={handleZoomIn}
         aria-label="Zoom in"
-        className="backdrop-blur-md"
+        className="bg-zinc-800/90 backdrop-blur-md hover:bg-zinc-700"
       >
         <PlusSignIcon className="size-3.5" />
       </GaiaButton>
@@ -45,7 +45,7 @@ export function MapBlockControls({
         variant="tertiary"
         onPress={handleZoomOut}
         aria-label="Zoom out"
-        className="backdrop-blur-md"
+        className="bg-zinc-800/90 backdrop-blur-md hover:bg-zinc-700"
       >
         <MinusSignIcon className="size-3.5" />
       </GaiaButton>
@@ -55,7 +55,7 @@ export function MapBlockControls({
         variant="tertiary"
         onPress={handleReset}
         aria-label="Reset view"
-        className="backdrop-blur-md"
+        className="bg-zinc-800/90 backdrop-blur-md hover:bg-zinc-700"
       >
         <RefreshIcon className="size-3.5" />
       </GaiaButton>

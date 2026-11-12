@@ -156,7 +156,7 @@ export default function ScheduledFieldChip({
             variant="ghost"
             tone="faint"
             fullWidth
-            className="justify-start gap-2"
+            className="justify-start gap-2 px-3"
             onPress={() => handleQuickSchedule(1, onClose)}
           >
             <Clock01Icon width={18} height={18} />
@@ -166,7 +166,7 @@ export default function ScheduledFieldChip({
             variant="ghost"
             tone="faint"
             fullWidth
-            className="justify-start gap-2"
+            className="justify-start gap-2 px-3"
             onPress={() => handleQuickSchedule(4, onClose)}
           >
             <Clock01Icon width={18} height={18} />
@@ -176,7 +176,7 @@ export default function ScheduledFieldChip({
             variant="ghost"
             tone="faint"
             fullWidth
-            className="justify-start gap-2"
+            className="justify-start gap-2 px-3"
             onPress={() => handleQuickSchedule(24, onClose)}
           >
             <Clock01Icon width={18} height={18} />
@@ -190,7 +190,7 @@ export default function ScheduledFieldChip({
               <GaiaButton
                 variant="ghost"
                 fullWidth
-                className="justify-start gap-2 text-red-400"
+                className="justify-start gap-2 px-3 text-red-400"
                 onPress={() => {
                   onChange(undefined);
                   onClose();

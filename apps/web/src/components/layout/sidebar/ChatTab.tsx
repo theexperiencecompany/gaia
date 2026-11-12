@@ -85,7 +85,9 @@ export const ChatTab: FC<ChatTabProps> = ({
         href={`/c/${id}`}
         className={`w-full justify-start font-light text-sm ${isUnread ? "font-normal" : ""}`}
         size="sm"
+        inset="tight"
         tone={isUnread ? "default" : isActive ? "dim" : "muted"}
+        hoverTone={isUnread || isActive ? "none" : "dim"}
         variant={isActive ? "secondary" : "ghost"}
         onClick={() => setButtonHovered(false)}
       >

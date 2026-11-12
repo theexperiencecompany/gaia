@@ -3,6 +3,8 @@
 import { Button, type ButtonProps } from "@heroui/react";
 
 import {
+  type ButtonHoverTone,
+  type ButtonInset,
   type ButtonTone,
   type ButtonVariants,
   buttonOverlayVariants,
@@ -18,6 +20,8 @@ type GaiaButtonProps = Omit<ButtonProps, "variant" | "className"> & {
   variant?: GaiaButtonVariant;
   shape?: Shape;
   tone?: ButtonTone;
+  hoverTone?: ButtonHoverTone;
+  inset?: ButtonInset;
   className?: string;
 };
 
@@ -26,6 +30,8 @@ export function GaiaButton({
   variant = "primary",
   shape = "default",
   tone = "default",
+  hoverTone = "none",
+  inset = "default",
   size,
   isIconOnly,
   fullWidth,
@@ -39,7 +45,13 @@ export function GaiaButton({
         size={size}
         isIconOnly={isIconOnly}
         fullWidth={fullWidth}
-        className={buttonOverlayVariants({ shape, tone, className })}
+        className={buttonOverlayVariants({
+          shape,
+          tone,
+          hoverTone,
+          inset,
+          className,
+        })}
         {...props}
       />
     );
@@ -54,6 +66,8 @@ export function GaiaButton({
         variant,
         shape,
         tone,
+        hoverTone,
+        inset,
         size,
         isIconOnly,
         fullWidth,

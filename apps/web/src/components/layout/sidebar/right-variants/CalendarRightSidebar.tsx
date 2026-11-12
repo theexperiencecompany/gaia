@@ -4,11 +4,11 @@ import { Input, Label, ListBox, Select, Switch, TextArea } from "@heroui/react";
 import { Delete02Icon, RepeatIcon, UserCircleIcon } from "@icons";
 import React, { useEffectEvent } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { inputVariants } from "@/components/shared/controlVariants";
 import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
+import { toneVariants } from "@/components/shared/tone";
 import {
   Accordion,
   AccordionContent,
@@ -91,10 +91,7 @@ const EventTitleFields: React.FC<EventTitleFieldsProps> = ({
       onChange={(e) => onDescriptionChange(e.target.value)}
       placeholder="Add description"
       rows={6}
-      className={inputVariants({
-        variant: "translucent",
-        className: "placeholder:text-zinc-700",
-      })}
+      className="bg-zinc-800/30 placeholder:text-zinc-700 hover:bg-zinc-800/50"
     />
   </div>
 );
@@ -177,13 +174,8 @@ const RecurrenceSelector: React.FC<RecurrenceSelectorProps> = ({
         if (key != null) onRecurrenceTypeChange(String(key));
       }}
     >
-      <Label>Repeat</Label>
-      <Select.Trigger
-        className={inputVariants({
-          variant: "translucent",
-          className: "shadow-none",
-        })}
-      >
+      <Label className={toneVariants({ tone: "muted" })}>Repeat</Label>
+      <Select.Trigger className="bg-zinc-800/30 shadow-none hover:bg-zinc-800/50">
         <RepeatIcon className="size-4 text-zinc-500" />
         <GaiaSelectValue />
         <Select.Indicator />
@@ -260,13 +252,8 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
       }}
       isRequired
     >
-      <Label>Calendar</Label>
-      <Select.Trigger
-        className={inputVariants({
-          variant: "translucent",
-          className: "shadow-none",
-        })}
-      >
+      <Label className={toneVariants({ tone: "muted" })}>Calendar</Label>
+      <Select.Trigger className="bg-zinc-800/30 shadow-none hover:bg-zinc-800/50">
         {selectedCalendarId && (
           <div
             className="size-3 rounded-full"

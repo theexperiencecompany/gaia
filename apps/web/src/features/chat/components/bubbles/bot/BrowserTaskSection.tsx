@@ -1,10 +1,10 @@
 "use client";
 
+import { accordionVariants } from "@/components/shared/accordionVariants";
 import { Accordion, AccordionItem, Chip, Separator } from "@heroui/react";
 import { AiWebBrowsingIcon, Alert01Icon, CheckmarkCircle02Icon } from "@icons";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
-import { accordionVariants } from "@/components/shared/accordionVariants";
 import { separatorVariants } from "@/components/shared/controlVariants";
 import { toneVariants } from "@/components/shared/tone";
 import { BrowserStatusChip } from "@/features/browser/components/BrowserStatusChip";
@@ -118,7 +118,7 @@ function StepsAccordion({
                 <Chip.Label
                   className={toneVariants({
                     tone: "dim",
-                    className: "text-xs",
+                    className: "px-1.5 text-xs",
                   })}
                 >
                   {steps.length}
@@ -133,9 +133,7 @@ function StepsAccordion({
             <Accordion.Indicator className={accordionStyles.indicator()} />
           </Accordion.Trigger>
         </Accordion.Heading>
-        <Accordion.Panel
-          className={accordionStyles.panel({ className: "space-y-2" })}
-        >
+        <Accordion.Panel className="space-y-2 pt-1 pb-2">
           {steps.map((step) => (
             <StepRow key={`browser-step-${step.index}`} step={step} />
           ))}
@@ -149,7 +147,7 @@ function ResultFooter({ result }: { result: BrowserResultSnapshot }) {
   return (
     <>
       <Separator
-        className={separatorVariants({ surface: "raised", className: "my-3" })}
+        className={separatorVariants({ tone: "subtle", className: "my-3" })}
       />
       <div className="flex items-start gap-2.5">
         {result.success ? (

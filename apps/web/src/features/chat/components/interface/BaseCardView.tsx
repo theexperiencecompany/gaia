@@ -117,7 +117,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                     <Header
                       className={toneVariants({
                         tone: "faint",
-                        className: "text-xs",
+                        className: "py-1 text-xs",
                       })}
                     >
                       Ask GAIA
@@ -153,7 +153,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                     <Header
                       className={toneVariants({
                         tone: "faint",
-                        className: "text-xs",
+                        className: "py-1 text-xs",
                       })}
                     >
                       Navigation

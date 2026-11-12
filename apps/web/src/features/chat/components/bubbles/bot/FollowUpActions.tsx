@@ -57,9 +57,10 @@ export default function FollowUpActions({
           }}
         >
           <GaiaButton
-            className="text-xs outline-1 outline-zinc-700 transition-colors outline-dashed"
+            className="text-xs outline-1 outline-zinc-700 transition-colors outline-dashed hover:bg-zinc-700"
             variant="ghost"
             tone="muted"
+            hoverTone="foreground"
             size="sm"
             onPress={() => handleActionClick(action)}
             isDisabled={loading}

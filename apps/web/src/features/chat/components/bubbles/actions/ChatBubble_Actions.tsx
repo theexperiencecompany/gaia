@@ -98,9 +98,10 @@ export default function ChatBubble_Actions({
           <Tooltip>
             <GaiaButton
               isIconOnly
-              className="aspect-square size-7.5 min-w-7.5"
+              className="aspect-square size-7.5 min-w-7.5 rounded-md"
               variant="ghost"
               tone="faint"
+              hoverTone="dim"
               onPress={handleReply}
             >
               <LinkBackwardIcon
@@ -115,9 +116,10 @@ export default function ChatBubble_Actions({
           <Tooltip>
             <GaiaButton
               isIconOnly
-              className="aspect-square size-7.5 min-w-7.5"
+              className="aspect-square size-7.5 min-w-7.5 rounded-md"
               variant="ghost"
               tone="faint"
+              hoverTone="dim"
               onPress={copyToClipboard}
             >
               <Copy01Icon className="cursor-pointer" height="20" width="20" />
@@ -130,9 +132,10 @@ export default function ChatBubble_Actions({
           <Tooltip>
             <GaiaButton
               isIconOnly
-              className="aspect-square size-7.5 min-w-7.5"
+              className="aspect-square size-7.5 min-w-7.5 rounded-md"
               variant="ghost"
               tone="faint"
+              hoverTone="dim"
               onPress={handlePinToggle}
             >
               <PinIcon className={`cursor-pointer`} height="20" width="20" />
@@ -144,9 +147,10 @@ export default function ChatBubble_Actions({
             <Tooltip>
               <GaiaButton
                 isIconOnly
-                className="aspect-square size-7.5 min-w-7.5"
+                className="aspect-square size-7.5 min-w-7.5 rounded-md"
                 variant="ghost"
                 tone="faint"
+                hoverTone="dim"
                 onPress={handleThumbsUp}
               >
                 <ThumbsUpIcon
@@ -165,9 +169,10 @@ export default function ChatBubble_Actions({
             <Tooltip>
               <GaiaButton
                 isIconOnly
-                className="aspect-square size-7.5 min-w-7.5"
+                className="aspect-square size-7.5 min-w-7.5 rounded-md"
                 variant="ghost"
                 tone="faint"
+                hoverTone="dim"
                 onPress={handleThumbsDown}
               >
                 <ThumbsDownIcon
@@ -185,9 +190,10 @@ export default function ChatBubble_Actions({
               <GaiaButton
                 isIconOnly
                 isDisabled={isRetrying}
-                className="aspect-square size-7.5 min-w-7.5"
+                className="aspect-square size-7.5 min-w-7.5 rounded-md"
                 variant="ghost"
                 tone="faint"
+                hoverTone="dim"
                 onPress={onRetry}
               >
                 <div className={isRetrying ? "animate-spin" : ""}>

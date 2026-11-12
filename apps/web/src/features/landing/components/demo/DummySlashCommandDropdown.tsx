@@ -32,7 +32,7 @@ const DummyIntegrationsCard: React.FC = () => {
           setIsExpanded(expanded);
         }}
       >
-        <Accordion.Item id="integrations">
+        <Accordion.Item id="integrations" className="pb-1">
           <Accordion.Heading>
             <Accordion.Trigger
               className={accordionStyles.trigger({

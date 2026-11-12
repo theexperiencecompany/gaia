@@ -522,7 +522,9 @@ export default function Tired() {
                     />
                   </div>
                 </Tooltip.Trigger>
-                <Tooltip.Content placement="top">{icon.alt}</Tooltip.Content>
+                <Tooltip.Content placement="top" className="px-2.5 py-1">
+                  {icon.alt}
+                </Tooltip.Content>
               </Tooltip>
             </div>
           );
