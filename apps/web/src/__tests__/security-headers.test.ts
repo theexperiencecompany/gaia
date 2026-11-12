@@ -226,6 +226,6 @@ describe("shared-link pages", () => {
     const csp = workerHeaders(workerRules, "/l/abcdefghijk").get(
       "content-security-policy-report-only",
     );
-    expect(csp).toMatch(/frame-src [^;]*https:\/\/\*\.u\.heygaia\.link/);
+    expect(csp).toMatch(/frame-src [^;]*https:\/\/\*\.heygaia\.link/);
   });
 });

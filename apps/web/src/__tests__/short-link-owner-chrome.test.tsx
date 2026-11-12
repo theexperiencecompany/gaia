@@ -1,7 +1,16 @@
 // @vitest-environment jsdom
 /** The owner opening their own link gets its share settings in the page chrome; nobody else does. */
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const resolveLinkInBrowser = vi.hoisted(() => vi.fn());
+vi.mock("@/features/short-links/api/linkViewerApi", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/features/short-links/api/linkViewerApi")
+  >()),
+  resolveLinkInBrowser,
+  recordShortLinkOpen: () => Promise.resolve(),
+}));
 
 vi.mock("@/features/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isAuthenticated: true }),
@@ -26,6 +35,7 @@ vi.mock("@/features/short-links/components/ShareLinkControls", () => ({
 }));
 
 import { BRIEF_STOP_WARNING } from "@/features/briefing";
+import { OpenLinkView } from "@/features/short-links/components/OpenLinkView";
 import { PublicLinkView } from "@/features/short-links/components/PublicLinkView";
 import type { LinkEnvelope } from "@/types/features/shortLinkTypes";
 
@@ -90,5 +100,34 @@ describe("PublicLinkView chrome", () => {
 
     expect(screen.queryByTestId("share")).toBeNull();
     expect(screen.getByRole("button", { name: "Report" })).toBeTruthy();
+  });
+});
+
+describe("OpenLinkView", () => {
+  beforeEach(() => {
+    resolveLinkInBrowser.mockReset();
+  });
+
+  it("gives the owner the share controls once their browser reads the link", async () => {
+    resolveLinkInBrowser.mockResolvedValue(envelope(true));
+
+    render(<OpenLinkView slug="abcdefghijk" envelope={envelope(false)} />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("share").textContent).toBe(
+        "todo_deliverable:todo-123",
+      ),
+    );
+    expect(resolveLinkInBrowser).toHaveBeenCalledWith("abcdefghijk");
+  });
+
+  it("keeps the server's view for a reader who is not the owner", async () => {
+    resolveLinkInBrowser.mockResolvedValue(envelope(false));
+
+    render(<OpenLinkView slug="abcdefghijk" envelope={envelope(false)} />);
+
+    await waitFor(() => expect(resolveLinkInBrowser).toHaveBeenCalled());
+    expect(screen.queryByTestId("share")).toBeNull();
+    expect(screen.getByText("Trip plan")).toBeTruthy();
   });
 });

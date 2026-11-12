@@ -62,35 +62,35 @@ function ReportForm({
   const [verificationError, setVerificationError] = useState(false);
   const turnstileRef = useRef<TurnstileInstance>(null);
 
-  /** A Turnstile token where the deployment checks one; null where it does not. */
-  const turnstileToken = async (): Promise<string | null> => {
+  /** A Turnstile token where the deployment checks one, null where it does not; undefined once verification failed. */
+  const turnstileToken = async (): Promise<string | null | undefined> => {
     if (!TURNSTILE_SITE_KEY) return null;
-    const turnstile = turnstileRef.current;
-    if (!turnstile) throw new Error("Turnstile widget is not mounted");
-    return turnstile.getResponsePromise();
+    try {
+      const turnstile = turnstileRef.current;
+      if (!turnstile) throw new Error("Turnstile widget is not mounted");
+      return await turnstile.getResponsePromise();
+    } catch (error) {
+      console.error("Turnstile did not produce a token:", error);
+      setVerificationError(true);
+      return undefined;
+    }
   };
 
   const send = async () => {
     if (!reason) return;
     setIsSending(true);
     try {
-      let token: string | null;
-      try {
-        token = await turnstileToken();
-      } catch (error) {
-        console.error("Turnstile did not produce a token:", error);
-        setVerificationError(true);
-        return;
-      }
+      const token = await turnstileToken();
+      if (token === undefined) return;
       await reportLink(slug, reason, token);
       onDone();
     } catch (error) {
       // The API client already toasted the failure; the form stays open to retry.
       if (!(error instanceof ApiError)) throw error;
     } finally {
+      setIsSending(false);
       // Tokens are single-use.
       turnstileRef.current?.reset();
-      setIsSending(false);
     }
   };
 

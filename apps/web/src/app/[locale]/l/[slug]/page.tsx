@@ -4,9 +4,8 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 
 import { GatedLinkView } from "@/features/short-links/components/GatedLinkView";
-import { LinkOpenBeacon } from "@/features/short-links/components/LinkOpenBeacon";
 import { LinkUnavailable } from "@/features/short-links/components/LinkUnavailable";
-import { PublicLinkView } from "@/features/short-links/components/PublicLinkView";
+import { OpenLinkView } from "@/features/short-links/components/OpenLinkView";
 import type { LinkResolution } from "@/features/short-links/types";
 import { isUnfurlBot } from "@/features/short-links/utils/isUnfurlBot";
 import { linkUnavailableState } from "@/features/short-links/utils/linkDenial";
@@ -115,12 +114,7 @@ export default async function ShortLinkPage({ params }: PageProps) {
 
   const resolution = await resolveLinkOnServer(slug);
   if (resolution.kind === "open") {
-    return (
-      <>
-        <LinkOpenBeacon slug={slug} />
-        <PublicLinkView slug={slug} envelope={resolution.envelope} />
-      </>
-    );
+    return <OpenLinkView slug={slug} envelope={resolution.envelope} />;
   }
   const { state } = resolution;
   if (state.denial === "link_not_found") notFound();

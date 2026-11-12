@@ -29,6 +29,11 @@ export type LinkResolution =
   | { kind: "open"; envelope: LinkEnvelope }
   | { kind: "unavailable"; state: LinkUnavailableState };
 
+/** The browser's answer for a gated link: what it resolved to, or why resolving threw. */
+export type GatedOutcome =
+  | { resolution: LinkResolution }
+  | { failure: unknown };
+
 /** The public view one target type resolves to. */
 export type LinkViewOf<T extends ShortLinkTargetType> = Extract<
   LinkEnvelope["view"],
