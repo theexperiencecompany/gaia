@@ -5,17 +5,23 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Coroutine, Iterator
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 import uuid
 
+from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 
 from app.db.repositories import conversations as conversations_module
 from app.db.repositories.conversation_entries import EntryWindow
 from app.db.repositories.conversations import ConversationRepository
-from app.models.chat_models import MessageModel
+from app.models.chat_models import MessageModel, ToolDataEntry
 from app.models.conversation_models import ConversationDocument
-from app.utils.errors import ConversationNotFoundError, UnmigratedConversationError
+from app.utils.errors import (
+    ConversationNotFoundError,
+    ConversationStoreError,
+    UnmigratedConversationError,
+)
 
 # Every test here writes entries, so each needs the collection with its unique indexes.
 pytestmark = pytest.mark.usefixtures("entries_collection")
@@ -26,9 +32,11 @@ class _HeldFlushes:
 
     def __init__(self) -> None:
         self.held: list[Coroutine[Any, Any, Any]] = []
+        self.spawned: list[tuple[str, dict[str, object]]] = []
 
-    def __call__(self, operation: str, coro: Coroutine[Any, Any, Any], **_: object) -> None:
+    def __call__(self, operation: str, coro: Coroutine[Any, Any, Any], **context: object) -> None:
         self.held.append(coro)
+        self.spawned.append((operation, context))
 
     async def run_all(self) -> None:
         held, self.held = self.held, []
@@ -114,6 +122,9 @@ async def test_an_entry_is_read_the_moment_append_returns(
     )
 
     assert held.held, "the flush must not have run yet"
+    assert held.spawned == [
+        ("conversation_flush", {"conversation_id": conversation.conversation_id})
+    ]
     assert await _ids(repo, conversation) == [(seq, "m1")]
 
 
@@ -157,8 +168,10 @@ async def test_the_same_id_appended_twice_is_one_entry_with_one_seq(
     cid, uid = conversation.conversation_id, conversation.user_id
     first = await repo.append(cid, user_id=uid, entries=[_message("same")])
     again = await repo.append(cid, user_id=uid, entries=[_message("same")])
+    assert len(held.held) == 2, "a repeat that sees a pending outbox still flushes it"
     await held.run_all()
     after_flush = await repo.append(cid, user_id=uid, entries=[_message("same")])
+    assert held.held == [], "a repeat with nothing pending writes and flushes nothing"
     racing = await asyncio.gather(
         repo.append(cid, user_id=uid, entries=[_message("twin")]),
         repo.append(cid, user_id=uid, entries=[_message("twin")]),
@@ -202,6 +215,33 @@ async def test_an_update_to_an_entry_still_in_the_outbox_is_applied(
     saved = await repo.get_message(cid, "m1", user_id=uid)
     assert saved is not None and saved.response == "final"
     assert not await repo.set_message_response(cid, user_id=uid, message_id="nope", response="x")
+
+
+async def test_settling_an_approval_reaches_every_message_holding_it_flushed_or_not(
+    repo: ConversationRepository, conversation: ConversationDocument, held: _HeldFlushes
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    frame: ToolDataEntry = {
+        "tool_name": "approval_request",
+        "data": {"approval_id": "a1", "status": "pending"},
+    }
+
+    def card(message_id: str) -> MessageModel:
+        return MessageModel(type="bot", response="", message_id=message_id, tool_data=[frame])
+
+    await repo.append(cid, user_id=uid, entries=[card("flushed")])
+    await held.run_all()
+    await repo.append(cid, user_id=uid, entries=[card("pending")])
+    held.drop_all()
+
+    assert await repo.set_message_approval_status(
+        cid, user_id=uid, approval_id="a1", status="approved"
+    )
+
+    for message_id in ("flushed", "pending"):
+        saved = await repo.get_message(cid, message_id, user_id=uid)
+        assert saved is not None and saved.tool_data is not None
+        assert [entry["data"]["status"] for entry in saved.tool_data] == ["approved"], message_id
 
 
 async def test_a_read_between_insert_and_unset_sees_the_entry_once(
@@ -272,8 +312,12 @@ async def test_append_to_a_missing_conversation_raises_and_writes_nothing(
     raw_collection: Any,
     entries_collection: Any,
 ) -> None:
-    with pytest.raises(ConversationNotFoundError):
-        await repo.append(f"c-{uuid.uuid4().hex}", user_id="u", entries=[_message("m1")])
+    missing = f"c-{uuid.uuid4().hex}"
+    with pytest.raises(ConversationNotFoundError) as raised:
+        await repo.append(missing, user_id="u", entries=[_message("m1")])
+
+    assert raised.value.message == f"conversation {missing} does not exist for this user"
+    assert raised.value.meta == {"conversation_id": missing}
 
     assert held.held == []
     assert await raw_collection.count_documents({}) == 0
@@ -398,3 +442,231 @@ async def test_search_skips_a_todos_chat_and_cross_reads_refuse_unmigrated_data(
     )
     with pytest.raises(UnmigratedConversationError):
         await repo.has_sent_message(uid)
+
+
+_REFUSAL = (
+    "has messages the entries migration has not copied: run python -m "
+    "app.scripts.migrate_conversation_entries --apply (or --since for a second pass)"
+)
+
+
+async def test_a_migrated_head_reads_until_the_old_build_writes_its_array_again(
+    repo: ConversationRepository, raw_collection: Any, entries_collection: Any
+) -> None:
+    old = {"type": "user", "response": "old", "message_id": "o1"}
+    await raw_collection.insert_one(
+        {
+            "conversation_id": "migrated",
+            "user_id": "u",
+            "createdAt": datetime.now(UTC).isoformat(),
+            "messages": [old],
+            "log_head": 1,
+            "migrated_last_id": "o1",
+        }
+    )
+    await entries_collection.insert_one(
+        {
+            "conversation_id": "migrated",
+            "user_id": "u",
+            "seq": 1,
+            "id": "o1",
+            "type": "user",
+            "response": "old",
+            "at": datetime.now(UTC),
+        }
+    )
+    doc = await repo.get("migrated", user_id="u")
+    assert doc is not None and [m.message_id for m in doc.messages] == ["o1"]
+
+    await raw_collection.update_one(
+        {"conversation_id": "migrated"}, {"$push": {"messages": {**old, "message_id": "o2"}}}
+    )
+
+    with pytest.raises(UnmigratedConversationError) as refused:
+        await repo.get("migrated", user_id="u")
+    assert refused.value.message == f"conversation migrated {_REFUSAL}"
+    assert refused.value.why == "its messages still live only in the embedded messages array"
+
+
+async def test_a_head_written_before_log_head_existed_starts_its_log_at_one(
+    repo: ConversationRepository, raw_collection: Any, held: _HeldFlushes
+) -> None:
+    await raw_collection.insert_one(
+        {"conversation_id": "early", "user_id": "u", "createdAt": datetime.now(UTC).isoformat()}
+    )
+
+    assert await repo.append("early", user_id="u", entries=[_message("m1")]) == [1]
+    assert await repo.append("early", user_id="u", entries=[_message("m2")]) == [2]
+    head = await raw_collection.find_one({"conversation_id": "early"})
+    assert head is not None and head["log_head"] == 2
+
+
+async def test_a_flush_never_drops_an_entry_whose_seq_another_entry_holds(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    held: _HeldFlushes,
+    raw_collection: Any,
+    entries_collection: Any,
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    await repo.append(cid, user_id=uid, entries=[_message("m1")])
+    held.drop_all()
+    await entries_collection.insert_one(
+        {
+            "conversation_id": cid,
+            "user_id": uid,
+            "seq": 1,
+            "id": "intruder",
+            "at": datetime.now(UTC),
+        }
+    )
+
+    with pytest.raises(ConversationStoreError) as conflict:
+        await repo.flush_outbox(cid, user_id=uid)
+
+    assert conflict.value.message == "an outbox entry conflicts with a stored entry"
+    assert "E11000" in conflict.value.why
+    assert list(await _outbox(raw_collection, conversation)) == ["1"]
+
+
+async def test_an_entry_without_a_commit_time_is_refused_as_corrupt(
+    repo: ConversationRepository, conversation: ConversationDocument, entries_collection: Any
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    await entries_collection.insert_one(
+        {"conversation_id": cid, "user_id": uid, "seq": 1, "id": "m1", "pinned": True}
+    )
+
+    with pytest.raises(ConversationStoreError) as corrupt:
+        await repo.list_pinned_messages(uid)
+
+    assert corrupt.value.message == "a stored conversation entry has no commit time"
+    assert corrupt.value.meta == {"conversation_id": cid, "seq": "1"}
+
+
+async def test_a_driver_failure_surfaces_as_the_stores_error_naming_the_operation(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failure = ServerSelectionTimeoutError("no primary")
+
+    def down(*_: object, **__: object) -> None:
+        raise failure
+
+    monkeypatch.setattr(repo, "_raw_collection", lambda: SimpleNamespace(aggregate=down))
+
+    with pytest.raises(ConversationStoreError) as raised:
+        await repo.get(conversation.conversation_id, user_id=conversation.user_id)
+
+    assert raised.value.message == "conversation store head read failed"
+    assert raised.value.why == "no primary"
+    assert raised.value.meta == {"error_type": "ServerSelectionTimeoutError"}
+    assert raised.value.__cause__ is failure
+
+
+async def test_an_entry_without_its_id_is_refused_before_anything_is_written(
+    repo: ConversationRepository, conversation: ConversationDocument, held: _HeldFlushes
+) -> None:
+    with pytest.raises(ValueError, match="^an appended entry carries its producer-minted id$"):
+        await repo.append(
+            conversation.conversation_id,
+            user_id=conversation.user_id,
+            entries=[_message("m1"), MessageModel(type="user", response="no id")],
+        )
+
+    assert await _ids(repo, conversation) == []
+    assert held.held == []
+
+
+async def test_one_id_twice_in_a_batch_is_one_entry_holding_its_first_copy(
+    repo: ConversationRepository, conversation: ConversationDocument, held: _HeldFlushes
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+
+    seqs = await repo.append(
+        cid, user_id=uid, entries=[_message("d", "first"), _message("d", "second")]
+    )
+
+    assert seqs == [1, 1]
+    saved = await repo.get_message(cid, "d", user_id=uid)
+    assert saved is not None and saved.response == "first"
+    assert await _ids(repo, conversation) == [(1, "d")]
+
+
+async def test_an_append_that_loses_every_conditional_write_raises_and_commits_nothing(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    held: _HeldFlushes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    attempts: list[int] = []
+
+    async def lost(*_: object) -> bool:
+        attempts.append(1)
+        return False
+
+    monkeypatch.setattr(conversations_module, "CONVERSATION_APPEND_MAX_ATTEMPTS", 3)
+    monkeypatch.setattr(repo, "_commit", lost)
+
+    with pytest.raises(ConversationStoreError) as raised:
+        await repo.append(cid, user_id=uid, entries=[_message("m1")])
+
+    assert raised.value.message == f"append to conversation {cid} lost every conditional write"
+    assert raised.value.why == "the head moved under each of 3 attempts"
+    assert raised.value.meta == {"conversation_id": cid}
+    assert len(attempts) == 3
+    assert await _ids(repo, conversation) == []
+
+
+async def test_parking_cards_that_loses_every_conditional_write_raises(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+
+    async def lost(*_: object, **__: object) -> int:
+        return 0
+
+    monkeypatch.setattr(conversations_module, "CONVERSATION_APPEND_MAX_ATTEMPTS", 2)
+    monkeypatch.setattr(repo, "_apply_pipeline_update_unfetched", lost)
+
+    with pytest.raises(ConversationStoreError) as raised:
+        await repo.park_folded_cards(
+            cid, user_id=uid, message_id="m1", entries=[{"tool_name": "x"}]
+        )
+
+    assert (
+        raised.value.message == f"parking cards on conversation {cid} lost every conditional write"
+    )
+    assert raised.value.meta == {"conversation_id": cid}
+
+
+async def test_a_flush_of_a_conversation_deleted_under_it_takes_back_what_it_inserted(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    held: _HeldFlushes,
+    raw_collection: Any,
+    entries_collection: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    await repo.append(cid, user_id=uid, entries=[_message("m1")])
+    held.drop_all()
+    other = await _chat(repo, uid)
+    await repo.append(other, user_id=uid, entries=[_message("kept")])
+    await held.run_all()
+    insert = repo._insert_entries
+
+    async def insert_then_delete(entries: Any) -> None:
+        await insert(entries)
+        await raw_collection.delete_one({"conversation_id": cid})
+
+    monkeypatch.setattr(repo, "_insert_entries", insert_then_delete)
+
+    await repo.flush_outbox(cid, user_id=uid)
+
+    assert await entries_collection.count_documents({"conversation_id": cid}) == 0
+    assert await entries_collection.count_documents({"conversation_id": other}) == 1

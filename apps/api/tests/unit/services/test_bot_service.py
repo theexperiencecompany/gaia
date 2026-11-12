@@ -651,6 +651,23 @@ class TestLoadConversationHistory:
         assert len(result) == 1
         assert result[0]["role"] == "user"
 
+    async def test_a_reply_still_being_written_is_left_out_and_the_rest_kept_in_order(
+        self, mock_conversations: MagicMock
+    ) -> None:
+        mock_conversations.list_recent_messages = AsyncMock(
+            return_value=_history(
+                [
+                    {"type": "user", "response": "A"},
+                    {"type": "bot", "response": "", "in_progress": True},
+                    {"type": "user", "response": "B"},
+                ]
+            )
+        )
+
+        result = await BotService.load_conversation_history("conv1", "user1")
+
+        assert result == [{"role": "user", "content": "A"}, {"role": "user", "content": "B"}]
+
     async def test_asks_the_store_for_only_the_newest_limit_messages(
         self, mock_conversations: MagicMock
     ) -> None:

@@ -17,7 +17,7 @@ import pytest
 
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversations import ConversationRepository
-from app.models.chat_models import ToolDataEntry
+from app.models.chat_models import MessageModel, ToolDataEntry
 
 CONVERSATION_ID = "conv-1"
 USER_ID = "user-1"
@@ -183,3 +183,27 @@ class TestOwnerIds:
         args = collection.distinct.await_args.args
         assert args[0] == "user_id"
         assert args[1] == {"conversation_id": CONVERSATION_ID}
+
+
+class TestFillMessage:
+    async def test_the_opened_entry_takes_the_saved_reply_and_drops_its_in_progress_mark(
+        self, repo: ConversationRepository, collection: MagicMock
+    ) -> None:
+        reply = MessageModel(
+            type="bot", response="Done.", message_id="bot-1", tool_data=TOOL_DATA_ENTRIES
+        )
+
+        assert await repo.fill_message(CONVERSATION_ID, user_id=USER_ID, message=reply) is True
+
+        query, pipeline, _ = _update_call(collection)
+        assert query == {"user_id": USER_ID, "conversation_id": CONVERSATION_ID, "id": "bot-1"}
+        [set_stage, unset_stage] = pipeline
+        assert set_stage["$set"]["response"] == {"$literal": "Done."}
+        cards = {
+            "$concatArrays": [{"$literal": TOOL_DATA_ENTRIES}, {"$ifNull": ["$tool_data", []]}]
+        }
+        assert set_stage["$set"]["tool_data"] == {
+            "$cond": [{"$eq": [cards, []]}, "$$REMOVE", cards]
+        }
+        assert "in_progress" in unset_stage["$unset"]
+        assert "pinned" not in unset_stage["$unset"]
