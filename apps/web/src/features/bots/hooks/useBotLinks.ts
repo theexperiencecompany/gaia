@@ -3,9 +3,14 @@
 import type { InstanceBots } from "@shared/api/generated";
 import { discordInviteUrl, telegramBotUrl } from "@shared/utils";
 import { useMemo } from "react";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
 import { isSelfhostWeb } from "@/lib/selfhost";
-import { BOT_LINKS, type BotPlatform } from "../constants";
+import {
+  BOT_LINKS,
+  type BotPlatform,
+  SIGNED_OUT_BOT_LINKS,
+} from "../constants";
 
 export type BotLinks = Partial<Record<BotPlatform, string>>;
 
@@ -24,13 +29,17 @@ function instanceBotLinks(bots: InstanceBots): BotLinks {
 
 /**
  * The link to each bot that serves this instance: GAIA Cloud's own bots on
- * hosted GAIA, the instance's (from GET /setup/status) on a self-hosted one,
- * undefined there until the status loads.
+ * hosted GAIA (sign-up first for one that needs an account), the instance's
+ * (from GET /setup/status) on a self-hosted one, undefined there until the
+ * status loads.
  */
 export function useBotLinks(): BotLinks | undefined {
   const { data } = useSetupStatus();
+  const { isAuthenticated } = useAuth();
   return useMemo(() => {
-    if (!isSelfhostWeb()) return BOT_LINKS;
+    if (!isSelfhostWeb()) {
+      return isAuthenticated ? BOT_LINKS : SIGNED_OUT_BOT_LINKS;
+    }
     return data ? instanceBotLinks(data.bots) : undefined;
-  }, [data]);
+  }, [data, isAuthenticated]);
 }

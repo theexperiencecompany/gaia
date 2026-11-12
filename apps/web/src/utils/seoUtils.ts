@@ -5,7 +5,6 @@ import { type BlogContentPost, blogLastModified } from "@/lib/blog";
 import {
   brandedTitle,
   generatePageMetadata,
-  generatePersonSchema,
   organizationRef,
   siteConfig,
 } from "@/lib/seo";
@@ -130,23 +129,24 @@ export function generateUseCaseStructuredData(
   useCase: UseCase,
 ): WithContext<HowTo> {
   const ogImageUrl = `${siteConfig.url}/api/og/use-case?slug=${useCase.slug}`;
+  const url = `${siteConfig.url}/use-cases/${useCase.slug}`;
 
   const structuredData: WithContext<HowTo> = {
     "@context": "https://schema.org",
     "@type": "HowTo",
+    "@id": `${url}#howto`,
     name: useCase.title,
     description: useCase.detailed_description || useCase.description,
     image: ogImageUrl,
     publisher: organizationRef,
-    url: `${siteConfig.url}/use-cases/${useCase.slug}`,
+    url,
     inLanguage: "en-US",
   };
 
-  if (useCase.creator) {
-    // GAIA's own workflows are authored by the organization, not a person called "GAIA Team".
-    structuredData.author = isSystemCreator(useCase.creator)
-      ? organizationRef
-      : generatePersonSchema({ name: useCase.creator.name });
+  // GAIA's own workflows are authored by the organization. A community creator has
+  // no public profile to identify them by, so they get the visible byline, not a Person.
+  if (isSystemCreator(useCase.creator)) {
+    structuredData.author = organizationRef;
   }
 
   if (useCase.steps && useCase.steps.length > 0) {

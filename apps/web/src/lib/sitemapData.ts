@@ -31,7 +31,7 @@ import {
   getAllCommunityWorkflowsServer,
   getExploreWorkflowsServer,
 } from "@/features/workflows/lib/serverWorkflowsApi";
-import { findCopiedTemplate } from "@/features/workflows/lib/templateCopies";
+import { withoutTemplateCopies } from "@/features/workflows/lib/templateCopies";
 import { defaultLocale, locales } from "@/i18n/config";
 import { getAlternates } from "@/i18n/getAlternates";
 import { blogLastModified, getAllBlogPosts } from "@/lib/blog";
@@ -200,9 +200,8 @@ async function getCommunityWorkflowPages(
     getAllCommunityWorkflowsServer(),
     getExploreWorkflowsServer(1000),
   ]);
-  // A republished template canonicalizes to the template, so only the template is listed.
-  return workflows.flatMap((workflow) =>
-    workflow.slug && !findCopiedTemplate(workflow, templates)
+  return withoutTemplateCopies(workflows, templates).flatMap((workflow) =>
+    workflow.slug
       ? [
           {
             url: `${baseUrl}/use-cases/${workflow.slug}`,
