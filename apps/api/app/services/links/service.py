@@ -420,6 +420,7 @@ async def resolve(link: ShortLink | None, viewer: LinkViewer) -> LinkEnvelope:
         content=framed_content(granted.snapshot, granted.access),
         downloadable=servable(granted.snapshot, granted.access),
         is_owner=kind is LinkViewerKind.OWNER,
+        owner_target_id=granted.target_id if kind is LinkViewerKind.OWNER else None,
     )
 
 

@@ -10965,6 +10965,8 @@ export interface components {
             downloadable: boolean;
             /** Is Owner */
             is_owner: boolean;
+            /** Owner Target Id */
+            owner_target_id: string | null;
             target_type: components["schemas"]["ShortLinkTargetType"];
             /** View */
             view: components["schemas"]["PublicTodoDeliverable"] | components["schemas"]["PublicBriefing"] | components["schemas"]["PublicSessionArtifact"] | components["schemas"]["PublicWorkflowRun"] | components["schemas"]["PublicOpenUIArtifact"];

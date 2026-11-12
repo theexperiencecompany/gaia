@@ -209,8 +209,10 @@ class TestAccessLevels:
 
         assert owner_view.status_code == 200
         assert owner_view.json()["is_owner"] is True
+        assert owner_view.json()["owner_target_id"] is not None
         assert grantee_view.status_code == 200
         assert grantee_view.json()["is_owner"] is False
+        assert grantee_view.json()["owner_target_id"] is None
         assert grantee_view.json()["view"]["title"] == "Reply to Acme"
         assert grantee_view.headers["cache-control"] == "private, no-store"
         assert (anonymous.status_code, anonymous.json()["code"]) == (401, "link_sign_in_required")
