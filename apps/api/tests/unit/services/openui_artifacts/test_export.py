@@ -16,6 +16,9 @@ from shared.py.analytics import UserId
 from shared.py.analytics.catalog.artifacts import ArtifactPdfExported
 from tests.helpers import captured_wide_event
 
+# Exports are cached per artifact version; a real Redis would carry one test's print into the next.
+pytestmark = pytest.mark.usefixtures("fake_redis")
+
 _SVC = "app.services.openui_artifacts.export"
 OWNER = "6ad86cdfb9e7ae0b43a0efea"
 ARTIFACT = OpenUIArtifact(
@@ -46,7 +49,6 @@ async def test_an_unshared_artifact_still_exports_for_its_owner(printer: MagicMo
     assert printer.await_args.args[0] == ARTIFACT.program
 
 
-@pytest.mark.usefixtures("fake_redis")
 async def test_an_export_reads_the_callers_artifact_prints_it_and_counts_it() -> None:
     with (
         patch(f"{_SVC}.get_owned_artifact", AsyncMock(return_value=ARTIFACT)) as read,
@@ -61,7 +63,6 @@ async def test_an_export_reads_the_callers_artifact_prints_it_and_counts_it() ->
     assert event["artifact"] == {"pdf_rendered": True, "pages": 2, "pdf_bytes": 8}
 
 
-@pytest.mark.usefixtures("fake_redis")
 async def test_a_live_link_exports_the_artifact_it_points_at() -> None:
     link = MagicMock(user_id=OWNER, target_id="a1")
     with (
@@ -99,7 +100,6 @@ def test_a_title_with_nothing_printable_falls_back_to_the_kind() -> None:
     )
 
 
-@pytest.mark.usefixtures("fake_redis")
 async def test_a_print_is_reused_until_the_artifact_or_its_version_changes() -> None:
     other = ARTIFACT.model_copy(update={"id": "a2"})
     revised = ARTIFACT.model_copy(update={"version": 2})
