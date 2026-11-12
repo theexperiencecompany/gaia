@@ -14,6 +14,7 @@ from app.constants.briefing import (
     WEEKLY_DIGEST_WORKFLOW_KEY,
     BriefingFrequency,
 )
+from app.constants.error_codes import BRIEF_DELIVERY_WORKFLOWS_EXIST
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.users import user_repository
@@ -420,4 +421,79 @@ class TestTurningBriefsOff:
         seams.update.assert_not_awaited()
         schedule.capture.assert_called_once_with(
             UserId(_USER), SettingsBriefsOffBlocked(workflow_count=1, via="settings")
+        )
+
+    async def test_the_refusal_names_each_workflow_and_what_to_do_about_it(
+        self, seams: Seams, delivering: MagicMock
+    ) -> None:
+        delivering.return_value = [
+            MagicMock(id="wf-a", title="Digest"),
+            MagicMock(id="wf-b", title="Standup"),
+        ]
+
+        with pytest.raises(schedule.BriefDeliveryWorkflowsError) as raised:
+            await schedule.set_briefing_schedule(
+                _USER, BriefingSchedule(frequency=BriefingFrequency.OFF), via="settings"
+            )
+
+        error = raised.value
+        assert error.message == "2 workflows send their results to your brief"
+        assert error.why == "With briefs off, their results would go nowhere"
+        assert error.fix == (
+            "Set Digest, Standup to Tell me now or Don't notify me, then turn briefs off"
+        )
+        assert error.status_code == 409
+        assert error.code == BRIEF_DELIVERY_WORKFLOWS_EXIST
+        assert error.public == {
+            "workflows": [{"id": "wf-a", "title": "Digest"}, {"id": "wf-b", "title": "Standup"}]
+        }
+
+    async def test_one_blocking_workflow_is_named_in_the_singular(
+        self, seams: Seams, delivering: MagicMock
+    ) -> None:
+        with pytest.raises(schedule.BriefDeliveryWorkflowsError) as raised:
+            await schedule.set_briefing_schedule(
+                _USER, BriefingSchedule(frequency=BriefingFrequency.OFF), via="settings"
+            )
+
+        assert raised.value.message == "1 workflow sends its results to your brief"
+
+    async def test_a_workflow_that_vanished_mid_move_fails_loud(
+        self, seams: Seams, delivering: MagicMock
+    ) -> None:
+        seams.update.return_value = None
+
+        with pytest.raises(
+            LookupError, match="^Workflow wf-digest vanished while it was moved off the brief$"
+        ):
+            await schedule.set_briefing_schedule(
+                _USER,
+                BriefingSchedule(frequency=BriefingFrequency.OFF),
+                via="settings",
+                workflow_deliveries={"wf-digest": WorkflowDelivery.NOW},
+            )
+
+    async def test_the_report_counts_the_workflows_moved_to_each_delivery(
+        self, seams: Seams, delivering: MagicMock
+    ) -> None:
+        delivering.return_value = [
+            MagicMock(id="wf-a", title="A"),
+            MagicMock(id="wf-b", title="B"),
+            MagicMock(id="wf-c", title="C"),
+        ]
+
+        await schedule.set_briefing_schedule(
+            _USER,
+            BriefingSchedule(frequency=BriefingFrequency.OFF),
+            via="settings",
+            workflow_deliveries={
+                "wf-a": WorkflowDelivery.NOW,
+                "wf-b": WorkflowDelivery.NOW,
+                "wf-c": WorkflowDelivery.SILENT,
+            },
+        )
+
+        schedule.capture.assert_any_call(
+            UserId(_USER),
+            SettingsBriefsOffResolved(moved_to_now=2, moved_to_silent=1, via="settings"),
         )
