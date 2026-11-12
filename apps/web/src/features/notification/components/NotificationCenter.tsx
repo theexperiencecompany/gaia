@@ -1,9 +1,10 @@
 "use client";
 
-import { Badge, Button, Popover, Tabs } from "@heroui/react";
+import { Badge, Popover, Tabs } from "@heroui/react";
 import { NotificationIcon } from "@icons";
 import { useMemo, useState } from "react";
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { track } from "@/lib/analytics";
@@ -168,7 +169,8 @@ export function NotificationCenter({
           {/* Footer */}
           {canMarkAllAsRead && (
             <div className="flex w-full items-center justify-evenly gap-3 p-3">
-              <Button
+              <GaiaButton
+                variant="default-solid"
                 size="sm"
                 fullWidth
                 onPress={handleMarkAllAsRead}
@@ -176,7 +178,7 @@ export function NotificationCenter({
                 isDisabled={isMarkingAllRead}
               >
                 Mark all as read
-              </Button>
+              </GaiaButton>
             </div>
           )}
         </Popover.Content>

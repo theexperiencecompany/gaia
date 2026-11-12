@@ -89,9 +89,9 @@ export function IntegrationsStep({ status, catalog }: IntegrationsStepProps) {
                 : "need a Composio key first."}
             </p>
             <LinkButton
+              variant="accent-soft"
               href={COMPOSIO_SETUP_PATH}
               size="sm"
-              variant="secondary"
               className="shrink-0"
             >
               {hasComposioKey ? "Set them up" : "Add Composio key"}

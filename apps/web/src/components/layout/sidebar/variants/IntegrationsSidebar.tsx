@@ -5,6 +5,7 @@ import { InternetIcon, PuzzleIcon } from "@icons";
 import { useCallback, useMemo, useState } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { Integration } from "@/features/integrations/types";
@@ -114,16 +115,16 @@ export default function IntegrationsSidebar() {
         </RightSidebarPanel>
       )}
       <Tooltip>
-        <Button
+        <GaiaButton
+          variant="accent-soft"
           className="w-full justify-start text-sm text-primary"
           size="sm"
-          variant="tertiary"
           onPress={openIntegrationModal}
           data-keyboard-shortcut="create-integration"
         >
           <PuzzleIcon className="h-4 w-4 outline-0" />
           Create Integration
-        </Button>
+        </GaiaButton>
         <Tooltip.Content placement="right">
           <span className="flex items-center gap-2">
             Create Integration

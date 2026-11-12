@@ -1,5 +1,6 @@
 import { Button, Spinner } from "@heroui/react";
 import { AlertCircleIcon, CheckmarkCircle02Icon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { Workflow } from "../../api/workflowApi";
 import WorkflowSteps from "../shared/WorkflowSteps";
 
@@ -83,9 +84,9 @@ export default function WorkflowLoadingState({
                 : ""}
             </p>
           </div>
-          <Button variant="tertiary" onPress={onClose}>
+          <GaiaButton variant="accent-soft" onPress={onClose}>
             Done
-          </Button>
+          </GaiaButton>
         </div>
 
         {workflow?.steps && workflow.steps.length > 0 && (

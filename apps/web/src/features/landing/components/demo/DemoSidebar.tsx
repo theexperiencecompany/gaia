@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import {
   BubbleChatAddIcon,
   Calendar01Icon,
@@ -19,6 +18,7 @@ import {
 import * as m from "motion/react-m";
 import type { MouseEvent } from "react";
 import { memo, useCallback, useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   ChevronsDownUp,
   ChevronsUpDown,
@@ -464,15 +464,15 @@ const DemoSidebar = memo(function DemoSidebar({
 
             {/* Primary action button — changes per page */}
             <div className="flex w-full justify-center">
-              <Button
+              <GaiaButton
+                variant="accent-soft"
                 size="sm"
                 fullWidth
-                variant="tertiary"
                 className="mt-1 mb-4 flex justify-start text-sm font-medium text-primary"
               >
                 {primaryAction.icon}
                 {primaryAction.label}
-              </Button>
+              </GaiaButton>
             </div>
           </div>
 

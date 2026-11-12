@@ -1,13 +1,13 @@
-import { Button, Skeleton } from "@heroui/react";
+import { Skeleton } from "@heroui/react";
 import Image from "next/image";
 import React from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronsDownUp, ChevronsUpDown } from "@/components/shared/icons";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import SettingsMenu from "@/features/settings/components/SettingsMenu";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
-
 import { Avatar, AvatarFallback, AvatarImage } from "../../ui/avatar";
 
 export default function UserContainer() {
@@ -19,7 +19,10 @@ export default function UserContainer() {
 
   return (
     <SettingsMenu onOpenChange={setIsOpen}>
-      <Button className="group/triggerbtn pointer-events-auto relative flex w-full flex-row justify-between gap-3 bg-transparent px-2 py-6! hover:bg-zinc-800">
+      <GaiaButton
+        variant="default-solid"
+        className="group/triggerbtn pointer-events-auto relative flex w-full flex-row justify-between gap-3 bg-transparent px-2 py-6! hover:bg-zinc-800"
+      >
         <div className="flex items-center gap-3">
           <Avatar className="size-7 rounded-full bg-black">
             <AvatarImage src={user?.profilePicture} alt="User Avatar" />
@@ -59,7 +62,7 @@ export default function UserContainer() {
             height={20}
           />
         )}
-      </Button>
+      </GaiaButton>
     </SettingsMenu>
   );
 }

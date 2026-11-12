@@ -89,6 +89,10 @@
     "button": {
       "variant": {
         "light": "ghost"
+      },
+      "colorVariant": {
+        "default|solid": "default-solid (GaiaButton)",
+        "primary|flat": "accent-soft (GaiaButton)"
       }
     },
     "chip": {

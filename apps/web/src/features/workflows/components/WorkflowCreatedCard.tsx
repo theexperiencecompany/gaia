@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import {
   Calendar03Icon,
   CheckmarkCircle02Icon,
@@ -10,8 +10,8 @@ import {
   PencilEdit01Icon,
 } from "@icons";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { WorkflowCreatedData } from "@/types/features/toolDataTypes";
-
 import type { Workflow } from "../api/workflowApi";
 import { workflowApi } from "../api/workflowApi";
 import { getScheduleDescription } from "../utils/cronUtils";
@@ -157,16 +157,16 @@ export default function WorkflowCreatedCard({
         </Chip>
 
         {/* Action button */}
-        <Button
+        <GaiaButton
+          variant="accent-soft"
           size="sm"
-          variant="tertiary"
           isPending={isLoading}
           onPress={handleOpenModal}
           className="mt-1 w-full rounded-xl font-medium"
         >
           <PencilEdit01Icon className="size-3.5" />
           View &amp; Edit
-        </Button>
+        </GaiaButton>
       </div>
 
       {/* Edit modal - only render when we have the full workflow */}

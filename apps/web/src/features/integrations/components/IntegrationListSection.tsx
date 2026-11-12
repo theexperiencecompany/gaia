@@ -1,7 +1,6 @@
 import {
   Accordion,
   AccordionItem,
-  Button,
   Chip,
   Link,
   ScrollShadow,
@@ -11,6 +10,7 @@ import { ArrowRight02Icon, ConnectIcon, InformationCircleIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { InstanceSetupNotice } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
@@ -176,16 +176,16 @@ function IntegrationListSection({
 
         {/* Show connect button for all available integrations */}
         {!isConnected && isAvailable && !integration.instanceSetupRequired && (
-          <Button
+          <GaiaButton
+            variant="accent-soft"
             size="sm"
-            variant="tertiary"
             className="shrink-0 text-xs"
             onPress={(e) =>
               handleConnect(integration.id, e as unknown as React.MouseEvent)
             }
           >
             Connect
-          </Button>
+          </GaiaButton>
         )}
       </div>
     );
@@ -227,9 +227,9 @@ function IntegrationListSection({
           </div>
         </button>
 
-        <Button
+        <GaiaButton
+          variant="accent-soft"
           size="sm"
-          variant="tertiary"
           className="shrink-0 text-xs"
           isPending={isConnecting}
           onPress={(e) =>
@@ -237,7 +237,7 @@ function IntegrationListSection({
           }
         >
           {isConnecting ? "Adding..." : "Add"}
-        </Button>
+        </GaiaButton>
       </div>
     );
   };

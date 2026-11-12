@@ -1,14 +1,9 @@
 "use client";
 
-import {
-  Button,
-  FieldError,
-  InputGroup,
-  Label,
-  TextField,
-} from "@heroui/react";
+import { FieldError, InputGroup, Label, TextField } from "@heroui/react";
 import { Github01Icon, PlusSignIcon } from "@icons";
 import { useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toast } from "@/lib/toast";
 import { skillsApi } from "../api/skillsApi";
 import type { DiscoveredSkill, SkillTarget } from "../api/types";
@@ -135,16 +130,16 @@ export function SkillImportForm({
             }}
           />
           <InputGroup.Suffix>
-            <Button
+            <GaiaButton
+              variant="accent-soft"
               size="sm"
-              variant="tertiary"
               className="-mr-1 shrink-0 rounded-lg"
               isPending={discovering}
               isDisabled={!repoValid}
               onPress={handleDiscover}
             >
               Find skills
-            </Button>
+            </GaiaButton>
           </InputGroup.Suffix>
         </InputGroup>
         <FieldError>{repoError}</FieldError>
@@ -157,9 +152,9 @@ export function SkillImportForm({
               Found {discovered.length} skill
               {discovered.length === 1 ? "" : "s"}
             </span>
-            <Button
+            <GaiaButton
+              variant="accent-soft"
               size="sm"
-              variant="tertiary"
               className="rounded-xl"
               isPending={installingAll}
               isDisabled={installBusy && !installingAll}
@@ -167,7 +162,7 @@ export function SkillImportForm({
             >
               {installingAll ? null : <PlusSignIcon className="size-4" />}
               Add all
-            </Button>
+            </GaiaButton>
           </div>
           <div className="divide-y divide-zinc-800/60 overflow-hidden rounded-xl bg-zinc-800/60">
             {discovered.map((skill) => (
@@ -181,9 +176,9 @@ export function SkillImportForm({
                     {skill.description}
                   </p>
                 </div>
-                <Button
+                <GaiaButton
+                  variant="accent-soft"
                   size="sm"
-                  variant="tertiary"
                   className="rounded-xl"
                   isPending={installingPath === skill.path}
                   isDisabled={installBusy && installingPath !== skill.path}
@@ -193,7 +188,7 @@ export function SkillImportForm({
                     <PlusSignIcon className="size-4" />
                   )}
                   Add
-                </Button>
+                </GaiaButton>
               </div>
             ))}
           </div>

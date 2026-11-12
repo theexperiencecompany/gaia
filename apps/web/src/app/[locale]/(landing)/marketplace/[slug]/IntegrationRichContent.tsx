@@ -84,7 +84,7 @@ export function IntegrationRichContent({
           communication, productivity, and more, letting you build cross-tool
           automations in plain English without writing a single line of code.
         </p>
-        <LinkButton href={directoryHref} variant="tertiary">
+        <LinkButton variant="accent-soft" href={directoryHref}>
           Browse all integrations
           <ArrowRight02Icon className="h-3.5 w-3.5" aria-hidden="true" />
         </LinkButton>

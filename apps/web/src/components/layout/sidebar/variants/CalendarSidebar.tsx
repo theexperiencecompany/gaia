@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, Chip, Kbd, Tooltip } from "@heroui/react";
+import { Chip, Kbd, Tooltip } from "@heroui/react";
 import { Alert02Icon, CalendarAdd01Icon } from "@icons";
 import { useRouter } from "next/navigation";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import Spinner from "@/components/ui/spinner";
 import CalendarSelector from "@/features/calendar/components/CalendarSelector";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
@@ -30,17 +31,17 @@ export default function CalendarSidebar() {
   return (
     <div className="flex flex-col gap-3">
       <Tooltip>
-        <Button
+        <GaiaButton
+          variant="accent-soft"
           size="sm"
           fullWidth
           onPress={handleCreateEvent}
           className="mb-4 flex justify-start text-sm font-medium text-primary"
-          variant="tertiary"
           data-keyboard-shortcut="create-event"
         >
           <CalendarAdd01Icon width={18} height={18} />
           New Event
-        </Button>
+        </GaiaButton>
         <Tooltip.Content placement="right">
           <span className="flex items-center gap-2">
             New Event

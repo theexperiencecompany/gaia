@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import type { ComponentType, ReactNode } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight } from "@/components/shared/icons";
 import { PANEL_ROW_BUTTON_PROPS } from "@/components/shared/panelRowButtonProps";
 import { cn } from "@/lib/utils";
@@ -60,8 +60,12 @@ export function PanelRow({
   ...content
 }: PanelRowContentProps & { onPress: () => void }) {
   return (
-    <Button {...PANEL_ROW_BUTTON_PROPS} onPress={onPress}>
+    <GaiaButton
+      variant="default-solid"
+      {...PANEL_ROW_BUTTON_PROPS}
+      onPress={onPress}
+    >
       <PanelRowContent {...content} />
-    </Button>
+    </GaiaButton>
   );
 }

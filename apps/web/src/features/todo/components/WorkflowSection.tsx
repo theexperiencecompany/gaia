@@ -14,6 +14,7 @@ import {
 import { PlayIcon, RedoIcon, SparklesIcon, ZapIcon } from "@icons";
 import { isWorkflowStatusFresh } from "@shared/todos";
 import { useCallback, useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronDown } from "@/components/shared/icons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
@@ -363,10 +364,14 @@ export default function WorkflowSection({
                   <p className="text-sm">No workflow generated yet</p>
                 )}
               </div>
-              <Button variant="tertiary" size="sm" onPress={handleGenerate}>
+              <GaiaButton
+                variant="accent-soft"
+                size="sm"
+                onPress={handleGenerate}
+              >
                 <SparklesIcon className="h-4 w-4" />
                 {error ? "Retry" : "Generate Workflow"}
-              </Button>
+              </GaiaButton>
               <p className="mx-auto max-w-sm text-xs text-zinc-500">
                 AI will create a step-by-step workflow to help complete this
                 todo

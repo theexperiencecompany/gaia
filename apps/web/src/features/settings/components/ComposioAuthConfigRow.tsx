@@ -1,4 +1,5 @@
-import { Button, Chip, Input, ListBox, Select, TextField } from "@heroui/react";
+import { Chip, Input, ListBox, Select, TextField } from "@heroui/react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import type { ComposioIntegrationSetup } from "@/features/settings/api/composioSetupApi";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
@@ -47,14 +48,14 @@ export function ComposioAuthConfigRow({
     >
       <div className="flex w-96 items-center justify-end gap-2">
         {!isSetUp && onSetUp && (
-          <Button
+          <GaiaButton
+            variant="accent-soft"
             size="sm"
-            variant="tertiary"
             className="shrink-0"
             onPress={() => onSetUp(row.toolkit.toLowerCase())}
           >
             Set up automatically
-          </Button>
+          </GaiaButton>
         )}
         {row.detected.length > 0 ? (
           <Select
