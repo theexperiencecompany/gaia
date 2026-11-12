@@ -4,7 +4,7 @@ from typing import ClassVar, Literal
 
 from shared.py.analytics.catalog.base import ServerEvent
 
-__all__ = ["ArtifactCreated", "ArtifactFailed", "ArtifactOpened", "ArtifactPdfExported"]
+__all__ = ["ArtifactCreated", "ArtifactFailed", "ArtifactPdfExported"]
 
 # The API's ArtifactKind (apps/api/app/models/openui_artifact_models.py) is the source of
 # truth; this layer cannot import it, so the event schema restates the closed set.
@@ -35,16 +35,6 @@ class ArtifactFailed(ServerEvent):
     kind: ArtifactKindName
     reason: Literal["validation", "refused", "timeout"]
     problem_count: int
-
-
-class ArtifactOpened(ServerEvent):
-    """An artifact was opened in the in-app viewer or through its heygaia.link."""
-
-    event: ClassVar[str] = "artifact:opened"
-    budget_per_user_day: ClassVar[int] = 500
-
-    kind: ArtifactKindName
-    via: Literal["chat", "link"]
 
 
 class ArtifactPdfExported(ServerEvent):

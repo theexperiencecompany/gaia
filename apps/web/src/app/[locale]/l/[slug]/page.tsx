@@ -14,7 +14,6 @@ import type {
 
 interface PageProps {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ print?: string }>;
 }
 
 // Link previews (Telegram, iMessage, Slack unfurls) are cached by third parties
@@ -94,16 +93,10 @@ export async function generateMetadata({
 // Public capability-link page: lives OUTSIDE the (main) route group on purpose,
 // so a signed-out viewer (tapping a link inside Telegram or an email) never
 // mounts the authed app shell or its onboarding/auth guards.
-export default async function ShortLinkPage({
-  params,
-  searchParams,
-}: PageProps) {
+export default async function ShortLinkPage({ params }: PageProps) {
   const { slug } = await params;
-  const print = (await searchParams).print === "1";
   const view = await fetchPublicView(slug);
   if (!view) notFound();
-  // the PDF export's own render is not a reader opening the link
-  if (print) return <PublicLinkView slug={slug} view={view} print />;
   return (
     <>
       <LinkOpenBeacon slug={slug} />

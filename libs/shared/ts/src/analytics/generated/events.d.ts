@@ -9,7 +9,6 @@ export type ServerEventName =
   | "approval:decided"
   | "artifact:created"
   | "artifact:failed"
-  | "artifact:opened"
   | "artifact:pdf_exported"
   | "bot:audio_transcribed"
   | "bot:chat_opened"
@@ -363,13 +362,6 @@ export interface EventProperties {
     "kind": "dashboard" | "report" | "plan" | "comparison" | "memo" | "document";
     "reason": "validation" | "refused" | "timeout";
     "problem_count": number;
-  };
-  "artifact:opened": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "kind": "dashboard" | "report" | "plan" | "comparison" | "memo" | "document";
-    "via": "chat" | "link";
   };
   "artifact:pdf_exported": {
     "actor": "user" | "agent";

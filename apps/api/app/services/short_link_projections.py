@@ -19,6 +19,7 @@ from app.agents.workspace.paths import is_inlineable_content_type
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.openui_artifacts import openui_artifact_repository
 from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.short_link_models import (
@@ -174,6 +175,7 @@ async def _project_openui_artifact(user_id: str, target_id: str) -> PublicOpenUI
     artifact = await openui_artifact_repository.get(target_id, user_id=user_id)
     if artifact is None:
         return None
+    owner = await user_repository.get(user_id)
     return PublicOpenUIArtifact(
         target_type=ShortLinkTargetType.OPENUI_ARTIFACT,
         kind=artifact.kind,
@@ -181,6 +183,7 @@ async def _project_openui_artifact(user_id: str, target_id: str) -> PublicOpenUI
         program=artifact.program,
         version=artifact.version,
         created_at=artifact.created_at,
+        shared_by=owner.name if owner is not None and owner.name else None,
     )
 
 

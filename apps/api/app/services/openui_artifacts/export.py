@@ -1,6 +1,7 @@
 """PDF export of an artifact: its heygaia.link page in print mode, cached per version."""
 
 import base64
+import json
 import re
 
 from pydantic import BaseModel
@@ -9,6 +10,7 @@ from app.config.settings import settings
 from app.constants.openui_artifacts import (
     ARTIFACT_PDF_CACHE_KEY,
     ARTIFACT_PDF_CACHE_TTL_SECONDS,
+    ARTIFACT_PRINT_PROGRAM_GLOBAL,
     ARTIFACT_PRINT_URL,
     ARTIFACT_READY_SELECTOR,
 )
@@ -18,19 +20,10 @@ from app.models.short_link_models import ShortLinkTargetType
 from app.services.analytics_service import capture
 from app.services.openui_artifacts.read import get_owned_artifact
 from app.services.render.pdf import render_url_to_pdf
-from app.services.short_link_service import (
-    live_link_for_slug,
-    live_link_for_target,
-    optional_short_link,
-)
-from app.utils.errors import AppError
+from app.services.short_link_service import live_link_for_slug
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.artifacts import ArtifactPdfExported
 from shared.py.wide_events import log
-
-
-class ArtifactNotSharedError(AppError):
-    """The owner stopped sharing the artifact, and the PDF prints from its link page."""
 
 
 class PrintedPdf(BaseModel):
@@ -38,16 +31,22 @@ class PrintedPdf(BaseModel):
     pages: int
 
 
+async def render_program_to_pdf(program: str) -> tuple[bytes, int]:
+    """Print a program on the web app's print page; no link or session needed."""
+    url = ARTIFACT_PRINT_URL.format(frontend=settings.FRONTEND_URL)
+    init_script = f"window.{ARTIFACT_PRINT_PROGRAM_GLOBAL} = {json.dumps(program)};"
+    return await render_url_to_pdf(url, ARTIFACT_READY_SELECTOR, init_script)
+
+
 @Cacheable(key_pattern=ARTIFACT_PDF_CACHE_KEY, ttl=ARTIFACT_PDF_CACHE_TTL_SECONDS, model=PrintedPdf)
-async def _print_artifact(artifact_id: str, version: int, slug: str) -> PrintedPdf:  # noqa: ARG001 -- id and version key the cache
-    url = ARTIFACT_PRINT_URL.format(frontend=settings.FRONTEND_URL, slug=slug)
-    pdf, pages = await render_url_to_pdf(url, ARTIFACT_READY_SELECTOR)
+async def _print_artifact(artifact_id: str, version: int, program: str) -> PrintedPdf:  # noqa: ARG001 -- id and version key the cache
+    pdf, pages = await render_program_to_pdf(program)
     log.set_ns("artifact", pdf_rendered=True, pages=pages, pdf_bytes=len(pdf))
     return PrintedPdf(pdf_b64=base64.b64encode(pdf).decode(), pages=pages)
 
 
-async def _pdf_for(artifact: OpenUIArtifact, slug: str) -> bytes:
-    printed = await _print_artifact(artifact.id, artifact.version, slug)
+async def _pdf_for(artifact: OpenUIArtifact) -> bytes:
+    printed = await _print_artifact(artifact.id, artifact.version, artifact.program)
     capture(
         UserId(artifact.user_id), ArtifactPdfExported(kind=artifact.kind.value, pages=printed.pages)
     )
@@ -55,21 +54,9 @@ async def _pdf_for(artifact: OpenUIArtifact, slug: str) -> bytes:
 
 
 async def owner_artifact_pdf(user_id: str, artifact_id: str) -> tuple[OpenUIArtifact, bytes]:
-    """Print the owner's artifact from its link page, minting the link if it has none."""
+    """Print the owner's artifact; sharing it or not makes no difference."""
     artifact = await get_owned_artifact(user_id, artifact_id)
-    target = ShortLinkTargetType.OPENUI_ARTIFACT
-    link = (
-        await live_link_for_target(user_id, target, artifact_id)
-        if await optional_short_link(user_id, target, artifact_id)
-        else None
-    )
-    if link is None:
-        raise ArtifactNotSharedError(
-            message="this artifact is not shared, so it cannot be printed",
-            fix="share it again from the artifact viewer, then export",
-            status_code=409,
-        )
-    return artifact, await _pdf_for(artifact, link.slug)
+    return artifact, await _pdf_for(artifact)
 
 
 async def public_artifact_pdf(slug: str) -> tuple[OpenUIArtifact, bytes] | None:
@@ -78,7 +65,7 @@ async def public_artifact_pdf(slug: str) -> tuple[OpenUIArtifact, bytes] | None:
     if link is None:
         return None
     artifact = await get_owned_artifact(link.user_id, link.target_id)
-    return artifact, await _pdf_for(artifact, slug)
+    return artifact, await _pdf_for(artifact)
 
 
 def pdf_download_headers(artifact: OpenUIArtifact) -> dict[str, str]:

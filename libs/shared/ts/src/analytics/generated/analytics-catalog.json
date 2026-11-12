@@ -871,43 +871,6 @@
       }
     },
     {
-      "event": "artifact:opened",
-      "class": "ArtifactOpened",
-      "owner": "server",
-      "domain": "artifact",
-      "description": "An artifact was opened in the in-app viewer or through its heygaia.link.",
-      "previous_names": [],
-      "budget_per_user_day": 500,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "An artifact was opened in the in-app viewer or through its heygaia.link.",
-        "properties": {
-          "kind": {
-            "enum": [
-              "dashboard",
-              "report",
-              "plan",
-              "comparison",
-              "memo",
-              "document"
-            ],
-            "title": "Kind",
-            "type": "string"
-          },
-          "via": {
-            "enum": ["chat", "link"],
-            "title": "Via",
-            "type": "string"
-          }
-        },
-        "required": ["kind", "via"],
-        "title": "ArtifactOpened",
-        "type": "object"
-      }
-    },
-    {
       "event": "artifact:pdf_exported",
       "class": "ArtifactPdfExported",
       "owner": "server",

@@ -16,7 +16,7 @@ interface ArtifactViewerProps {
 
 /** A stored artifact in the right-sidebar viewer. */
 export function ArtifactViewer({ artifactId, title }: ArtifactViewerProps) {
-  const { data, isPending, error } = useArtifact(artifactId, true);
+  const { data, isPending, error } = useArtifact(artifactId);
   const closeSidebar = useCloseRightSidebar();
   const drawsClose = usePanelDrawsClose();
 

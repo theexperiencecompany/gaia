@@ -318,7 +318,7 @@ def artifact(stack: Stack) -> None:
     with stack.client() as api:
         artifact_id = _await_artifact_id(api, conversation.group(1))
         _expect(
-            api.get(f"/artifacts/{artifact_id}", params={"opened": True}, headers=stack.browser()),
+            api.get(f"/artifacts/{artifact_id}", headers=stack.browser()),
             HTTPStatus.OK,
         )
         state = _expect(

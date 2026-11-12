@@ -22,15 +22,20 @@ export function ArtifactPdfDownload({ slug }: { slug: string }) {
   );
 }
 
-/** A shared artifact: its program rendered by the artifact library. */
+/** A shared artifact: who shared it, then its program rendered by the artifact library. */
 export function PublicOpenUIArtifactView({
   view,
 }: {
   view: PublicOpenUIArtifact;
 }) {
   return (
-    <div className="rounded-2xl bg-zinc-900">
-      <LazyArtifactRenderer program={view.program} />
+    <div className="space-y-2">
+      {view.shared_by ? (
+        <p className="text-sm text-zinc-400">Shared by {view.shared_by}</p>
+      ) : null}
+      <div className="rounded-2xl bg-zinc-900">
+        <LazyArtifactRenderer program={view.program} />
+      </div>
     </div>
   );
 }

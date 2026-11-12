@@ -33,7 +33,6 @@ from shared.py.analytics.catalog import CATALOG
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunStarted
 from shared.py.analytics.catalog.artifacts import (
     ArtifactCreated,
-    ArtifactOpened,
     ArtifactPdfExported,
 )
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
@@ -323,9 +322,7 @@ def build_journeys(transcript: Path) -> list[Journey]:
                 Expect(
                     ArtifactCreated.event, BROWSER_AGENT, True, (("kind", "dashboard"),), count=2
                 ),
-                Expect(ArtifactOpened.event, BROWSER, True, (("via", "chat"),)),
                 Expect(ShortLinkOpened.event, None, False, (("target_type", "openui_artifact"),)),
-                Expect(ArtifactOpened.event, None, False, (("via", "link"),)),
                 Expect(ArtifactPdfExported.event, None, False, (("kind", "dashboard"),)),
             ),
         ),

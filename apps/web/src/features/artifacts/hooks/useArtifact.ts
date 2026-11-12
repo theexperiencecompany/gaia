@@ -1,16 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchArtifact } from "../api/artifactsApi";
 
-/**
- * A stored artifact; a null id waits. A card's read is cached for good (a version's program
- * never changes); a viewer's read (`opened`) always goes to the server, which counts each open.
- */
-export function useArtifact(artifactId: string | null, opened = false) {
+/** A stored artifact; a null id waits. A version's program never changes, so it is never refetched. */
+export function useArtifact(artifactId: string | null) {
   return useQuery({
-    queryKey: ["artifact", artifactId, opened],
-    queryFn: () => fetchArtifact(artifactId ?? "", opened),
+    queryKey: ["artifact", artifactId],
+    queryFn: () => fetchArtifact(artifactId ?? ""),
     enabled: artifactId !== null,
-    staleTime: opened ? 0 : Number.POSITIVE_INFINITY,
-    gcTime: opened ? 0 : undefined,
+    staleTime: Number.POSITIVE_INFINITY,
   });
 }

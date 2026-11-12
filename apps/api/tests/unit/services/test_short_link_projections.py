@@ -20,12 +20,14 @@ from app.models.briefing_models import (
     BriefingPayload,
     BriefingSection,
 )
+from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (
     PublicBriefing,
     PublicBriefingEvent,
     PublicBriefingItem,
     PublicBriefingPayload,
     PublicBriefingSection,
+    PublicOpenUIArtifact,
     PublicSessionArtifact,
     PublicTodoDeliverable,
     PublicWorkflowRun,
@@ -396,3 +398,39 @@ class TestSessionArtifact:
         assert await target_file(target_type, "owner", "conv-1/q3.html") is None
         stat.assert_not_awaited()
         resolve.assert_not_awaited()
+
+
+class TestOpenUIArtifact:
+    async def test_serves_the_program_and_the_owners_name_never_their_email(self):
+        artifact = OpenUIArtifact(
+            id="a1",
+            user_id="owner",
+            conversation_id="conv-secret",
+            kind=ArtifactKind.REPORT,
+            title="Pilot",
+            program='root = Artifact("Pilot", "s", [], [])',
+            brief_hash="brief-secret",
+            model="gpt-6-luna",
+        )
+        owner = AsyncMock()
+        owner.name = "Maya Chen"
+        owner.email = "maya@example.com"
+        with (
+            patch(f"{_MOD}.openui_artifact_repository") as artifacts,
+            patch(f"{_MOD}.user_repository") as users,
+        ):
+            artifacts.get = AsyncMock(return_value=artifact)
+            users.get = AsyncMock(return_value=owner)
+            view = await project_target(ShortLinkTargetType.OPENUI_ARTIFACT, "owner", "a1")
+
+        assert isinstance(view, PublicOpenUIArtifact)
+        assert (view.shared_by, view.program) == ("Maya Chen", artifact.program)
+        body = view.model_dump_json()
+        for leaked in ("maya@example.com", "conv-secret", "brief-secret", "owner"):
+            assert leaked not in body
+        artifacts.get.assert_awaited_once_with("a1", user_id="owner")
+
+    async def test_someone_elses_artifact_projects_to_nothing(self):
+        with patch(f"{_MOD}.openui_artifact_repository") as artifacts:
+            artifacts.get = AsyncMock(return_value=None)
+            assert await project_target(ShortLinkTargetType.OPENUI_ARTIFACT, "x", "a1") is None

@@ -15,6 +15,10 @@ ARTIFACT_PROMPTS_DIR = REPO_ROOT / "apps" / "api" / "app" / "agents" / "prompts"
 ARTIFACT_GENERATION_TIMEOUT_SECONDS = 120
 ARTIFACT_MAX_OUTPUT_TOKENS = 8_000
 ARTIFACT_MAX_REPAIRS = 1
+# Per-user abuse cap on create_artifact a day (rate limit feature artifact_creation).
+ARTIFACT_CREATION_DAILY_CAP = 200
+# The daily cap every day of the longest month: the cap is per day, never a monthly quota.
+ARTIFACT_CREATION_MONTHLY_CAP = 31 * ARTIFACT_CREATION_DAILY_CAP
 
 # Model deltas are token-sized; batch them so one artifact is tens of SSE frames, not hundreds.
 ARTIFACT_DELTA_FLUSH_SECONDS = 0.12
@@ -27,9 +31,12 @@ ARTIFACT_DELTA_EVENT = "artifact_delta"
 # The persisted chat card entry (a tool_fields key).
 ARTIFACT_DONE_EVENT = "artifact_done"
 
-# PDF export: the web page that prints an artifact, the marker it sets once rendered, and
+# PDF export: the web page that prints a program handed to it, the marker it sets once
+# rendered, and
 # how long a printed (artifact id, version) stays cached.
-ARTIFACT_PRINT_URL = "{frontend}/l/{slug}?print=1"
+ARTIFACT_PRINT_URL = "{frontend}/artifact-print"
+# The window global the print page reads its program from (ArtifactPrintView.tsx).
+ARTIFACT_PRINT_PROGRAM_GLOBAL = "__GAIA_ARTIFACT_PROGRAM__"
 ARTIFACT_READY_SELECTOR = "[data-artifact-ready]"
 ARTIFACT_PDF_CACHE_KEY = "artifact_pdf:{artifact_id}:{version}"
 ARTIFACT_PDF_CACHE_TTL_SECONDS = 7 * 24 * 3600

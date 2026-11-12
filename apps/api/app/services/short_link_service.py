@@ -31,7 +31,6 @@ from app.db.repositories.short_links import (
 from app.models.short_link_models import (
     LinkViewer,
     LinkViewerKind,
-    PublicOpenUIArtifact,
     PublicShortLinkView,
     ShortLink,
     ShortLinkTargetType,
@@ -40,7 +39,6 @@ from app.services.analytics_service import analytics_day_start, capture
 from app.services.short_link_projections import project_target, target_file
 from app.utils.log_identifiers import hash_link_viewer, hash_short_link_slug
 from shared.py.analytics import Dedupe, UserId
-from shared.py.analytics.catalog.artifacts import ArtifactOpened
 from shared.py.analytics.catalog.short_links import (
     ShortLinkCreated,
     ShortLinkOpened,
@@ -125,18 +123,11 @@ async def share_short_link(user_id: str, target_type: ShortLinkTargetType, targe
     )
 
 
-async def live_link_for_target(
-    user_id: str, target_type: ShortLinkTargetType, target_id: str
-) -> ShortLink | None:
-    """Return the owner's live link to a target, or None when it is not shared. Never mints."""
-    return await short_link_repository.get_live_for_target(user_id, target_type, target_id)
-
-
 async def live_share_url(
     user_id: str, target_type: ShortLinkTargetType, target_id: str
 ) -> str | None:
-    """Return the owner's live link URL to a target, or None when it is not shared. Never mints."""
-    live = await live_link_for_target(user_id, target_type, target_id)
+    """Return the owner's live link to a target, or None when it is not shared. Never mints."""
+    live = await short_link_repository.get_live_for_target(user_id, target_type, target_id)
     return _build_url(live.slug) if live else None
 
 
@@ -215,25 +206,17 @@ async def record_open(slug: str, viewer: LinkViewer) -> LinkViewerKind | None:
     if kind is LinkViewerKind.RECIPIENT:
         day = analytics_day_start(datetime.now(UTC))
         viewer_key = viewer.user_id or hash_link_viewer(viewer.ip, viewer.user_agent)
-        open_key = f"{hash_short_link_slug(slug)}:{viewer_key}:{day.date().isoformat()}"
         capture(
             UserId(link.user_id),
             ShortLinkOpened(
                 target_type=link.target_type.value, viewer_signed_in=viewer.user_id is not None
             ),
-            Dedupe(key=open_key, occurred_at=day),
+            Dedupe(
+                key=f"{hash_short_link_slug(slug)}:{viewer_key}:{day.date().isoformat()}",
+                occurred_at=day,
+            ),
         )
-        await _record_artifact_open(link, Dedupe(key=f"artifact:{open_key}", occurred_at=day))
     return kind
-
-
-async def _record_artifact_open(link: ShortLink, dedupe: Dedupe) -> None:
-    """Count an artifact link a recipient opened as that artifact opened too."""
-    if link.target_type is not ShortLinkTargetType.OPENUI_ARTIFACT:
-        return
-    view = await project_target(link.target_type, link.user_id, link.target_id)
-    if isinstance(view, PublicOpenUIArtifact):
-        capture(UserId(link.user_id), ArtifactOpened(kind=view.kind.value, via="link"), dedupe)
 
 
 async def live_link_for_slug(slug: str, target_type: ShortLinkTargetType) -> ShortLink | None:

@@ -2,10 +2,7 @@
 
 from app.db.repositories.openui_artifacts import openui_artifact_repository
 from app.models.openui_artifact_models import OpenUIArtifact, OpenUIArtifactResponse
-from app.services.analytics_service import capture
 from app.utils.errors import AppError
-from shared.py.analytics import UserId
-from shared.py.analytics.catalog.artifacts import ArtifactOpened
 
 
 class ArtifactNotFoundError(AppError):
@@ -31,9 +28,6 @@ def artifact_response(artifact: OpenUIArtifact) -> OpenUIArtifactResponse:
     )
 
 
-async def read_artifact(user_id: str, artifact_id: str, *, opened: bool) -> OpenUIArtifactResponse:
-    """Read the owner's artifact; opened marks a viewer load, what artifact:opened counts."""
-    artifact = await get_owned_artifact(user_id, artifact_id)
-    if opened:
-        capture(UserId(user_id), ArtifactOpened(kind=artifact.kind.value, via="chat"))
-    return artifact_response(artifact)
+async def read_artifact(user_id: str, artifact_id: str) -> OpenUIArtifactResponse:
+    """Read the owner's artifact, program included."""
+    return artifact_response(await get_owned_artifact(user_id, artifact_id))

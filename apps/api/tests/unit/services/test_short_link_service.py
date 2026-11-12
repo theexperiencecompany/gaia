@@ -13,11 +13,9 @@ from pymongo.errors import DuplicateKeyError, ServerSelectionTimeoutError
 import pytest
 
 from app.db.repositories.short_links import LIVE_TARGET_UNIQUE_INDEX, SLUG_UNIQUE_INDEX
-from app.models.openui_artifact_models import ArtifactKind
 from app.models.short_link_models import (
     LinkViewer,
     LinkViewerKind,
-    PublicOpenUIArtifact,
     PublicTodoDeliverable,
     ShortLink,
     ShortLinkTargetType,
@@ -35,7 +33,6 @@ from app.services.short_link_service import (
 )
 from app.utils.log_identifiers import hash_short_link_slug
 from shared.py.analytics import Dedupe, UserId
-from shared.py.analytics.catalog.artifacts import ArtifactOpened
 from shared.py.analytics.catalog.short_links import (
     ShortLinkCreated,
     ShortLinkOpened,
@@ -211,31 +208,6 @@ class TestRecordOpen:
         assert event == ShortLinkOpened(target_type=TODO.value, viewer_signed_in=False)
         assert dedupe.occurred_at.tzinfo is not None
         assert VIEWER_IP not in dedupe.key
-
-    async def test_a_recipient_opening_an_artifact_link_also_counts_an_artifact_open(
-        self, repo, capture
-    ):
-        repo.get_by_slug.return_value = _link(
-            "abc", target_type=ShortLinkTargetType.OPENUI_ARTIFACT, target_id="a1"
-        )
-        view = PublicOpenUIArtifact(
-            target_type=ShortLinkTargetType.OPENUI_ARTIFACT,
-            kind=ArtifactKind.REPORT,
-            title="Pilot",
-            program="root = Artifact(...)",
-            version=1,
-            created_at=datetime(2026, 11, 12, tzinfo=UTC),
-        )
-        with patch(f"{_SVC}.project_target", AsyncMock(return_value=view)):
-            await record_open("abc", _anonymous())
-
-        opens = [c.args for c in capture.call_args_list]
-        assert [args[1] for args in opens] == [
-            ShortLinkOpened(target_type="openui_artifact", viewer_signed_in=False),
-            ArtifactOpened(kind="report", via="link"),
-        ]
-        assert opens[1][0] == UserId(OWNER)
-        assert opens[1][2].key != opens[0][2].key
 
     async def test_the_owner_opening_their_own_link_is_not_an_open(self, repo, capture):
         repo.get_by_slug.return_value = _link("abc")

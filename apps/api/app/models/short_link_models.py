@@ -170,6 +170,8 @@ class PublicOpenUIArtifact(_PublicView):
     program: str
     version: int
     created_at: datetime
+    #: The owner's display name, never their email; None when they have none.
+    shared_by: str | None
 
 
 PublicShortLinkView = Annotated[

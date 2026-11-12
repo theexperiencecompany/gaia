@@ -16241,6 +16241,17 @@
             "title": "Program",
             "type": "string"
           },
+          "shared_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shared By"
+          },
           "target_type": {
             "const": "openui_artifact",
             "title": "Target Type",
@@ -16261,7 +16272,8 @@
           "title",
           "program",
           "version",
-          "created_at"
+          "created_at",
+          "shared_by"
         ],
         "title": "PublicOpenUIArtifact",
         "type": "object"
@@ -24672,18 +24684,6 @@
             "schema": {
               "title": "Artifact Id",
               "type": "string"
-            }
-          },
-          {
-            "description": "True when the viewer opens it",
-            "in": "query",
-            "name": "opened",
-            "required": false,
-            "schema": {
-              "default": false,
-              "description": "True when the viewer opens it",
-              "title": "Opened",
-              "type": "boolean"
             }
           }
         ],

@@ -13604,6 +13604,8 @@ export interface components {
             kind: components["schemas"]["ArtifactKind"];
             /** Program */
             program: string;
+            /** Shared By */
+            shared_by: string | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -18567,10 +18569,7 @@ export interface operations {
     };
     artifacts_get_artifact: {
         parameters: {
-            query?: {
-                /** @description True when the viewer opens it */
-                opened?: boolean;
-            };
+            query?: never;
             header?: never;
             path: {
                 artifact_id: string;
