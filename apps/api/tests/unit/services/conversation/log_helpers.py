@@ -99,7 +99,12 @@ def settled(
     outcome: ReplyOutcome = ReplyOutcome.ANSWERED,
 ) -> ReplySettled:
     return ReplySettled(
-        id=entry_id, reply_id=reply_id, outcome=outcome, answers=tuple(answers), through=through
+        id=entry_id,
+        reply_id=reply_id,
+        outcome=outcome,
+        answers=tuple(answers),
+        through=through,
+        quote_target=None,
     )
 
 

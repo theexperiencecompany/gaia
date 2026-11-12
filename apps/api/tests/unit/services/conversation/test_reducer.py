@@ -5,12 +5,14 @@ import pytest
 from app.models.conversation_log_models import (
     CancelWork,
     CommsPhase,
-    ConversationDisplay,
     ConversationState,
+    DisplayState,
     Entry,
     KickStep,
     LiveWork,
     Preempt,
+    Reaction,
+    ReactionBy,
     Rejected,
     RejectReason,
     ReplyOutcome,
@@ -101,6 +103,15 @@ def test_user_message_wakes_and_acks_unless_voice(voice: bool, effects: tuple[ob
     result = _accept(state, 2, user("m", voice=voice))
     assert result.state.unsettled_waking == (1, 2)
     assert result.effects == effects
+
+
+def test_a_reaction_or_revision_on_a_user_message_never_changes_state() -> None:
+    plain = user("m")
+    decorated = plain.model_copy(
+        update={"reaction": Reaction(emoji="🔥", by=ReactionBy.CHAT_MODEL), "revision": 4}
+    )
+    state, _ = fold([user("u1")])
+    assert _accept(state, 2, plain) == _accept(state, 2, decorated)
 
 
 # ---- StopRequested ----
@@ -411,17 +422,17 @@ def test_side_question_is_answered_while_work_stays_live() -> None:
     )
     assert state.work == (_work("t1", 1),)
     assert (state.settled_through, state.unsettled_waking) == (5, ())
-    assert state.display is ConversationDisplay.WORKING
+    assert state.display is DisplayState.WORKING
     assert effects == [KickStep(), StartAck(message_id="u1"), KickStep(), StartAck(message_id="u5")]
 
 
 def test_approval_requested_then_decided() -> None:
     log: list[Entry] = [user("u1"), started("w", "t1", 1), asked("a", "t1", "ap1")]
     waiting, _ = fold(log)
-    assert waiting.display is ConversationDisplay.AWAITING_APPROVAL
+    assert waiting.display is DisplayState.AWAITING_APPROVAL
     state, effects = fold([*log, decided("d", "ap1")])
     assert state.work == (_work("t1", 1),)
-    assert state.display is ConversationDisplay.WORKING
+    assert state.display is DisplayState.WORKING
     assert effects == [KickStep(), StartAck(message_id="u1")]
 
 
