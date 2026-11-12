@@ -11,7 +11,9 @@ import { fileURLToPath } from "node:url";
 import { API_BASE, CLOCK_OFFSET_MS, LOCALE, ONBOARDING_USER, TIMEZONE } from "./config.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const { chromium } = createRequire(join(HERE, "..", "package.json"))("playwright");
+const harnessRequire = createRequire(join(HERE, "..", "package.json"));
+const { chromium } = harnessRequire("playwright");
+const { PNG } = harnessRequire("pngjs");
 export { chromium };
 
 const API_ORIGIN = new URL(API_BASE).origin;
@@ -44,6 +46,18 @@ function initScript({ css }) {
   else add();
 }
 
+/** One synthetic client address per page load, so the API's per-address rate limit sees one visitor per load. */
+const pageAddresses = new WeakMap();
+let nextAddress = 0;
+function visitorAddress(req) {
+  const page = req.frame().page();
+  if (!pageAddresses.has(page)) {
+    const n = nextAddress++;
+    pageAddresses.set(page, `10.${(n >> 16) & 255}.${(n >> 8) & 255}.${n & 255}`);
+  }
+  return pageAddresses.get(page);
+}
+
 export function captureTime(seed) {
   return new Date(new Date(seed.seededAt).getTime() + CLOCK_OFFSET_MS);
 }
@@ -65,6 +79,8 @@ export async function newContext(browser, { vp, user, seed, cacheDir, log }) {
     serviceWorkers: "block",
   });
   await ctx.clock.setFixedTime(captureTime(seed));
+  // Each top-level navigation is a new visitor (see visitorAddress).
+  ctx.on("page", (p) => p.on("framenavigated", (f) => f === p.mainFrame() && pageAddresses.delete(p)));
   await ctx.addInitScript(initScript, { css: FREEZE_CSS });
   const devUser = user === "anon" ? ANON_USER : user === "onboarding" ? ONBOARDING_USER : null;
   mkdirSync(cacheDir, { recursive: true });
@@ -80,8 +96,10 @@ export async function newContext(browser, { vp, user, seed, cacheDir, log }) {
         log.blocked.add(`${method} ${url.pathname}`);
         return route.abort("blockedbyclient");
       }
-      if (!devUser || method === "OPTIONS") return route.continue();
-      return route.continue({ headers: { ...req.headers(), "x-dev-user": devUser } });
+      if (method === "OPTIONS") return route.continue();
+      const headers = { ...req.headers(), "x-forwarded-for": visitorAddress(req) };
+      if (devUser) headers["x-dev-user"] = devUser;
+      return route.continue({ headers });
     }
     if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return route.continue();
     if (THIRD_PARTY_BLOCK.test(url.hostname)) return route.abort();
@@ -170,6 +188,65 @@ async function scrollToLoad(page) {
   });
 }
 
+/** Resolve once the DOM has had no mutation for `quietMs` (capped), so mount-on-scroll content has rendered. */
+async function domSettled(page, quietMs = 300, capMs = 3000) {
+  await page.evaluate(
+    ([quiet, cap]) =>
+      new Promise((resolve) => {
+        let timer = setTimeout(done, quiet);
+        const obs = new MutationObserver(() => {
+          clearTimeout(timer);
+          timer = setTimeout(done, quiet);
+        });
+        const hard = setTimeout(done, cap);
+        function done() {
+          obs.disconnect();
+          clearTimeout(timer);
+          clearTimeout(hard);
+          resolve();
+        }
+        obs.observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true });
+      }),
+    [quietMs, capMs],
+  );
+}
+
+/**
+ * The full page as a user scrolls through it: one viewport per slice, each section in view while it
+ * is shot (so in-view mounts and reveals are captured, not blank), stitched top to bottom. Fixed and
+ * sticky chrome appears once, in the first slice. Returns the page height and whether it was cut.
+ */
+export async function shootFullPage(page, vp, file, maxHeight) {
+  const total = await page.evaluate(() => document.documentElement.scrollHeight);
+  const height = Math.min(total, maxHeight);
+  const slices = [];
+  for (let y = 0; y < height; y += vp.height) {
+    const top = Math.min(y, Math.max(0, total - vp.height));
+    await page.evaluate((t) => window.scrollTo(0, t), top);
+    await domSettled(page);
+    await imagesAndFonts(page);
+    await finishAnimations(page);
+    if (y > 0 && slices.length === 1) {
+      await page.evaluate(() => {
+        for (const el of document.querySelectorAll("body *")) {
+          const p = getComputedStyle(el).position;
+          if (p === "fixed" || p === "sticky") el.style.setProperty("visibility", "hidden", "important");
+        }
+      });
+    }
+    const shot = PNG.sync.read(await page.screenshot({ animations: "disabled", caret: "hide" }));
+    slices.push({ shot, offset: y - top, y, h: Math.min(vp.height, height - y) });
+  }
+  const scale = slices[0].shot.width / vp.width;
+  const out = new PNG({ width: slices[0].shot.width, height: Math.round(height * scale) });
+  for (const s of slices) {
+    PNG.bitblt(s.shot, out, 0, Math.round(s.offset * scale), out.width, Math.round(s.h * scale), 0, Math.round(s.y * scale));
+  }
+  writeFileSync(file, PNG.sync.write(out));
+  await page.evaluate(() => window.scrollTo(0, 0));
+  return { height: total, truncated: total > maxHeight };
+}
+
 async function imagesAndFonts(page) {
   await page.evaluate(async () => {
     const pending = [...document.images].filter((i) => !i.complete);
@@ -201,7 +278,13 @@ export async function load(page, base, target, { wholePage = true } = {}) {
   const res = await page.goto(base + target.url, { waitUntil: "load", timeout: 60_000 });
   const status = res?.status() ?? 0;
   if (status >= 400) throw new Error(`HTTP ${status} for ${target.url}`);
-  const quiet = await networkQuiet(page);
+  let quiet = await networkQuiet(page);
+  // The app shell boots behind a full-screen loader (auth, then data); a quiet network can come before it lifts.
+  const loaded = await page
+    .waitForFunction((sel) => ![...document.querySelectorAll(sel)].some((e) => e.getClientRects().length > 0), LOADING_SELECTOR, { timeout: 20_000, polling: 200 })
+    .then(() => true, () => false);
+  if (loaded) quiet = (await networkQuiet(page, 500, 10_000)) && quiet;
+  await domSettled(page);
   await imagesAndFonts(page);
   let quiet2 = true;
   // A state shot is one viewport around its trigger, so only the full-page shot needs lazy content loaded.
@@ -213,11 +296,16 @@ export async function load(page, base, target, { wholePage = true } = {}) {
   await page.mouse.move(0, 0);
   await page.waitForTimeout(400);
   await finishAnimations(page);
-  return { status, finalUrl: new URL(page.url()).pathname + new URL(page.url()).search, networkBusy: !(quiet && quiet2) };
+  return { status, finalUrl: new URL(page.url()).pathname + new URL(page.url()).search, networkBusy: !(quiet && quiet2), stillLoading: !loaded };
 }
+
+/** Visible loaders that mean "not rendered yet": ARIA progress/busy, HeroUI's spinner, and the app's own SuspenseLoader (components/ui/spinner.tsx, an unlabeled .animate-spin). */
+const LOADING_SELECTOR = '[role=progressbar],[aria-busy="true"],[data-slot=spinner],[aria-label="Loading"],.animate-spin';
 
 /** The locator a state step names, by ARIA role + accessible name, so it pairs across v2 and v3 markup. */
 export function stepLocator(page, step) {
+  // role "clickable-text": a click target with no ARIA role (e.g. the landing demo's onClick Chips), by its exact text.
+  if (step.role === "clickable-text") return page.locator(".cursor-pointer").getByText(step.name, { exact: true }).nth(step.nth);
   return page.getByRole(step.role, { name: step.name, exact: true }).nth(step.nth);
 }
 

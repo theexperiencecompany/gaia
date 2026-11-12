@@ -41,9 +41,66 @@
       "role": "button",
       "name": "Chat options",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "GAIA Logo",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Resources Chevron Down",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "clickable-text",
+      "name": "Developer",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "clickable-text",
+      "name": "Marketer",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "clickable-text",
+      "name": "Student",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "clickable-text",
+      "name": "Executive",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Retry",
+      "nth": 0
     }
   ],
-  "/about": [],
+  "/about": [
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
+    }
+  ],
   "/ai-assistant-like-jarvis": [
     {
       "kind": "popup:disclosure",
@@ -71,6 +128,13 @@
       "action": "hover",
       "role": "link",
       "name": "GAIA on GitHub",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
       "nth": 0
     }
   ],
@@ -102,6 +166,13 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/ai-assistant-that-uses-your-computer": [
@@ -131,6 +202,13 @@
       "action": "hover",
       "role": "link",
       "name": "GAIA on GitHub",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
       "nth": 0
     }
   ],
@@ -162,6 +240,13 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/ai-assistant-with-memory": [
@@ -191,6 +276,13 @@
       "action": "hover",
       "role": "link",
       "name": "GAIA on GitHub",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
       "nth": 0
     }
   ],
@@ -222,6 +314,20 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "GAIA Logo",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/alternative-to": [
@@ -237,6 +343,13 @@
       "action": "hover",
       "role": "link",
       "name": "GAIA on GitHub",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
       "nth": 0
     }
   ],
@@ -268,6 +381,13 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/auth/link-platform": [
@@ -293,6 +413,13 @@
       "action": "hover",
       "role": "link",
       "name": "GAIA on GitHub",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
       "nth": 0
     }
   ],
@@ -324,6 +451,13 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/automate/page/2": [
@@ -340,6 +474,13 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/automate/with/airtable": [
@@ -355,6 +496,13 @@
       "action": "hover",
       "role": "link",
       "name": "GAIA on GitHub",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
       "nth": 0
     }
   ],
@@ -386,6 +534,13 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/best-ai-calendar-assistant": [
@@ -415,6 +570,13 @@
       "action": "hover",
       "role": "link",
       "name": "GAIA on GitHub",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
       "nth": 0
     }
   ],
@@ -446,6 +608,13 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/best-ai-executive-assistant": [
@@ -476,9 +645,24 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
-  "/blog": [],
+  "/blog": [
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
+    }
+  ],
   "/blog/create": [
     {
       "kind": "popup:dialog",
@@ -509,6 +693,20 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Copy link to this post",
+      "nth": 0
     }
   ],
   "/bots": [
@@ -525,9 +723,45 @@
       "role": "button",
       "name": "Can I send voice notes and files?",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
-  "/brand": [],
+  "/brand": [
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Download All Assets",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": ".svg",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": ".png",
+      "nth": 0
+    }
+  ],
   "/c": [],
   "/c/5eed0000-0000-4000-8000-000000000001": [
     {
@@ -733,6 +967,20 @@
       "role": "button",
       "name": "Who can sign in?",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Copy to clipboard",
+      "nth": 0
     }
   ],
   "/compare": [
@@ -748,6 +996,13 @@
       "action": "hover",
       "role": "link",
       "name": "GAIA on GitHub",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
       "nth": 0
     }
   ],
@@ -779,6 +1034,13 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/compare/category/ai-assistants": [
@@ -794,6 +1056,13 @@
       "action": "hover",
       "role": "link",
       "name": "GAIA on GitHub",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
       "nth": 0
     }
   ],
@@ -811,6 +1080,13 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/connect": [],
@@ -820,6 +1096,13 @@
       "action": "click",
       "role": "button",
       "name": "Select a request type Request Type*",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
       "nth": 0
     }
   ],
@@ -877,6 +1160,13 @@
       "role": "button",
       "name": "Chevron Down",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/faq": [
@@ -907,6 +1197,13 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/features": [
@@ -922,6 +1219,13 @@
       "action": "hover",
       "role": "link",
       "name": "GAIA on GitHub",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
       "nth": 0
     }
   ],
@@ -953,6 +1257,13 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/file-icons": [],
@@ -969,6 +1280,13 @@
       "action": "hover",
       "role": "link",
       "name": "GAIA on GitHub",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
       "nth": 0
     }
   ],
@@ -1000,6 +1318,13 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/how-to-use-ai-as-a-personal-assistant": [
@@ -1029,6 +1354,13 @@
       "action": "hover",
       "role": "link",
       "name": "GAIA on GitHub",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
       "nth": 0
     }
   ],
@@ -1060,6 +1392,13 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/integrations": [
@@ -1070,6 +1409,13 @@
       "name": "Create Integration",
       "nth": 0,
       "chrome": "app"
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Connect",
+      "nth": 0
     }
   ],
   "/learn": [
@@ -1085,6 +1431,13 @@
       "action": "hover",
       "role": "link",
       "name": "GAIA on GitHub",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
       "nth": 0
     }
   ],
@@ -1109,6 +1462,13 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/learn/category/ai-concepts": [
@@ -1124,6 +1484,13 @@
       "action": "hover",
       "role": "link",
       "name": "GAIA on GitHub",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
       "nth": 0
     }
   ],
@@ -1141,10 +1508,25 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/login": [],
-  "/manifesto": [],
+  "/manifesto": [
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
+    }
+  ],
   "/marketplace": [
     {
       "kind": "popup:dialog",
@@ -1182,6 +1564,13 @@
       "role": "button",
       "name": "How is AgentMail different from connecting Gmail?",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
     }
   ],
   "/notifications": [
@@ -1217,6 +1606,13 @@
       "name": "Account",
       "nth": 0,
       "chrome": "app"
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Continue",
+      "nth": 0
     }
   ],
   "/open-source-ai-assistant": [
@@ -1246,6 +1642,13 @@
       "action": "hover",
       "role": "link",
       "name": "GAIA on GitHub",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
       "nth": 0
     }
   ],
@@ -1281,9 +1684,25 @@
       "nth": 0
     }
   ],
-  "/privacy": [],
+  "/privacy": [
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
+    }
+  ],
   "/profile/6af604c153e70cf25a68fb99": [],
-  "/redirect": [],
+  "/redirect": [
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Voice Mode",
+      "nth": 0
+    }
+  ],
   "/settings": [],
   "/settings/account": [],
   "/settings/browser": [
@@ -1306,11 +1725,34 @@
       "nth": 0
     }
   ],
-  "/settings/devices/approve?code": [],
+  "/settings/devices/approve?code": [
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Approve device",
+      "nth": 0
+    }
+  ],
   "/settings/experimental": [],
   "/settings/instructions": [],
   "/settings/integrations-setup": [],
-  "/settings/linked-accounts": [],
+  "/settings/linked-accounts": [
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Open chat",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Connect",
+      "nth": 0
+    }
+  ],
   "/settings/members": [],
   "/settings/memory": [
     {
@@ -1342,7 +1784,15 @@
       "nth": 0
     }
   ],
-  "/settings/notifications": [],
+  "/settings/notifications": [
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Move Telegram down",
+      "nth": 0
+    }
+  ],
   "/settings/preferences": [
     {
       "kind": "popup:dialog",
@@ -1364,6 +1814,13 @@
       "role": "button",
       "name": "Allow always Approval mode",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Auto Detect",
+      "nth": 0
     }
   ],
   "/settings/profile": [
@@ -1380,6 +1837,13 @@
       "role": "button",
       "name": "Color Picker",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Randomize",
+      "nth": 0
     }
   ],
   "/settings/providers": [],
@@ -1392,7 +1856,15 @@
       "nth": 0
     }
   ],
-  "/settings/subscription": [],
+  "/settings/subscription": [
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "View plans",
+      "nth": 0
+    }
+  ],
   "/settings/usage": [
     {
       "kind": "tabs",
@@ -1428,6 +1900,13 @@
       "role": "tab",
       "name": "Month",
       "nth": 2
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Show more",
+      "nth": 0
     }
   ],
   "/settings/voice": [
@@ -1455,8 +1934,24 @@
   ],
   "/setup": [],
   "/signup": [],
-  "/terms": [],
-  "/thanks": [],
+  "/terms": [
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
+    }
+  ],
+  "/thanks": [
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
+    }
+  ],
   "/todos": [
     {
       "kind": "tooltip",
@@ -1496,10 +1991,32 @@
       "role": "link",
       "name": "GAIA on GitHub",
       "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Product Chevron Down",
+      "nth": 0
+    },
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Share",
+      "nth": 0
     }
   ],
   "/wake-listener": [],
-  "/workflows": [],
+  "/workflows": [
+    {
+      "kind": "toggle",
+      "action": "click",
+      "role": "button",
+      "name": "Create",
+      "nth": 0
+    }
+  ],
   "/workflows/wf_50e21fb517cb": [
     {
       "kind": "tabs",

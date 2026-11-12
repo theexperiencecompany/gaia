@@ -31,6 +31,9 @@ const arg = (n, d) => {
 const BASE = arg("base", WEB_BASE.before);
 const OUT = resolve(arg("out", DEFAULT_OUT));
 const ONLY = arg("only")?.split(",");
+/** --kinds toggle,...: run only these probes and add what they find to the existing states.json. */
+const KINDS = arg("kinds")?.split(",");
+const probes = (kind) => !KINDS || KINDS.includes(kind);
 const STATES_FILE = join(HERE, "states.json");
 
 const inventory = JSON.parse(readFileSync(join(OUT, "inventory.json"), "utf8"));
@@ -38,7 +41,10 @@ const seed = JSON.parse(readFileSync(join(OUT, "seed-state.json"), "utf8"));
 const desktop = VIEWPORTS.find((v) => v.name === "desktop");
 
 const ROLES = new Set(["button", "tab", "combobox", "link", "menuitem", "switch", "checkbox"]);
-const CAPS = { tabs: 12, popup: 24, modal: 25, tooltip: 16 };
+const CAPS = { tabs: 12, popup: 24, modal: 25, toggle: 12, tooltip: 16 };
+/** DOM mutations a plain button click must cause to count as a content toggle (demo chips, replay, carousels). */
+const TOGGLE_MUTATIONS = 3;
+const ROUTE_TIMEOUT_MS = Number(arg("route-timeout-min", 6)) * 60_000;
 
 /** role + accessible name of one element, from Playwright's own ARIA snapshot. */
 async function roleAndName(el) {
@@ -117,13 +123,13 @@ async function discover(page, target) {
   };
   const count = (kind) => steps.filter((s) => s.kind.startsWith(kind)).length;
 
-  for (const c of await candidates(page, "[role=tab][aria-selected=false]")) {
+  for (const c of probes("tabs") ? await candidates(page, "[role=tab][aria-selected=false]") : []) {
     if (count("tabs") >= CAPS.tabs) break;
     const s = await identify(c, "tabs");
     if (s) record(c, { kind: "tabs", action: "click", ...s });
   }
 
-  for (const c of await candidates(page, "[aria-haspopup]:not([aria-haspopup=false]),[aria-expanded=false]")) {
+  for (const c of !probes("popup") ? [] : await candidates(page, "[aria-haspopup]:not([aria-haspopup=false]),[aria-expanded=false]")) {
     if (count("popup") >= CAPS.popup) break;
     if (c.role === "tab") continue;
     const s = await identify(c, "popup");
@@ -141,21 +147,34 @@ async function discover(page, target) {
   }
 
   const plainButtons = "button:not([aria-haspopup]):not([aria-expanded]):not([type=submit]),[role=button]:not([aria-haspopup])";
-  for (const c of await candidates(page, plainButtons)) {
-    if (count("modal") >= CAPS.modal) break;
+  for (const c of probes("modal") || probes("toggle") ? await candidates(page, plainButtons) : []) {
+    if (count("modal") >= CAPS.modal && count("toggle") >= CAPS.toggle) break;
     const s = await identify(c, "modal");
     if (!s) continue;
     const loc = stepLocator(page, s);
     await loc.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+    // Count DOM changes the click causes: a chip, toggle or replay button that swaps content is a state too.
+    await page.evaluate(() => {
+      window.__reviewMutations = 0;
+      window.__reviewObserver = new MutationObserver((m) => { window.__reviewMutations += m.length; });
+      window.__reviewObserver.observe(document.body, { subtree: true, childList: true, characterData: true });
+    });
+    // Autoplaying sections mutate on their own; only change beyond that baseline is the click's.
+    await page.waitForTimeout(600);
+    const baseline = await page.evaluate(() => { const n = window.__reviewMutations; window.__reviewMutations = 0; return n; }).catch(() => 0);
     await loc.click({ timeout: 2000, noWaitAfter: true }).catch(() => {});
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(600);
     for (const other of page.context().pages()) if (other !== page) await other.close();
-    const dialog = (await page.locator("[role=dialog],[role=alertdialog]").filter({ visible: true }).count()) > 0;
-    if (dialog && page.url() === url) record(c, { kind: "modal", action: "click", ...s });
+    const sameUrl = page.url() === url;
+    const dialog = sameUrl && (await page.locator("[role=dialog],[role=alertdialog]").filter({ visible: true }).count()) > 0;
+    const changed = sameUrl && (await page.evaluate(() => { window.__reviewObserver.disconnect(); return window.__reviewMutations; }).catch(() => 0)) >= 2 * baseline + TOGGLE_MUTATIONS;
+    if (dialog) {
+      if (probes("modal")) record(c, { kind: "modal", action: "click", ...s });
+    } else if (changed && probes("toggle") && !c.chrome && count("toggle") < CAPS.toggle) record(c, { kind: "toggle", action: "click", ...s });
     await reset(page, target, url);
   }
 
-  for (const c of await candidates(page, "button,a[href],[role=button]", (f) => f.iconOnly)) {
+  for (const c of !probes("tooltip") ? [] : await candidates(page, "button,a[href],[role=button]", (f) => f.iconOnly)) {
     if (count("tooltip") >= CAPS.tooltip) break;
     const s = await identify(c, "tooltip");
     if (!s) continue;
@@ -182,7 +201,11 @@ async function worker() {
     contexts[target.user] ??= await newContext(browser, { vp: desktop, user: target.user, seed, cacheDir: join(OUT, "netcache"), log });
     const page = await contexts[target.user].newPage();
     try {
-      found[target.key] = await discover(page, target);
+      // A probe that wedges the page (a click that never settles) fails its route, not the whole run.
+      found[target.key] = await Promise.race([
+        discover(page, target),
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`discovery timed out after ${ROUTE_TIMEOUT_MS / 1000}s`)), ROUTE_TIMEOUT_MS)),
+      ]);
     } catch (e) {
       found[target.key] = { error: String(e.message).split("\n")[0] };
     }
@@ -196,10 +219,17 @@ await Promise.all(Array.from({ length: WORKERS }, worker));
 await browser.close();
 
 // Shared chrome (header, nav, sidebar, footer) is reviewed once per chrome, on its first route in inventory order.
-const states = ONLY ? JSON.parse(readFileSync(STATES_FILE, "utf8")) : {};
+const states = ONLY || KINDS ? JSON.parse(readFileSync(STATES_FILE, "utf8")) : {};
 const seenChrome = new Set();
 for (const t of inventory.targets) {
-  const list = found[t.key] ?? states[t.key];
+  let list = found[t.key] ?? states[t.key];
+  // A failed partial probe must not erase the states the route already has; it is reported below.
+  if (KINDS && !Array.isArray(found[t.key]) && Array.isArray(states[t.key])) list = states[t.key];
+  if (KINDS && Array.isArray(found[t.key]) && Array.isArray(states[t.key])) {
+    // A partial probe adds to what the route already had; a trigger already reviewed is not added twice.
+    const have = new Set(states[t.key].map((s) => `${s.role}|${s.name}|${s.nth}`));
+    list = [...states[t.key], ...found[t.key].filter((s) => !have.has(`${s.role}|${s.name}|${s.nth}`))];
+  }
   if (!Array.isArray(list)) {
     if (list) states[t.key] = list;
     continue;
@@ -216,8 +246,8 @@ const ordered = Object.fromEntries(Object.keys(states).sort().map((k) => [k, sta
 writeFileSync(STATES_FILE, `${JSON.stringify(ordered, null, 2)}\n`);
 const totalStates = Object.values(ordered).reduce((n, s) => n + (Array.isArray(s) ? s.length : 0), 0);
 console.log(`${totalStates} states over ${Object.keys(ordered).length} routes -> ${STATES_FILE}`);
-const failed = Object.entries(ordered).filter(([, s]) => !Array.isArray(s));
+const failed = Object.entries(found).filter(([, s]) => !Array.isArray(s));
 if (failed.length) {
-  console.error(`${failed.length} routes failed discovery`);
+  console.error(`${failed.length} routes failed discovery: ${failed.map(([k]) => k).join(",")}`);
   process.exit(1);
 }

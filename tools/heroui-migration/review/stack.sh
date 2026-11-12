@@ -66,7 +66,10 @@ cmd_api() {
     export ENV=development DEV_AUTH_BYPASS_EMAIL="$REVIEW_USER" GAIA_SIM_MODE=1 \
       OPENROUTER_BASE_URL="http://127.0.0.1:$STUB_PORT/api/v1" \
       HOST="http://localhost:$API_PORT" FRONTEND_URL="http://localhost:$(web_port before)"
-    exec uv run --group backend uvicorn app.main:app --host 127.0.0.1 --port $API_PORT --log-level warning
+    # The rate limiter keys on the client address; browser.mjs gives every page load its own (X-Forwarded-For),
+    # so ten parallel review browsers on 127.0.0.1 are ten visitors, not one visitor drawing 429 toasts.
+    exec uv run --group backend uvicorn app.main:app --host 127.0.0.1 --port $API_PORT --log-level warning \
+      --proxy-headers --forwarded-allow-ips 127.0.0.1
   ) > "$RUN/api.log" 2>&1 & echo $! > "$RUN/api.pid"
   wait_http "http://127.0.0.1:$API_PORT/health" "$(cat "$RUN/api.pid")" api 600
   echo "api up on :$API_PORT (bypass user $REVIEW_USER, sim LLM on :$STUB_PORT)"

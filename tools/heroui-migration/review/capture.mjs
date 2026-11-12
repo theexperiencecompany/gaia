@@ -13,7 +13,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium, finishAnimations, load, networkQuiet, newContext, stepLocator } from "./browser.mjs";
+import { chromium, finishAnimations, load, networkQuiet, newContext, shootFullPage, stepLocator } from "./browser.mjs";
 import { DEFAULT_OUT, fileOf, MAX_PAGE_HEIGHT, stateId, VIEWPORTS, WEB_BASE } from "./config.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -46,17 +46,10 @@ for (const target of inventory.targets.filter((t) => (!ONLY || ONLY.includes(t.k
 async function shootBase(page, job, entry) {
   const facts = await load(page, BASE, job.target);
   Object.assign(entry, facts);
-  const height = await page.evaluate(() => document.documentElement.scrollHeight);
   const file = join(DIR, job.vp.name, fileOf(job.target.key, "base"));
-  await page.screenshot({
-    path: file,
-    fullPage: height <= MAX_PAGE_HEIGHT,
-    clip: height > MAX_PAGE_HEIGHT ? { x: 0, y: 0, width: job.vp.width, height: MAX_PAGE_HEIGHT } : undefined,
-    animations: "disabled",
-    caret: "hide",
-  });
+  const { truncated } = await shootFullPage(page, job.vp, file, MAX_PAGE_HEIGHT);
   entry.file = `${job.vp.name}/${fileOf(job.target.key, "base")}`;
-  entry.truncated = height > MAX_PAGE_HEIGHT;
+  entry.truncated = truncated;
 }
 
 async function shootState(page, job, step, entry) {
