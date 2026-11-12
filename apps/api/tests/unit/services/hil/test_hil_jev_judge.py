@@ -23,7 +23,7 @@ from app.constants.hil import (
     JevChoice,
 )
 from app.constants.providers import CredentialProviderName
-from app.services.hil.intent import AutoHistory, IntentDecision, JudgedCall
+from app.services.hil.intent import AutoHistory, IntentDecision, JudgedCall, ungrounded_targets
 from app.services.hil.jev_client import jev_http_client
 from app.services.hil.jev_judge import (
     JevCase,
@@ -37,7 +37,6 @@ from app.services.hil.jev_judge import (
     map_jev_choice,
     needs_forbid_check,
     settle_forbid,
-    ungrounded_targets,
 )
 from app.services.hil.prompts import JEV_FORBID_QUESTION
 from app.services.hil.utils import PriorCall
