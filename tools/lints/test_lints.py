@@ -241,6 +241,33 @@ def test_bson_import_in_scripts_is_exempt(tmp_path: Path) -> None:
     assert repository_boundaries.check([path]) == []
 
 
+@pytest.mark.parametrize(
+    "src",
+    [
+        "from pymongo.errors import PyMongoError\n",
+        "import pymongo.errors\n",
+        "from motor.motor_asyncio import AsyncIOMotorCollection\n",
+    ],
+)
+def test_driver_import_outside_db_is_flagged(tmp_path: Path, src: str) -> None:
+    path = _write(tmp_path, "app/services/brand_new_service.py", src)
+    violations = repository_boundaries.check([path])
+    assert len(violations) == 1
+    assert "pymongo/motor outside app/db/" in violations[0].detail
+
+
+def test_driver_import_inside_repositories_is_clean(tmp_path: Path) -> None:
+    src = "from pymongo.errors import DuplicateKeyError\n"
+    path = _write(tmp_path, "app/db/repositories/hil.py", src)
+    assert repository_boundaries.check([path]) == []
+
+
+def test_driver_import_in_scripts_is_exempt(tmp_path: Path) -> None:
+    src = "from pymongo import UpdateOne\n"
+    path = _write(tmp_path, "app/scripts/delete_user_account.py", src)
+    assert repository_boundaries.check([path]) == []
+
+
 def test_repository_public_method_returning_any_is_flagged(tmp_path: Path) -> None:
     src = (
         "from typing import Any\n"
