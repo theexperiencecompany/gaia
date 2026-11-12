@@ -12,7 +12,7 @@ import type { ReactNode } from "react";
  * mode in dev throws on a regression to the latter.
  */
 const loadFeatures = () =>
-  import("motion/react").then((res) => res.domAnimation);
+  import("./motionFeatures").then((features) => features.default);
 
 export default function LazyMotionProvider({
   children,

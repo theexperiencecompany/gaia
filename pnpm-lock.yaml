@@ -82,7 +82,7 @@ overrides:
 
 patchedDependencies:
   sileo@0.1.4:
-    hash: b5e5ff2a9de25c3696a3d7c39efc501d18129425a6da872a694e18d127e3ce91
+    hash: c772514d99c37c6841086258148cc5323a0e6e5009156c986f1f58f7abea210f
     path: patches/sileo@0.1.4.patch
 
 importers:
@@ -1006,7 +1006,7 @@ importers:
         version: 0.35.5(@types/node@24.13.3)
       sileo:
         specifier: ^0.1.4
-        version: 0.1.4(patch_hash=b5e5ff2a9de25c3696a3d7c39efc501d18129425a6da872a694e18d127e3ce91)(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+        version: 0.1.4(patch_hash=c772514d99c37c6841086258148cc5323a0e6e5009156c986f1f58f7abea210f)(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       streamdown:
         specifier: ^2.5.0
         version: 2.5.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -32096,7 +32096,7 @@ snapshots:
 
   signal-exit@4.1.0: {}
 
-  sileo@0.1.4(patch_hash=b5e5ff2a9de25c3696a3d7c39efc501d18129425a6da872a694e18d127e3ce91)(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
+  sileo@0.1.4(patch_hash=c772514d99c37c6841086258148cc5323a0e6e5009156c986f1f58f7abea210f)(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
     dependencies:
       motion: 12.42.2(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       react: 19.2.3
