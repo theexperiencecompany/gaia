@@ -107,4 +107,22 @@ describe("community copies of an official template", () => {
     expect(html).not.toContain(`/use-cases/${copy.slug}`);
     expect(html).toContain(`/use-cases/${original.slug}`);
   });
+
+  it("never crowd an older original out of the listing", async () => {
+    const copies = Array.from({ length: 8 }, (_, i) => ({
+      ...copy,
+      id: `wf_copy_${i}`,
+      slug: `${copy.slug}-${i}`,
+    }));
+    const newestFirst = [...copies, original];
+    getAllCommunityWorkflowsServer.mockResolvedValue(newestFirst);
+    getCommunityWorkflowsServer.mockImplementation(async (limit: number) => ({
+      workflows: newestFirst.slice(0, limit),
+      total: newestFirst.length,
+    }));
+
+    renderToStaticMarkup(await UseCasesPage());
+
+    expect(listedCommunity).toHaveBeenCalledWith([original]);
+  });
 });
