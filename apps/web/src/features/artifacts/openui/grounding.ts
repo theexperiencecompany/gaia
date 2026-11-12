@@ -102,7 +102,7 @@ const SERIES_SLOTS = [
 ];
 
 /** Every slot a component offers, by component name. Keys take an optional :series or :column. */
-export const SLOTS: Record<string, readonly string[]> = {
+const SLOTS: Record<string, readonly string[]> = {
   Funnel: [
     "first",
     "last",

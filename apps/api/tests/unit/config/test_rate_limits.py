@@ -184,6 +184,7 @@ class TestFeatureLimits:
         "workspace_query_json",
         "workspace_grep",
         "flowchart_creation",
+        "artifact_creation",
         "weather_checks",
         "notification_operations",
         "integration_publish",

@@ -5,6 +5,7 @@ against (slug_unique, target_live_unique) are enforced for real in
 tests/contracts/test_short_links_repository.py.
 """
 
+from datetime import UTC, datetime
 import re
 from unittest.mock import AsyncMock, patch
 
@@ -12,7 +13,13 @@ from pymongo.errors import DuplicateKeyError, ServerSelectionTimeoutError
 import pytest
 
 from app.db.repositories.short_links import LIVE_TARGET_UNIQUE_INDEX, SLUG_UNIQUE_INDEX
-from app.models.short_link_models import PublicTodoDeliverable, ShortLink, ShortLinkTargetType
+from app.models.openui_artifact_models import ArtifactKind
+from app.models.short_link_models import (
+    PublicOpenUIArtifact,
+    PublicTodoDeliverable,
+    ShortLink,
+    ShortLinkTargetType,
+)
 from app.services.short_link_service import (
     MAX_SLUG_ATTEMPTS,
     ShortLinkExhaustedError,
@@ -25,6 +32,7 @@ from app.services.short_link_service import (
 )
 from app.utils.log_identifiers import hash_short_link_slug
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.artifacts import ArtifactOpened
 from shared.py.analytics.catalog.short_links import (
     ShortLinkCreated,
     ShortLinkOpened,
@@ -171,6 +179,34 @@ class TestGetPublicView:
         with patch(f"{_SVC}.project_target", AsyncMock(return_value=None)):
             assert await get_public_view("abc") is None
         capture.assert_not_called()
+
+    async def test_an_uncounted_read_projects_the_view_and_captures_nothing(self, repo, capture):
+        repo.get_by_slug.return_value = _link("abc", user_id=OWNER, target_id="t9")
+        view = PublicTodoDeliverable(
+            target_type=TODO, title="Plan", completed=False, content="Result"
+        )
+        with patch(f"{_SVC}.project_target", AsyncMock(return_value=view)):
+            assert await get_public_view("abc", count_open=False) == view
+        capture.assert_not_called()
+
+    async def test_an_opened_artifact_link_also_counts_an_artifact_open(self, repo, capture):
+        repo.get_by_slug.return_value = _link(
+            "abc", user_id=OWNER, target_type=ShortLinkTargetType.OPENUI_ARTIFACT, target_id="a1"
+        )
+        view = PublicOpenUIArtifact(
+            target_type=ShortLinkTargetType.OPENUI_ARTIFACT,
+            kind=ArtifactKind.REPORT,
+            title="Pilot",
+            program="root = Artifact(...)",
+            version=1,
+            created_at=datetime(2026, 11, 12, tzinfo=UTC),
+        )
+        with patch(f"{_SVC}.project_target", AsyncMock(return_value=view)):
+            await get_public_view("abc")
+        assert capture.call_args_list[-1].args == (
+            UserId(OWNER),
+            ArtifactOpened(kind="report", via="link"),
+        )
 
 
 class TestGetPublicFile:

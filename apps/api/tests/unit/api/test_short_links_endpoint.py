@@ -35,7 +35,17 @@ class TestResolveShortLink:
         assert response.status_code == 200
         assert response.json() == _VIEW.model_dump(mode="json")
         assert response.headers["cache-control"] == "no-store"
-        resolve.assert_awaited_once_with(SLUG)
+        resolve.assert_awaited_once_with(SLUG, count_open=True)
+
+    @pytest.mark.asyncio
+    async def test_the_pdf_exports_own_read_is_not_counted_as_an_open(
+        self, client: AsyncClient
+    ) -> None:
+        with patch(f"{_ENDPOINT}.get_public_view", AsyncMock(return_value=_VIEW)) as resolve:
+            response = await client.get(f"{BASE}/{SLUG}", params={"print": "1"})
+
+        assert response.status_code == 200
+        resolve.assert_awaited_once_with(SLUG, count_open=False)
 
     @pytest.mark.asyncio
     async def test_the_wide_event_names_the_slug_hash_and_what_it_resolved_to(

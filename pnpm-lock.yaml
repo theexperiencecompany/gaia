@@ -1377,9 +1377,6 @@ importers:
 
   tools/artifact-validate:
     dependencies:
-      '@openuidev/react-headless':
-        specifier: ^0.8.2
-        version: 0.8.2(react@19.2.3)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3)))
       '@openuidev/react-lang':
         specifier: ^0.2.8
         version: 0.2.8(@modelcontextprotocol/sdk@1.32.0(zod@4.6.7))(react@19.2.3)(zod@4.6.7)
@@ -1395,9 +1392,6 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
-      zustand:
-        specifier: ^5.0.14
-        version: 5.0.14(@types/react@19.2.17)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))
     devDependencies:
       esbuild:
         specifier: ^0.25.12

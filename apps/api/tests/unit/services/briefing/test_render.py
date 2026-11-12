@@ -19,6 +19,7 @@ from app.services.briefing.render import (
     render_html_to_image,
     trim_to_content,
 )
+from app.services.render import chromium as chromium_module
 
 IMAGE_BYTES = b"\x89PNG\r\n\x1a\nfake-image-payload"
 
@@ -137,7 +138,7 @@ class Harness:
 @pytest.fixture
 def browser(monkeypatch: pytest.MonkeyPatch) -> Harness:
     harness = Harness()
-    monkeypatch.setattr(render_module, "async_playwright", lambda: harness.playwright)
+    monkeypatch.setattr(chromium_module, "async_playwright", lambda: harness.playwright)
     return harness
 
 

@@ -8,13 +8,11 @@
     "build": "node build.mjs"
   },
   "dependencies": {
-    "@openuidev/react-headless": "^0.8.2",
     "@openuidev/react-lang": "^0.2.8",
     "@openuidev/react-ui": "^0.11.9",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "zod": "^4.6.7",
-    "zustand": "^5.0.14"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "esbuild": "^0.25.12"
