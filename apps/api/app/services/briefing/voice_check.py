@@ -285,14 +285,27 @@ def _key_stems(text: str) -> set[str]:
     }
 
 
-def _mentions(said: set[str], text: str) -> bool:
-    return not _key_stems(text) or bool(_key_stems(text) & said)
+def _links_in(message: str) -> list[str]:
+    return [match.group(0).rstrip(_LINK_TRAILING_PUNCTUATION) for match in _URL.finditer(message)]
+
+
+def _identified_by_title(signal: Signal, signals: Sequence[Signal], said: set[str]) -> bool:
+    """Report whether the message says a title word no other signal shares, or all its words."""
+    own = _key_stems(signal.title)
+    shared = set().union(*(_key_stems(other.title) for other in signals if other is not signal))
+    distinctive = own - shared
+    return bool(distinctive & said) if distinctive else bool(own) and own <= said
 
 
 def voiced_signals(message: str, signals: Sequence[Signal]) -> list[Signal]:
-    """Return the signals the message speaks of, by their link or their title's words."""
+    """Return the signals the message identifies, by their exact link or their own title words."""
+    links = set(_links_in(message))
     said = _key_stems(message)
-    return [s for s in signals if (s.url and s.url in message) or (_key_stems(s.title) & said)]
+    return [
+        s
+        for s in signals
+        if (s.url is not None and s.url in links) or _identified_by_title(s, signals, said)
+    ]
 
 
 def _unmentioned(message: str, payload: BriefingPayload, signals: Sequence[Signal]) -> list[str]:
@@ -314,10 +327,13 @@ def _unmentioned(message: str, payload: BriefingPayload, signals: Sequence[Signa
         for event in payload.calendar
         if _key_stems(event.title) and not _key_stems(event.title) & said
     ]
+    voiced = voiced_signals(message, signals)
     problems += [
         f"the message never mentions {s.title!r} in {s.app}, which is important"
         for s in signals
-        if s.importance is SignalImportance.HIGH and not _mentions(said, s.title)
+        if s.importance is SignalImportance.HIGH
+        and (s.url is not None or _key_stems(s.title))
+        and s not in voiced
     ]
     return problems
 
@@ -326,9 +342,7 @@ def _foreign_links(message: str, context: str) -> list[str]:
     """Name each link in the message that nothing the model was shown carries."""
     return [
         f"the message links to {url}, which no fact carries"
-        for url in (
-            match.group(0).rstrip(_LINK_TRAILING_PUNCTUATION) for match in _URL.finditer(message)
-        )
+        for url in _links_in(message)
         if url not in context
     ]
 
