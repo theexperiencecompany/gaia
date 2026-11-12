@@ -4,6 +4,7 @@ import { RedirectType, redirect } from "next/navigation";
 import { useState } from "react";
 import { ConfirmActionDialog } from "@/components/shared/ConfirmActionDialog";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
+import { useReferralMe } from "@/features/referrals/hooks/useReferrals";
 import { PROVIDERS_SETTINGS_PATH } from "@/features/settings/components/providers/providerRows";
 import type { ModalAction } from "@/features/settings/components/SettingsMenu";
 import { SectionComponent } from "@/features/settings/config/sectionComponents";
@@ -14,6 +15,7 @@ import {
 import {
   BILLING_ONLY_SETTINGS_KEYS,
   isSettingsSectionAllowed,
+  REFERRALS_SECTION,
 } from "@/features/settings/config/settingsConfig";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 
@@ -34,12 +36,13 @@ export default function SettingsSectionClient({
   const { userId, role } = useCurrentUser();
   const allowed = isSettingsSectionAllowed(section, role);
   const forbidden = userId !== "" && !allowed;
+  const referralsOff = useReferralMe().status === "disabled";
 
   // Resolved during render, not an effect, so the blocked section never paints.
   if (billingHidden && BILLING_ONLY_SETTINGS_KEYS.has(section)) {
     redirect(PROVIDERS_SETTINGS_PATH, RedirectType.replace);
   }
-  if (forbidden) {
+  if (forbidden || (referralsOff && section === REFERRALS_SECTION)) {
     redirect(`/settings/${DEFAULT_SECTION}`, RedirectType.replace);
   }
 
