@@ -13,6 +13,7 @@ import type {
 } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
+import { compareMessageOrder } from "./messageOrder";
 
 export interface IConversation {
   id: string;
@@ -46,6 +47,9 @@ export interface IMessage {
   createdAt: Date;
   updatedAt: Date;
   messageId?: string;
+  // The message's place in its conversation's order, from the server. Absent
+  // until the server has placed it (see compareMessageOrder).
+  seq?: number;
 
   // File data
   fileIds?: string[];
@@ -168,6 +172,10 @@ class ChatDexie extends Dexie {
       conversations: "id, updatedAt, createdAt",
       messages: "id, conversationId, createdAt",
     });
+    // Rows cached before seq existed keep no seq until a sync brings it.
+    this.version(2).stores({
+      messages: "id, conversationId, createdAt, [conversationId+seq]",
+    });
 
     this.conversations = this.table("conversations");
     this.messages = this.table("messages");
@@ -253,16 +261,20 @@ class ChatDexie extends Dexie {
   public getMessagesForConversation(
     conversationId: string,
   ): Promise<IMessage[]> {
-    return this.run([], () =>
-      this.messages
-        .where("conversationId")
-        .equals(conversationId)
-        .sortBy("createdAt"),
+    return this.run([], async () =>
+      (
+        await this.messages
+          .where("conversationId")
+          .equals(conversationId)
+          .toArray()
+      ).toSorted(compareMessageOrder),
     );
   }
 
   public getAllMessages(): Promise<IMessage[]> {
-    return this.run([], () => this.messages.orderBy("createdAt").toArray());
+    return this.run([], async () =>
+      (await this.messages.toArray()).toSorted(compareMessageOrder),
+    );
   }
 
   public async getConversationIdsWithMessages(): Promise<string[]> {

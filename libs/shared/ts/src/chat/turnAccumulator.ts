@@ -466,6 +466,7 @@ export const applyStreamEvent = (
     case "progress":
     case "conversation_initialized":
     case "conversation_description":
+    case "reply_placed":
     case "desktop_tool_request":
     case "token_usage":
       return acc;

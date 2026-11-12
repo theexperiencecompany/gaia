@@ -168,8 +168,8 @@ export function useVoiceMessages(
     botTokenSeenThisTurnRef.current = false;
   }, []);
 
-  // Strictly-increasing timestamp so the chatStore `createdAt` sort matches
-  // creation order even when messages land in the same millisecond.
+  // Strictly increasing: voice records are unplaced (no seq), which order by
+  // creation time, and two can land in the same millisecond.
   const nextCreatedAt = useCallback((): Date => {
     const t = Math.max(Date.now(), seqClockRef.current + 1);
     seqClockRef.current = t;
