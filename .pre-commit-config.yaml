@@ -98,6 +98,13 @@ repos:
         files: '^(apps/web/src/config/openui/|scripts/openui/generate-prompt\.ts|apps/web/package\.json|pnpm-lock\.yaml)'
         pass_filenames: false
 
+      - id: openui-gen-artifact-prompts
+        name: artifact prompts up to date
+        entry: bash -c 'pnpm openui:gen-artifact-prompts && git diff --exit-code apps/api/app/agents/prompts/artifacts/'
+        language: system
+        files: '^(apps/web/src/features/artifacts/openui/|scripts/openui/generate-artifact-prompt\.ts|apps/web/package\.json|pnpm-lock\.yaml)'
+        pass_filenames: false
+
       # `files:` selects exactly what the ci:api-schema nx target's inputs do —
       # those inputs are the source of truth for what can change the generated
       # contract, and scripts/ci/tests/test_hook_scopes.py fails if they drift. Restaging the regenerated artifacts is deliberate:

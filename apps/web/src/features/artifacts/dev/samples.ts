@@ -1,0 +1,43 @@
+/** Two programs gpt-6-luna wrote for the prototype's launch and research briefs, for the dev page. */
+export const ARTIFACT_SAMPLES = {
+  launch: [
+    'root = Artifact("Atlas launch week dashboard", "Launched 14 January 2027 · first seven days through 20 January. Day-one retention is ahead of target, and the paywall step loses the most people.", ["Sources: PostHog, Stripe and Linear", "As of 21 January 2027"], [stats1, columns1, section1, section2])',
+    'stats1 = Stats([["Sign-ups", "1,840", "Target: 1,500", "up", "good"], ["Activated", "41%", "Made a first plan"], ["Paid", "96", "5.2% of sign-ups"], ["MRR", "$1,152"], ["Day-one retention", "36%", "Target: 30%", "up", "good"]])',
+    "columns1 = Columns([line1, stacked1])",
+    'line1 = Line("Sign-ups topped the seven-day target", "Daily sign-ups, Tue–Mon", ["Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Mon"], [["Sign-ups", [310, 420, 270, 230, 210, 190, 210]]])',
+    'stacked1 = StackedBars("Product Hunt led the launch, then organic held steady", "Sign-ups by channel, Tue–Mon", ["Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Mon"], [["Product Hunt", [190, 160, 70, 40, 30, 20, 20]], ["Organic", [80, 170, 130, 120, 110, 110, 120]], ["Referral", [40, 90, 70, 70, 70, 60, 70]]])',
+    'section1 = Section("Activation, conversion and revenue", "The largest funnel loss is between seeing the paywall and paying.", [funnel1, callout1, table1, para1])',
+    'funnel1 = Funnel("Launch-week signup funnel", "People at each step", [["Signed up", 1840], ["Connected a calendar", 1210], ["Made a first plan", 754], ["Saw the paywall", 612], ["Paid", 96]])',
+    'callout1 = Callout("warn", "Biggest funnel leak", "The paywall step loses the most people: {funnel1.worstStep} loses {funnel1.worstStepLoss} of people.")',
+    'table1 = DataTable("Stripe revenue by plan", ["Plan", "Subscribers", "Revenue"], [1, 2], [["Personal", 71, "$568"], ["  Monthly", 52, "$416"], ["  Annual", 19, "$152"], ["Team", 25, "$584"], ["  2–5 seats", 21, "$420"], ["  6+ seats", 4, "$164"]])',
+    'para1 = Paragraph("Plans created: weekday mornings peak at 8–9am with 41–61 plans; weekend peaks are 20–21h with 18–29 plans.")',
+    'section2 = Section("Linear: launch-week priorities", "Fix this week’s conversion and calendar issues, while continuing the planning reminder.", [kanban1])',
+    'kanban1 = Kanban([["Fix this week", [["Paywall copy test", "Lena"], ["Outlook 365 calendar connect bug", "Dev"]]], ["In progress", [["Sunday-evening planning reminder", "Ana"]]], ["Shipped", [["Referral credit", "Dev"], ["Onboarding checklist", "Ana"]]]])',
+  ].join("\n"),
+  report: [
+    'root = Artifact("Northwind four-day week pilot: research report for Maya Chen", "Recommendation: make the four-day week permanent from January, with a staggered support rota. Ticket throughput was broadly maintained, while survey responses improved; support coverage is the key issue to resolve.", ["Pilot: 4 August to 24 October 2026; 46 people; Monday to Thursday, 32 hours, full pay.", "Comparison: 12 pilot weeks versus the 12 weeks before.", "Survey: 44 of 46 people responded at week 12."], [takeaways1, section1, section2, section3, section4, section5, section6, sources1])',
+    'takeaways1 = Takeaways(["Make the four-day week permanent from January, with a staggered support rota.", "Pilot throughput finished close to the pre-pilot level: {line1.avg~:Pilot} completed tickets a week versus {line1.avg~:Baseline}.", "Survey agreement rose on time for life outside work, energy, and focus; reported stress fell.", "Address support coverage: first replies slowed, and Friday tickets waited substantially longer than tickets on other days."])',
+    'section1 = Section("Pilot and method", "The pilot changed the working week while retaining full pay.", [para1, para2])',
+    'section2 = Section("Ticket throughput", "Weekly completed tickets were lower early in the pilot and recovered toward the baseline.", [line1, para3, table1])',
+    'section3 = Section("Employee experience and absence", "Survey responses improved across the reported wellbeing measures, and sick days fell versus the prior quarter.", [table2, para4, quote1])',
+    'section4 = Section("Support coverage", "Support response times worsened, especially for tickets arriving on Friday; rota design should address this directly.", [stats1, callout1, para5])',
+    'section5 = Section("Recommendation", "Approve permanence from January, conditional on a workable staggered support rota.", [para6])',
+    'section6 = Section("Next steps", "Complete the decision, rota, policy updates, and follow-up survey on the proposed schedule.", [todo1])',
+    'line1 = Line("Pilot throughput recovered toward the baseline", "Completed tickets per ISO week; 12 weeks before versus 12 pilot weeks", ["W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8", "W9", "W10", "W11", "W12"], [["Baseline", [212, 218, 205, 221, 214, 219, 210, 224, 216, 213, 220, 217]], ["Pilot", [188, 197, 204, 209, 211, 216, 208, 219, 212, 214, 215, 214]]])',
+    'table1 = DataTable("Tickets completed per week by team, before versus pilot; Support excluded", ["Team", "People", "Before", "Pilot"], [1, 2, 3], [["Engineering", 18, 96, 99], ["Platform", 7, 38, 40], ["Product", 11, 58, 59], ["Design", 6, 31, 32], ["Marketing", 7, 38, 37], ["Operations", 8, 52, 46], ["Finance ops", null, 21, 20], ["People ops", null, 31, 26], ["Total", null, 217, 214]])',
+    'table2 = DataTable("Share agreeing at week 0 versus week 12; 44 of 46 responded", ["Survey statement", "Week 0", "Week 12"], [1, 2], [["Time for life outside work", "41%", "83%"], ["Energy left at end of week", "29%", "61%"], ["Can focus without interruption", "47%", "64%"], ["Stressed most days", "52%", "36%"]])',
+    'stats1 = Stats([["Sick days", "41", "Down from 67 last quarter", "down", "good"], ["Support first reply", "5.2h", "Up from 3.8h", "up", "bad"], ["Friday ticket wait", "62h", "Median; 4h on other days", "up", "bad"]])',
+    'callout1 = Callout("risk", "Friday coverage needs a rota", "Friday tickets waited a median 62 hours, compared with 4 hours on other days. Two of five support staff volunteered to take Monday off instead of Friday; use a staggered rota to protect Friday coverage.")',
+    'para1 = Paragraph("Northwind ran the pilot from 4 August to 24 October 2026 with 46 people working Monday to Thursday for 32 hours on full pay. The comparison covers the 12 pilot weeks and the 12 weeks before.")',
+    'para2 = Paragraph("Throughput is completed tickets per ISO week, taken from the tracker and counted on first move to done. Support is excluded from the team breakdown.")',
+    'para3 = Paragraph("Across the weekly series, the pilot average was {line1.avg~:Pilot} tickets against {line1.avg~:Baseline} before the pilot. The series shows a low start followed by recovery; team totals also show variation, including lower Operations output and higher Engineering output.")',
+    'para4 = Paragraph("Among survey respondents, agreement that there was time for life outside work rose from 41% to 83%; energy left at the end of the week rose from 29% to 61%; and ability to focus without interruption rose from 47% to 64%. Agreement with being stressed most days fell from 52% to 36%. Sick days were 41, down from 67 last quarter.")',
+    'quote1 = Quote("I used to spend Sunday dreading Monday. Now Friday is the day I fix the house, and the weekend is actually a weekend.", "Product designer")',
+    'para5 = Paragraph("Support first reply slowed from 3.8h to 5.2h. The Friday wait points to a coverage gap rather than a reason to abandon the pilot: plan the rota around service coverage, with Monday and Friday leave staggered.")',
+    'para6 = Paragraph("Approve making the four-day week permanent from January, paired with a staggered support rota. Review support response times and ticket waits as part of implementation.")',
+    'todo1 = Todo([["Approve", "the permanent four-day week at the 20 Nov leadership meeting.", "Maya"], ["Draft", "a support Monday rota with Priya and Tom by 28 Nov.", "Lena"], ["Update", "contracts and handbook by 15 Dec.", "HR"], ["Rerun", "the survey after six months in Jun 2027.", "Maya"]])',
+    'sources1 = Sources([["Northwind pilot charter", "Northwind", "July 2026"], ["The results are in: the UK\'s four-day week pilot", "Autonomy", "https://autonomy.work/portfolio/uk4dwpilotresults/"]])',
+  ].join("\n"),
+} as const;
+
+export type ArtifactSampleName = keyof typeof ARTIFACT_SAMPLES;

@@ -4,6 +4,7 @@ packages:
   - packages/*
   - libs/*
   - libs/shared/*
+  - tools/artifact-validate
 
 # ─── Supply-chain hardening ───────────────────────────────────────────────────
 # All of these are resolution/install-time settings for pnpm >=10.16 (we pin

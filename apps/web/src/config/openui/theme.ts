@@ -16,8 +16,20 @@ import { createTheme } from "@openuidev/react-ui/ThemeProvider";
  */
 
 // GAIA data-viz palettes (DESIGN.md). Cyan-led, matching the previous OpenUI charts.
-const CHART_PALETTE = ["#00bbff", "#34d399", "#60a5fa", "#f472b6", "#fb923c"];
-const PIE_PALETTE = ["#00bbff", "#34d399", "#60a5fa", "#a78bfa", "#f472b6"];
+export const CHART_PALETTE = [
+  "#00bbff",
+  "#34d399",
+  "#60a5fa",
+  "#f472b6",
+  "#fb923c",
+];
+export const PIE_PALETTE = [
+  "#00bbff",
+  "#34d399",
+  "#60a5fa",
+  "#a78bfa",
+  "#f472b6",
+];
 
 export const gaiaOpenUITheme = createTheme({
   // ── Surfaces ────────────────────────────────────────────────────────────
