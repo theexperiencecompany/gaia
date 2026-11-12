@@ -4,13 +4,10 @@ import { ApiError } from "@shared/api";
 import type { ReferralMeResponse } from "@shared/api/generated";
 import { useQuery } from "@tanstack/react-query";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
+import { API_ERROR_CODES } from "@/lib/api/errorCodes";
 import { referralsApi } from "../api/referralsApi";
 import type { InviteSender } from "../stores/inviteStore";
 
-/** The API's code for a caller with no active subscription. */
-const SUBSCRIPTION_REQUIRED = "REFERRAL_SUBSCRIPTION_REQUIRED";
-/** The API's code while the referral program is off, or on an instance that sells no plans. */
-const REFERRALS_DISABLED = "REFERRALS_DISABLED";
 const ME_STALE_MS = 60 * 1000;
 
 export type ReferralMeState =
@@ -32,8 +29,10 @@ export function useReferralMe(): ReferralMeState {
 
   if (query.data) return { status: "ready", me: query.data };
   if (query.error instanceof ApiError) {
-    if (query.error.code === REFERRALS_DISABLED) return { status: "disabled" };
-    if (query.error.code === SUBSCRIPTION_REQUIRED) {
+    if (query.error.code === API_ERROR_CODES.REFERRALS_DISABLED) {
+      return { status: "disabled" };
+    }
+    if (query.error.code === API_ERROR_CODES.REFERRAL_SUBSCRIPTION_REQUIRED) {
       return { status: "subscribe_first" };
     }
   }

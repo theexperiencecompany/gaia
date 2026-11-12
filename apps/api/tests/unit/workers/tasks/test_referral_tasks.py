@@ -15,6 +15,7 @@ from app.workers.tasks.referral_tasks import (
     settle_referral_rewards_task,
     sweep_unsettled_referral_rewards,
 )
+from tests.helpers import captured_wide_event
 
 TASK = "app.workers.tasks.referral_tasks"
 USER_ID = "64a0000000000000000000a1"
@@ -80,10 +81,12 @@ async def test_the_sweep_queues_every_referrer_whose_month_outlived_its_job() ->
         ) as unsettled,
         patch(f"{TASK}.queue_settlement", AsyncMock()) as queue,
     ):
-        result = await sweep_unsettled_referral_rewards({})
+        async with captured_wide_event() as event:
+            result = await sweep_unsettled_referral_rewards({})
 
     unsettled.assert_awaited_once_with(
         NOW - SETTLE_SWEEP_GRACE, limit=SETTLE_SWEEP_MAX_REFERRALS_PER_RUN
     )
     assert queue.await_args_list == [call(USER_ID), call(OTHER_ID)]
     assert result == "sweep_unsettled_referral_rewards queued 2"
+    assert event["referral"] == {"operation": "settle_sweep", "referrers_queued": 2}

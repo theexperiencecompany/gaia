@@ -4,7 +4,9 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from dodopayments import APIConnectionError, APIError, APIResponseValidationError, APIStatusError
 from dodopayments.types import Discount
+import httpx
 import pytest
 import time_machine
 
@@ -15,16 +17,20 @@ from app.services.referrals.gift import (
     CheckoutGift,
     code_value,
     gift_code_for_checkout,
+    gift_mint_failure_reason,
     gift_value,
+    is_refusal,
     pending_gift_referral,
     renew_gift_code,
 )
+from shared.py.analytics.catalog.referrals import GiftMintFailureReason
 from tests.factories import make_pro_plans
-from tests.helpers import captured_wide_event
+from tests.helpers import captured_wide_event, referrals_off_for
 
 NOW = datetime(2026, 10, 14, tzinfo=UTC)
 GIFT = "app.services.referrals.gift"
 FRIEND_ID = "65f0c0ffee00000000000f01"
+DODO_REQUEST = httpx.Request("POST", "https://dodo.test/discounts")
 
 
 def _referral(
@@ -47,6 +53,37 @@ def _dodo(code: str = "GIFT-NEW") -> MagicMock:
     client = MagicMock()
     client.discounts.create.return_value = SimpleNamespace(code=code, discount_id="dsc_new")
     return client
+
+
+def _answered(status: int) -> APIStatusError:
+    return APIStatusError(
+        "dodo answered", response=httpx.Response(status, request=DODO_REQUEST), body=None
+    )
+
+
+class TestHowDodoFailed:
+    @pytest.mark.parametrize(
+        ("error", "reason"),
+        [
+            (APIConnectionError(request=DODO_REQUEST), "provider_unreachable"),
+            (_answered(422), "provider_rejected"),
+            (
+                APIResponseValidationError(httpx.Response(200, request=DODO_REQUEST), body=None),
+                "provider_invalid_response",
+            ),
+        ],
+        ids=["unreachable", "rejected", "unparseable-answer"],
+    )
+    def test_a_failed_mint_is_counted_by_how_dodo_failed(
+        self, error: APIError, reason: GiftMintFailureReason
+    ) -> None:
+        assert gift_mint_failure_reason(error) == reason
+
+    @pytest.mark.parametrize(
+        ("status", "refused"), [(422, True), (500, False)], ids=["4xx", "first-5xx"]
+    )
+    def test_only_a_4xx_is_dodo_refusing_the_request(self, status: int, refused: bool) -> None:
+        assert is_refusal(_answered(status)) is refused
 
 
 class TestPendingGiftReferral:
@@ -94,9 +131,9 @@ class TestPendingGiftReferral:
         ):
             assert await pending_gift_referral(FRIEND_ID) is None
 
-    @pytest.mark.usefixtures("referrals_off")
-    async def test_with_referrals_off_a_joined_friend_is_owed_no_new_gift(self) -> None:
+    async def test_with_referrals_off_for_the_friend_they_are_owed_no_new_gift(self) -> None:
         with (
+            referrals_off_for(FRIEND_ID),
             patch(f"{GIFT}.referral_repository.get", AsyncMock(return_value=_referral())),
             patch(
                 f"{GIFT}.subscription_repository.has_any_for_user", AsyncMock(return_value=False)
@@ -194,22 +231,42 @@ class TestGiftCodeForCheckout:
 class TestRenewGiftCode:
     REFUSED = CheckoutGift(code="GIFT-OLD", duration=PlanDuration.MONTHLY, referrer_id="referrer-1")
 
-    async def test_a_refused_code_is_swapped_for_a_fresh_single_use_one(self) -> None:
+    @pytest.mark.parametrize(
+        ("duration", "product", "basis_points", "cycles"),
+        [
+            (PlanDuration.MONTHLY, "pdt_monthly", 5000, 2),
+            (PlanDuration.YEARLY, "pdt_yearly", 1111, 1),
+        ],
+        ids=["monthly", "yearly"],
+    )
+    async def test_a_refused_code_is_swapped_for_a_fresh_one_on_its_cycles_terms(
+        self, duration: PlanDuration, product: str, basis_points: int, cycles: int
+    ) -> None:
         client = _dodo("GIFT-FRESH")
-        stored = _referral(gift_codes={PlanDuration.MONTHLY: "GIFT-FRESH"})
+        refused = CheckoutGift(code="GIFT-OLD", duration=duration, referrer_id="referrer-1")
+        stored = _referral(gift_codes={duration: "GIFT-FRESH"})
         with patch(
             f"{GIFT}.referral_repository.replace_gift_code", AsyncMock(return_value=stored)
         ) as replace:
-            renewed = await renew_gift_code(client, _referral(), self.REFUSED, make_pro_plans())
+            async with captured_wide_event() as event:
+                renewed = await renew_gift_code(client, _referral(), refused, make_pro_plans())
 
         assert renewed == CheckoutGift(
-            code="GIFT-FRESH", duration=PlanDuration.MONTHLY, referrer_id="referrer-1"
+            code="GIFT-FRESH", duration=duration, referrer_id="referrer-1"
         )
         replace.assert_awaited_once_with(
-            FRIEND_ID, PlanDuration.MONTHLY, refused="GIFT-OLD", fresh="GIFT-FRESH"
+            FRIEND_ID, duration, refused="GIFT-OLD", fresh="GIFT-FRESH"
         )
-        assert client.discounts.create.call_args.kwargs["restricted_to"] == ["pdt_monthly"]
+        client.discounts.create.assert_called_once_with(
+            amount=basis_points,
+            type="percentage",
+            subscription_cycles=cycles,
+            usage_limit=1,
+            restricted_to=[product],
+            name=f"Referral gift {FRIEND_ID} {duration.value}",
+        )
         client.discounts.delete.assert_not_called()
+        assert event["referral"] == {"gift_renewed": duration.value}
 
     async def test_a_checkout_that_renewed_first_keeps_its_code_and_ours_is_deleted(self) -> None:
         client = _dodo("GIFT-LOSER")
@@ -218,6 +275,18 @@ class TestRenewGiftCode:
             renewed = await renew_gift_code(client, _referral(), self.REFUSED, make_pro_plans())
 
         assert renewed.code == "GIFT-WINNER"
+        client.discounts.delete.assert_called_once_with("dsc_new")
+
+    async def test_a_referral_gone_mid_renewal_fails_naming_it_and_leaves_no_live_code(
+        self,
+    ) -> None:
+        client = _dodo("GIFT-FRESH")
+        with (
+            patch(f"{GIFT}.referral_repository.replace_gift_code", AsyncMock(return_value=None)),
+            pytest.raises(RuntimeError, match=FRIEND_ID),
+        ):
+            await renew_gift_code(client, _referral(), self.REFUSED, make_pro_plans())
+
         client.discounts.delete.assert_called_once_with("dsc_new")
 
 
@@ -251,9 +320,18 @@ class TestWhichDiscountIsWorthMore:
             ({"amount": 5000, "subscription_cycles": 24}, 18000),
             ({"restricted_to": ["pdt_yearly"]}, 0),
             ({"expires_at": datetime(2026, 1, 1, tzinfo=UTC)}, 0),
+            ({"expires_at": NOW}, 0),
             ({"usage_limit": 5, "times_used": 5}, 0),
         ],
-        ids=["forever", "three-months", "capped-at-a-year", "other-product", "expired", "used-up"],
+        ids=[
+            "forever",
+            "three-months",
+            "capped-at-a-year",
+            "other-product",
+            "expired",
+            "expiring-now",
+            "used-up",
+        ],
     )
     def test_a_code_is_valued_over_the_monthly_plans_first_year(
         self, overrides: dict[str, object], value: int

@@ -18,6 +18,7 @@ from app.models.referral_models import ReferralNudgeStateDocument
 from app.services.referrals.nudges import dismiss_nudge, record_announcement, send_pitch
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.referrals import ReferralNudgeDismissed, ReferralNudgeSent
+from tests.helpers import referrals_off_for
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 NOW = datetime(2026, 10, 14, 10, 0, tzinfo=UTC)
@@ -91,12 +92,12 @@ class TestSendPitch:
             "referral", nudge="chat_card", nudge_skipped="capped"
         )
 
-    @pytest.mark.usefixtures("referrals_off")
     @pytest.mark.parametrize("nudge", sorted(PITCH_NUDGES), ids=lambda nudge: nudge.value)
-    async def test_with_referrals_off_no_pitch_goes_out(
+    async def test_with_referrals_off_for_the_user_no_pitch_goes_out(
         self, seams: Seams, nudge: ReferralNudge
     ) -> None:
-        assert await send_pitch(USER_ID, nudge, seams.deliver) is False
+        with referrals_off_for(USER_ID):
+            assert await send_pitch(USER_ID, nudge, seams.deliver) is False
         seams.repo.claim.assert_not_awaited()
         seams.deliver.assert_not_awaited()
         seams.capture.assert_not_called()

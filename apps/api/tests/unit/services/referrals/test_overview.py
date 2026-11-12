@@ -53,6 +53,7 @@ from shared.py.analytics.catalog.auth import UserActive
 from shared.py.analytics.catalog.referrals import ReferralLandingResolved
 from shared.py.analytics.context import AnalyticsContext, analytics_context
 from tests.factories import make_pro_plans
+from tests.helpers import referrals_off_for
 
 OVERVIEW = "app.services.referrals.overview"
 PAYMENTS = "app.services.payments.payment_service"
@@ -233,11 +234,10 @@ class TestOverview:
         }
         seams.ensure_code.assert_not_awaited()
 
-    @pytest.mark.usefixtures("referrals_off")
-    async def test_with_referrals_off_the_page_is_a_coded_403_and_mints_no_code(
+    async def test_with_referrals_off_for_the_owner_the_page_is_a_coded_403_and_mints_no_code(
         self, seams: Seams
     ) -> None:
-        with pytest.raises(AppError) as refused:
+        with referrals_off_for(REFERRER.id), pytest.raises(AppError) as refused:
             await get_referral_overview(REFERRER.id)
 
         assert refused.value.status_code == 403
@@ -311,11 +311,11 @@ class TestResolve:
         assert ReferralLandingResolved in captured
         assert UserActive not in captured
 
-    @pytest.mark.usefixtures("referrals_off")
-    async def test_with_referrals_off_a_live_link_is_invalid_sets_no_cookie_and_records_disabled(
+    async def test_with_referrals_off_for_its_owner_a_live_link_is_invalid_and_records_disabled(
         self, owned_code: AsyncMock
     ) -> None:
-        landing = await land_on_invite("aryan-k7f2", None, None)
+        with referrals_off_for(OWNER.id):
+            landing = await land_on_invite("aryan-k7f2", None, None)
 
         assert landing.resolved == ReferralResolveResponse(valid=False, offer=build_offer(PLANS))
         assert landing.cookie is None
@@ -431,7 +431,7 @@ class TestFriendGift:
         )
         with (
             patch(f"{OVERVIEW}.pending_gift_referral", AsyncMock(return_value=referral)) as owed,
-            patch(f"{OVERVIEW}.user_repository.get", AsyncMock(return_value=OWNER)),
+            patch(f"{OVERVIEW}.user_repository.get", AsyncMock(side_effect={OWNER.id: OWNER}.get)),
             patch(f"{OVERVIEW}.payment_service.get_pro_plans", AsyncMock(return_value=PLANS)),
         ):
             yield owed

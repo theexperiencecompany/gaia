@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, call, patch
 import pytest
 import time_machine
 
+from app.constants.error_codes import REFERRALS_DISABLED
 from app.constants.integrations import GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID
 from app.constants.referrals import SEND_AS_READ_FAILED_MESSAGE, SEND_AS_READ_FAILED_WHY
 from app.models.calendar_models import GoogleCalendarEventResource
@@ -18,6 +19,7 @@ from app.models.user_models import UserDocument
 from app.services.mail.mail_service import MessageFetchOptions
 from app.services.referrals.suggestions import is_automated, suggest_invitees
 from app.utils.errors import AppError
+from tests.helpers import referrals_off_for
 
 MODULE = "app.services.referrals.suggestions"
 ME = UserDocument(id="64abc123def4567890abcdef", email="me@example.com", first_name="Me")
@@ -229,6 +231,17 @@ async def test_the_wide_event_records_sources_candidates_and_suggestions(sources
             suggestions=1,
         )
     ]
+
+
+async def test_with_referrals_off_for_the_user_no_calendar_or_mail_is_read(
+    sources: SimpleNamespace,
+) -> None:
+    with referrals_off_for(ME.id), pytest.raises(AppError) as refused:
+        await suggest_invitees(ME.id)
+
+    assert (refused.value.status_code, refused.value.code) == (403, REFERRALS_DISABLED)
+    sources.calendar.assert_not_called()
+    sources.mail.assert_not_called()
 
 
 async def test_nothing_connected_suggests_nobody(sources) -> None:

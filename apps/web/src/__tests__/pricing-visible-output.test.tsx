@@ -321,8 +321,33 @@ describe("pricing cards", () => {
     cleanup();
     const yearly = render(<PricingCards gift={gift} />);
     expect(visibleText(yearly.container)).toContain(
-      "$25$23/ monthFirst year, then $300$300$270",
+      "$25$22.50/ monthFirst year, then $300$300$270",
     );
+  });
+
+  it("a yearly price's month keeps its cents, struck or not", () => {
+    mockPlans = [ENTERPRISE, PRO_MONTHLY, { ...PRO_YEARLY, amount: 27000 }];
+    const list = render(<PricingCards />);
+    expect(visibleText(list.container)).toContain(
+      "$22.50/ monthBilled yearly$270",
+    );
+    cleanup();
+    act(() => {
+      useUpgradeModalStore.setState({ offer: FOUNDER_OFFER });
+    });
+    const offer = render(<PricingCards />);
+    expect(visibleText(offer.container)).toContain(
+      "$22.50$13.50/ monthBilled yearly$270$162",
+    );
+  });
+
+  it("a zero-exponent currency prices a yearly month in whole yen", () => {
+    mockPlans = [
+      { ...PRO_MONTHLY, currency: "JPY", amount: 1000 },
+      { ...PRO_YEARLY, currency: "JPY", amount: 10000 },
+    ];
+    const { container } = render(<PricingCards />);
+    expect(visibleText(container)).toContain("¥833/ monthBilled yearly¥10,000");
   });
 
   it("a gift checkout applies only on monthly leaves the yearly card at its list price", () => {

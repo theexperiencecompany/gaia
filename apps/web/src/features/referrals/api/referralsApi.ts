@@ -2,14 +2,22 @@ import type {
   ReferralCopyVariant,
   ReferralInviteSurface,
 } from "@shared/api/generated";
+import { API_ERROR_CODES } from "@/lib/api/errorCodes";
 import { api } from "@/lib/api/typed";
 
 /** How long a signed-out visitor waits on crediting a workflow's creator before sign-in goes ahead. */
 const WORKFLOW_CREDIT_TIMEOUT_MS = 3_000;
 
 export const referralsApi = {
-  /** 403 REFERRAL_SUBSCRIPTION_REQUIRED for a non-subscriber; silent so the page can say it kindly. */
-  getMe: () => api.get("/api/v1/referrals/me", { silent: true }),
+  /** A non-subscriber's and a switched-off program's 403s are states the referral surfaces render, not failures. */
+  getMe: () =>
+    api.get("/api/v1/referrals/me", {
+      silent: true,
+      expectedErrorCodes: [
+        API_ERROR_CODES.REFERRAL_SUBSCRIPTION_REQUIRED,
+        API_ERROR_CODES.REFERRALS_DISABLED,
+      ],
+    }),
 
   /** The caller's own gift from whoever referred them; null when none is owed. */
   getGift: () => api.get("/api/v1/referrals/gift", { silent: true }),

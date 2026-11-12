@@ -72,7 +72,7 @@ async def _overview_or_refusal(user_id: str) -> ReferralMeResponse | str:
     try:
         return await get_referral_overview(user_id)
     except AppError as e:
-        refusal = _REFUSALS.get(e.code or "")
+        refusal = _REFUSALS.get(e.code)
         if refusal is None:
             raise
         log.set_ns("referral", has_link=False)
