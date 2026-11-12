@@ -113,6 +113,9 @@ def test_the_plr_complexity_hook_runs_ci_command_over_every_python_file() -> Non
     interpreter, *ci_args = shlex.split(target["options"]["command"])
     assert interpreter == "python3"
     assert shlex.split(hook["entry"]) == [
+        "mise",
+        "exec",
+        "--",
         "uv",
         "run",
         "--no-project",

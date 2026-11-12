@@ -68,6 +68,43 @@ def test_a_locked_tool_run_through_uvx_fails(
     assert bool(check_tool_pins._uvx_violations()) is flagged
 
 
+HOOK_CONFIG = """\
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+  - repo: local
+    hooks:
+      - id: the-hook
+        entry: {entry}
+        language: system
+"""
+
+
+@pytest.mark.parametrize(
+    ("entry", "flagged"),
+    [
+        ("uv run --frozen --only-group lint ruff check", True),
+        ("bash -c 'cd apps/api && uv run lint-imports'", True),
+        (">-\n          bash -c 'set -e; mise run api:types'", True),
+        ("mise exec -- uv run --frozen --only-group lint ruff check", False),
+        (">-\n          mise exec -- bash -c 'set -e; mise run api:types'", False),
+        ("mise run analytics:types", False),
+        ("../../.venv/bin/python scripts/check.py", False),
+    ],
+)
+def test_a_local_hook_that_skips_mise_runs_the_callers_toolchain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entry: str, flagged: bool
+) -> None:
+    """A hook inherits the committing shell's PATH; outside mise, uv 0.10.6 broke lint-imports."""
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(HOOK_CONFIG.format(entry=entry), encoding="utf-8")
+    monkeypatch.setattr(check_tool_pins, "HOOK_CONFIGS", (config,))
+    violations = check_tool_pins._hook_toolchain_violations()
+    assert [v.line for v in violations] == ([9] if flagged else [])
+
+
 @pytest.mark.parametrize(
     ("text", "ok"),
     [

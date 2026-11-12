@@ -3,7 +3,7 @@
 
 The whole point of pinning is that "passed locally" means "passes CI". This
 check fails when the versions drift apart across the surfaces in SURFACES:
-both pre-commit configs, ci.yml, the CI checks' nx targets
+every prek config (whose local hooks must enter mise), ci.yml, the CI checks' nx targets
 (tools/ci/project.json), the root package.json quality scripts, the
 api mise tasks and taskipy scripts, the ignore-staleness guard's own ruff
 invocation, uv.lock, for biome pnpm-lock.yaml plus every biome.json schema, and
@@ -34,6 +34,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 import tomllib
 
@@ -755,6 +756,51 @@ def _uvx_violations() -> list[Violation]:
     return out
 
 
+# prek's workspace mode runs every nested config, one directory per project.
+HOOK_CONFIGS = tuple(
+    REPO_ROOT / name
+    for name in subprocess.run(
+        ["git", "ls-files", "--", ".pre-commit-config.yaml", "*/.pre-commit-config.yaml"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+)
+_REPO_LINE = re.compile(r"^\s*-\s+repo:\s*(\S+)")
+_ENTRY_LINE = re.compile(r"^\s*entry:\s*(.*)$")
+_FOLDED = {">", ">-", "|", "|-"}
+
+
+def _hook_toolchain_violations() -> list[Violation]:
+    """Flag a local hook whose command is found on the caller's PATH instead of through mise."""
+    out = []
+    for config in HOOK_CONFIGS:
+        local = False
+        lines = config.read_text(encoding="utf-8").splitlines()
+        for n, line in enumerate(lines, 1):
+            if repo := _REPO_LINE.match(line):
+                local = repo.group(1) == "local"
+            entry = _ENTRY_LINE.match(line)
+            if not (local and entry):
+                continue
+            command = entry.group(1).strip()
+            if command in _FOLDED:
+                command = next(rest.strip() for rest in lines[n:] if rest.strip())
+            program = command.split()[0]
+            if program != "mise" and "/" not in program:
+                out.append(
+                    Violation(
+                        path=config,
+                        line=n,
+                        detail=f"runs `{program}` from the committing shell's PATH, "
+                        "which may hold another uv or node than mise.toml pins",
+                        fix="start the entry with `mise exec -- `",
+                    )
+                )
+    return out
+
+
 def main(argv: list[str]) -> int:
     """Report every drift from EXPECTED or .node-version; return the exit code."""
     del argv
@@ -782,6 +828,7 @@ def main(argv: list[str]) -> int:
     violations.extend(_eas_cli_violations())
     violations.extend(_unpinned_action_violations())
     violations.extend(_uvx_violations())
+    violations.extend(_hook_toolchain_violations())
 
     if violations:
         report_rule(RULE, WHY, DOC, violations)
