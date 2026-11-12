@@ -34,6 +34,7 @@ POOL = FactPool(
         timezone="UTC",
         today=date(2026, 11, 11),
         calendar_events=0,
+        calendar_connected=True,
         calendar_span="today",
         recent_openings=[],
     ),
@@ -190,3 +191,11 @@ async def test_a_composition_without_groups_makes_no_call(model: AsyncMock) -> N
 
     assert await heading_problems(USER, only_note, POOL) == []
     model.assert_not_awaited()
+
+
+def test_the_verdict_follows_its_reasoning_in_the_schema_the_model_fills() -> None:
+    """Regression: with fits first, the check wrote "fits" in its why and still answered False."""
+    fields = list(HeadingVerdict.model_json_schema()["properties"])
+
+    assert fields.index("why") < fields.index("fits")
+    assert fields[-1] == "fits"

@@ -38,5 +38,5 @@ When the heading can be said truthfully of every item under it, it fits.
 ## The groups
 {groups}
 
-Answer one verdict per group, by its block number: fits, the ids of the items it is not true of
-(empty when it fits), and why in a few words."""
+Answer one verdict per group, by its block number: why in a few words, the ids of the items it
+is not true of (empty when it fits), then whether it fits."""

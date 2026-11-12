@@ -21,10 +21,11 @@ _JUDGING = StructuredCallOptions(temperature=BRIEF_HEADING_CHECK_TEMPERATURE, sc
 class HeadingVerdict(BaseModel):
     """Whether one group's heading is true of every item under it."""
 
+    # The verdict comes last so the model reasons before it commits (it once contradicted its why).
     block: int = Field(description="The group's block number, as listed")
-    fits: bool
-    misfits: list[int] = Field(description="The ids of the items the heading is not true of")
     why: str = Field(description="Why, in a few words")
+    misfits: list[int] = Field(description="The ids of the items the heading is not true of")
+    fits: bool
 
 
 class HeadingVerdicts(BaseModel):
