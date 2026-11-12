@@ -1,7 +1,8 @@
 "use client";
 
-import { Button, Tooltip } from "@heroui/react";
+import { Tooltip } from "@heroui/react";
 import type { ReactElement, ReactNode } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 interface MenuItem {
   iconElement?: ReactElement;
@@ -55,7 +56,7 @@ export function NestedMenuTooltip({
       <Tooltip.Content
         placement="right top"
         offset={8}
-        className="border-0! bg-secondary-bg p-0 outline-0!"
+        className="border-0! p-0 outline-0!"
       >
         <div
           onMouseEnter={() => onOpenChange(true)}
@@ -72,11 +73,12 @@ export function NestedMenuTooltip({
                 ) : null;
 
                 return (
-                  <Button
+                  <GaiaButton
                     key={item.key}
                     variant="ghost"
                     size="sm"
-                    className="justify-start text-sm text-zinc-400 transition hover:text-white"
+                    tone="muted"
+                    className="justify-start text-sm transition"
                     onPress={() => {
                       item.action();
                       onOpenChange(false);
@@ -85,7 +87,7 @@ export function NestedMenuTooltip({
                     {iconContent}
                     {item.label}
                     {item.badge}
-                  </Button>
+                  </GaiaButton>
                 );
               })}
             </div>

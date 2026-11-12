@@ -150,12 +150,7 @@ export default function SidebarTopButtons() {
                     </span>
                   </div>
                 </LinkButton>
-                <Tooltip.Content
-                  placement="right"
-                  offset={1}
-                  showArrow
-                  className="rounded-xl"
-                >
+                <Tooltip.Content placement="right" offset={1} showArrow>
                   {shortcut ? (
                     <span className="flex items-center gap-2 text-sm text-zinc-400 font-light py-1 px-2">
                       <span className="text-xs">Go to {label}</span>

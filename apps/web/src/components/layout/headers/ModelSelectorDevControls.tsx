@@ -5,6 +5,7 @@ import { CpuIcon } from "@icons";
 import Image from "next/image";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
+import { toneVariants } from "@/components/shared/tone";
 import { DEV_MODEL_OPTIONS } from "@/features/chat/constants/devModels";
 import { isDevelopment } from "@/lib/environment";
 import { useComposerModelSelection } from "@/stores/composerStore";
@@ -58,12 +59,12 @@ function ModelSelect({
         variant="secondary"
         className="w-full"
       >
-        <Select.Trigger className="h-9 min-h-9 cursor-pointer bg-zinc-800">
+        <Select.Trigger className="h-9 min-h-9 cursor-pointer">
           {current ? (
             <ModelLogo src={current.logo} alt={current.provider} size={16} />
           ) : null}
           <GaiaSelectValue>{current?.name ?? "Model"}</GaiaSelectValue>
-          <Select.Indicator className="text-zinc-500" />
+          <Select.Indicator className={toneVariants({ tone: "faint" })} />
         </Select.Trigger>
         <Select.Popover className="bg-zinc-800">
           <ListBox>
@@ -113,12 +114,8 @@ export default function ModelSelectorDevControls() {
       >
         <CpuIcon width={20} height={20} />
       </GaiaButton>
-      <Popover.Content
-        placement="bottom end"
-        offset={8}
-        className="w-[260px] bg-zinc-900 p-3"
-      >
-        <div className="flex w-full flex-col gap-3">
+      <Popover.Content placement="bottom end" offset={8} className="w-[260px]">
+        <div className="flex w-full flex-col gap-3 p-3">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold tracking-wide text-zinc-300 uppercase">
               Dev models

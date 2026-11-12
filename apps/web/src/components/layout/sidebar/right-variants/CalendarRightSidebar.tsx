@@ -87,7 +87,7 @@ const EventTitleFields: React.FC<EventTitleFieldsProps> = ({
       value={summary}
       onChange={(e) => onSummaryChange(e.target.value)}
       placeholder="Event title"
-      className="border-b border-zinc-700 bg-transparent px-0 text-2xl text-zinc-100 shadow-none placeholder:text-zinc-700 hover:bg-transparent focus:bg-transparent"
+      className="border-b border-zinc-700 bg-transparent px-0 text-2xl shadow-none placeholder:text-zinc-700 hover:bg-transparent focus:bg-transparent"
       autoFocus={isCreating}
     />
 
@@ -96,7 +96,7 @@ const EventTitleFields: React.FC<EventTitleFieldsProps> = ({
       onChange={(e) => onDescriptionChange(e.target.value)}
       placeholder="Add description"
       rows={6}
-      className="bg-zinc-800/30 text-zinc-200 placeholder:text-zinc-700 hover:bg-zinc-800/50"
+      className="bg-zinc-800/30 placeholder:text-zinc-700 hover:bg-zinc-800/50"
     />
   </div>
 );
@@ -179,13 +179,13 @@ const RecurrenceSelector: React.FC<RecurrenceSelectorProps> = ({
         if (key != null) onRecurrenceTypeChange(String(key));
       }}
     >
-      <Label className="text-zinc-400">Repeat</Label>
+      <Label>Repeat</Label>
       <Select.Trigger className="bg-zinc-800/30 shadow-none hover:bg-zinc-800/50">
         <RepeatIcon className="size-4 text-zinc-500" />
         <GaiaSelectValue />
         <Select.Indicator />
       </Select.Trigger>
-      <Select.Popover className="border border-zinc-800 bg-zinc-900">
+      <Select.Popover className="border border-zinc-800">
         <ListBox>
           <ListBox.Item id="none" textValue="Does not repeat">
             Does not repeat
@@ -257,7 +257,7 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
       }}
       isRequired
     >
-      <Label className="text-zinc-400">Calendar</Label>
+      <Label>Calendar</Label>
       <Select.Trigger className="bg-zinc-800/30 shadow-none hover:bg-zinc-800/50">
         {selectedCalendarId && (
           <div
@@ -272,7 +272,7 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
         <GaiaSelectValue />
         <Select.Indicator />
       </Select.Trigger>
-      <Select.Popover className="border border-zinc-800 bg-zinc-900">
+      <Select.Popover className="border border-zinc-800">
         <ListBox>
           {calendars.map((cal) => (
             <ListBox.Item

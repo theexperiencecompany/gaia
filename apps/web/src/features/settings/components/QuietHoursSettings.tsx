@@ -107,7 +107,10 @@ export function QuietHoursSettings() {
               <Slider.Mark
                 key={value}
                 value={value}
-                className="whitespace-nowrap text-[11px] text-zinc-500 tabular-nums"
+                className={toneVariants({
+                  tone: "faint",
+                  className: "whitespace-nowrap text-[11px] tabular-nums",
+                })}
               >
                 {markLabel(value)}
               </Slider.Mark>

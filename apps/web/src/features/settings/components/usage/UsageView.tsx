@@ -7,6 +7,7 @@ import type { FeatureUsage, UsageActivity, UsageSummary } from "@shared/types";
 import { formatCompactNumber, formatDateUTC } from "@shared/utils";
 import { useMemo, useState } from "react";
 import { shapeVariants } from "@/components/shared/shape";
+import { toneVariants } from "@/components/shared/tone";
 import BlurStack from "@/components/ui/blur-stack";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { useRecharts } from "@/components/ui/chart-loader";
@@ -223,11 +224,11 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
           })}
         >
           <Tabs.List className={USAGE_TAB_CLASSES.list}>
-            <Tabs.Tab id="month" className={cn(USAGE_TAB_CLASSES.tab, "px-3")}>
+            <Tabs.Tab id="month" className={USAGE_TAB_CLASSES.tab}>
               Month
               <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
-            <Tabs.Tab id="day" className={cn(USAGE_TAB_CLASSES.tab, "px-3")}>
+            <Tabs.Tab id="day" className={USAGE_TAB_CLASSES.tab}>
               Today
               <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
@@ -330,7 +331,7 @@ function Stats({
               </Tooltip.Trigger>
               <Tooltip.Content
                 placement="top"
-                className="max-w-64 bg-zinc-800 text-xs text-zinc-300 shadow-xl"
+                className={`max-w-64 bg-zinc-800 text-xs shadow-xl ${toneVariants({ tone: "dim" })}`}
               >
                 {`${streak}-day streak. You've been active every day for the last ${streak} days`}
               </Tooltip.Content>
@@ -735,11 +736,11 @@ function Tools({
           onSelectionChange={(k) => onPeriod(k as Period)}
         >
           <Tabs.List className={USAGE_TAB_CLASSES.list}>
-            <Tabs.Tab id="day" className={cn(USAGE_TAB_CLASSES.tab, "px-3")}>
+            <Tabs.Tab id="day" className={USAGE_TAB_CLASSES.tab}>
               Today
               <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
-            <Tabs.Tab id="month" className={cn(USAGE_TAB_CLASSES.tab, "px-3")}>
+            <Tabs.Tab id="month" className={USAGE_TAB_CLASSES.tab}>
               Month
               <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
@@ -825,7 +826,7 @@ function FeatureRow({
         </Tooltip.Trigger>
         <Tooltip.Content
           placement="top"
-          className="max-w-56 bg-zinc-800 text-xs text-zinc-300 shadow-xl"
+          className={`max-w-56 bg-zinc-800 text-xs shadow-xl ${toneVariants({ tone: "dim" })}`}
         >
           {feature.description}
         </Tooltip.Content>

@@ -170,7 +170,7 @@ export const IntegrationInstructionsModal = ({
                 />
               </div>
               <div className="flex min-w-0 flex-col gap-0.5">
-                <Modal.Heading className="text-lg font-semibold text-zinc-100">
+                <Modal.Heading className="text-lg font-semibold">
                   Custom instructions for {integration.name}
                 </Modal.Heading>
                 <span className="text-sm font-light text-zinc-400">
@@ -187,21 +187,18 @@ export const IntegrationInstructionsModal = ({
                 onSelectionChange={(key) => setTab(String(key))}
                 variant="primary"
               >
-                <Tabs.List
-                  aria-label="Instructions editor"
-                  className="bg-zinc-800/60"
-                >
+                <Tabs.List aria-label="Instructions editor">
                   <Tabs.Tab id="write">
                     Write
-                    <Tabs.Indicator className="bg-zinc-700" />
+                    <Tabs.Indicator />
                   </Tabs.Tab>
                   <Tabs.Tab id="preview">
                     Preview
-                    <Tabs.Indicator className="bg-zinc-700" />
+                    <Tabs.Indicator />
                   </Tabs.Tab>
                 </Tabs.List>
 
-                <Tabs.Panel id="write" className="px-0 pt-2 pb-0">
+                <Tabs.Panel id="write" className="px-0 pb-0">
                   <MentionEditor
                     value={value}
                     onChange={setValue}
@@ -223,7 +220,7 @@ export const IntegrationInstructionsModal = ({
                   </div>
                 </Tabs.Panel>
 
-                <Tabs.Panel id="preview" className="px-0 pt-2 pb-0">
+                <Tabs.Panel id="preview" className="px-0 pb-0">
                   <div className="min-h-60 rounded-2xl bg-zinc-800/50 p-4">
                     {value.trim() ? (
                       <MarkdownRenderer
