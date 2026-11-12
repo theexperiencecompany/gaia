@@ -1,5 +1,4 @@
 "use client";
-import "./not-found.css";
 
 import { Home01Icon } from "@icons";
 import Link from "next/link";

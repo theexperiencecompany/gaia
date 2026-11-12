@@ -22,7 +22,7 @@
     "extract-blog": "node scripts/extract-blog-data.mjs",
     "image-dimensions": "node scripts/generate-image-dimensions.mjs",
     "test": "vitest run",
-    "prebuild": "npm run extract-icons && npm run extract-blog && npm run sync-wake-word-runtime && npm run image-dimensions",
+    "prebuild": "npm run extract-icons && npm run extract-blog && npm run sync-wake-word-runtime && npm run image-dimensions && npm run area-css",
     "predev": "npm run sync-wake-word-runtime && node scripts/clean-corrupt-dev-manifest.mjs",
     "dev": "nx next:dev --turbopack --port=${WEB_PORT:-3000}",
     "build": "npm run type-check && nx next:build",
@@ -45,7 +45,8 @@
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "doctor": "npx react-doctor@0.9.12",
     "audit:css": "node scripts/audit-tailwind-classes.mjs",
-    "verify:preview": "node scripts/verify-worker-preview.mjs"
+    "verify:preview": "node scripts/verify-worker-preview.mjs",
+    "area-css": "node scripts/generate-area-css.mjs"
   },
   "dependencies": {
     "@gaia/shared": "workspace:*",
@@ -187,6 +188,8 @@
     "@types/react-dom": "^19.2.3",
     "@types/sanitize-html": "^2.16.1",
     "critters": "^0.0.25",
+    "oxc-parser": "^0.155.0",
+    "oxc-resolver": "^11.24.2",
     "schema-dts": "^1.1.5",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5",
