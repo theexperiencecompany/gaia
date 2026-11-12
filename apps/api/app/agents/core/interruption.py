@@ -87,6 +87,11 @@ def build_interruption_messages(messages: list[AnyMessage]) -> list[AnyMessage]:
     return [*backfill, marker]
 
 
+def _calls_any(message: AIMessage, call_ids: set[str | None]) -> bool:
+    tool_calls: list[ToolCall] = message.tool_calls
+    return any(tc["id"] in call_ids for tc in tool_calls)
+
+
 class _GraphValues(TypedDict, total=False):
     """The checkpoint values read back here; only the messages channel matters."""
 
@@ -101,13 +106,24 @@ async def record_interruption(graph: CompiledStateGraph, config: RunnableConfig)
     """
     state = await graph.aget_state(config)
     values: _GraphValues = cast("_GraphValues", state.values or {}) if state else {}
-    updates = build_interruption_messages(values.get("messages", []))
+    messages = values.get("messages", [])
+    updates = build_interruption_messages(messages)
     if not updates:
         return
 
+    # A call the cut run had not committed yet lives only in pending writes, which the
+    # write below discards; re-writing its message (an upsert) keeps each backfill answered.
+    backfilled = {update.tool_call_id for update in updates if isinstance(update, ToolMessage)}
+    calls = [
+        message
+        for message in messages
+        if isinstance(message, AIMessage) and _calls_any(message, backfilled)
+    ]
     # as_node="tools": the reducer only appends, but attributing the write to
     # the tool node keeps the checkpoint's node history coherent.
-    await graph.aupdate_state(config, {"messages": with_message_ids(updates)}, as_node="tools")
+    await graph.aupdate_state(
+        config, {"messages": with_message_ids([*calls, *updates])}, as_node="tools"
+    )
     configurable: AgentConfigurable = agent_configurable(config)
     log.info(
         f"{LogTag.AGENT} Recorded user interruption in checkpoint",

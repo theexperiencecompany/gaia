@@ -950,7 +950,7 @@ def _json_safe_tool_result(content: MessageContent) -> object:
 
 
 @dataclass
-class _StreamAccumulators:
+class StreamAccumulators:
     """The per-run state execute_graph_streaming threads through its stream handlers."""
 
     complete_message: str = ""
@@ -1089,7 +1089,7 @@ async def _stream_tool_call_frames(
 
 async def _stream_updates(
     payload: Mapping[str, object],
-    state: _StreamAccumulators,
+    state: StreamAccumulators,
     is_comms: bool,
     user_id: str | None,
 ) -> AsyncGenerator[str, None]:
@@ -1173,7 +1173,7 @@ async def _stream_tool_message_frames(
             yield frame
 
 
-def _stream_visible_text(state: _StreamAccumulators, message_id: str) -> str:
+def _stream_visible_text(state: StreamAccumulators, message_id: str) -> str:
     """Return the next piece of a streaming comms message a user may see, and mark it streamed."""
     visible = visible_comms_text_so_far(state.held.texts[message_id])
     new = visible[len(state.released_text.get(message_id, "")) :]
@@ -1182,7 +1182,7 @@ def _stream_visible_text(state: _StreamAccumulators, message_id: str) -> str:
     return new
 
 
-def _finish_visible_text(state: _StreamAccumulators, message_id: str) -> str:
+def _finish_visible_text(state: StreamAccumulators, message_id: str) -> str:
     """Return the rest of a finished comms message a user may see, and forget it streamed."""
     sent = state.released_text.pop(message_id, "")
     return visible_comms_text(state.held.texts.get(message_id, ""))[len(sent) :]
@@ -1190,7 +1190,7 @@ def _finish_visible_text(state: _StreamAccumulators, message_id: str) -> str:
 
 async def _stream_messages(
     payload: tuple[BaseMessage, StreamChunkMetadata],
-    state: _StreamAccumulators,
+    state: StreamAccumulators,
     is_comms: bool,
     stream_id: str | None,
     user_id: str | None,
@@ -1237,7 +1237,7 @@ async def _stream_messages(
 
 async def _stream_custom(
     payload: object,
-    state: _StreamAccumulators,
+    state: StreamAccumulators,
     user_id: str | None,
 ) -> AsyncGenerator[str, None]:
     """Handle one "custom" event: forward it, then honour subagent MCP App metadata."""
@@ -1296,9 +1296,9 @@ def _parse_stream_event(event: tuple[object, ...]) -> tuple[str, object] | None:
     return None
 
 
-async def _frames_for_stream_event(
+async def frames_for_stream_event(
     event: tuple[object, ...],
-    state: _StreamAccumulators,
+    state: StreamAccumulators,
     is_comms: bool,
     stream_id: str | None,
     user_id: str | None,
@@ -1328,6 +1328,19 @@ async def _frames_for_stream_event(
         yield frame
 
 
+def flush_held_frames(state: StreamAccumulators) -> list[str]:
+    """Return the text frames a run still owes once its stream ends, folding that text into complete_message."""
+    # A run that ends without its closing node update (cancellation, a graph that
+    # never reaches the agent node again) still owes the user what it streamed.
+    frames = [
+        format_sse_response(visible)
+        for message_id in list(state.held.texts)
+        if (visible := _finish_visible_text(state, message_id))
+    ]
+    state.complete_message = state.held.flush(state.complete_message)
+    return frames
+
+
 async def execute_graph_streaming(
     graph: CompiledAgentGraph,
     initial_state: Mapping[str, object],
@@ -1347,7 +1360,7 @@ async def execute_graph_streaming(
     # ``state.held`` holds streamed text per message until known to be
     # a real reply, not a handoff preamble (text deltas precede tool-call deltas
     # on the wire). Keyed by message id since delegated-tier chunks interleave.
-    state = _StreamAccumulators()
+    state = StreamAccumulators()
 
     cancelled = False
     graph_status = "success"
@@ -1371,7 +1384,7 @@ async def execute_graph_streaming(
                 if stream_id and await stream_manager.is_cancelled(stream_id):
                     cancelled = True
                     break
-                async for frame in _frames_for_stream_event(
+                async for frame in frames_for_stream_event(
                     event, state, is_comms, stream_id, user_id
                 ):
                     yield frame
@@ -1388,12 +1401,8 @@ async def execute_graph_streaming(
                 elapsed_graph(), status=graph_status if not cancelled else "cancelled"
             )
 
-    # A run that ends without its closing node update (cancellation, a graph that
-    # never reaches the agent node again) still owes the user what it streamed.
-    for message_id in list(state.held.texts):
-        if visible := _finish_visible_text(state, message_id):
-            yield format_sse_response(visible)
-    state.complete_message = state.held.flush(state.complete_message)
+    for frame in flush_held_frames(state):
+        yield frame
     if state.pipeline_ttft_perf is not None:
         log.set(comms_pipeline_ttft_ms=round((state.pipeline_ttft_perf - run_start) * 1000.0, 2))
 

@@ -24,6 +24,7 @@ from app.agents.llm.lane import AgentRole
 from app.agents.tools.executor_tool import call_executor
 from app.constants.agents import AgentTag, TimeHorizon, wrap_agent_payload
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.graphs import GraphName
 from app.constants.log_tags import LogTag
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from tests.helpers import captured_wide_event
@@ -51,7 +52,7 @@ class TestNarrateExecutorResult:
     async def test_result_is_revoiced_through_the_comms_graph(self) -> None:
         graph = _fake_comms_graph()
         with (
-            _patch_graph(graph),
+            _patch_graph(graph) as get_graph,
             patch(
                 f"{MODULE}.execute_graph_silent",
                 AsyncMock(return_value=(f"Done. {RESULT_TEXT}", {})),
@@ -62,6 +63,8 @@ class TestNarrateExecutorResult:
             )
 
         assert text == f"Done. {RESULT_TEXT}"
+        get_graph.assert_awaited_once_with(GraphName.COMMS)
+        assert silent.await_args.args[0] is graph
         initial = silent.await_args.args[1]
         message = initial["messages"][0]
         assert isinstance(message, HumanMessage)
@@ -180,9 +183,10 @@ class TestNarrateExecutorResult:
 class TestRecordExecutorCancellation:
     async def test_cancellation_record_is_appended_to_the_checkpoint(self) -> None:
         graph = _fake_comms_graph()
-        with _patch_graph(graph):
+        with _patch_graph(graph) as get_graph:
             await record_executor_cancellation(CONVERSATION_ID, "task-42", "send the email")
 
+        get_graph.assert_awaited_once_with(GraphName.COMMS)
         graph.aupdate_state.assert_awaited_once()
         call = graph.aupdate_state.await_args
         assert call.args[0] == {"configurable": {"thread_id": CONVERSATION_ID}}
@@ -221,7 +225,7 @@ class TestRecordPlatformDelivery:
 
         # The comms graph specifically — a wrong graph writes into a thread
         # whose next turn would read a message it never sent.
-        get_graph.assert_awaited_once_with("comms_agent")
+        get_graph.assert_awaited_once_with(GraphName.COMMS)
         graph.aupdate_state.assert_awaited_once()
         call = graph.aupdate_state.await_args
         assert call.args[0] == {"configurable": {"thread_id": CONVERSATION_ID}}

@@ -112,6 +112,9 @@ class AgentConfigurable(TypedDict, total=False):
     #: The live turn's bot message id (a resumed HIL pause reconciles onto it). On an
     #: executor run, the message its frames render into and its background subagents fold into.
     bot_message_id: str
+    #: The conversation runner's attempt id on a comms run it started; its pre-model hook
+    #: drains that attempt's feed. Absent on every other run.
+    comms_run: str
     #: Onboarding preferences / writing style, established once at a run tree's
     #: root and inherited unchanged by every child agent. Absent when the root
     #: had none; the context sections that read them degrade to no section.

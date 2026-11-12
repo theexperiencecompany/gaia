@@ -287,7 +287,8 @@ class RunningSubagent:
 CONFIGURABLE_OWNED_KEYS: frozenset[str] = frozenset(AgentConfigurable.__annotations__)
 
 # Owned keys scoped to ONE dispatch: hil_resume_replay ("this call is a replay") would
-# make a fresh run probe for interrupts it cannot have; subagent_resume is one run's own.
+# make a fresh run probe for interrupts it cannot have; subagent_resume is one run's own,
+# and so is comms_run, the conversation runner's attempt feed.
 CONFIGURABLE_RUN_SCOPED_KEYS: frozenset[str] = frozenset(
-    {HIL_RESUME_CONFIG_KEY, SUBAGENT_RESUME_CONFIG_KEY}
+    {HIL_RESUME_CONFIG_KEY, SUBAGENT_RESUME_CONFIG_KEY, "comms_run"}
 )

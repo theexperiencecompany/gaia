@@ -53,6 +53,7 @@ from app.constants.general import (
     EXECUTOR_THREAD_PREFIX,
     FINISH_TASK_NAME,
 )
+from app.constants.graphs import GraphName
 from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
 from app.constants.llm import BUDGET_STOP_METADATA_KEY, EXECUTOR_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
@@ -880,7 +881,7 @@ async def prepare_executor_execution(
     # Load executor graph. Degrade contract: comms must still receive a
     # tool-result string, so log the real cause loudly and return the error.
     try:
-        executor_graph = await GraphManager.get_graph("executor_agent")
+        executor_graph = await GraphManager.get_graph(GraphName.EXECUTOR)
     except GraphUnavailableError as e:
         log.error(
             f"{LogTag.AGENT} prepare_executor_execution: executor_agent graph unavailable",

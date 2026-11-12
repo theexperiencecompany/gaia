@@ -1,0 +1,133 @@
+"""What a comms attempt shows the model: log entries as stable-id thread messages, and the notes around them.
+
+Every message made from an entry has the id LOG_MESSAGE_ID_PREFIX + entry id and
+the entry's seq under additional_kwargs[LOG_SEQ], so re-sending a batch after a
+restart upserts in place and the model sees each input once.
+"""
+
+from collections.abc import Sequence
+import json
+
+from langchain_core.messages import AnyMessage, HumanMessage
+
+from app.agents.core.interruption import INTERRUPTION_MARKER, INTERRUPTION_SOURCE
+from app.constants.conversation import (
+    BARGE_IN_NOTE,
+    LOG_MESSAGE_ID_PREFIX,
+    LOG_SEQ,
+    NOTICE_DELIVERED_NOTE,
+    REACTION_NOTE,
+    REACTION_NOTE_SUFFIX,
+    SERVER_RESTART_NOTE,
+    WORK_DONE_NOTE,
+    WORK_UNFINISHED_NOTE,
+    WORKFLOW_FIRED_NOTE,
+)
+from app.models.conversation_log_models import (
+    BargeIn,
+    Batch,
+    LoggedEntry,
+    Notice,
+    ReactionBy,
+    ReplyOutcome,
+    ReplySettled,
+    StopRequested,
+    UserMessage,
+    WorkFinished,
+    WorkflowFired,
+    WorkOutcome,
+)
+
+#: additional_kwargs key record_interruption tags its marker with.
+_SOURCE_KEY = "lc_source"
+
+
+def entry_message_id(entry_id: str) -> str:
+    """Return the thread message id of the log entry with entry_id."""
+    return f"{LOG_MESSAGE_ID_PREFIX}{entry_id}"
+
+
+def attempt_messages(
+    batch: Batch, context: Sequence[LoggedEntry], thread: Sequence[AnyMessage]
+) -> list[AnyMessage]:
+    """Render context and batch in seq order; a Stop the thread already records is not said twice."""
+    ordered = sorted([*context, *batch.waking], key=lambda logged: logged.seq)
+    return [
+        message
+        for logged in ordered
+        if not (isinstance(logged.entry, StopRequested) and _stop_recorded(thread, logged.seq))
+        for message in entry_messages(logged)
+    ]
+
+
+def absorbed_messages(entries: Sequence[LoggedEntry]) -> tuple[list[AnyMessage], bool]:
+    """Render entries absorbed into a running attempt up to the first Stop; True when a Stop was reached."""
+    messages: list[AnyMessage] = []
+    for logged in entries:
+        if isinstance(logged.entry, StopRequested):
+            return messages, True
+        messages.extend(entry_messages(logged))
+    return messages, False
+
+
+def entry_messages(logged: LoggedEntry) -> list[AnyMessage]:
+    """Return the messages one log entry shows the model; most bookkeeping entries show nothing."""
+    entry = logged.entry
+    if isinstance(entry, UserMessage):
+        said = _message(logged, entry.text)
+        reaction = entry.reaction
+        if reaction is None or reaction.by is not ReactionBy.JEV:
+            return [said]
+        note = REACTION_NOTE.format(emoji=reaction.emoji)
+        return [said, _message(logged, note, REACTION_NOTE_SUFFIX)]
+    if isinstance(entry, StopRequested):
+        marker = _message(logged, INTERRUPTION_MARKER)
+        marker.additional_kwargs[_SOURCE_KEY] = INTERRUPTION_SOURCE
+        return [marker]
+    note = _note_text(logged)
+    return [] if note is None else [_message(logged, note)]
+
+
+def _note_text(logged: LoggedEntry) -> str | None:
+    """Return the note a non-message entry leaves the model, or None for one it never sees."""
+    note: str | None = None
+    match logged.entry:
+        case WorkFinished(outcome=WorkOutcome.DONE, report=report):
+            note = WORK_DONE_NOTE.format(report=report)
+        case WorkFinished(outcome=outcome, report=report) if outcome is not WorkOutcome.CANCELLED:
+            note = WORK_UNFINISHED_NOTE.format(outcome=outcome, report=report)
+        case WorkflowFired(workflow_id=workflow_id, context=context):
+            note = WORKFLOW_FIRED_NOTE.format(
+                workflow_id=workflow_id, context=json.dumps(context, default=str)
+            )
+        case BargeIn(heard_text=heard):
+            note = BARGE_IN_NOTE.format(heard=heard)
+        case Notice(text=text):
+            note = NOTICE_DELIVERED_NOTE.format(text=text)
+        # A dead holder's open reply is settled failed with no answers by recovery.
+        case ReplySettled(outcome=ReplyOutcome.FAILED, answers=()):
+            note = SERVER_RESTART_NOTE
+    return note
+
+
+def _message(logged: LoggedEntry, text: str, suffix: str = "") -> HumanMessage:
+    return HumanMessage(
+        content=text,
+        id=f"{entry_message_id(logged.entry.id)}{suffix}",
+        additional_kwargs={LOG_SEQ: logged.seq},
+    )
+
+
+def _stop_recorded(thread: Sequence[AnyMessage], stop_seq: int) -> bool:
+    """Return True when the thread already holds an interruption marker after every input older than the stop."""
+    older = [
+        index
+        for index, message in enumerate(thread)
+        if isinstance(seq := message.additional_kwargs.get(LOG_SEQ), int) and seq < stop_seq
+    ]
+    if not older:
+        return False
+    return any(
+        message.additional_kwargs.get(_SOURCE_KEY) == INTERRUPTION_SOURCE
+        for message in thread[older[-1] + 1 :]
+    )

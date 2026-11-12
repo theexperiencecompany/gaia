@@ -26,6 +26,7 @@ import pytest
 from app.agents.core.background.session import RunKind, create_session, teardown_session
 from app.agents.core.held_replies import HeldReplies
 from app.helpers.agent_helpers import (
+    StreamAccumulators,
     _buffer_mcp_app,
     _emit_mcp_app_event,
     _model_fallback_frame,
@@ -36,7 +37,6 @@ from app.helpers.agent_helpers import (
     _stream_tool_call_frames,
     _stream_tool_message_frames,
     _stream_updates,
-    _StreamAccumulators,
     execute_graph_streaming,
 )
 from app.models.mcp_app_models import McpUiMetadata
@@ -199,7 +199,7 @@ async def test_buffer_subagent_mcp_app_records_every_field_of_the_pending_app() 
 
     await _drain(
         _stream_custom(
-            {"tool_data": _mcp_tool_entry()}, _StreamAccumulators(pending_mcp_apps=pending), "u"
+            {"tool_data": _mcp_tool_entry()}, StreamAccumulators(pending_mcp_apps=pending), "u"
         )
     )
 
@@ -222,7 +222,7 @@ async def test_buffer_subagent_mcp_app_falls_back_to_empty_values_for_absent_fie
                     "data": {"tool_call_id": "call_1"},
                 }
             },
-            _StreamAccumulators(pending_mcp_apps=pending),
+            StreamAccumulators(pending_mcp_apps=pending),
             "u",
         )
     )
@@ -293,7 +293,7 @@ async def test_buffer_subagent_mcp_app_falls_back_to_empty_values_for_absent_fie
 async def test_buffer_subagent_mcp_app_buffers_nothing_for(payload: Any) -> None:
     pending: dict[str, _PendingMcpApp] = {}
 
-    await _drain(_stream_custom(payload, _StreamAccumulators(pending_mcp_apps=pending), "u"))
+    await _drain(_stream_custom(payload, StreamAccumulators(pending_mcp_apps=pending), "u"))
 
     assert pending == {}
 
@@ -604,7 +604,7 @@ async def test_a_failed_mcp_app_fetch_warns_and_still_ships_the_tool_output() ->
 
 @pytest.mark.asyncio
 async def test_custom_events_are_forwarded_verbatim() -> None:
-    state = _StreamAccumulators()
+    state = StreamAccumulators()
 
     frames = await _drain(_stream_custom({"progress": "working"}, state, "user-1"))
 
@@ -614,7 +614,7 @@ async def test_custom_events_are_forwarded_verbatim() -> None:
 
 @pytest.mark.asyncio
 async def test_a_subagent_tool_data_event_buffers_its_mcp_app() -> None:
-    state = _StreamAccumulators()
+    state = StreamAccumulators()
     payload = {"tool_data": _mcp_tool_entry()}
 
     frames = await _drain(_stream_custom(payload, state, "user-1"))
@@ -629,7 +629,7 @@ async def test_a_subagent_tool_data_event_buffers_its_mcp_app() -> None:
 
 @pytest.mark.asyncio
 async def test_a_subagent_tool_output_emits_the_deferred_mcp_app_frame() -> None:
-    state = _StreamAccumulators(pending_mcp_apps={"call_1": _pending_app()})
+    state = StreamAccumulators(pending_mcp_apps={"call_1": _pending_app()})
     payload = {"tool_output": {"tool_call_id": "call_1", "output": "12:00 UTC"}}
     resource = {
         "html": "<h1>12:00</h1>",
@@ -651,7 +651,7 @@ async def test_a_subagent_tool_output_emits_the_deferred_mcp_app_frame() -> None
 
 @pytest.mark.asyncio
 async def test_a_subagent_tool_output_with_no_tool_call_id_claims_the_empty_key() -> None:
-    state = _StreamAccumulators(pending_mcp_apps={"": _pending_app()})
+    state = StreamAccumulators(pending_mcp_apps={"": _pending_app()})
     payload = {"tool_output": {"output": "12:00 UTC"}}
     resource = {
         "html": "<h1>12:00</h1>",
@@ -669,7 +669,7 @@ async def test_a_subagent_tool_output_with_no_tool_call_id_claims_the_empty_key(
 
 @pytest.mark.asyncio
 async def test_a_subagent_tool_output_for_an_unbuffered_call_only_forwards() -> None:
-    state = _StreamAccumulators(pending_mcp_apps={"call_9": _pending_app()})
+    state = StreamAccumulators(pending_mcp_apps={"call_9": _pending_app()})
     payload = {"tool_output": {"tool_call_id": "call_1", "output": "12:00 UTC"}}
 
     frames = await _drain(_stream_custom(payload, state, "user-1"))
@@ -680,7 +680,7 @@ async def test_a_subagent_tool_output_for_an_unbuffered_call_only_forwards() -> 
 
 @pytest.mark.asyncio
 async def test_a_failed_subagent_mcp_app_fetch_warns_with_its_own_message() -> None:
-    state = _StreamAccumulators(pending_mcp_apps={"call_1": _pending_app()})
+    state = StreamAccumulators(pending_mcp_apps={"call_1": _pending_app()})
     payload = {"tool_output": {"tool_call_id": "call_1", "output": "12:00 UTC"}}
 
     with (
@@ -703,7 +703,7 @@ def _boundary_frame(message_id: str, discarded: bool) -> str:
 @pytest.mark.asyncio
 async def test_updates_emit_tool_data_and_a_boundary_only_for_the_agent_node() -> None:
     formatter = _RecordingFormatter([{"tool_name": "card"}])
-    state = _StreamAccumulators()
+    state = StreamAccumulators()
     reply = AIMessage(content="on it", id="msg-1")
     payload = {
         "tools": {"messages": [AIMessage(content="stale", id="msg-0")]},
@@ -719,14 +719,14 @@ async def test_updates_emit_tool_data_and_a_boundary_only_for_the_agent_node() -
 
 @pytest.mark.asyncio
 async def test_updates_from_the_agent_node_without_messages_emit_nothing() -> None:
-    state = _StreamAccumulators()
+    state = StreamAccumulators()
 
     assert await _drain(_stream_updates({"agent": {"llm_usage": {}}}, state, True, "u")) == []
 
 
 @pytest.mark.asyncio
 async def test_updates_emit_the_model_fallback_frame_once_per_stream() -> None:
-    state = _StreamAccumulators()
+    state = StreamAccumulators()
     fell_back = {"gaia_fell_back": True, "gaia_fallback_model": "openai/gpt-5-mini"}
     payload = {
         "agent": {
@@ -749,7 +749,7 @@ async def test_updates_emit_the_model_fallback_frame_once_per_stream() -> None:
 @pytest.mark.asyncio
 async def test_updates_buffer_the_mcp_app_and_pass_the_user_id_through() -> None:
     formatter = _RecordingFormatter([_mcp_tool_entry()])
-    state = _StreamAccumulators()
+    state = StreamAccumulators()
     reply = AIMessage(
         content="",
         id="msg-1",
@@ -772,7 +772,7 @@ async def test_updates_buffer_the_mcp_app_and_pass_the_user_id_through() -> None
 
 @pytest.mark.asyncio
 async def test_silent_messages_emit_nothing() -> None:
-    state = _StreamAccumulators()
+    state = StreamAccumulators()
     chunk = AIMessage(content="internal", id="msg-1")
 
     frames = await _drain(_stream_messages((chunk, {"silent": True}), state, True, "s1", "u1"))
@@ -783,7 +783,7 @@ async def test_silent_messages_emit_nothing() -> None:
 
 @pytest.mark.asyncio
 async def test_comms_reply_text_is_streamed_and_held_for_its_boundary() -> None:
-    state = _StreamAccumulators()
+    state = StreamAccumulators()
     chunk = AIMessage(content="hello", id="msg-1")
 
     frames = await _drain(_stream_messages((chunk, {}), state, True, "s1", "u1"))
@@ -795,7 +795,7 @@ async def test_comms_reply_text_is_streamed_and_held_for_its_boundary() -> None:
 @pytest.mark.asyncio
 async def test_messages_thread_the_stream_id_into_the_tool_output_claim() -> None:
     create_session("stream-1", RunKind.LIVE)
-    state = _StreamAccumulators()
+    state = StreamAccumulators()
     chunk = ToolMessage(content="12:00 UTC", tool_call_id="call_1", name="get_time")
     try:
         first = await _drain(_stream_messages((chunk, {}), state, True, "stream-1", "u1"))
@@ -809,7 +809,7 @@ async def test_messages_thread_the_stream_id_into_the_tool_output_claim() -> Non
 
 @pytest.mark.asyncio
 async def test_messages_thread_the_user_id_into_the_mcp_resource_fetch() -> None:
-    state = _StreamAccumulators(pending_mcp_apps={"call_1": _pending_app()})
+    state = StreamAccumulators(pending_mcp_apps={"call_1": _pending_app()})
     chunk = ToolMessage(content="12:00 UTC", tool_call_id="call_1", name="get_time")
 
     with patch(
@@ -830,7 +830,7 @@ def _reasoning_chunk(text: str, *, content: str = "") -> AIMessageChunk:
 @pytest.mark.asyncio
 async def test_comms_thinking_is_streamed_as_a_top_level_reasoning_frame() -> None:
     """No subagent_id: the root turn renders as a top-level thinking block, not nested under a delegate."""
-    state = _StreamAccumulators()
+    state = StreamAccumulators()
 
     frames = await _drain(
         _stream_messages((_reasoning_chunk("weighing it up"), {}), state, True, "s1", "u1")
@@ -841,7 +841,7 @@ async def test_comms_thinking_is_streamed_as_a_top_level_reasoning_frame() -> No
 
 @pytest.mark.asyncio
 async def test_a_thinking_chunk_carrying_reply_text_emits_both_in_order() -> None:
-    state = _StreamAccumulators()
+    state = StreamAccumulators()
 
     frames = await _drain(
         _stream_messages(
@@ -858,7 +858,7 @@ async def test_a_thinking_chunk_carrying_reply_text_emits_both_in_order() -> Non
 @pytest.mark.asyncio
 async def test_a_chunk_with_no_thinking_emits_no_reasoning_frame() -> None:
     """Non-reasoning models stream every chunk with empty thinking — one empty frame each would be a per-token spinner the client cannot tell from real work."""
-    state = _StreamAccumulators()
+    state = StreamAccumulators()
 
     frames = await _drain(
         _stream_messages((AIMessageChunk(content="hello", id="msg-1"), {}), state, True, "s1", "u1")
