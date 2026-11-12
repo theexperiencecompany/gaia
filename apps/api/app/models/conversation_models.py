@@ -213,7 +213,8 @@ class StoredEntry(BaseModel):
     seq: int
     id: str
     at: datetime | None = None
-    migration_hash: str | None = None
+    content_hash: str | None = None
+    migration_fields: dict[str, str] | None = None
 
     def message_fields(self) -> dict[str, object]:
         """Return the stored message's own fields: everything but the entry's keys and Mongo's _id."""
@@ -227,19 +228,20 @@ class StoredEntry(BaseModel):
 
 
 class EntryKey(BaseModel):
-    """Which entry holds a seq: the id and seq of a stored entry, projected."""
+    """Which entry holds a seq: the id, seq and committed-content hash of a stored entry, projected."""
 
     model_config = ConfigDict(extra="ignore")
 
     id: str
     seq: int
+    content_hash: str | None = None
 
 
 class EmbeddedState(BaseModel):
     """What a head read reports of the embedded messages array without shipping it."""
 
     count: int = 0
-    last_id: str | None = None
+    fingerprint: int | None = None
 
 
 class LegacyMessage(BaseModel):
@@ -264,7 +266,7 @@ class ConversationHead(BaseModel):
     user_id: str
     log_head: int | None = None
     outbox: dict[int, StoredEntry] = Field(default_factory=dict)
-    migrated_last_id: str | None = None
+    migrated_fingerprint: int | None = None
     embedded: EmbeddedState | None = Field(default=None, alias="_embedded")
     existing: list[EntryKey] = Field(default_factory=list)
     messages: list[LegacyMessage] = Field(default_factory=list)

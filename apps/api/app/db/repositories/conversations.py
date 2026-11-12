@@ -26,12 +26,14 @@ from app.constants.chat import (
     CONVERSATION_APPEND_JITTER_SECONDS,
     CONVERSATION_APPEND_MAX_ATTEMPTS,
     CONVERSATION_ENTRIES_COLLECTION,
+    CONVERSATION_READ_LIMIT,
     SUBAGENT_GROUP_TOOL_NAME,
     USER_MESSAGE_TYPE,
 )
 from app.db.repositories.base import UserScopedRepository
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversation_entries import (
+    CONTENT_HASH_FIELD,
     DROP_EMBEDDED_STAGE,
     EMBEDDED_STATE_STAGE,
     FOLDED_CARDS_FIELD,
@@ -44,6 +46,7 @@ from app.db.repositories.conversation_entries import (
     absorbing,
     at_its_seq,
     at_log_head,
+    content_hash,
     filled,
     head_fields,
     head_from_raw,
@@ -53,9 +56,9 @@ from app.db.repositories.conversation_entries import (
     parked,
     still_waiting,
     store_errors,
+    stored_entries_matching,
     stored_message,
     stored_row,
-    unmigrated,
 )
 from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import (
@@ -87,7 +90,7 @@ from app.utils.errors import (
     ConversationNotFoundError,
     ConversationStoreError,
 )
-from shared.py.wide_events import spawn_logged_task
+from shared.py.wide_events import log, spawn_logged_task
 
 _JITTER = random.SystemRandom()
 _BOT_SOURCE_VALUES: list[str] = [s.value for s in BOT_CONVERSATION_SOURCES]
@@ -312,14 +315,16 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     ) -> list[int]:
         """Commit entries at consecutive seqs in one conditional head write, returning each one's seq.
 
-        All or none. An id already committed is not appended again; its seq is returned.
-        Raises ConversationNotFoundError for a missing conversation, writing nothing.
+        All or none. An id already committed with the same content is not appended again;
+        its seq is returned. One committed with other content raises ConversationStoreError,
+        writing nothing. Raises ConversationNotFoundError for a missing conversation.
         """
         batch: dict[str, dict[str, object]] = {}
         for message in entries:
             if message.message_id is None:
                 raise ValueError("an appended entry carries its producer-minted id")
-            batch.setdefault(message.message_id, stored_message(message))
+            data = stored_message(message)
+            batch.setdefault(message.message_id, {**data, CONTENT_HASH_FIELD: content_hash(data)})
         ids = [str(message.message_id) for message in entries]
         for _ in range(CONVERSATION_APPEND_MAX_ATTEMPTS):
             head = await self._read_head_for_append(conversation_id, user_id, list(batch))
@@ -329,6 +334,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     meta={"conversation_id": conversation_id},
                 )
             known = head.known_seqs()
+            _refuse_other_content(conversation_id, batch, head.known_content())
             fresh = [(entry_id, data) for entry_id, data in batch.items() if entry_id not in known]
             if not fresh:
                 if head.outbox:
@@ -621,11 +627,11 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     # ---- targeted / projected reads ----
 
     async def get(self, doc_id: str, *, user_id: str) -> ConversationDocument | None:
-        """Read the conversation with its full message history, oldest first."""
+        """Read the conversation with its newest CONVERSATION_READ_LIMIT messages, oldest first."""
         heads = await self._read_heads({"conversation_id": doc_id, "user_id": user_id})
         if not heads:
             return None
-        [(head, entries)] = await self._entries_for(heads)
+        [(head, entries)] = await self._entries_for(heads, _newest_window())
         return self._with_messages(head, entries)
 
     async def get_message(
@@ -711,10 +717,11 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return None if row is None else row.conversation_id
 
     async def recent_for_user(self, user_id: str, *, limit: int) -> list[ConversationDocument]:
-        """Return the user's most recent conversations, each with its full message history."""
+        """Return the user's most recent conversations, each with its newest messages."""
         heads = await self._read_heads({"user_id": user_id}, sort={"createdAt": -1}, limit=limit)
         return [
-            self._with_messages(head, entries) for head, entries in await self._entries_for(heads)
+            self._with_messages(head, entries)
+            for head, entries in await self._entries_for(heads, _newest_window())
         ]
 
     async def find_todo_conversation_id(self, user_id: str, todo_id: str) -> str | None:
@@ -738,13 +745,22 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return None if row is None else row.todo_id
 
     async def create(self, doc: ConversationDocument) -> ConversationDocument:
-        """Insert the conversation's head at an empty log; raises ValueError if doc carries messages."""
+        """Insert the conversation's head at an empty log; raises ValueError if doc carries messages.
+
+        A delete that died after removing the head leaves its entries behind; a head
+        recreated under the same id clears them first, so its log starts clean.
+        """
         if doc.messages:
             raise ValueError(
                 "create() writes only the head; append the messages with append_messages()"
             )
         head = doc.model_dump(exclude={"id", "messages"}, exclude_none=True)
         head[LOG_HEAD_FIELD] = 0
+        key = {"user_id": doc.user_id, "conversation_id": doc.conversation_id}
+        with store_errors("create"):  # pragma: no mutate — error label only
+            if not await self._raw_collection().count_documents(key, limit=1):
+                await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(key)
+        # Outside store_errors: try_create reads a DuplicateKeyError as a lost creation race.
         await self._raw_collection().insert_one(head)
         created = await self.get(doc.conversation_id, user_id=doc.user_id)
         if created is None:
@@ -785,7 +801,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def find_updated_since(
         self, user_id: str, items: list[ConversationSyncItem]
     ) -> list[ConversationDocument]:
-        """Batch-fetch conversations updated since each item's last-seen timestamp (the client-sync read).
+        """Batch-fetch conversations updated since each item's last-seen timestamp, with their newest messages.
 
         A missing/unparseable timestamp includes that conversation unconditionally.
         """
@@ -809,7 +825,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             return []
         heads = await self._read_heads({"$or": conditions})
         return [
-            self._with_messages(head, entries) for head, entries in await self._entries_for(heads)
+            self._with_messages(head, entries)
+            for head, entries in await self._entries_for(heads, _newest_window())
         ]
 
     # ---- search / pinned ----
@@ -1060,30 +1077,37 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """Entries matching match across the user's conversations, outboxes first, then the collection.
 
         excluding names the heads whose entries never count; limit bounds the collection
-        read for callers that need only whether one exists. Refuses a user with a
-        conversation the migration has not caught up with, rather than missing its messages.
+        read for callers that need only whether one exists. Only entries under a live head
+        count. A conversation the migration has not caught up with is left out and logged,
+        so one such chat never blocks the user's other reads.
         """
         with store_errors("entry search"):  # pragma: no mutate — error label only
-            if await self._count({"user_id": user_id, **UNMIGRATED_HEADS}):
-                raise unmigrated(f"user {user_id}")
+            behind = await self._distinct(
+                "conversation_id", {"user_id": user_id, **UNMIGRATED_HEADS}
+            )
             pending = await (
                 self._raw_collection()
                 .aggregate(outbox_entries_matching(user_id, match, excluding=excluding))
                 .to_list(length=None)
             )
-            skipped = (
-                await self._distinct("conversation_id", {"user_id": user_id, **excluding})
-                if excluding
-                else []
+            stored = stored_entries_matching(
+                user_id,
+                match,
+                excluding=excluding,
+                heads_collection=self._raw_collection().name,
+                limit=limit,
             )
-            cursor = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).find(
-                {"user_id": user_id, **match, "conversation_id": {"$nin": skipped}}
+            rows = await (
+                self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
+                .aggregate(stored)
+                .to_list(length=None)
             )
-            # pragma: no mutate start — limit only bounds a read whose callers ask whether one exists
-            if limit:
-                cursor = cursor.limit(limit)
-            # pragma: no mutate end
-            rows = await cursor.to_list(length=None)
+        if behind:
+            log.warning(
+                "[conversations] cross-conversation read left out unmigrated conversations",
+                user_id=user_id,
+                conversation_ids=behind,
+            )
         found: dict[tuple[str, int], StoredRow] = {}
         for row in map(stored_row, [*pending, *rows]):
             found.setdefault((row.conversation_id, row.entry.seq), row)
@@ -1211,6 +1235,26 @@ def _backoff() -> float:
     """Return how long a writer that lost the conditional write waits before rereading the head."""
     # Any short wait is correct, so its bounds are not behaviour a test can pin.
     return _JITTER.uniform(0, CONVERSATION_APPEND_JITTER_SECONDS)  # pragma: no mutate
+
+
+def _newest_window() -> EntryWindow:
+    # Read at call time, so the limit stays one constant a test can lower.
+    return EntryWindow(limit=CONVERSATION_READ_LIMIT)
+
+
+def _refuse_other_content(
+    conversation_id: str,
+    batch: Mapping[str, Mapping[str, object]],
+    committed: Mapping[str, str | None],
+) -> None:
+    """Raise when an id in batch is already committed with other content: a retry never reports an unwritten save."""
+    for entry_id, data in batch.items():
+        if entry_id in committed and committed[entry_id] != data[CONTENT_HASH_FIELD]:
+            raise ConversationStoreError(
+                message=f"entry {entry_id} is already committed with other content",
+                why="an append is idempotent only for the same message; fill or edit the entry instead",
+                meta={"conversation_id": conversation_id, "entry_id": entry_id},
+            )
 
 
 def _todo_binding(todo_id: str) -> dict[str, object]:
