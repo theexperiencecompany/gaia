@@ -198,10 +198,10 @@ def make_composio_not_found(body: object, message: str) -> composio_client.NotFo
     )
 
 
-def make_oauth_integration(**overrides: Any) -> OAuthIntegration:
+def make_oauth_integration(**overrides: object) -> OAuthIntegration:
     """Build an OAuthIntegration with test defaults; override any field by name."""
     overrides.setdefault("id", overrides.pop("integration_id", "platform-int"))
-    params: dict[str, Any] = {
+    params: dict[str, object] = {
         "name": "Platform Integration",
         "description": "A platform integration",
         "category": "productivity",
