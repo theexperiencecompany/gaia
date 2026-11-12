@@ -26,8 +26,6 @@ from app.constants.chat import (
     CONVERSATION_APPEND_JITTER_SECONDS,
     CONVERSATION_APPEND_MAX_ATTEMPTS,
     CONVERSATION_ENTRIES_COLLECTION,
-    FOLDED_CARDS_FIELD,
-    FOLDED_CARDS_KEEP_SECONDS,
     SUBAGENT_GROUP_TOOL_NAME,
     USER_MESSAGE_TYPE,
 )
@@ -36,18 +34,23 @@ from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversation_entries import (
     DROP_EMBEDDED_STAGE,
     EMBEDDED_STATE_STAGE,
+    FOLDED_CARDS_FIELD,
     LOG_HEAD_FIELD,
-    MIGRATED_LAST_ID_FIELD,
     OUTBOX_FIELD,
     UNMIGRATED_HEADS,
     EntryWindow,
     Head,
     StoredRow,
+    absorbing,
     at_its_seq,
     at_log_head,
     head_fields,
     head_from_raw,
+    head_with_existing,
     is_same_entry,
+    outbox_entries_matching,
+    parked,
+    still_waiting,
     store_errors,
     stored_message,
     stored_row,
@@ -400,7 +403,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             with store_errors("park folded cards"):
                 matched = await self._apply_pipeline_update_unfetched(
                     {"conversation_id": conversation_id, **at_log_head(head.log_head)},
-                    [{"$set": {FOLDED_CARDS_FIELD: _parked(message_id, entries)}}],
+                    [{"$set": {FOLDED_CARDS_FIELD: parked(message_id, entries)}}],
                     # The waiting room is write-side only: no cached read shows it.
                     scope=None,
                     extra_filter={"user_id": user_id},
@@ -866,36 +869,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         The $lookup runs after its head is read, so an entry flushed out of the outbox in
         between is still seen in the collection.
         """
-        pipeline: list[Mapping[str, object]] = [
-            {"$match": {"conversation_id": conversation_id, "user_id": user_id}},
-            EMBEDDED_STATE_STAGE,
-            {
-                "$project": {
-                    "conversation_id": 1,
-                    "user_id": 1,
-                    LOG_HEAD_FIELD: 1,
-                    OUTBOX_FIELD: 1,
-                    MIGRATED_LAST_ID_FIELD: 1,
-                    "_embedded": 1,
-                }
-            },
-            {
-                "$lookup": {
-                    "from": self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).name,
-                    "pipeline": [
-                        {
-                            "$match": {
-                                "user_id": user_id,
-                                "conversation_id": conversation_id,
-                                "id": {"$in": list(ids)},
-                            }
-                        },
-                        {"$project": {"_id": 0, "id": 1, "seq": 1}},
-                    ],
-                    "as": "existing",
-                }
-            },
-        ]
+        entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).name
+        pipeline = head_with_existing(conversation_id, user_id, ids, entries_collection=entries)
         with store_errors("head read"):
             raws = await self._raw_collection().aggregate(pipeline).to_list(length=1)
         return head_from_raw(raws[0]) if raws else None
@@ -910,7 +885,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     ) -> bool:
         """Allocate seqs: the one conditional head write, absorbing each entry's folded cards with it."""
         committed = {
-            str(seqs[entry_id]): _absorbing(
+            str(seqs[entry_id]): absorbing(
                 entry_id,
                 {
                     **data,
@@ -932,7 +907,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                                 "$mergeObjects": [{"$ifNull": [f"${OUTBOX_FIELD}", {}]}, committed]
                             },
                             "updatedAt": "$$NOW",
-                            FOLDED_CARDS_FIELD: _still_waiting(list(seqs)),
+                            FOLDED_CARDS_FIELD: still_waiting(list(seqs)),
                         }
                     }
                 ],
@@ -1020,21 +995,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 raise unmigrated(f"user {user_id}")
             pending = await (
                 self._raw_collection()
-                .aggregate(
-                    [
-                        {
-                            "$match": {
-                                "user_id": user_id,
-                                OUTBOX_FIELD: {"$exists": True, "$ne": {}},
-                                **({"$nor": [dict(excluding)]} if excluding else {}),
-                            }
-                        },
-                        {"$project": {"_id": 0, "entry": {"$objectToArray": f"${OUTBOX_FIELD}"}}},
-                        {"$unwind": "$entry"},
-                        {"$replaceRoot": {"newRoot": "$entry.v"}},
-                        {"$match": dict(match)},
-                    ]
-                )
+                .aggregate(outbox_entries_matching(user_id, match, excluding=excluding))
                 .to_list(length=None)
             )
             skipped = (
@@ -1164,95 +1125,3 @@ def _todo_binding(todo_id: str) -> dict[str, object]:
 
 def _todo_chats(user_id: str, todo_ids: Sequence[str]) -> dict[str, object]:
     return {"user_id": user_id, "todo_id": {"$in": list(todo_ids), "$type": "string"}}
-
-
-def _waiting_for(message_id: str) -> dict[str, object]:
-    """Read the waiting-room entry for message_id, taking the id as a literal, never a path."""
-    return {
-        "$getField": {
-            "field": {"$literal": message_id},
-            "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
-        }
-    }
-
-
-def _absorbing(message_id: str, message: Mapping[str, object]) -> dict[str, object]:
-    """Build the entry as committed: stamped at commit time, the cards waiting for its id after its own tool_data.
-
-    The entry itself is a $literal, so text that starts with "$" is never read as a path.
-    """
-    waiting = {"$getField": {"field": "cards", "input": _waiting_for(message_id)}}
-    tool_data = {
-        "$concatArrays": [{"$ifNull": ["$$message.tool_data", []]}, {"$ifNull": [waiting, []]}]
-    }
-    return {
-        "$let": {
-            "vars": {"message": {"$literal": dict(message)}},
-            "in": {
-                "$mergeObjects": [
-                    "$$message",
-                    {
-                        "at": "$$NOW",
-                        "tool_data": {"$cond": [{"$eq": [tool_data, []]}, "$$REMOVE", tool_data]},
-                    },
-                ]
-            },
-        }
-    }
-
-
-def _still_waiting(saved_ids: list[str]) -> dict[str, object]:
-    """Keep the waiting room minus the cards these messages absorbed and any a day stale."""
-    kept = {
-        "$arrayToObject": {
-            "$filter": {
-                "input": {"$objectToArray": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]}},
-                "as": "waiting",
-                "cond": {
-                    "$and": [
-                        {"$not": [{"$in": ["$$waiting.k", {"$literal": saved_ids}]}]},
-                        {
-                            "$gt": [
-                                "$$waiting.v.since",
-                                {
-                                    "$dateSubtract": {
-                                        "startDate": "$$NOW",
-                                        "unit": "second",
-                                        "amount": FOLDED_CARDS_KEEP_SECONDS,
-                                    }
-                                },
-                            ]
-                        },
-                    ]
-                },
-            }
-        }
-    }
-    return {
-        "$let": {
-            "vars": {"kept": kept},
-            "in": {"$cond": [{"$eq": ["$$kept", {}]}, "$$REMOVE", "$$kept"]},
-        }
-    }
-
-
-def _parked(message_id: str, cards: Sequence[Mapping[str, object]]) -> dict[str, object]:
-    """Return the waiting room with these cards added under message_id, keeping when it first waited."""
-    waiting = _waiting_for(message_id)
-    return {
-        "$setField": {
-            "field": {"$literal": message_id},
-            "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
-            "value": {
-                "since": {
-                    "$ifNull": [{"$getField": {"field": "since", "input": waiting}}, "$$NOW"]
-                },
-                "cards": {
-                    "$concatArrays": [
-                        {"$ifNull": [{"$getField": {"field": "cards", "input": waiting}}, []]},
-                        {"$literal": [dict(card) for card in cards]},
-                    ]
-                },
-            },
-        }
-    }

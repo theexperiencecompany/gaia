@@ -16,8 +16,8 @@ import uuid
 
 import pytest
 
-from app.constants.chat import FOLDED_CARDS_FIELD, FOLDED_CARDS_KEEP_SECONDS
 from app.constants.log_tags import LogTag
+from app.db.repositories.conversation_entries import FOLDED_CARDS_FIELD, FOLDED_CARDS_KEEP_SECONDS
 from app.db.repositories.conversations import ConversationRepository, conversation_repository
 from app.models.chat_models import MessageModel, ToolDataEntry
 from app.models.conversation_models import ConversationDocument

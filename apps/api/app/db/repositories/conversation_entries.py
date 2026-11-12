@@ -59,6 +59,26 @@ EMBEDDED_STATE_STAGE: dict[str, object] = {
     }
 }
 DROP_EMBEDDED_STAGE: dict[str, object] = {"$project": {"messages": 0}}
+#: Cards whose message is not committed yet wait on the head under this field, by message id;
+#: a turn saves within itself, so ones a day old are dropped by the next commit.
+FOLDED_CARDS_FIELD = "folded_cards"
+FOLDED_CARDS_KEEP_SECONDS = 86_400
+#: What an append reads of its head: identity, the log, and whether the migration caught up.
+_APPEND_HEAD_FIELDS: dict[str, object] = {
+    "conversation_id": 1,
+    "user_id": 1,
+    LOG_HEAD_FIELD: 1,
+    OUTBOX_FIELD: 1,
+    MIGRATED_LAST_ID_FIELD: 1,
+    _EMBEDDED_FIELD: 1,
+}
+_EXISTING_FIELDS: dict[str, object] = {"_id": 0, "id": 1, "seq": 1}
+#: Each outbox entry of a head, one document apiece.
+_OUTBOX_AS_ENTRIES: list[dict[str, object]] = [
+    {"$project": {"_id": 0, "entry": {"$objectToArray": f"${OUTBOX_FIELD}"}}},
+    {"$unwind": "$entry"},
+    {"$replaceRoot": {"newRoot": "$entry.v"}},
+]
 #: A head the protocol may commit on at log_head 0: empty, or written before log_head existed with no messages.
 EMPTY_LOG: dict[str, object] = {
     "$or": [
@@ -131,6 +151,47 @@ def head_from_raw(raw: Mapping[str, object]) -> Head:
         outbox=outbox,
         existing=existing,
     )
+
+
+def head_with_existing(
+    conversation_id: str, user_id: str, ids: Sequence[str], *, entries_collection: str
+) -> list[dict[str, object]]:
+    """Read the head, then which of ids the collection holds, in one aggregate.
+
+    The $lookup runs after its head is read, so an entry flushed out of the outbox in
+    between is still seen in the collection.
+    """
+    return [
+        {"$match": {"conversation_id": conversation_id, "user_id": user_id}},
+        EMBEDDED_STATE_STAGE,
+        {"$project": _APPEND_HEAD_FIELDS},
+        {
+            "$lookup": {
+                "from": entries_collection,
+                "pipeline": [
+                    {
+                        "$match": {
+                            "user_id": user_id,
+                            "conversation_id": conversation_id,
+                            "id": {"$in": list(ids)},
+                        }
+                    },
+                    {"$project": _EXISTING_FIELDS},
+                ],
+                "as": "existing",
+            }
+        },
+    ]
+
+
+def outbox_entries_matching(
+    user_id: str, match: Mapping[str, object], *, excluding: Mapping[str, object] | None
+) -> list[dict[str, object]]:
+    """Read the user's outbox entries that match, skipping the heads excluding names."""
+    heads: dict[str, object] = {"user_id": user_id, OUTBOX_FIELD: {"$exists": True, "$ne": {}}}
+    if excluding:
+        heads["$nor"] = [dict(excluding)]
+    return [{"$match": heads}, *_OUTBOX_AS_ENTRIES, {"$match": dict(match)}]
 
 
 def unmigrated(subject: str) -> UnmigratedConversationError:
@@ -240,3 +301,95 @@ class EntryWindow:
         if not self.newest_first:
             seqs.reverse()
         return [union[seq] for seq in seqs]
+
+
+def waiting_for(message_id: str) -> dict[str, object]:
+    """Read the waiting-room entry for message_id, taking the id as a literal, never a path."""
+    return {
+        "$getField": {
+            "field": {"$literal": message_id},
+            "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
+        }
+    }
+
+
+def absorbing(message_id: str, message: Mapping[str, object]) -> dict[str, object]:
+    """Build the entry as committed: stamped at commit time, the cards waiting for its id after its own tool_data.
+
+    The entry itself is a $literal, so text that starts with "$" is never read as a path.
+    """
+    waiting = {"$getField": {"field": "cards", "input": waiting_for(message_id)}}
+    tool_data = {
+        "$concatArrays": [{"$ifNull": ["$$message.tool_data", []]}, {"$ifNull": [waiting, []]}]
+    }
+    return {
+        "$let": {
+            "vars": {"message": {"$literal": dict(message)}},
+            "in": {
+                "$mergeObjects": [
+                    "$$message",
+                    {
+                        "at": "$$NOW",
+                        "tool_data": {"$cond": [{"$eq": [tool_data, []]}, "$$REMOVE", tool_data]},
+                    },
+                ]
+            },
+        }
+    }
+
+
+def still_waiting(saved_ids: list[str]) -> dict[str, object]:
+    """Keep the waiting room minus the cards these messages absorbed and any a day stale."""
+    kept = {
+        "$arrayToObject": {
+            "$filter": {
+                "input": {"$objectToArray": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]}},
+                "as": "waiting",
+                "cond": {
+                    "$and": [
+                        {"$not": [{"$in": ["$$waiting.k", {"$literal": saved_ids}]}]},
+                        {
+                            "$gt": [
+                                "$$waiting.v.since",
+                                {
+                                    "$dateSubtract": {
+                                        "startDate": "$$NOW",
+                                        "unit": "second",
+                                        "amount": FOLDED_CARDS_KEEP_SECONDS,
+                                    }
+                                },
+                            ]
+                        },
+                    ]
+                },
+            }
+        }
+    }
+    return {
+        "$let": {
+            "vars": {"kept": kept},
+            "in": {"$cond": [{"$eq": ["$$kept", {}]}, "$$REMOVE", "$$kept"]},
+        }
+    }
+
+
+def parked(message_id: str, cards: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    """Return the waiting room with these cards added under message_id, keeping when it first waited."""
+    waiting = waiting_for(message_id)
+    return {
+        "$setField": {
+            "field": {"$literal": message_id},
+            "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
+            "value": {
+                "since": {
+                    "$ifNull": [{"$getField": {"field": "since", "input": waiting}}, "$$NOW"]
+                },
+                "cards": {
+                    "$concatArrays": [
+                        {"$ifNull": [{"$getField": {"field": "cards", "input": waiting}}, []]},
+                        {"$literal": [dict(card) for card in cards]},
+                    ]
+                },
+            },
+        }
+    }
