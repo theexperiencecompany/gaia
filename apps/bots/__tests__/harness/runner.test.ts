@@ -96,6 +96,7 @@ describe("evaluateAssertion — reactedTo", () => {
       destinationId: "u",
       targetMessageId: "in2",
       emoji: "👍",
+      replaces: null,
     },
   );
 

@@ -140,8 +140,8 @@ describe("SlackAdapter - createCommandTarget.send", () => {
         createCommandTarget: (
           userId: string,
           channelId: string,
-          client: typeof client,
-          respond: typeof respond,
+          clientParam: typeof client,
+          respondParam: typeof respond,
           userName?: string,
         ) => {
           send: (
@@ -858,7 +858,10 @@ describe("SlackAdapter - dispatchCommand unknown command", () => {
 
     await (
       adapter as unknown as {
-        dispatchCommand: (name: string, target: typeof target) => Promise<void>;
+        dispatchCommand: (
+          name: string,
+          targetParam: typeof target,
+        ) => Promise<void>;
       }
     ).dispatchCommand("mystery", target);
 

@@ -407,7 +407,7 @@ describe("TelegramAdapter - createCtxTarget.send", () => {
     const target = (
       adapter as unknown as {
         createCtxTarget: (
-          ctx: typeof ctx,
+          ctxParam: typeof ctx,
           userId: string,
         ) => {
           send: (
@@ -445,7 +445,7 @@ describe("TelegramAdapter - createCtxTarget.send", () => {
     const target = (
       adapter as unknown as {
         createCtxTarget: (
-          ctx: typeof ctx,
+          ctxParam: typeof ctx,
           userId: string,
         ) => {
           send: (text: string) => Promise<{ id: string }>;
@@ -473,7 +473,7 @@ describe("TelegramAdapter - createCtxTarget.send", () => {
     const target = (
       adapter as unknown as {
         createCtxTarget: (
-          ctx: typeof ctx,
+          ctxParam: typeof ctx,
           userId: string,
         ) => {
           platform: string;
@@ -504,7 +504,7 @@ describe("TelegramAdapter - createCtxTarget.sendRich", () => {
     const target = (
       adapter as unknown as {
         createCtxTarget: (
-          ctx: typeof ctx,
+          ctxParam: typeof ctx,
           userId: string,
         ) => {
           sendRich: (msg: object) => Promise<{ id: string }>;
@@ -945,7 +945,10 @@ describe("TelegramAdapter - dispatchCommand error recovery", () => {
 
     await (
       adapter as unknown as {
-        dispatchCommand: (name: string, target: typeof target) => Promise<void>;
+        dispatchCommand: (
+          name: string,
+          targetParam: typeof target,
+        ) => Promise<void>;
       }
     ).dispatchCommand("nonexistent", target);
 
@@ -984,7 +987,10 @@ describe("TelegramAdapter - dispatchCommand error recovery", () => {
 
     await (
       adapter as unknown as {
-        dispatchCommand: (name: string, target: typeof target) => Promise<void>;
+        dispatchCommand: (
+          name: string,
+          targetParam: typeof target,
+        ) => Promise<void>;
       }
     ).dispatchCommand("broken", target);
 

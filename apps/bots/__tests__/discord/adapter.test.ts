@@ -866,7 +866,7 @@ describe("DiscordAdapter - DM welcome flow", () => {
     const handleDM = (m: ReturnType<typeof makeBlankMessage>) =>
       (
         adapter as unknown as {
-          handleDMMessage: (m: typeof m) => Promise<void>;
+          handleDMMessage: (mParam: typeof m) => Promise<void>;
         }
       ).handleDMMessage(m);
 
@@ -1037,7 +1037,10 @@ describe("DiscordAdapter - dispatchCommand unknown command", () => {
 
     await (
       adapter as unknown as {
-        dispatchCommand: (name: string, target: typeof target) => Promise<void>;
+        dispatchCommand: (
+          name: string,
+          targetParam: typeof target,
+        ) => Promise<void>;
       }
     ).dispatchCommand("nonexistent", target);
 
@@ -1086,8 +1089,8 @@ describe("DiscordAdapter - dispatchCommand args forwarding", () => {
       adapter as unknown as {
         dispatchCommand: (
           name: string,
-          target: typeof target,
-          args: typeof args,
+          targetParam: typeof target,
+          argsParam: typeof args,
         ) => Promise<void>;
       }
     ).dispatchCommand("todo", target, args);
@@ -1136,7 +1139,7 @@ describe("DiscordAdapter - dispatchCommand error propagation", () => {
         adapter as unknown as {
           dispatchCommand: (
             name: string,
-            target: typeof target,
+            targetParam: typeof target,
             args: Record<string, unknown>,
           ) => Promise<void>;
         }

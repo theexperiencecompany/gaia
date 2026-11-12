@@ -99,9 +99,9 @@ function turnFrames(
   const quote = script.quote ? ids[count - 1] : null;
   return [
     ...frames,
-    entryFrame(count + 1, replyEntry("r1", "a1")),
+    entryFrame(count + 1, replyEntry("r1", "a1", "", 0, quote)),
     ...chunks.map((chunk, i) => replyDelta("a1", "r1", i, chunk)),
-    entryUpdatedFrame(count + 1, replyEntry("r1", "a1", text, 1)),
+    entryUpdatedFrame(count + 1, replyEntry("r1", "a1", text, 1, quote)),
     entryFrame(count + 2, replySettled("r1", ids, count + 1, quote)),
     stateFrame(count + 2, "idle"),
   ];

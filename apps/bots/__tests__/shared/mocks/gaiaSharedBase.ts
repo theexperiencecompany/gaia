@@ -34,7 +34,7 @@ interface GaiaSharedMockOptions {
   /** Per-platform streaming configuration object */
   streamingDefaults: Record<string, unknown>;
   /** Platform-specific converter mocks to merge into the returned object */
-  converters?: Record<string, ReturnType<typeof vi.fn>>;
+  converters?: Record<string, unknown>;
   /** Return value of the richMessageToMarkdown mock */
   defaultRichMarkdown?: string;
 }

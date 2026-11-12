@@ -36,6 +36,7 @@ vi.mock("@kapso/whatsapp-cloud-api", async (importOriginal) => ({
 
 import { createDeliveryFailureReporter } from "../../../../libs/shared/ts/src/bots/delivery-failures";
 import { WhatsAppAdapter } from "../../whatsapp/src/adapter";
+import type { ExtractedMedia } from "../../whatsapp/src/webhook.types";
 
 const SECRET = "conformance-webhook-secret-0123456789abcdef";
 
@@ -144,7 +145,7 @@ async function buildHarness(): Promise<Harnessed> {
   return { app, gaia, waClient, adapter };
 }
 
-function post(
+async function post(
   app: Hono,
   body: string,
   headers: Record<string, string>,
@@ -228,7 +229,7 @@ describe("WhatsApp webhook replay (real Hono webhook, in-process)", () => {
   it("routes an image message through the shared media pipeline", async () => {
     // Short-circuit the media decision so no real download/upload runs; we only
     // assert the webhook extracted the media and routed it to resolveIncomingMedia.
-    const resolveIncomingMedia = vi.fn(async () => ({
+    const resolveIncomingMedia = vi.fn(async (_media: ExtractedMedia) => ({
       action: "reply" as const,
       text: "I see your image.",
     }));
