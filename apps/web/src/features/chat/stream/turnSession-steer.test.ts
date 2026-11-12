@@ -1,10 +1,9 @@
 /**
- * A steer shares its conversation's session slot but owns none of it.
+ * A steer keeps its own UI slot and never writes the main turn's.
  *
- * The slot drives the main turn's UI — spinner, loading label, approval
- * indicator. A steer that writes to it is writing over a turn that is still
- * streaming, so every writer has to be guarded; these tests pin the one that
- * was not.
+ * The main slot drives the main turn's UI — spinner, loading label, approval
+ * indicator. A steer writing to it would overwrite a turn that is still
+ * streaming.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -94,7 +93,7 @@ describe("a steer never writes the conversation's approval state", () => {
     // while the main turn was still genuinely blocked on the user.
     feedApproval(build(true), { approval_id: "a-1", status: "approved" });
 
-    expect(updateSession).not.toHaveBeenCalled();
+    expect(updateSession).not.toHaveBeenCalledWith(CONV, expect.anything());
     expect(sessions[CONV].awaitingApproval).toBe(true);
   });
 

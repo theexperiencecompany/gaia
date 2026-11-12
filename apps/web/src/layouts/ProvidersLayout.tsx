@@ -10,6 +10,7 @@ import { useApprovalDecisionWebSocket } from "@/features/chat/hooks/useApprovalD
 import { useBgMessageWebSocket } from "@/features/chat/hooks/useBgMessageWebSocket";
 import { useExecutorCancelWebSocket } from "@/features/chat/hooks/useExecutorCancelWebSocket";
 import { useExecutorStream } from "@/features/chat/hooks/useExecutorStream";
+import { useIntegrationStatusWebSocket } from "@/features/integrations/hooks/useIntegrationStatusWebSocket";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
@@ -61,6 +62,10 @@ function PaidSessionEffects() {
 
   // Subscribe to workflow generation events — updates todo store globally
   useTodoWorkflowGlobalListener();
+
+  // Refresh the integration catalog and tool list (the composer's slash
+  // commands included) whenever a connection or its tool set changes
+  useIntegrationStatusWebSocket();
 
   return null;
 }

@@ -80,6 +80,9 @@ interface StreamActions {
   updateSession: (key: string, updates: Partial<TurnUiState>) => void;
   rekeySession: (oldKey: string, newKey: string) => void;
   endSession: (key: string) => void;
+  /** An executor result landed: end the conversation's oldest session waiting
+   *  on one (its main turn first, then its steers). */
+  endAwaitingSession: (conversationKey: string) => void;
   setSessionLoadingText: (
     key: string,
     text: string,
@@ -190,6 +193,21 @@ export const useStreamStore = create<StreamStore>()(
           },
           false,
           "endSession",
+        ),
+
+      endAwaitingSession: (conversationKey) =>
+        set(
+          (state) => {
+            const key = conversationSessionKeys(
+              state.sessions,
+              conversationKey,
+            ).find((k) => state.sessions[k].phase === "awaiting_executor");
+            if (!key) return state;
+            const { [key]: _removed, ...rest } = state.sessions;
+            return { sessions: rest };
+          },
+          false,
+          "endAwaitingSession",
         ),
 
       setSessionLoadingText: (key, text, toolInfo) =>
@@ -350,11 +368,44 @@ export const useStreamStore = create<StreamStore>()(
   ),
 );
 
-/** Non-hook check: does this conversation have a live (SSE-open) turn? */
-export const isConversationStreamingNow = (conversationId: string): boolean => {
-  const session = useStreamStore.getState().sessions[conversationId];
-  return session != null && session.phase !== "awaiting_executor";
+/** A steer's session key: the conversation it writes into, then its own id. */
+export const steerSessionKey = (conversationKey: string, id: string): string =>
+  `${conversationKey}${STEER_KEY_INFIX}${id}`;
+
+/** Keys of every live session writing into a conversation: its main turn, then its steers. */
+const conversationSessionKeys = (
+  sessions: Record<string, TurnUiState>,
+  conversationKey: string,
+): string[] => {
+  const steerPrefix = `${conversationKey}${STEER_KEY_INFIX}`;
+  const steers = Object.keys(sessions).filter((key) =>
+    key.startsWith(steerPrefix),
+  );
+  return conversationKey in sessions ? [conversationKey, ...steers] : steers;
 };
+
+const conversationSessions = (
+  sessions: Record<string, TurnUiState>,
+  conversationKey: string,
+): TurnUiState[] =>
+  conversationSessionKeys(sessions, conversationKey).map(
+    (key) => sessions[key],
+  );
+
+const isStreaming = (session: TurnUiState): boolean =>
+  session.phase !== "awaiting_executor";
+
+/** Doing visible work: streaming with its spinner on, or waiting on an executor
+ *  that is not itself paused on the user's approval. */
+const isWorking = (session: TurnUiState): boolean =>
+  session.spinnerActive ||
+  (session.phase === "awaiting_executor" && !session.awaitingApproval);
+
+/** Non-hook check: does this conversation have a live (SSE-open) turn or steer? */
+export const isConversationStreamingNow = (conversationId: string): boolean =>
+  conversationSessions(useStreamStore.getState().sessions, conversationId).some(
+    isStreaming,
+  );
 
 /** Non-hook check: is any turn currently streaming (any conversation)? */
 export const hasAnyLiveTurn = (): boolean =>
@@ -374,6 +425,7 @@ export const shouldBlockSyncForConversation = (
 };
 
 export const PENDING_KEY_PREFIX = "pending:";
+const STEER_KEY_INFIX = ":steer:";
 
 // ── Selectors ────────────────────────────────────────────────────────────────
 
@@ -386,11 +438,15 @@ const useActiveTurnKey = (): string | null => {
   return activeConversationId ?? pendingKey;
 };
 
+/** The active conversation's session that is doing work, else its main turn. A
+ *  steer can outlive the main turn or keep working after it went quiet. */
 const useActiveTurn = (): TurnUiState | null => {
   const key = useActiveTurnKey();
-  return useStreamStore((state) =>
-    key ? (state.sessions[key] ?? null) : null,
-  );
+  return useStreamStore((state) => {
+    if (!key) return null;
+    const sessions = conversationSessions(state.sessions, key);
+    return sessions.find(isWorking) ?? sessions[0] ?? null;
+  });
 };
 
 /** Loading indicator state for the active conversation: turn spinner, the
@@ -416,11 +472,7 @@ export const useActiveLoading = (): {
   // Track real activity, never the approval gate: a turn paused on the user's
   // decision shows nothing, and post-resume activity arrives via the background
   // run below — so a stuck approval flag can never freeze the line.
-  if (
-    turn &&
-    (turn.spinnerActive ||
-      (turn.phase === "awaiting_executor" && !turn.awaitingApproval))
-  ) {
+  if (turn && isWorking(turn)) {
     return {
       isLoading: true,
       loadingText: turn.loadingText,
@@ -469,11 +521,11 @@ export const useIsInitialResponseStreaming = (): boolean => {
 export const useIsConversationStreaming = (
   conversationId: string | null,
 ): boolean =>
-  useStreamStore((state) => {
-    if (!conversationId) return false;
-    const session = state.sessions[conversationId];
-    return session != null && session.phase !== "awaiting_executor";
-  });
+  useStreamStore((state) =>
+    conversationId
+      ? conversationSessions(state.sessions, conversationId).some(isStreaming)
+      : false,
+  );
 
 /** True while this conversation's live turn is blocked on a pending HIL
  *  approval — drives the amber "waiting on you" dot in the chat list. */
@@ -482,7 +534,9 @@ export const useIsConversationAwaitingApproval = (
 ): boolean =>
   useStreamStore((state) =>
     conversationId
-      ? (state.sessions[conversationId]?.awaitingApproval ?? false)
+      ? conversationSessions(state.sessions, conversationId).some(
+          (session) => session.awaitingApproval,
+        )
       : false,
   );
 

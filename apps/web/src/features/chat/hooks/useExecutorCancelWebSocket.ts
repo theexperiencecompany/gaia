@@ -25,10 +25,7 @@ export function useExecutorCancelWebSocket() {
     const { conversation_id } = raw as ExecutorCancelledEvent;
     if (!conversation_id) return;
 
-    const state = useStreamStore.getState();
-    if (state.sessions[conversation_id]?.phase === "awaiting_executor") {
-      state.endSession(conversation_id);
-    }
+    useStreamStore.getState().endAwaitingSession(conversation_id);
   }, []);
 
   useEffect(() => {

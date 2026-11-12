@@ -860,6 +860,9 @@ async def _merge_resumed_result(
             actions=bot_message.follow_up_actions,
         )
 
+    # The push replaces the client's copy under this id, and clients sort by date:
+    # the resume's own time would move the turn below everything sent meanwhile.
+    bot_message.date = existing.date
     return merged
 
 
