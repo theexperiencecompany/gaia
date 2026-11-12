@@ -2,7 +2,10 @@
 
 from prometheus_client import REGISTRY
 
-from app.services.latency_metrics import observe_trigger_gate_decision
+from app.services.latency_metrics import (
+    observe_reaction_ack_decision,
+    observe_trigger_gate_decision,
+)
 
 
 def test_histograms_registered_and_observe():
@@ -100,3 +103,12 @@ def test_a_trigger_gate_decision_is_counted_under_its_labels() -> None:
     observe_trigger_gate_decision(owner="workflow", outcome="run", reason="jev_timeout")
 
     assert REGISTRY.get_sample_value("trigger_gate_decision_total", labels) == before + 1
+
+
+def test_a_reaction_ack_decision_is_counted_under_its_labels() -> None:
+    labels = {"outcome": "none", "reason": "jev_timeout"}
+    before = REGISTRY.get_sample_value("reaction_ack_decision_total", labels) or 0.0
+
+    observe_reaction_ack_decision(outcome="none", reason="jev_timeout")
+
+    assert REGISTRY.get_sample_value("reaction_ack_decision_total", labels) == before + 1
