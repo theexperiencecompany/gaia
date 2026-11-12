@@ -1,5 +1,4 @@
 "use client";
-import "./global-error.css";
 
 // This file is the Next.js global error boundary for the App Router.
 // Placing it in the `app/` directory automatically applies it to the entire
