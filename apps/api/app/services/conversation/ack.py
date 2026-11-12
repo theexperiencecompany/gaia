@@ -9,7 +9,6 @@ import asyncio
 import time
 from typing import Self
 
-import httpx
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from app.constants.reactions import (
@@ -32,19 +31,9 @@ from app.constants.reactions import (
     ReactionReason,
 )
 from app.models.jev_models import JevDecisionsResponse
-from app.services.hil.jev_client import JevUnconfiguredError, post_decisions
+from app.services.hil.jev_client import jev_failure, post_decisions
 from app.services.latency_metrics import observe_reaction_ack_decision
 from shared.py.wide_events import log
-
-# Why JEV gave no usable answer, first match wins; anything else is an error.
-_FAILURE_REASONS: tuple[
-    tuple[type[Exception] | tuple[type[Exception], ...], ReactionReason], ...
-] = (
-    (JevUnconfiguredError, ReactionReason.UNCONFIGURED),
-    ((TimeoutError, httpx.TimeoutException), ReactionReason.TIMEOUT),
-    # A body that is not JSON, fails validation, misses an answer, or picks an emoji off the palette.
-    (ValueError, ReactionReason.MALFORMED),
-)
 
 
 class ReactionDecision(BaseModel):
@@ -125,13 +114,6 @@ def read_reaction(body: JevDecisionsResponse) -> ReactionDecision:
     )
 
 
-def _failure_reason(error: Exception) -> ReactionReason:
-    return next(
-        (reason for kinds, reason in _FAILURE_REASONS if isinstance(error, kinds)),
-        ReactionReason.ERROR,
-    )
-
-
 async def decide_reaction(message_text: str, previous_assistant_text: str) -> ReactionDecision:
     """Ask JEV whether to react to the message and with which emoji; any failure is no reaction."""
     started = time.perf_counter()
@@ -141,7 +123,7 @@ async def decide_reaction(message_text: str, previous_assistant_text: str) -> Re
         decision = read_reaction(body)
     except Exception as e:
         # A missing tap-back is the whole degradation: the reply still comes.
-        reason = _failure_reason(e)
+        reason = ReactionReason(jev_failure(e))
         if reason is not ReactionReason.UNCONFIGURED:
             log.warning(
                 "reaction_ack.jev_failed",

@@ -56,6 +56,19 @@ HIL_LLM_TIMEOUT_SECONDS = 30
 HIL_JEV_MODEL_NAME = "typesafe/jev-1.13"
 HIL_JEV_URL = "https://openrouter.ai/api/alpha/decisions"
 HIL_JEV_TIMEOUT_SECONDS = 15
+
+
+class JevFailure(StrEnum):
+    """Why a JEV call gave no usable answer; the values are metric labels an alert rule reads."""
+
+    ERROR = "jev_error"
+    TIMEOUT = "jev_timeout"
+    # A body that is not JSON, fails validation, or names an answer the caller never offered.
+    MALFORMED = "jev_malformed"
+    # No OpenRouter key (self-host); not an outage, so callers leave it out of their error logs.
+    UNCONFIGURED = "jev_unconfigured"
+
+
 HIL_JEV_ACCEPT_LINE = 0.50
 HIL_JEV_REJECT_FLOOR = 0.50
 

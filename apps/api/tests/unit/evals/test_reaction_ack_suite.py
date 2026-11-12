@@ -84,5 +84,5 @@ async def test_an_out_of_palette_emoji_grades_as_malformed(monkeypatch: pytest.M
 
     run = await _run(monkeypatch, case, emoji="🍕")
 
-    assert (run.end_state or {})["decision"]["reason"] == "malformed"
+    assert (run.end_state or {})["decision"]["reason"] == "jev_malformed"
     assert reaction_expect(case, run) == 0.0

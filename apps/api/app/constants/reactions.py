@@ -10,6 +10,8 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
 
+from app.constants.hil import JevFailure
+
 
 class ReactionKind(StrEnum):
     """What a user's message does, as the kind question's choices name it."""
@@ -29,12 +31,11 @@ class ReactionReason(StrEnum):
     NEEDS_WORDS = "needs_words"
     # Each factor clears the threshold but their product does not.
     BELOW_THRESHOLD = "below_threshold"
-    # No OpenRouter key (self-host); left out of the error log.
-    UNCONFIGURED = "unconfigured"
-    TIMEOUT = "timeout"
-    ERROR = "error"
-    # A body that does not parse, a missing answer, or an emoji outside the palette.
-    MALFORMED = "malformed"
+    # JEV gave no usable answer, named as every JEV caller names it; an off-palette emoji is MALFORMED.
+    UNCONFIGURED = JevFailure.UNCONFIGURED.value
+    TIMEOUT = JevFailure.TIMEOUT.value
+    ERROR = JevFailure.ERROR.value
+    MALFORMED = JevFailure.MALFORMED.value
 
 
 class ReactionOutcome(StrEnum):

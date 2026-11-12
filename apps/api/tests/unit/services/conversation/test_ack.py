@@ -222,7 +222,7 @@ class TestDecideReaction:
 
         assert decision.emoji is None
         assert decision.reason is ReactionReason.MALFORMED
-        assert _failures(event)[0]["reason"] == "malformed"
+        assert _failures(event)[0]["reason"] == "jev_malformed"
 
     async def test_an_answer_slower_than_the_budget_times_out(self) -> None:
         async def never_answers(*_: object) -> JevDecisionsResponse:
@@ -235,7 +235,7 @@ class TestDecideReaction:
 
         assert decision.reason is ReactionReason.TIMEOUT
         assert decision.emoji is None
-        assert _failures(event)[0]["reason"] == "timeout"
+        assert _failures(event)[0]["reason"] == "jev_timeout"
 
     async def test_no_openrouter_key_is_unconfigured_and_does_not_warn(self) -> None:
         with patch(_POST, AsyncMock(side_effect=JevUnconfiguredError("no key"))):
@@ -244,5 +244,5 @@ class TestDecideReaction:
 
         assert decision.reason is ReactionReason.UNCONFIGURED
         assert decision.emoji is None
-        assert event["reaction_ack"]["reason"] == "unconfigured"
+        assert event["reaction_ack"]["reason"] == "jev_unconfigured"
         assert _failures(event) == []

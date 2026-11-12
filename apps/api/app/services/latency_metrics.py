@@ -285,8 +285,8 @@ _REACTION_ACK_DECISION_TOTAL = _register_once(
     lambda: Counter(
         name="reaction_ack_decision_total",
         documentation=(
-            "Lifetime instant reaction decisions; error, timeout and malformed over every reason "
-            "that asked JEV is the instant reaction's JEV error rate"
+            "Lifetime instant reaction decisions; jev_error, jev_timeout and jev_malformed over every "
+            "reason that asked JEV is the instant reaction's JEV error rate"
         ),
         labelnames=("outcome", "reason"),
     ),
