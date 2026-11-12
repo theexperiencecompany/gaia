@@ -306,7 +306,7 @@ class TestTheSimStubRunsABriefsScriptOnce:
             {
                 "acceptance_criteria": ["done"],
                 "intent": ExecutorIntent(
-                    desired_outcome="the scripted directives run", time_horizon="one_shot"
+                    desired_outcome="the scripted directives run", time_horizon=TimeHorizon.ONE_SHOT
                 ),
             },
         ],
