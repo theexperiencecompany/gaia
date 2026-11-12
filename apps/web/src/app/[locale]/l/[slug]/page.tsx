@@ -5,8 +5,8 @@ import { cache } from "react";
 
 import { LinkOpenBeacon } from "@/features/short-links/components/LinkOpenBeacon";
 import { PublicLinkView } from "@/features/short-links/components/PublicLinkView";
+import { internalApiHeaders } from "@/lib/internalApiHeaders";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
-import { viewerForwardingHeaders } from "@/lib/viewerForwardingHeaders";
 import type {
   PublicShortLinkView,
   ShortLinkTargetType,
@@ -58,7 +58,7 @@ const fetchPublicView = cache(
       `${apiBaseUrl}/l/${encodeURIComponent(slug)}`,
       {
         cache: "no-store",
-        headers: viewerForwardingHeaders(await headers()),
+        headers: internalApiHeaders(await headers()),
       },
     );
     if (response.status === 404) return null;

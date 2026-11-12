@@ -32,6 +32,7 @@ from sentry_sdk.types import Event, Hint
 from app.config import sentry as sentry_config
 from app.config.loggers import REQUEST_LOGGER_NAME
 from app.config.sentry import _make_sentry_loguru_sink
+from app.config.settings import settings
 from shared.py import logging as shared_logging
 from shared.py.logging import _InterceptHandler, env_context
 from shared.py.wide_events import (
@@ -302,10 +303,10 @@ def test_only_an_error_captured_inside_a_langchain_model_call_is_dropped(
 def test_only_production_samples_traces_and_profiles(
     env: str, rate: float, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(sentry_config.settings, "ENV", env)
-    monkeypatch.setattr(sentry_config.settings, "AUTH_MODE", "workos")
+    monkeypatch.setattr(settings, "ENV", env)
+    monkeypatch.setattr(settings, "AUTH_MODE", "workos")
     with (
-        patch.object(sentry_config.settings, "SENTRY_DSN", "https://public@sentry.invalid/1"),
+        patch.object(settings, "SENTRY_DSN", "https://public@sentry.invalid/1"),
         patch.object(sentry_config, "_loguru"),
     ):
         sentry_config.init_sentry()
@@ -530,7 +531,7 @@ def test_an_unvalidatable_event_still_reaches_sentry(
 ) -> None:
     """A raising before_send makes the SDK drop the event, so it ships ungrouped instead."""
     warning = MagicMock()
-    monkeypatch.setattr(sentry_config.log, "warning", warning)
+    monkeypatch.setattr(log, "warning", warning)
 
     event = sentry_config._before_send(_event(tags={"logger": 5}), {})
 
@@ -592,3 +593,15 @@ def test_an_arq_job_failure_is_left_to_the_arq_integration() -> None:
 
     cap_msg.assert_not_called()
     cap_exc.assert_not_called()
+
+
+@pytest.mark.parametrize("name", ["x-gaia-internal", "X-Gaia-Internal"])
+def test_the_internal_api_token_never_reaches_sentry(name: str) -> None:
+    """send_default_pii keeps unknown headers, and the SDK scrubber matches no such name."""
+    raw = _event(extra={"trace_id": "t1"})
+    raw["request"] = {"headers": {name: "the-token", "user-agent": "node"}}
+
+    event = sentry_config._before_send(raw, {})
+
+    assert event is not None
+    assert event["request"]["headers"] == {"user-agent": "node"}
