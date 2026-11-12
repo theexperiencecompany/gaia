@@ -58,6 +58,7 @@ from app.models.tool_data_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
+from app.services import analytics_service
 from app.services.conversation.bot_followers import list_active_bot_conversations
 from app.services.conversation.comms_runner import (
     CommsGraphRunner,
@@ -100,10 +101,19 @@ from app.workers.tasks.workflow_tasks import (
     _run_and_record_success,
     execute_workflow_as_chat,
 )
+from shared.py.analytics.catalog.agents import AgentRunStarted
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.workflows import WorkflowExecuted
+from shared.py.analytics.context import (
+    analytics_context,
+    current_analytics_context,
+    worker_context,
+)
 from shared.py.wide_events import _spawned_tasks
 from tests.e2e._harness.graph_run import comms_graph
 from tests.integration.real.test_comms_runner_real import (
+    TEST_ATTRIBUTION,
     GatedModel,
     gated,
     humans,
@@ -227,6 +237,10 @@ def _turn_builder(
             opening=[SystemMessage(content="STATIC PROMPT")],
             closing=[mark(HumanMessage(content="[clock]"), TIME_CONTEXT_MARKER)],
             state={"intent": "", "integration_usernames": {}},
+            attribution=TEST_ATTRIBUTION,
+            run_started=AgentRunStarted(
+                agent="comms", mode="interactive", conversation_id=claim.conversation_id
+            ),
         )
 
     return build
@@ -775,6 +789,34 @@ async def test_the_production_turn_builder_frames_the_message_with_prompt_contex
     assert any(m.additional_kwargs.get(TIME_CONTEXT_MARKER) for m in prompt[asked + 1 :])
     assert shown.count("what time is it?") == 1
     assert [reply.text for reply in await rig.of(Reply)] == ["it is noon"]
+
+
+@pytest.mark.service
+async def test_a_comms_run_on_the_step_emits_run_started_once_attributed_to_the_message_it_answers(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("it is noon")
+    rig = await rig_for(model, build_turn=build_comms_turn)
+    runs: list[tuple[str, Attribution]] = []
+
+    def record(_user: object, event: ServerEvent, **_kwargs: object) -> None:
+        if event.event.startswith("agent:run"):
+            runs.append((event.event, current_analytics_context().attribution))
+
+    # The kick inherits the sender's context; the run must be attributed to the message instead.
+    with (
+        patch.object(analytics_service, "capture", side_effect=record),
+        analytics_context(worker_context(Trigger.SCHEDULE)),
+    ):
+        await rig.send("m1", "what time is it?")
+        await rig.settle()
+    by_user_on_web = Attribution(
+        actor=Actor.AGENT, trigger=Trigger.INTERACTIVE, surface=EntrySurface.WEB
+    )
+    assert runs == [
+        ("agent:run_started", by_user_on_web),
+        ("agent:run_completed", by_user_on_web),
+    ]
 
 
 # ---- workflow fires on the step ----

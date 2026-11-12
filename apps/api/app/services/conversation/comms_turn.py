@@ -8,7 +8,7 @@ from langgraph.constants import CONF
 from app.agents.core.messages import MessageScope, build_turn_context
 from app.agents.llm.lane import AgentRole
 from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
-from app.constants.chat import ConversationSource
+from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.constants.conversation import WORKFLOW_RUN_REQUEST
 from app.db.repositories.conversations import conversation_repository
 from app.helpers.agent_helpers import (
@@ -21,6 +21,7 @@ from app.helpers.agent_helpers import (
 from app.models.agent_config import AgentConfigurable, StepTurnRef
 from app.models.agent_models import agent_user_context
 from app.models.conversation_log_models import (
+    BargeIn,
     Batch,
     StepClaim,
     UserMessage,
@@ -32,6 +33,8 @@ from app.services.conversation.comms_runner import CommsTurn
 from app.services.delivery.presence import read_presence
 from app.utils.auth_utils import require_owner
 from app.utils.user_preferences_utils import onboarding_preferences
+from shared.py.analytics.catalog.agents import AgentRunStarted
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 
 _COMMS_AGENT = "comms_agent"
 
@@ -96,6 +99,14 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
         config=config,
         opening=[*context.chain, *(m for m in (context.presence,) if m is not None)],
         closing=[*await _delivery_note(claim, batch), context.clock],
+        attribution=_attribution(batch, said, fired),
+        run_started=AgentRunStarted(
+            agent="comms",
+            mode=mode,
+            conversation_id=claim.conversation_id,
+            trigger_type=fired.trigger.type if fired else None,
+            source=source,
+        ),
         state={
             "query": query,
             "intent": query,
@@ -143,6 +154,35 @@ def _stamp_workflow_run(configurable: AgentConfigurable, run: WorkflowRun) -> No
     configurable["workflow_notify_on_completion"] = run.trigger.workflow_notify_on_completion
     configurable["playbook_fallback"] = run.trigger.playbook_fallback
     configurable["executor_lock_reservation"] = run.reservation
+
+
+#: Work that finished, or an integration the work waited on, wakes comms with no one asking.
+_UNPROMPTED = Attribution(actor=Actor.AGENT, trigger=Trigger.SYSTEM, surface=EntrySurface.WORKER)
+
+
+def _attribution(batch: Batch, said: list[UserMessage], fired: WorkflowRun | None) -> Attribution:
+    """Return who caused the attempt: the user who spoke last, the workflow's fire, else the work itself."""
+    if said:
+        return _spoken(said[-1])
+    if fired is not None:
+        return fired.attribution
+    if any(isinstance(logged.entry, BargeIn) for logged in batch.waking):
+        return Attribution(
+            actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.VOICE
+        )
+    return _UNPROMPTED
+
+
+def _spoken(message: UserMessage) -> Attribution:
+    if message.voice:
+        surface = EntrySurface.VOICE
+    elif message.surface in BOT_CONVERSATION_SOURCES:
+        surface = EntrySurface.BOT
+    elif message.surface is ConversationSource.DESKTOP:
+        surface = EntrySurface.DESKTOP
+    else:
+        surface = EntrySurface.WEB
+    return Attribution(actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=surface)
 
 
 def _source(said: list[UserMessage]) -> str:

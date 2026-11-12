@@ -175,6 +175,15 @@
         "title": "ActivityDay",
         "type": "object"
       },
+      "Actor": {
+        "description": "Who performed the action: a human request in this turn, or the agent acting on its own.",
+        "enum": [
+          "user",
+          "agent"
+        ],
+        "title": "Actor",
+        "type": "string"
+      },
       "AddIntegrationResponse": {
         "description": "Response for adding a public integration to user's workspace.",
         "properties": {
@@ -702,6 +711,28 @@
           }
         },
         "title": "AsanaTaskTriggerConfig",
+        "type": "object"
+      },
+      "Attribution": {
+        "additionalProperties": false,
+        "description": "The base properties stamped onto every attributed event by its surface's capture function.",
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "surface": {
+            "$ref": "#/components/schemas/EntrySurface"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/Trigger"
+          }
+        },
+        "required": [
+          "actor",
+          "trigger",
+          "surface"
+        ],
+        "title": "Attribution",
         "type": "object"
       },
       "AuthenticatedUserResponse": {
@@ -6733,6 +6764,18 @@
         ],
         "title": "EntryFrame",
         "type": "object"
+      },
+      "EntrySurface": {
+        "description": "Where the run entered GAIA; WORKER is work no client started.",
+        "enum": [
+          "web",
+          "desktop",
+          "bot",
+          "voice",
+          "worker"
+        ],
+        "title": "EntrySurface",
+        "type": "string"
       },
       "EntryUpdatedFrame": {
         "additionalProperties": false,
@@ -20866,6 +20909,18 @@
         "title": "TriageEmailSummary",
         "type": "object"
       },
+      "Trigger": {
+        "description": "What started the run an event belongs to.",
+        "enum": [
+          "interactive",
+          "schedule",
+          "integration_trigger",
+          "webhook",
+          "system"
+        ],
+        "title": "Trigger",
+        "type": "string"
+      },
       "TriggerConfig": {
         "additionalProperties": true,
         "description": "Configuration for workflow triggers.\n\nUses a discriminated union pattern for type-safe provider configs.\nProvider-specific data is stored in `trigger_data` field.",
@@ -23623,6 +23678,9 @@
         "additionalProperties": false,
         "description": "What a workflow's turn runs: the workflow, the trigger that fired it, and the fire's bookkeeping.",
         "properties": {
+          "attribution": {
+            "$ref": "#/components/schemas/Attribution"
+          },
           "execution_id": {
             "minLength": 1,
             "title": "Execution Id",
@@ -23650,7 +23708,8 @@
           "execution_id",
           "timezone",
           "reservation",
-          "trigger"
+          "trigger",
+          "attribution"
         ],
         "title": "WorkflowRun",
         "type": "object"

@@ -1790,6 +1790,7 @@ async def execute_workflow_as_chat(
                 "workflow_id": workflow.id,
             }
         ),
+        attribution=current_analytics_context().attribution,
     )
     ports = runtime_ports()
     fired = await accept(

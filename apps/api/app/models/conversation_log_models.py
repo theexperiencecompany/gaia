@@ -17,6 +17,7 @@ from app.models.message_models import (
 from app.models.todo_wake_models import TodoRunWake
 from app.models.tool_data_models import ToolDataEntry
 from app.models.workflow_trigger_models import WorkflowTriggerContext
+from shared.py.analytics.catalog.attribution import Attribution
 from shared.py.analytics.catalog.properties import Identifier
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
@@ -150,6 +151,8 @@ class WorkflowRun(BaseModel):
     # The busy-lock value the fire reserved the conversation with; the run's executor adopts it.
     reservation: str = Field(min_length=1)
     trigger: WorkflowTriggerContext
+    # Who fired it, so the run that answers the fire is attributed to its schedule, trigger or user.
+    attribution: Attribution
 
 
 class WorkflowFired(_Entry):

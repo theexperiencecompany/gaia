@@ -6041,6 +6041,12 @@ export interface components {
             tokens: number;
         };
         /**
+         * Actor
+         * @description Who performed the action: a human request in this turn, or the agent acting on its own.
+         * @enum {string}
+         */
+        Actor: "user" | "agent";
+        /**
          * AddIntegrationResponse
          * @description Response for adding a public integration to user's workspace.
          */
@@ -6285,6 +6291,15 @@ export interface components {
              * @default
              */
             workspace_id?: string;
+        };
+        /**
+         * Attribution
+         * @description The base properties stamped onto every attributed event by its surface's capture function.
+         */
+        Attribution: {
+            actor: components["schemas"]["Actor"];
+            surface: components["schemas"]["EntrySurface"];
+            trigger: components["schemas"]["Trigger"];
         };
         /**
          * AuthenticatedUserResponse
@@ -8952,6 +8967,12 @@ export interface components {
             /** Seq */
             seq: number;
         };
+        /**
+         * EntrySurface
+         * @description Where the run entered GAIA; WORKER is work no client started.
+         * @enum {string}
+         */
+        EntrySurface: "web" | "desktop" | "bot" | "voice" | "worker";
         /**
          * EntryUpdatedFrame
          * @description An entry changed in place; a client applies it only when entry.revision is newer than its own.
@@ -15863,6 +15884,12 @@ export interface components {
             why_important?: string;
         };
         /**
+         * Trigger
+         * @description What started the run an event belongs to.
+         * @enum {string}
+         */
+        Trigger: "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+        /**
          * TriggerConfig
          * @description Configuration for workflow triggers.
          *
@@ -17054,6 +17081,7 @@ export interface components {
          * @description What a workflow's turn runs: the workflow, the trigger that fired it, and the fire's bookkeeping.
          */
         WorkflowRun: {
+            attribution: components["schemas"]["Attribution"];
             /** Execution Id */
             execution_id: string;
             /** Reservation */
@@ -17507,6 +17535,7 @@ export type ActionStyle = components['schemas']['ActionStyle'];
 export type ActionType = components['schemas']['ActionType'];
 export type ActiveBotConversation = components['schemas']['ActiveBotConversation'];
 export type ActivityDay = components['schemas']['ActivityDay'];
+export type Actor = components['schemas']['Actor'];
 export type AddIntegrationResponse = components['schemas']['AddIntegrationResponse'];
 export type AddUserIntegrationRequest = components['schemas']['AddUserIntegrationRequest'];
 export type AddUserIntegrationResponse = components['schemas']['AddUserIntegrationResponse'];
@@ -17520,6 +17549,7 @@ export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];
 export type AsanaTaskTriggerConfig = components['schemas']['AsanaTaskTriggerConfig'];
+export type Attribution = components['schemas']['Attribution'];
 export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUserResponse'];
 export type AuthorDetails = components['schemas']['AuthorDetails'];
 export type AuthoredGateView = components['schemas']['AuthoredGateView'];
@@ -17674,6 +17704,7 @@ export type EmailSearchResponse = components['schemas']['EmailSearchResponse'];
 export type EnableComposioToolkitRequest = components['schemas']['EnableComposioToolkitRequest'];
 export type EnableComposioToolkitResponse = components['schemas']['EnableComposioToolkitResponse'];
 export type EntryFrame = components['schemas']['EntryFrame'];
+export type EntrySurface = components['schemas']['EntrySurface'];
 export type EntryUpdatedFrame = components['schemas']['EntryUpdatedFrame'];
 export type ErrorEnvelope = components['schemas']['ErrorEnvelope'];
 export type EventCreateRequest = components['schemas']['EventCreateRequest'];
@@ -18044,6 +18075,7 @@ export type ToolsCategoryResponse = components['schemas']['ToolsCategoryResponse
 export type ToolsListResponse = components['schemas']['ToolsListResponse'];
 export type TranscribeAudioResponse = components['schemas']['TranscribeAudioResponse'];
 export type TriageEmailSummary = components['schemas']['TriageEmailSummary'];
+export type Trigger = components['schemas']['Trigger'];
 export type TriggerConfig = components['schemas']['TriggerConfig'];
 export type TriggerConfigFieldSchema = components['schemas']['TriggerConfigFieldSchema'];
 export type TriggerEmailData = components['schemas']['TriggerEmailData'];

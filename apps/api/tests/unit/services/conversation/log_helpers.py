@@ -34,6 +34,8 @@ from app.models.message_models import SelectedWorkflowData
 from app.models.todo_wake_models import TodoRunWake
 from app.models.workflow_trigger_models import WorkflowTriggerContext
 from app.services.conversation.reducer import reduce
+from shared.py.analytics.catalog.attribution import Trigger
+from shared.py.analytics.context import worker_context
 
 EMPTY = ConversationState(
     head=0,
@@ -80,6 +82,7 @@ def workflow_run(execution_id: str = "ex_1") -> WorkflowRun:
         timezone="Asia/Kolkata",
         reservation=f":{execution_id}-reservation",
         trigger=WorkflowTriggerContext(workflow_id="wf_1"),
+        attribution=worker_context(Trigger.SCHEDULE).attribution,
     )
 
 

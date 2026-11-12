@@ -33,6 +33,7 @@ from app.models.conversation_log_models import (
     UserMessage,
     WorkflowFired,
 )
+from app.services.analytics_service import agent_run_lifecycle
 from app.services.conversation.comms_events import CommsEventMapper, GraphEvent
 from app.services.conversation.comms_input import (
     absorbed_messages,
@@ -40,6 +41,9 @@ from app.services.conversation.comms_input import (
     entry_message_id,
 )
 from app.services.conversation.ports import CancelReason, Finished, RunEvent
+from shared.py.analytics.catalog.agents import AgentRunStarted
+from shared.py.analytics.catalog.attribution import Attribution
+from shared.py.analytics.context import AnalyticsContext, analytics_context
 
 _STREAM_MODES: list[StreamMode] = ["messages", "custom", "updates"]
 
@@ -61,6 +65,9 @@ class CommsTurn:
     closing: Sequence[AnyMessage]
     # Graph state keys beside messages (intent, integration_usernames, ...).
     state: dict[str, object]
+    # Who caused the inputs; the run and everything it dispatches are attributed to them.
+    attribution: Attribution
+    run_started: AgentRunStarted
 
 
 CommsTurnBuilder = Callable[[StepClaim, Batch], Awaitable[CommsTurn]]
@@ -74,12 +81,14 @@ class CommsGraphRun:
         claim: StepClaim,
         graph: CompiledAgentGraph,
         config: AgentRunnableConfig,
+        turn: CommsTurn,
         state: dict[str, object],
         cancel_confirm_seconds: float,
     ) -> None:
         self._claim = claim
         self._graph = graph
         self._config = config
+        self._turn = turn
         configurable: AgentConfigurable = agent_configurable(config)
         self._run_id = configurable["comms_run"]
         self._mapper = CommsEventMapper(claim.user_id)
@@ -122,16 +131,22 @@ class CommsGraphRun:
             await record_interruption(self._graph, self._config)
 
     async def _drive(self, state: dict[str, object]) -> None:
-        try:
-            await self._stream(state)
-            *tail, finished = self._mapper.finish()
-            for event in tail:
-                await self._emit(event)
-            self._out.put_nowait(finished)
-        except Exception as error:  # the step settles a crashed run as failed
-            self._out.put_nowait(error)
-        finally:
-            close_feed(self._run_id)
+        turn = self._turn
+        with (
+            analytics_context(AnalyticsContext(attribution=turn.attribution)),
+            agent_run_lifecycle(self._claim.user_id, turn.run_started) as lifecycle,
+        ):
+            try:
+                await self._stream(state)
+                *tail, finished = self._mapper.finish()
+                for event in tail:
+                    await self._emit(event)
+                self._out.put_nowait(finished)
+            except Exception as error:  # the step settles a crashed run as failed
+                lifecycle.failure_reason = type(error).__name__
+                self._out.put_nowait(error)
+            finally:
+                close_feed(self._run_id)
 
     async def _stream(self, state: dict[str, object]) -> None:
         # With subgraphs=True every event is a (namespace, mode, payload) triple, and astream is a
@@ -188,7 +203,7 @@ class CommsGraphRunner:
             *_turn_context(turn.closing, batch, len(turn.opening)),
         ]
         return CommsGraphRun(
-            claim, graph, config, {**turn.state, "messages": messages}, self._confirm
+            claim, graph, config, turn, {**turn.state, "messages": messages}, self._confirm
         )
 
 
