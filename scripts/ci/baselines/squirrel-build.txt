@@ -20,74 +20,11 @@ score:Security=96
 score:Social Media=87
 score:Structured Data=93
 score:URL Structure=93
-*	content/duplicate-description/duplicate-description	240以上の自動化コンボを検索しましょう。gmail + slack、notion + todoist、github +
-*	content/duplicate-description/duplicate-description	240개 이상의 자동화 콤보를 탐색하세요. gmail + slack, notion + todoist, git
-*	content/duplicate-description/duplicate-description	ai, 자동화, 생산성에 관한 필수 개념을 배우세요. ai 에이전트, langgraph, mcp, 벡터 임베
-*	content/duplicate-description/duplicate-description	ai、自動化、生産性に関する重要なコンセプトを学びましょう。aiエージェント、langgraph、mcp、ベクトル埋め込
 *	content/duplicate-description/duplicate-description	browse ai integrations and mcp servers for gmail, slack, not
-*	content/duplicate-description/duplicate-description	comparaciones honestas y detalladas de gaia con chatgpt, gem
-*	content/duplicate-description/duplicate-description	comparações honestas e detalhadas do gaia com chatgpt, gemin
-*	content/duplicate-description/duplicate-description	conecta gmail + slack, notion + todoist, github + linear y m
-*	content/duplicate-description/duplicate-description	conecte gmail + slack, notion + todoist, github + linear e m
-*	content/duplicate-description/duplicate-description	connect gmail + slack, notion + todoist, github + linear and
-*	content/duplicate-description/duplicate-description	connectez gmail + slack, notion + todoist, github + linear e
-*	content/duplicate-description/duplicate-description	des comparaisons honnêtes et détaillées de gaia avec chatgpt
-*	content/duplicate-description/duplicate-description	des explications claires sur les agents ia, le mcp, les embe
-*	content/duplicate-description/duplicate-description	ehrliche, detaillierte vergleiche von gaia mit chatgpt, gemi
-*	content/duplicate-description/duplicate-description	gaiaとchatgpt、gemini、claude、motion、n8n、zapier、reclaimなどの比較をご覧
-*	content/duplicate-description/duplicate-description	gaia와 chatgpt, gemini, claude, motion, n8n, zapier, reclaim
-*	content/duplicate-description/duplicate-description	guias claros sobre agentes de ia, mcp, embeddings e automaçã
-*	content/duplicate-description/duplicate-description	guías claras sobre agentes de ia, mcp, embeddings y automati
-*	content/duplicate-description/duplicate-description	honest, detailed comparisons of gaia with chatgpt, gemini, c
-*	content/duplicate-description/duplicate-description	plain-english guides to ai agents, mcp, embeddings and workf
-*	content/duplicate-description/duplicate-description	verbinden sie gmail + slack, notion + todoist, github + line
-*	content/duplicate-description/duplicate-description	verständliche erklärungen zu ki-agenten, mcp, embeddings und
-*	content/duplicate-title/duplicate-title	ai and productivity glossary: plain-english definitions
-*	content/duplicate-title/duplicate-title	ai assistant comparisons: gaia vs chatgpt, motion, and more
 *	content/duplicate-title/duplicate-title	ai auto-draft replies with gmail | gaia
 *	content/duplicate-title/duplicate-title	ai integration marketplace: connect your tools to gaia
-*	content/duplicate-title/duplicate-title	ai 어시스턴트 비교: gaia vs chatgpt, motion 외
-*	content/duplicate-title/duplicate-title	ai·생산성 용어집: 에이전트와 자동화 용어를 쉽게 풀어 쓴 정의 | gaia
-*	content/duplicate-title/duplicate-title	aiアシスタント比較：gaia vs chatgpt・motionほか
-*	content/duplicate-title/duplicate-title	ai・生産性用語集：エージェントや自動化の用語をやさしく解説 | gaia
-*	content/duplicate-title/duplicate-title	automate any two tools together with gaia
-*	content/duplicate-title/duplicate-title	automatisez n'importe quels deux outils avec gaia
-*	content/duplicate-title/duplicate-title	automatiza cualquier combinación de herramientas con gaia
-*	content/duplicate-title/duplicate-title	automatize quaisquer duas ferramentas com o gaia
-*	content/duplicate-title/duplicate-title	beliebige zwei tools mit gaia automatisieren
-*	content/duplicate-title/duplicate-title	comparatifs d'assistants ia : gaia vs chatgpt et plus
-*	content/duplicate-title/duplicate-title	comparativas de asistentes de ia: gaia vs chatgpt y más
-*	content/duplicate-title/duplicate-title	comparativos de assistentes de ia: gaia vs chatgpt e mais
-*	content/duplicate-title/duplicate-title	gaiaでツール同士を自動化：gmailやslackなど2つのアプリをつなぐ
-*	content/duplicate-title/duplicate-title	gaia로 두 도구를 함께 자동화: gmail, slack 등 앱을 잇는 ai
-*	content/duplicate-title/duplicate-title	glosario de ia y productividad: definiciones claras | gaia
-*	content/duplicate-title/duplicate-title	glossaire ia et productivité : définitions claires | gaia
-*	content/duplicate-title/duplicate-title	glossário de ia e produtividade: definições claras | gaia
-*	content/duplicate-title/duplicate-title	ki- und produktivitäts-glossar: begriffe einfach erklärt
-*	content/duplicate-title/duplicate-title	ki-assistenten im vergleich: gaia vs chatgpt und mehr
-*	core/title-unique/title-unique	ai and productivity glossary: plain-english definitions
-*	core/title-unique/title-unique	ai assistant comparisons: gaia vs chatgpt, motion, and more
 *	core/title-unique/title-unique	ai auto-draft replies with gmail | gaia
 *	core/title-unique/title-unique	ai integration marketplace: connect your tools to gaia
-*	core/title-unique/title-unique	ai 어시스턴트 비교: gaia vs chatgpt, motion 외
-*	core/title-unique/title-unique	ai·생산성 용어집: 에이전트와 자동화 용어를 쉽게 풀어 쓴 정의 | gaia
-*	core/title-unique/title-unique	aiアシスタント比較：gaia vs chatgpt・motionほか
-*	core/title-unique/title-unique	ai・生産性用語集：エージェントや自動化の用語をやさしく解説 | gaia
-*	core/title-unique/title-unique	automate any two tools together with gaia
-*	core/title-unique/title-unique	automatisez n'importe quels deux outils avec gaia
-*	core/title-unique/title-unique	automatiza cualquier combinación de herramientas con gaia
-*	core/title-unique/title-unique	automatize quaisquer duas ferramentas com o gaia
-*	core/title-unique/title-unique	beliebige zwei tools mit gaia automatisieren
-*	core/title-unique/title-unique	comparatifs d'assistants ia : gaia vs chatgpt et plus
-*	core/title-unique/title-unique	comparativas de asistentes de ia: gaia vs chatgpt y más
-*	core/title-unique/title-unique	comparativos de assistentes de ia: gaia vs chatgpt e mais
-*	core/title-unique/title-unique	gaiaでツール同士を自動化：gmailやslackなど2つのアプリをつなぐ
-*	core/title-unique/title-unique	gaia로 두 도구를 함께 자동화: gmail, slack 등 앱을 잇는 ai
-*	core/title-unique/title-unique	glosario de ia y productividad: definiciones claras | gaia
-*	core/title-unique/title-unique	glossaire ia et productivité : définitions claires | gaia
-*	core/title-unique/title-unique	glossário de ia e produtividade: definições claras | gaia
-*	core/title-unique/title-unique	ki- und produktivitäts-glossar: begriffe einfach erklärt
-*	core/title-unique/title-unique	ki-assistenten im vergleich: gaia vs chatgpt und mehr
 *	crawl/schema-noindex-conflict/schema-noindex
 *	images/image-file-size/image-file-size-warn	/_next/image?url=%2Fimages%2Fwallpapers%2Fbands_gradient_1.png&w=1920&q=75
 *	perf/critical-request-chains/critical-request-chains	CSS: /_next/static/chunks/*.css
@@ -264,16 +201,7 @@ score:URL Structure=93
 /automate/notion-todoist	content/keyword-stuffing/keyword-stuffing	tasks
 /automate/notion-todoist	content/keyword-stuffing/keyword-stuffing	todoist
 /automate/page/2	content/keyword-stuffing/keyword-stuffing	calendar
-/automate/page/2	crawl/pagination/pagination-canonical
-/automate/page/2	crawl/sitemap-coverage/sitemap-coverage
-/automate/page/2	i18n/hreflang/hreflang-self
-/automate/page/3	crawl/pagination/pagination-canonical
-/automate/page/3	crawl/sitemap-coverage/sitemap-coverage
-/automate/page/3	i18n/hreflang/hreflang-self
 /automate/page/4	content/keyword-stuffing/keyword-stuffing	tasks
-/automate/page/4	crawl/pagination/pagination-canonical
-/automate/page/4	crawl/sitemap-coverage/sitemap-coverage
-/automate/page/4	i18n/hreflang/hreflang-self
 /automate/slack-asana	content/keyword-stuffing/keyword-stuffing	asana
 /automate/slack-clickup	content/keyword-stuffing/keyword-stuffing	clickup
 /automate/slack-clickup	content/keyword-stuffing/keyword-stuffing	task
@@ -412,13 +340,7 @@ score:URL Structure=93
 /compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	calendar
 /compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	notion
 /compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
-/compare/page/2	crawl/pagination/pagination-canonical
-/compare/page/2	crawl/sitemap-coverage/sitemap-coverage
-/compare/page/2	i18n/hreflang/hreflang-self
 /compare/page/2	links/no-contextual-inbound/no-contextual-inbound
-/compare/page/3	crawl/pagination/pagination-canonical
-/compare/page/3	crawl/sitemap-coverage/sitemap-coverage
-/compare/page/3	i18n/hreflang/hreflang-self
 /compare/page/3	links/no-contextual-inbound/no-contextual-inbound
 /compare/reclaim	content/keyword-stuffing/keyword-stuffing	calendar
 /compare/sanebox	content/keyword-stuffing/keyword-stuffing	email
@@ -672,24 +594,13 @@ score:URL Structure=93
 /de/automate/notion-stripe	content/keyword-stuffing/keyword-stuffing	mit
 /de/automate/notion-stripe	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/notion-teams	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/notion-todoist	content/keyword-stuffing/keyword-stuffing	aufgaben
 /de/automate/notion-todoist	content/keyword-stuffing/keyword-stuffing	todoist
 /de/automate/notion-todoist	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/page/2	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/page/2	crawl/pagination/pagination-canonical
-/de/automate/page/2	crawl/sitemap-coverage/sitemap-coverage
-/de/automate/page/2	i18n/hreflang/hreflang-self
 /de/automate/page/3	content/keyword-stuffing/keyword-stuffing	mit
 /de/automate/page/3	content/keyword-stuffing/keyword-stuffing	tickets
 /de/automate/page/3	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/page/3	crawl/pagination/pagination-canonical
-/de/automate/page/3	crawl/sitemap-coverage/sitemap-coverage
-/de/automate/page/3	i18n/hreflang/hreflang-self
-/de/automate/page/4	content/keyword-stuffing/keyword-stuffing	aufgaben
 /de/automate/page/4	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/page/4	crawl/pagination/pagination-canonical
-/de/automate/page/4	crawl/sitemap-coverage/sitemap-coverage
-/de/automate/page/4	i18n/hreflang/hreflang-self
 /de/automate/salesforce-drive	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/salesforce-slack	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/slack-asana	content/keyword-stuffing/keyword-stuffing	und
@@ -711,18 +622,15 @@ score:URL Structure=93
 /de/automate/slack-trello	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/slack-zoom	content/keyword-stuffing/keyword-stuffing	meeting
 /de/automate/slack-zoom	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/teams-asana	content/keyword-stuffing/keyword-stuffing	aufgaben
 /de/automate/teams-asana	content/keyword-stuffing/keyword-stuffing	teams
 /de/automate/teams-asana	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/todoist-airtable	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/todoist-airtable	core/meta-description/meta-description
 /de/automate/todoist-asana	core/meta-description/meta-description
 /de/automate/todoist-clickup	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/todoist-drive	content/keyword-stuffing/keyword-stuffing	aufgaben
 /de/automate/todoist-drive	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/todoist-figma	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/todoist-google-calendar	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/todoist-google-sheets	content/keyword-stuffing/keyword-stuffing	aufgaben
 /de/automate/todoist-google-sheets	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/todoist-hubspot	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/todoist-loom	content/keyword-stuffing/keyword-stuffing	und
@@ -843,10 +751,8 @@ score:URL Structure=93
 /de/automate/with/trello	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/trello	content/word-count/word-count
 /de/automate/with/trello	core/meta-description/meta-description
-/de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	aufgaben
 /de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	automatisch
 /de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	meetings
-/de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	planen
 /de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/zoom	content/word-count/word-count
 /de/automate/with/zoom	core/meta-description/meta-description
@@ -950,13 +856,7 @@ score:URL Structure=93
 /de/compare/openai-dots	content/keyword-stuffing/keyword-stuffing	und
 /de/compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
 /de/compare/page/2	content/keyword-stuffing/keyword-stuffing	und
-/de/compare/page/2	crawl/pagination/pagination-canonical
-/de/compare/page/2	crawl/sitemap-coverage/sitemap-coverage
-/de/compare/page/2	i18n/hreflang/hreflang-self
 /de/compare/page/2	links/no-contextual-inbound/no-contextual-inbound
-/de/compare/page/3	crawl/pagination/pagination-canonical
-/de/compare/page/3	crawl/sitemap-coverage/sitemap-coverage
-/de/compare/page/3	i18n/hreflang/hreflang-self
 /de/compare/page/3	links/no-contextual-inbound/no-contextual-inbound
 /de/compare/poke	content/keyword-stuffing/keyword-stuffing	sie
 /de/compare/poke	content/keyword-stuffing/keyword-stuffing	und
@@ -1158,25 +1058,13 @@ score:URL Structure=93
 /de/learn/orchestration	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/page/2	content/keyword-stuffing/keyword-stuffing	die
 /de/learn/page/2	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/page/2	crawl/pagination/pagination-canonical
-/de/learn/page/2	crawl/sitemap-coverage/sitemap-coverage
-/de/learn/page/2	i18n/hreflang/hreflang-self
 /de/learn/page/2	links/no-contextual-inbound/no-contextual-inbound
 /de/learn/page/3	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/page/3	crawl/pagination/pagination-canonical
-/de/learn/page/3	crawl/sitemap-coverage/sitemap-coverage
-/de/learn/page/3	i18n/hreflang/hreflang-self
 /de/learn/page/3	links/no-contextual-inbound/no-contextual-inbound
 /de/learn/page/4	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/page/4	crawl/pagination/pagination-canonical
-/de/learn/page/4	crawl/sitemap-coverage/sitemap-coverage
-/de/learn/page/4	i18n/hreflang/hreflang-self
 /de/learn/page/4	links/no-contextual-inbound/no-contextual-inbound
 /de/learn/page/5	content/keyword-stuffing/keyword-stuffing	ist
 /de/learn/page/5	content/keyword-stuffing/keyword-stuffing	und
-/de/learn/page/5	crawl/pagination/pagination-canonical
-/de/learn/page/5	crawl/sitemap-coverage/sitemap-coverage
-/de/learn/page/5	i18n/hreflang/hreflang-self
 /de/learn/page/5	links/no-contextual-inbound/no-contextual-inbound
 /de/learn/para-method	content/keyword-stuffing/keyword-stuffing	und
 /de/learn/parallel-agents	content/keyword-stuffing/keyword-stuffing	die
@@ -1534,17 +1422,8 @@ score:URL Structure=93
 /es/automate/notion-trello	content/keyword-stuffing/keyword-stuffing	notion
 /es/automate/notion-trello	content/keyword-stuffing/keyword-stuffing	trello
 /es/automate/page/2	content/keyword-stuffing/keyword-stuffing	los
-/es/automate/page/2	crawl/pagination/pagination-canonical
-/es/automate/page/2	crawl/sitemap-coverage/sitemap-coverage
-/es/automate/page/2	i18n/hreflang/hreflang-self
 /es/automate/page/3	content/keyword-stuffing/keyword-stuffing	con
-/es/automate/page/3	crawl/pagination/pagination-canonical
-/es/automate/page/3	crawl/sitemap-coverage/sitemap-coverage
-/es/automate/page/3	i18n/hreflang/hreflang-self
 /es/automate/page/4	content/keyword-stuffing/keyword-stuffing	tareas
-/es/automate/page/4	crawl/pagination/pagination-canonical
-/es/automate/page/4	crawl/sitemap-coverage/sitemap-coverage
-/es/automate/page/4	i18n/hreflang/hreflang-self
 /es/automate/salesforce-slack	core/meta-description/meta-description
 /es/automate/slack-asana	core/meta-description/meta-description
 /es/automate/slack-clickup	content/keyword-stuffing/keyword-stuffing	las
@@ -1773,13 +1652,7 @@ score:URL Structure=93
 /es/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	notion
 /es/compare/openai-dots	content/keyword-stuffing/keyword-stuffing	que
 /es/compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
-/es/compare/page/2	crawl/pagination/pagination-canonical
-/es/compare/page/2	crawl/sitemap-coverage/sitemap-coverage
-/es/compare/page/2	i18n/hreflang/hreflang-self
 /es/compare/page/2	links/no-contextual-inbound/no-contextual-inbound
-/es/compare/page/3	crawl/pagination/pagination-canonical
-/es/compare/page/3	crawl/sitemap-coverage/sitemap-coverage
-/es/compare/page/3	i18n/hreflang/hreflang-self
 /es/compare/page/3	links/no-contextual-inbound/no-contextual-inbound
 /es/compare/poke	content/keyword-stuffing/keyword-stuffing	que
 /es/compare/quip	content/keyword-stuffing/keyword-stuffing	salesforce
@@ -1995,24 +1868,12 @@ score:URL Structure=93
 /es/learn/openai-dots	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/orchestration	content/keyword-stuffing/keyword-stuffing	orquestaci
 /es/learn/page/2	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/page/2	crawl/pagination/pagination-canonical
-/es/learn/page/2	crawl/sitemap-coverage/sitemap-coverage
-/es/learn/page/2	i18n/hreflang/hreflang-self
 /es/learn/page/2	links/no-contextual-inbound/no-contextual-inbound
 /es/learn/page/3	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/page/3	crawl/pagination/pagination-canonical
-/es/learn/page/3	crawl/sitemap-coverage/sitemap-coverage
-/es/learn/page/3	i18n/hreflang/hreflang-self
 /es/learn/page/3	links/no-contextual-inbound/no-contextual-inbound
 /es/learn/page/4	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/page/4	crawl/pagination/pagination-canonical
-/es/learn/page/4	crawl/sitemap-coverage/sitemap-coverage
-/es/learn/page/4	i18n/hreflang/hreflang-self
 /es/learn/page/4	links/no-contextual-inbound/no-contextual-inbound
 /es/learn/page/5	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/page/5	crawl/pagination/pagination-canonical
-/es/learn/page/5	crawl/sitemap-coverage/sitemap-coverage
-/es/learn/page/5	i18n/hreflang/hreflang-self
 /es/learn/page/5	links/no-contextual-inbound/no-contextual-inbound
 /es/learn/para-method	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/parallel-agents	content/keyword-stuffing/keyword-stuffing	que
@@ -2098,57 +1959,26 @@ score:URL Structure=93
 /faq	links/no-contextual-inbound/no-contextual-inbound
 /faq	perf/cache-headers/cache-control
 /features	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
-/features	perf/cache-headers/cache-control
-/features/calendar	perf/cache-headers/cache-control
-/features/code-execution	perf/cache-headers/cache-control
 /features/contacts	content/keyword-stuffing/keyword-stuffing	contact
 /features/contacts	content/keyword-stuffing/keyword-stuffing	email
-/features/contacts	perf/cache-headers/cache-control
-/features/custom-integrations	perf/cache-headers/cache-control
 /features/dashboard	content/keyword-stuffing/keyword-stuffing	dashboard
 /features/dashboard	links/orphan-pages/orphan-pages
 /features/dashboard	links/weak-internal-links/weak-internal-links
-/features/dashboard	perf/cache-headers/cache-control
-/features/deep-research	perf/cache-headers/cache-control
 /features/discord-bot	content/keyword-stuffing/keyword-stuffing	discord
-/features/discord-bot	perf/cache-headers/cache-control
-/features/document-generation	perf/cache-headers/cache-control
-/features/email	perf/cache-headers/cache-control
 /features/event-triggers	content/keyword-stuffing/keyword-stuffing	event
-/features/event-triggers	perf/cache-headers/cache-control
-/features/goals	perf/cache-headers/cache-control
 /features/image-generation	links/orphan-pages/orphan-pages
 /features/image-generation	links/weak-internal-links/weak-internal-links
-/features/image-generation	perf/cache-headers/cache-control
-/features/integrations	perf/cache-headers/cache-control
 /features/marketplace	content/keyword-stuffing/keyword-stuffing	integration
 /features/marketplace	core/meta-description/meta-description
-/features/marketplace	perf/cache-headers/cache-control
 /features/mcp-support	content/keyword-stuffing/keyword-stuffing	mcp
-/features/mcp-support	perf/cache-headers/cache-control
-/features/memory	perf/cache-headers/cache-control
-/features/mobile	perf/cache-headers/cache-control
 /features/pins	core/meta-description/meta-description
 /features/pins	links/orphan-pages/orphan-pages
 /features/pins	links/weak-internal-links/weak-internal-links
-/features/pins	perf/cache-headers/cache-control
-/features/proactive-ai	perf/cache-headers/cache-control
 /features/reminders	content/keyword-stuffing/keyword-stuffing	reminder
-/features/reminders	perf/cache-headers/cache-control
 /features/rich-responses	core/meta-description/meta-description
-/features/rich-responses	perf/cache-headers/cache-control
-/features/scheduled-automation	perf/cache-headers/cache-control
 /features/skills	content/keyword-stuffing/keyword-stuffing	skill
-/features/skills	perf/cache-headers/cache-control
 /features/slack-bot	content/keyword-stuffing/keyword-stuffing	slack
-/features/slack-bot	perf/cache-headers/cache-control
-/features/smart-chat	perf/cache-headers/cache-control
-/features/subagents	perf/cache-headers/cache-control
 /features/telegram-bot	content/keyword-stuffing/keyword-stuffing	telegram
-/features/telegram-bot	perf/cache-headers/cache-control
-/features/todos	perf/cache-headers/cache-control
-/features/voice	perf/cache-headers/cache-control
-/features/workflows	perf/cache-headers/cache-control
 /for	content/keyword-stuffing/keyword-stuffing	read
 /for/agency-owners	core/meta-description/meta-description
 /for/content-creators	content/keyword-stuffing/keyword-stuffing	content
@@ -2403,22 +2233,13 @@ score:URL Structure=93
 /fr/automate/notion-todoist	content/keyword-stuffing/keyword-stuffing	todoist
 /fr/automate/notion-trello	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/page/2	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/page/2	crawl/pagination/pagination-canonical
-/fr/automate/page/2	crawl/sitemap-coverage/sitemap-coverage
-/fr/automate/page/2	i18n/hreflang/hreflang-self
 /fr/automate/page/3	content/keyword-stuffing/keyword-stuffing	dans
 /fr/automate/page/3	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/page/3	content/keyword-stuffing/keyword-stuffing	tickets
-/fr/automate/page/3	crawl/pagination/pagination-canonical
-/fr/automate/page/3	crawl/sitemap-coverage/sitemap-coverage
-/fr/automate/page/3	i18n/hreflang/hreflang-self
 /fr/automate/page/4	content/keyword-stuffing/keyword-stuffing	ches
 /fr/automate/page/4	content/keyword-stuffing/keyword-stuffing	dans
 /fr/automate/page/4	content/keyword-stuffing/keyword-stuffing	des
 /fr/automate/page/4	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/page/4	crawl/pagination/pagination-canonical
-/fr/automate/page/4	crawl/sitemap-coverage/sitemap-coverage
-/fr/automate/page/4	i18n/hreflang/hreflang-self
 /fr/automate/salesforce-drive	content/keyword-stuffing/keyword-stuffing	des
 /fr/automate/salesforce-drive	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/salesforce-slack	content/keyword-stuffing/keyword-stuffing	dans
@@ -2674,13 +2495,7 @@ score:URL Structure=93
 /fr/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	calendar
 /fr/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	notion
 /fr/compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
-/fr/compare/page/2	crawl/pagination/pagination-canonical
-/fr/compare/page/2	crawl/sitemap-coverage/sitemap-coverage
-/fr/compare/page/2	i18n/hreflang/hreflang-self
 /fr/compare/page/2	links/no-contextual-inbound/no-contextual-inbound
-/fr/compare/page/3	crawl/pagination/pagination-canonical
-/fr/compare/page/3	crawl/sitemap-coverage/sitemap-coverage
-/fr/compare/page/3	i18n/hreflang/hreflang-self
 /fr/compare/page/3	links/no-contextual-inbound/no-contextual-inbound
 /fr/compare/quip	content/keyword-stuffing/keyword-stuffing	les
 /fr/compare/reclaim	content/keyword-stuffing/keyword-stuffing	calendar
@@ -3005,26 +2820,14 @@ score:URL Structure=93
 /fr/learn/orchestration	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/orchestration	content/keyword-stuffing/keyword-stuffing	orchestration
 /fr/learn/page/2	content/keyword-stuffing/keyword-stuffing	des
-/fr/learn/page/2	crawl/pagination/pagination-canonical
-/fr/learn/page/2	crawl/sitemap-coverage/sitemap-coverage
-/fr/learn/page/2	i18n/hreflang/hreflang-self
 /fr/learn/page/2	links/no-contextual-inbound/no-contextual-inbound
 /fr/learn/page/3	content/keyword-stuffing/keyword-stuffing	des
-/fr/learn/page/3	crawl/pagination/pagination-canonical
-/fr/learn/page/3	crawl/sitemap-coverage/sitemap-coverage
-/fr/learn/page/3	i18n/hreflang/hreflang-self
 /fr/learn/page/3	links/no-contextual-inbound/no-contextual-inbound
 /fr/learn/page/4	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/page/4	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/page/4	crawl/pagination/pagination-canonical
-/fr/learn/page/4	crawl/sitemap-coverage/sitemap-coverage
-/fr/learn/page/4	i18n/hreflang/hreflang-self
 /fr/learn/page/4	links/no-contextual-inbound/no-contextual-inbound
 /fr/learn/page/5	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/page/5	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/page/5	crawl/pagination/pagination-canonical
-/fr/learn/page/5	crawl/sitemap-coverage/sitemap-coverage
-/fr/learn/page/5	i18n/hreflang/hreflang-self
 /fr/learn/page/5	links/no-contextual-inbound/no-contextual-inbound
 /fr/learn/parallel-agents	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/parallel-agents	content/keyword-stuffing/keyword-stuffing	parall
@@ -3150,22 +2953,8 @@ score:URL Structure=93
 /fr/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
 /how-to-use-ai-as-a-personal-assistant	perf/cache-headers/cache-control
 /inbox-zero-ai	perf/cache-headers/cache-control
-/integrations	core/canonical/canonical
-/integrations	core/robots-meta/robots-meta
-/integrations	links/dead-end-pages/dead-end
-/integrations	links/internal-links/internal-links
-/integrations	links/weak-internal-links/weak-internal-links
 /ja/alternative-to	links/no-contextual-inbound/no-contextual-inbound
 /ja/automate	links/no-contextual-inbound/no-contextual-inbound
-/ja/automate/page/2	crawl/pagination/pagination-canonical
-/ja/automate/page/2	crawl/sitemap-coverage/sitemap-coverage
-/ja/automate/page/2	i18n/hreflang/hreflang-self
-/ja/automate/page/3	crawl/pagination/pagination-canonical
-/ja/automate/page/3	crawl/sitemap-coverage/sitemap-coverage
-/ja/automate/page/3	i18n/hreflang/hreflang-self
-/ja/automate/page/4	crawl/pagination/pagination-canonical
-/ja/automate/page/4	crawl/sitemap-coverage/sitemap-coverage
-/ja/automate/page/4	i18n/hreflang/hreflang-self
 /ja/automate/with/google-docs	links/orphan-pages/orphan-pages
 /ja/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
 /ja/compare/category/ai-assistants	links/orphan-pages/orphan-pages
@@ -3183,13 +2972,7 @@ score:URL Structure=93
 /ja/compare/category/project-management	links/orphan-pages/orphan-pages
 /ja/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
 /ja/compare/category/task-management	links/orphan-pages/orphan-pages
-/ja/compare/page/2	crawl/pagination/pagination-canonical
-/ja/compare/page/2	crawl/sitemap-coverage/sitemap-coverage
-/ja/compare/page/2	i18n/hreflang/hreflang-self
 /ja/compare/page/2	links/no-contextual-inbound/no-contextual-inbound
-/ja/compare/page/3	crawl/pagination/pagination-canonical
-/ja/compare/page/3	crawl/sitemap-coverage/sitemap-coverage
-/ja/compare/page/3	i18n/hreflang/hreflang-self
 /ja/compare/page/3	links/no-contextual-inbound/no-contextual-inbound
 /ja/learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
 /ja/learn/category/ai-concepts	links/orphan-pages/orphan-pages
@@ -3207,33 +2990,12 @@ score:URL Structure=93
 /ja/learn/category/productivity	links/orphan-pages/orphan-pages
 /ja/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
 /ja/learn/category/task-management	links/orphan-pages/orphan-pages
-/ja/learn/page/2	crawl/pagination/pagination-canonical
-/ja/learn/page/2	crawl/sitemap-coverage/sitemap-coverage
-/ja/learn/page/2	i18n/hreflang/hreflang-self
 /ja/learn/page/2	links/no-contextual-inbound/no-contextual-inbound
-/ja/learn/page/3	crawl/pagination/pagination-canonical
-/ja/learn/page/3	crawl/sitemap-coverage/sitemap-coverage
-/ja/learn/page/3	i18n/hreflang/hreflang-self
 /ja/learn/page/3	links/no-contextual-inbound/no-contextual-inbound
-/ja/learn/page/4	crawl/pagination/pagination-canonical
-/ja/learn/page/4	crawl/sitemap-coverage/sitemap-coverage
-/ja/learn/page/4	i18n/hreflang/hreflang-self
 /ja/learn/page/4	links/no-contextual-inbound/no-contextual-inbound
-/ja/learn/page/5	crawl/pagination/pagination-canonical
-/ja/learn/page/5	crawl/sitemap-coverage/sitemap-coverage
-/ja/learn/page/5	i18n/hreflang/hreflang-self
 /ja/learn/page/5	links/no-contextual-inbound/no-contextual-inbound
 /ko/alternative-to	links/no-contextual-inbound/no-contextual-inbound
 /ko/automate	links/no-contextual-inbound/no-contextual-inbound
-/ko/automate/page/2	crawl/pagination/pagination-canonical
-/ko/automate/page/2	crawl/sitemap-coverage/sitemap-coverage
-/ko/automate/page/2	i18n/hreflang/hreflang-self
-/ko/automate/page/3	crawl/pagination/pagination-canonical
-/ko/automate/page/3	crawl/sitemap-coverage/sitemap-coverage
-/ko/automate/page/3	i18n/hreflang/hreflang-self
-/ko/automate/page/4	crawl/pagination/pagination-canonical
-/ko/automate/page/4	crawl/sitemap-coverage/sitemap-coverage
-/ko/automate/page/4	i18n/hreflang/hreflang-self
 /ko/automate/with/google-docs	links/orphan-pages/orphan-pages
 /ko/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
 /ko/compare/category/ai-assistants	links/orphan-pages/orphan-pages
@@ -3251,13 +3013,7 @@ score:URL Structure=93
 /ko/compare/category/project-management	links/orphan-pages/orphan-pages
 /ko/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
 /ko/compare/category/task-management	links/orphan-pages/orphan-pages
-/ko/compare/page/2	crawl/pagination/pagination-canonical
-/ko/compare/page/2	crawl/sitemap-coverage/sitemap-coverage
-/ko/compare/page/2	i18n/hreflang/hreflang-self
 /ko/compare/page/2	links/no-contextual-inbound/no-contextual-inbound
-/ko/compare/page/3	crawl/pagination/pagination-canonical
-/ko/compare/page/3	crawl/sitemap-coverage/sitemap-coverage
-/ko/compare/page/3	i18n/hreflang/hreflang-self
 /ko/compare/page/3	links/no-contextual-inbound/no-contextual-inbound
 /ko/learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
 /ko/learn/category/ai-concepts	links/orphan-pages/orphan-pages
@@ -3275,22 +3031,9 @@ score:URL Structure=93
 /ko/learn/category/productivity	links/orphan-pages/orphan-pages
 /ko/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
 /ko/learn/category/task-management	links/orphan-pages/orphan-pages
-/ko/learn/local-llm	content/dev-leakage/dev-leakage	localhost
-/ko/learn/page/2	crawl/pagination/pagination-canonical
-/ko/learn/page/2	crawl/sitemap-coverage/sitemap-coverage
-/ko/learn/page/2	i18n/hreflang/hreflang-self
 /ko/learn/page/2	links/no-contextual-inbound/no-contextual-inbound
-/ko/learn/page/3	crawl/pagination/pagination-canonical
-/ko/learn/page/3	crawl/sitemap-coverage/sitemap-coverage
-/ko/learn/page/3	i18n/hreflang/hreflang-self
 /ko/learn/page/3	links/no-contextual-inbound/no-contextual-inbound
-/ko/learn/page/4	crawl/pagination/pagination-canonical
-/ko/learn/page/4	crawl/sitemap-coverage/sitemap-coverage
-/ko/learn/page/4	i18n/hreflang/hreflang-self
 /ko/learn/page/4	links/no-contextual-inbound/no-contextual-inbound
-/ko/learn/page/5	crawl/pagination/pagination-canonical
-/ko/learn/page/5	crawl/sitemap-coverage/sitemap-coverage
-/ko/learn/page/5	i18n/hreflang/hreflang-self
 /ko/learn/page/5	links/no-contextual-inbound/no-contextual-inbound
 /learn/agent-loop	content/keyword-stuffing/keyword-stuffing	agent
 /learn/agent-memory	content/keyword-stuffing/keyword-stuffing	memory
@@ -3388,21 +3131,9 @@ score:URL Structure=93
 /learn/offline-first	content/keyword-stuffing/keyword-stuffing	data
 /learn/okrs	content/keyword-stuffing/keyword-stuffing	okrs
 /learn/orchestration	content/keyword-stuffing/keyword-stuffing	orchestration
-/learn/page/2	crawl/pagination/pagination-canonical
-/learn/page/2	crawl/sitemap-coverage/sitemap-coverage
-/learn/page/2	i18n/hreflang/hreflang-self
 /learn/page/2	links/no-contextual-inbound/no-contextual-inbound
-/learn/page/3	crawl/pagination/pagination-canonical
-/learn/page/3	crawl/sitemap-coverage/sitemap-coverage
-/learn/page/3	i18n/hreflang/hreflang-self
 /learn/page/3	links/no-contextual-inbound/no-contextual-inbound
-/learn/page/4	crawl/pagination/pagination-canonical
-/learn/page/4	crawl/sitemap-coverage/sitemap-coverage
-/learn/page/4	i18n/hreflang/hreflang-self
 /learn/page/4	links/no-contextual-inbound/no-contextual-inbound
-/learn/page/5	crawl/pagination/pagination-canonical
-/learn/page/5	crawl/sitemap-coverage/sitemap-coverage
-/learn/page/5	i18n/hreflang/hreflang-self
 /learn/page/5	links/no-contextual-inbound/no-contextual-inbound
 /learn/password-manager	content/keyword-stuffing/keyword-stuffing	password
 /learn/prompt-chaining	content/keyword-stuffing/keyword-stuffing	prompt
@@ -3717,17 +3448,7 @@ score:URL Structure=93
 /pt-br/automate/notion-stripe	core/meta-description/meta-description
 /pt-br/automate/notion-todoist	content/keyword-stuffing/keyword-stuffing	tarefas
 /pt-br/automate/notion-todoist	content/keyword-stuffing/keyword-stuffing	todoist
-/pt-br/automate/page/2	crawl/pagination/pagination-canonical
-/pt-br/automate/page/2	crawl/sitemap-coverage/sitemap-coverage
-/pt-br/automate/page/2	i18n/hreflang/hreflang-self
 /pt-br/automate/page/3	content/keyword-stuffing/keyword-stuffing	issues
-/pt-br/automate/page/3	crawl/pagination/pagination-canonical
-/pt-br/automate/page/3	crawl/sitemap-coverage/sitemap-coverage
-/pt-br/automate/page/3	i18n/hreflang/hreflang-self
-/pt-br/automate/page/4	content/keyword-stuffing/keyword-stuffing	tarefas
-/pt-br/automate/page/4	crawl/pagination/pagination-canonical
-/pt-br/automate/page/4	crawl/sitemap-coverage/sitemap-coverage
-/pt-br/automate/page/4	i18n/hreflang/hreflang-self
 /pt-br/automate/salesforce-slack	content/keyword-stuffing/keyword-stuffing	neg
 /pt-br/automate/slack-clickup	content/keyword-stuffing/keyword-stuffing	tarefas
 /pt-br/automate/slack-clickup	core/meta-description/meta-description
@@ -3746,11 +3467,8 @@ score:URL Structure=93
 /pt-br/automate/slack-zoom	core/meta-description/meta-description
 /pt-br/automate/teams-asana	content/keyword-stuffing/keyword-stuffing	asana
 /pt-br/automate/todoist-airtable	content/keyword-stuffing/keyword-stuffing	para
-/pt-br/automate/todoist-asana	content/keyword-stuffing/keyword-stuffing	tarefas
 /pt-br/automate/todoist-drive	content/keyword-stuffing/keyword-stuffing	tarefas
 /pt-br/automate/todoist-figma	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/automate/todoist-figma	content/keyword-stuffing/keyword-stuffing	tarefas
-/pt-br/automate/todoist-google-sheets	content/keyword-stuffing/keyword-stuffing	tarefas
 /pt-br/automate/todoist-hubspot	core/meta-description/meta-description
 /pt-br/automate/todoist-loom	content/keyword-stuffing/keyword-stuffing	deo
 /pt-br/automate/todoist-loom	content/keyword-stuffing/keyword-stuffing	para
@@ -3900,13 +3618,7 @@ score:URL Structure=93
 /pt-br/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	calendar
 /pt-br/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	notion
 /pt-br/compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
-/pt-br/compare/page/2	crawl/pagination/pagination-canonical
-/pt-br/compare/page/2	crawl/sitemap-coverage/sitemap-coverage
-/pt-br/compare/page/2	i18n/hreflang/hreflang-self
 /pt-br/compare/page/2	links/no-contextual-inbound/no-contextual-inbound
-/pt-br/compare/page/3	crawl/pagination/pagination-canonical
-/pt-br/compare/page/3	crawl/sitemap-coverage/sitemap-coverage
-/pt-br/compare/page/3	i18n/hreflang/hreflang-self
 /pt-br/compare/page/3	links/no-contextual-inbound/no-contextual-inbound
 /pt-br/compare/poke	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/compare/quip	content/keyword-stuffing/keyword-stuffing	salesforce
@@ -4072,24 +3784,12 @@ score:URL Structure=93
 /pt-br/learn/openai-dots	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/orchestration	content/keyword-stuffing/keyword-stuffing	orquestra
 /pt-br/learn/page/2	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/learn/page/2	crawl/pagination/pagination-canonical
-/pt-br/learn/page/2	crawl/sitemap-coverage/sitemap-coverage
-/pt-br/learn/page/2	i18n/hreflang/hreflang-self
 /pt-br/learn/page/2	links/no-contextual-inbound/no-contextual-inbound
 /pt-br/learn/page/3	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/learn/page/3	crawl/pagination/pagination-canonical
-/pt-br/learn/page/3	crawl/sitemap-coverage/sitemap-coverage
-/pt-br/learn/page/3	i18n/hreflang/hreflang-self
 /pt-br/learn/page/3	links/no-contextual-inbound/no-contextual-inbound
 /pt-br/learn/page/4	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/learn/page/4	crawl/pagination/pagination-canonical
-/pt-br/learn/page/4	crawl/sitemap-coverage/sitemap-coverage
-/pt-br/learn/page/4	i18n/hreflang/hreflang-self
 /pt-br/learn/page/4	links/no-contextual-inbound/no-contextual-inbound
 /pt-br/learn/page/5	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/learn/page/5	crawl/pagination/pagination-canonical
-/pt-br/learn/page/5	crawl/sitemap-coverage/sitemap-coverage
-/pt-br/learn/page/5	i18n/hreflang/hreflang-self
 /pt-br/learn/page/5	links/no-contextual-inbound/no-contextual-inbound
 /pt-br/learn/para-method	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/learn/parkinson-law	content/keyword-stuffing/keyword-stuffing	para
