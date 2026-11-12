@@ -9,9 +9,8 @@
 
 import { Description, Header, ListBox, Select } from "@heroui/react";
 import { useMemo } from "react";
-
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-
 import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
 import { TriggerSelectToggle } from "../components/TriggerSelectToggle";
 import {
@@ -230,7 +229,10 @@ export function GoogleSheetsSettings({
             selectionMode="multiple"
             value={sheetKeys}
             onChange={(keys) => handleSheetSelectionChange(new Set(keys))}
-            className="w-full"
+            className={fieldVariants({
+              labelPlacement: "inside",
+              className: "w-full",
+            })}
             isDisabled={spreadsheetIds.length === 0}
           >
             <Select.Trigger>

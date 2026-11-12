@@ -1,6 +1,7 @@
 "use client";
 
 import { Button, Modal } from "@heroui/react";
+import { modalVariants } from "@/components/shared/controlVariants";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { SkillTargetIcon } from "./SkillTargetIcon";
 
@@ -37,7 +38,7 @@ export function SkillPreviewModal({
         }}
       >
         <Modal.Container size="lg" scroll="inside">
-          <Modal.Dialog>
+          <Modal.Dialog className={modalVariants({ size: "2xl" })}>
             <Modal.CloseTrigger aria-label="Close" />
             {skill && (
               <>

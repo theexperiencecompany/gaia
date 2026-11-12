@@ -9,7 +9,7 @@
 
 import { Button, ListBox, Select } from "@heroui/react";
 import { useState } from "react";
-
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
 import {
@@ -152,7 +152,10 @@ export function GitHubSettings({
               selectionMode="multiple"
               value={currentSelectedKeys}
               onChange={handleSelectionChange}
-              className="w-full"
+              className={fieldVariants({
+                labelPlacement: "inside",
+                className: "w-full",
+              })}
             >
               <Select.Trigger className="w-full">
                 <Select.Value>

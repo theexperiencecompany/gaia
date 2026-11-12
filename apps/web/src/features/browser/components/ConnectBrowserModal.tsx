@@ -190,11 +190,6 @@ function ConnectBrowserBody({ onClose }: { onClose: () => void }) {
                 </Tabs.Tab>
               ))}
             </Tabs.List>
-            {runners.map((r) => (
-              <Tabs.Panel key={r} id={r}>
-                {null}
-              </Tabs.Panel>
-            ))}
           </Tabs>
           <CommandPanel
             command={command}

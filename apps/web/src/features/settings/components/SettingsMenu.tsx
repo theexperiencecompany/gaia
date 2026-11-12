@@ -1,6 +1,6 @@
 "use client";
 
-import { Dropdown, Header } from "@heroui/react";
+import { Dropdown, Header, Separator } from "@heroui/react";
 import {
   BookBookmark02Icon,
   BookOpen02Icon,
@@ -19,7 +19,7 @@ import {
 } from "@icons";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 import { useKeyboardShortcuts } from "@/components/providers/KeyboardShortcutsProvider";
 import {
   type ConfirmAction,
@@ -436,65 +436,68 @@ export default function SettingsMenu({
         >
           <Dropdown.Menu aria-label="Settings Menu">
             {menuSections.map((section) => (
-              <Dropdown.Section key={section.id}>
-                {section.title && <Header>{section.title}</Header>}
-                {section.items.map((item: MenuItem) => {
-                  const Icon = item.icon;
-                  const iconColor =
-                    item.iconColor || socialMediaColorMap[item.key];
-                  const itemClassName = [
-                    item.color === "danger"
-                      ? "text-danger"
-                      : iconColor
-                        ? "transition"
-                        : "text-zinc-400 transition hover:text-white",
-                    item.customClassNames?.title,
-                  ]
-                    .filter(Boolean)
-                    .join(" ");
+              <Fragment key={section.id}>
+                <Dropdown.Section>
+                  {section.title && <Header>{section.title}</Header>}
+                  {section.items.map((item: MenuItem) => {
+                    const Icon = item.icon;
+                    const iconColor =
+                      item.iconColor || socialMediaColorMap[item.key];
+                    const itemClassName = [
+                      item.color === "danger"
+                        ? "text-danger"
+                        : iconColor
+                          ? "transition"
+                          : "text-zinc-400 transition hover:text-white",
+                      item.customClassNames?.title,
+                    ]
+                      .filter(Boolean)
+                      .join(" ");
 
-                  // Handle nested menus (What's new, Download, Resources, Support)
-                  if (item.hasSubmenu) {
-                    const menu = submenuByKey[item.key] ?? supportMenu;
+                    // Handle nested menus (What's new, Download, Resources, Support)
+                    if (item.hasSubmenu) {
+                      const menu = submenuByKey[item.key] ?? supportMenu;
+
+                      return (
+                        <Dropdown.Item
+                          key={item.key}
+                          id={item.key}
+                          textValue={item.label}
+                          onMouseEnter={menu.handleMouseEnter}
+                          onMouseLeave={menu.handleMouseLeave}
+                          className="text-zinc-400 transition hover:text-white"
+                        >
+                          {Icon && <Icon className={ICON_CLASSES} />}
+                          {item.label}
+                          <div className="ml-auto flex items-center gap-1.5">
+                            {item.badge}
+                            <ChevronRight className="h-4 w-4 text-zinc-500" />
+                          </div>
+                        </Dropdown.Item>
+                      );
+                    }
 
                     return (
                       <Dropdown.Item
                         key={item.key}
                         id={item.key}
                         textValue={item.label}
-                        onMouseEnter={menu.handleMouseEnter}
-                        onMouseLeave={menu.handleMouseLeave}
-                        className="text-zinc-400 transition hover:text-white"
+                        variant={item.color === "danger" ? "danger" : "default"}
+                        onAction={() => handleItemAction(item)}
+                        className={itemClassName}
+                        style={iconColor ? { color: iconColor } : undefined}
                       >
-                        {Icon && <Icon className={ICON_CLASSES} />}
+                        {item.iconElement ??
+                          (Icon && (
+                            <Icon className={ICON_CLASSES} color={iconColor} />
+                          ))}
                         {item.label}
-                        <div className="ml-auto flex items-center gap-1.5">
-                          {item.badge}
-                          <ChevronRight className="h-4 w-4 text-zinc-500" />
-                        </div>
                       </Dropdown.Item>
                     );
-                  }
-
-                  return (
-                    <Dropdown.Item
-                      key={item.key}
-                      id={item.key}
-                      textValue={item.label}
-                      variant={item.color === "danger" ? "danger" : "default"}
-                      onAction={() => handleItemAction(item)}
-                      className={itemClassName}
-                      style={iconColor ? { color: iconColor } : undefined}
-                    >
-                      {item.iconElement ??
-                        (Icon && (
-                          <Icon className={ICON_CLASSES} color={iconColor} />
-                        ))}
-                      {item.label}
-                    </Dropdown.Item>
-                  );
-                })}
-              </Dropdown.Section>
+                  })}
+                </Dropdown.Section>
+                {section.showDivider && <Separator />}
+              </Fragment>
             ))}
           </Dropdown.Menu>
         </Dropdown.Popover>

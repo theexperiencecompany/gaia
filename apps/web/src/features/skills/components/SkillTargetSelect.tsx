@@ -1,6 +1,7 @@
 "use client";
 
 import { Label, ListBox, Select } from "@heroui/react";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import type { SkillTarget } from "../api/types";
 import { SkillTargetIcon } from "./SkillTargetIcon";
 
@@ -20,6 +21,7 @@ export function SkillTargetSelect({
 
   return (
     <Select
+      className={fieldVariants({ labelPlacement: "inside" })}
       value={value}
       onChange={(key) => key != null && onChange(String(key))}
     >

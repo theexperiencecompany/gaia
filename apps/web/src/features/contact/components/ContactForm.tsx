@@ -12,6 +12,7 @@ import {
 } from "@heroui/react";
 import { Turnstile } from "@marsidev/react-turnstile";
 import type React from "react";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import {
   CONTACT_FORM_MESSAGES,
@@ -73,6 +74,7 @@ function ContactRequestForm({
       {isVisitor && (
         <div className="grid gap-6 sm:grid-cols-2">
           <TextField
+            className={fieldVariants({ labelPlacement: "inside" })}
             type="email"
             value={visitor.email}
             onChange={visitor.setEmail}
@@ -83,7 +85,11 @@ function ContactRequestForm({
             <Input placeholder="Where we should reply" autoComplete="email" />
             <FieldError />
           </TextField>
-          <TextField value={visitor.name} onChange={visitor.setName}>
+          <TextField
+            className={fieldVariants({ labelPlacement: "inside" })}
+            value={visitor.name}
+            onChange={visitor.setName}
+          >
             <Label>Name</Label>
             <Input placeholder="Optional" maxLength={100} autoComplete="name" />
           </TextField>
@@ -91,6 +97,7 @@ function ContactRequestForm({
       )}
 
       <Select
+        className={fieldVariants({ labelPlacement: "inside" })}
         placeholder="Select a request type"
         selectedKey={formData.type ?? null}
         onSelectionChange={(key) => {
@@ -126,6 +133,7 @@ function ContactRequestForm({
       </Select>
 
       <TextField
+        className={fieldVariants({ labelPlacement: "inside" })}
         value={formData.title}
         onChange={(value) => handleInputChange("title", value)}
         isRequired
@@ -138,6 +146,7 @@ function ContactRequestForm({
       </TextField>
 
       <TextField
+        className={fieldVariants({ labelPlacement: "inside" })}
         value={formData.description}
         onChange={(value) => handleInputChange("description", value)}
         isRequired

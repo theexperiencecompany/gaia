@@ -2,7 +2,7 @@
 
 import { Modal } from "@heroui/react";
 import { Tag01Icon } from "@icons";
-
+import { modalVariants } from "@/components/shared/controlVariants";
 import { useUpgradeModal } from "../hooks/useUpgradeModal";
 import { UpgradeModalOffer, UpgradeModalPlanPicker } from "./UpgradeModalModes";
 
@@ -88,7 +88,12 @@ export function UpgradeModal() {
           size={dismissible ? "full" : "lg"}
           className={dismissible ? "overflow-hidden" : undefined}
         >
-          <Modal.Dialog className={`outline-none${dismissible ? "" : " p-4"}`}>
+          <Modal.Dialog
+            className={modalVariants({
+              size: dismissible ? undefined : "xl",
+              className: `outline-none${dismissible ? "" : " p-4"}`,
+            })}
+          >
             {dismissible && (
               <Modal.CloseTrigger
                 aria-label="Close"

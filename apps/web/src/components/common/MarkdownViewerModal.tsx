@@ -3,6 +3,7 @@
 import { Modal, Spinner } from "@heroui/react";
 import { AlertCircleIcon } from "@icons";
 import type React from "react";
+import { modalVariants } from "@/components/shared/controlVariants";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 
 interface MarkdownViewerModalProps {
@@ -69,7 +70,12 @@ const MarkdownViewerModal: React.FC<MarkdownViewerModalProps> = ({
     >
       <Modal.Backdrop>
         <Modal.Container size="lg">
-          <Modal.Dialog className="bg-zinc-900 border border-zinc-800">
+          <Modal.Dialog
+            className={modalVariants({
+              size: "3xl",
+              className: "bg-zinc-900 border border-zinc-800",
+            })}
+          >
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Header className="border-b border-zinc-800 pb-3">
               <Modal.Heading className="text-sm font-medium text-zinc-200">

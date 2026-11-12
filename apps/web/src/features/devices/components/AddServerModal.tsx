@@ -15,6 +15,7 @@ import {
 import { PlusSignIcon } from "@icons";
 import type { AddOptions } from "@shared/bridge-core/config-builders";
 import { useState } from "react";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 
 // Folder access is a one-switch toggle on the card (the built-in filesystem
@@ -103,6 +104,7 @@ export function AddServerModal({ onAdd, isBusy }: AddServerModalProps) {
               </Modal.Header>
               <Modal.Body className="gap-3">
                 <Select
+                  className={fieldVariants({ labelPlacement: "inside" })}
                   selectedKey={type}
                   onSelectionChange={(key) => {
                     if (key != null) setType(key as ServerType);
@@ -129,18 +131,31 @@ export function AddServerModal({ onAdd, isBusy }: AddServerModalProps) {
                   {activeHint ? <Description>{activeHint}</Description> : null}
                 </Select>
 
-                <TextField value={name} onChange={setName} isRequired>
+                <TextField
+                  className={fieldVariants({ labelPlacement: "inside" })}
+                  value={name}
+                  onChange={setName}
+                  isRequired
+                >
                   <Label>Name</Label>
                   <Input placeholder={NAME_PLACEHOLDER[type]} />
                 </TextField>
 
                 {type === "stdio" ? (
                   <>
-                    <TextField value={command} onChange={setCommand}>
+                    <TextField
+                      className={fieldVariants({ labelPlacement: "inside" })}
+                      value={command}
+                      onChange={setCommand}
+                    >
                       <Label>Command</Label>
                       <Input placeholder="npx -y @modelcontextprotocol/server-everything" />
                     </TextField>
-                    <TextField value={pairs} onChange={setPairs}>
+                    <TextField
+                      className={fieldVariants({ labelPlacement: "inside" })}
+                      value={pairs}
+                      onChange={setPairs}
+                    >
                       <Label>Environment (optional)</Label>
                       <TextArea
                         placeholder={"KEY=value\nAPI_TOKEN=..."}
@@ -150,11 +165,19 @@ export function AddServerModal({ onAdd, isBusy }: AddServerModalProps) {
                   </>
                 ) : (
                   <>
-                    <TextField value={url} onChange={setUrl}>
+                    <TextField
+                      className={fieldVariants({ labelPlacement: "inside" })}
+                      value={url}
+                      onChange={setUrl}
+                    >
                       <Label>URL</Label>
                       <Input placeholder="http://localhost:3000/mcp" />
                     </TextField>
-                    <TextField value={pairs} onChange={setPairs}>
+                    <TextField
+                      className={fieldVariants({ labelPlacement: "inside" })}
+                      value={pairs}
+                      onChange={setPairs}
+                    >
                       <Label>Headers (optional)</Label>
                       <TextArea
                         placeholder={"Authorization: Bearer ..."}

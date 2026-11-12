@@ -127,8 +127,6 @@ export function NotificationCenter({
                 <Tabs.Indicator />
               </Tabs.Tab>
             </Tabs.List>
-            <Tabs.Panel id="unread">{null}</Tabs.Panel>
-            <Tabs.Panel id="all">{null}</Tabs.Panel>
           </Tabs>
 
           {/* Notifications list */}

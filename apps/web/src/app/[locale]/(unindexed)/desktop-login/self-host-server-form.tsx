@@ -4,6 +4,7 @@ import { Button, Description, Input, Label, TextField } from "@heroui/react";
 import { CloudIcon } from "@icons";
 import { type FormEvent, useState } from "react";
 import { FormError } from "@/components/shared/FormError";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { getElectronAPI } from "@/lib/electron/api";
 
@@ -48,6 +49,7 @@ export function SelfHostServerForm({
 
       <form onSubmit={onSubmit} className="flex flex-col gap-3">
         <TextField
+          className={fieldVariants({ labelPlacement: "inside" })}
           value={address}
           onChange={setAddress}
           isRequired

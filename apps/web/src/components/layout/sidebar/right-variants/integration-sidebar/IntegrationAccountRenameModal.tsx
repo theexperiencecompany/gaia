@@ -3,6 +3,7 @@
 import { Button, Description, Input, Modal, TextField } from "@heroui/react";
 import type { IntegrationAccountResponse } from "@shared/api/generated";
 import { useState } from "react";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 
 interface IntegrationAccountRenameModalProps {
   /** The account being renamed; null keeps the modal closed. */
@@ -38,7 +39,11 @@ export function IntegrationAccountRenameModal({
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Header className="pb-0">Rename account</Modal.Header>
             <Modal.Body>
-              <TextField value={name} onChange={setName}>
+              <TextField
+                className={fieldVariants({ labelPlacement: "inside" })}
+                value={name}
+                onChange={setName}
+              >
                 <Input
                   autoFocus
                   aria-label="Account name"
