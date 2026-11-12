@@ -3,6 +3,7 @@
 import { Tooltip } from "@heroui/react";
 import { PlayIcon } from "@icons";
 import { SiteLink } from "@/components/seo/SiteLink";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type {
@@ -284,7 +285,10 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
       <Tooltip.Content
         placement="top"
         showArrow
-        className="max-w-xs rounded-3xl bg-zinc-800"
+        className={overlayVariants({
+          surface: "raised",
+          className: "max-w-xs rounded-3xl",
+        })}
       >
         <div className="p-2">{workflow?.prompt || displayDescription}</div>
       </Tooltip.Content>

@@ -1,6 +1,7 @@
 "use client";
 
 import { Button, Skeleton, TextArea } from "@heroui/react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import {
   GLOBAL_INSTRUCTIONS_SCOPE,
   InstructionsConflictNotice,
@@ -42,7 +43,10 @@ export const GlobalInstructionsEditor = () => {
           onChange={(e) => setDraft(e.target.value)}
           maxLength={MAX_INSTRUCTIONS_CHARS}
           rows={3}
-          className="bg-zinc-800/50 text-sm hover:bg-zinc-700/50"
+          className={inputVariants({
+            variant: "translucent",
+            className: "text-sm",
+          })}
         />
       )}
 

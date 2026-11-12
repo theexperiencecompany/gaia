@@ -203,7 +203,6 @@ export default function ChatOptionsDropdown({
             </Dropdown.Item>
             <Dropdown.Item
               id="delete"
-              className="text-danger"
               variant="danger"
               textValue="Delete"
               onMouseOut={() => setDangerStateHovered(false)}

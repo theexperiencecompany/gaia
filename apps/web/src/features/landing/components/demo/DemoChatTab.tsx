@@ -84,12 +84,7 @@ export default function DemoChatTab({ label, active }: DemoChatTabProps) {
                 <PinIcon className="h-[15px] w-[15px]" />
                 Pin
               </Menu.Item>
-              <Menu.Item
-                id="delete"
-                textValue="Delete"
-                variant="danger"
-                className="text-danger"
-              >
+              <Menu.Item id="delete" textValue="Delete" variant="danger">
                 <Delete02Icon className="h-[15px] w-[15px]" />
                 Delete
               </Menu.Item>

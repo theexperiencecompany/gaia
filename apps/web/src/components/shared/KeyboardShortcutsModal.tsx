@@ -62,8 +62,7 @@ export default function KeyboardShortcutsModal({
           <Modal.Dialog
             className={modalVariants({
               size: "4xl",
-              className:
-                "rounded-2xl bg-zinc-900/90 backdrop-blur-3xl outline-0 border-0",
+              className: "bg-zinc-900/90 backdrop-blur-3xl outline-0 border-0",
             })}
           >
             <Modal.CloseTrigger aria-label="Close" />

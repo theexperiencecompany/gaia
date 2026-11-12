@@ -156,7 +156,7 @@ export const IntegrationInstructionsModal = ({
             className={modalVariants({
               size: "2xl",
               className:
-                "max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900/95 outline-0 backdrop-blur-3xl",
+                "max-w-2xl border border-zinc-800 bg-zinc-900/95 outline-0 backdrop-blur-3xl",
             })}
           >
             <Modal.CloseTrigger aria-label="Close" />

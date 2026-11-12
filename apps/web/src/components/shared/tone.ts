@@ -15,7 +15,11 @@ export const TEXT_TONE_CLASSES = {
 
 export type TextTone = keyof typeof TEXT_TONE_CLASSES;
 
+/** interactive: the quiet text brightens to the foreground on hover (v2's muted menu items). */
 export const toneVariants = tv({
-  variants: { tone: TEXT_TONE_CLASSES },
-  defaultVariants: { tone: "default" },
+  variants: {
+    tone: TEXT_TONE_CLASSES,
+    interactive: { true: "transition hover:text-foreground", false: "" },
+  },
+  defaultVariants: { tone: "default", interactive: false },
 });

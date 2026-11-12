@@ -110,7 +110,10 @@ export function TodoSidebarDescription({
         placeholder="Add a description..."
         rows={4}
         autoFocus
-        className="max-h-40 bg-zinc-800/30 shadow-none hover:bg-zinc-800/50"
+        className={inputVariants({
+          variant: "translucent",
+          className: "max-h-40 shadow-none",
+        })}
       />
     );
   }

@@ -111,7 +111,6 @@ export function IntegrationAccountRow({
               key="remove"
               textValue="Disconnect"
               variant="danger"
-              className="text-danger"
               onAction={onRemove}
             >
               <Delete02Icon className="size-4" />

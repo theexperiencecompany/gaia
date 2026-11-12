@@ -101,7 +101,7 @@ function ImportedBadge({ login }: { login: SavedBrowserLogin }) {
           </Chip>
         </button>
       </Popover.Trigger>
-      <Popover.Content placement="top" className="rounded-2xl">
+      <Popover.Content placement="top">
         <div className="flex flex-col gap-3 p-3">
           {login.source_browser && (
             <ProvenanceFact
@@ -303,7 +303,7 @@ export function SavedLogins() {
                 <Dropdown.Item
                   id="clear"
                   textValue="Clear all"
-                  className="text-danger"
+                  variant="danger"
                   isDisabled={logins.length === 0 || isClearingAll}
                 >
                   <Delete02Icon className="size-4" />

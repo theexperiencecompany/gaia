@@ -27,6 +27,7 @@ import {
 } from "@/components/shared/ConfirmActionDialog";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { ChevronRight, Github } from "@/components/shared/icons";
+import { toneVariants } from "@/components/shared/tone";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
@@ -443,16 +444,12 @@ export default function SettingsMenu({
                     const Icon = item.icon;
                     const iconColor =
                       item.iconColor || socialMediaColorMap[item.key];
-                    const itemClassName = [
-                      item.color === "danger"
-                        ? "text-danger"
-                        : iconColor
-                          ? "transition"
-                          : "text-zinc-400 transition hover:text-white",
-                      item.customClassNames?.title,
-                    ]
-                      .filter(Boolean)
-                      .join(" ");
+                    const isQuiet = item.color !== "danger" && !iconColor;
+                    const itemClassName = toneVariants({
+                      tone: isQuiet ? "muted" : "default",
+                      interactive: isQuiet,
+                      className: item.customClassNames?.title,
+                    });
 
                     // Handle nested menus (What's new, Download, Resources, Support)
                     if (item.hasSubmenu) {
@@ -465,7 +462,10 @@ export default function SettingsMenu({
                           textValue={item.label}
                           onMouseEnter={menu.handleMouseEnter}
                           onMouseLeave={menu.handleMouseLeave}
-                          className="text-zinc-400 transition hover:text-white"
+                          className={toneVariants({
+                            tone: "muted",
+                            interactive: true,
+                          })}
                         >
                           {Icon && <Icon className={ICON_CLASSES} />}
                           {item.label}

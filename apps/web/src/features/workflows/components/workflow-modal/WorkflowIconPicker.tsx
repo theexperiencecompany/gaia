@@ -2,7 +2,10 @@ import { Input, Popover, Tooltip } from "@heroui/react";
 import { PlusSignIcon, Search01Icon } from "@icons";
 import { useMemo, useState } from "react";
 import { type Control, useController } from "react-hook-form";
-import { inputVariants } from "@/components/shared/controlVariants";
+import {
+  inputVariants,
+  overlayVariants,
+} from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { cn } from "@/lib/utils";
 import {
@@ -119,7 +122,10 @@ export default function WorkflowIconPicker({
           <PlusSignIcon className="size-5 text-zinc-500" />
         )}
       </GaiaButton>
-      <Popover.Content placement="bottom start" className="w-80 bg-zinc-800">
+      <Popover.Content
+        placement="bottom start"
+        className={overlayVariants({ surface: "raised", className: "w-80" })}
+      >
         <div className="flex w-full flex-col gap-3 p-3">
           <div className="flex items-center gap-2 rounded-lg bg-zinc-900 px-2">
             <Search01Icon className="size-4 shrink-0 text-zinc-500" />

@@ -3,6 +3,7 @@
 import { ListBox, Popover, Select, Switch } from "@heroui/react";
 import { CpuIcon } from "@icons";
 import Image from "next/image";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
@@ -67,7 +68,7 @@ function ModelSelect({
           <GaiaSelectValue>{current?.name ?? "Model"}</GaiaSelectValue>
           <Select.Indicator className={toneVariants({ tone: "faint" })} />
         </Select.Trigger>
-        <Select.Popover className="bg-zinc-800">
+        <Select.Popover className={overlayVariants({ surface: "raised" })}>
           <ListBox>
             {DEV_MODEL_OPTIONS.map((m) => (
               <GaiaListBoxItem

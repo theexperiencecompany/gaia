@@ -1562,15 +1562,23 @@ html {
      zinc-800 at 50% that lifts to zinc-700 at 50% on hover. */
   .input.gaia-input-translucent,
   .textarea.gaia-input-translucent,
+  .input-group.gaia-input-translucent,
   .select__trigger.gaia-input-translucent {
     background-color: var(--gaia-field-translucent);
     --input-bg: var(--gaia-field-translucent);
   }
   .input.gaia-input-translucent:hover,
   .textarea.gaia-input-translucent:hover,
+  .input-group.gaia-input-translucent:hover,
   .select__trigger.gaia-input-translucent:hover {
     background-color: var(--gaia-field-translucent-hover);
     --input-bg-hover: var(--gaia-field-translucent-hover);
+  }
+
+  /* A danger menu item is red whether or not its text sits in a Label slot,
+     as v2's danger DropdownItem was (v3 colours only the Label). */
+  .menu-item--danger {
+    color: var(--danger);
   }
 
   /* overlayVariants({ surface: "raised" }): v2's zinc-800 popover and tooltip

@@ -3,6 +3,10 @@
 import { Button, ListBox, Select } from "@heroui/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { type Key, useCallback, useEffect, useRef, useState } from "react";
+import {
+  inputVariants,
+  overlayVariants,
+} from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
@@ -108,12 +112,22 @@ function IdentitySettingsSection({
           onSelectionChange={handleProfessionChange}
           isDisabled={isUpdating}
         >
-          <Select.Trigger className="bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]">
+          <Select.Trigger
+            className={inputVariants({
+              variant: "translucent",
+              className: "cursor-pointer min-h-[36px]",
+            })}
+          >
             <GaiaSelectValue />
             <Select.Indicator />
           </Select.Trigger>
-          <Select.Popover className="bg-zinc-800 z-50">
-            <ListBox className="bg-zinc-800">
+          <Select.Popover
+            className={overlayVariants({
+              surface: "raised",
+              className: "z-50",
+            })}
+          >
+            <ListBox>
               {professionOptions.map((profession) => (
                 <GaiaListBoxItem
                   key={profession.value}
@@ -153,12 +167,22 @@ function IdentitySettingsSection({
             onSelectionChange={handleTimezoneChange}
             isDisabled={isUpdating}
           >
-            <Select.Trigger className="bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]">
+            <Select.Trigger
+              className={inputVariants({
+                variant: "translucent",
+                className: "cursor-pointer min-h-[36px]",
+              })}
+            >
               <GaiaSelectValue />
               <Select.Indicator />
             </Select.Trigger>
-            <Select.Popover className="bg-zinc-800 z-50">
-              <ListBox className="bg-zinc-800">
+            <Select.Popover
+              className={overlayVariants({
+                surface: "raised",
+                className: "z-50",
+              })}
+            >
+              <ListBox>
                 {timezoneOptions.map((timezone) => (
                   <GaiaListBoxItem
                     key={timezone.value}
@@ -355,12 +379,22 @@ export default function PreferencesSettings({
             onSelectionChange={handleResponseStyleChange}
             isDisabled={isUpdating}
           >
-            <Select.Trigger className="bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]">
+            <Select.Trigger
+              className={inputVariants({
+                variant: "translucent",
+                className: "cursor-pointer min-h-[36px]",
+              })}
+            >
               <GaiaSelectValue />
               <Select.Indicator />
             </Select.Trigger>
-            <Select.Popover className="bg-zinc-800 z-50">
-              <ListBox className="bg-zinc-800">
+            <Select.Popover
+              className={overlayVariants({
+                surface: "raised",
+                className: "z-50",
+              })}
+            >
+              <ListBox>
                 {responseStyleOptions.map((style) => (
                   <GaiaListBoxItem
                     key={style.value}

@@ -86,7 +86,7 @@ export default function BaseFieldChip({
       </GaiaButton>
       <Popover.Content
         placement="bottom start"
-        className="min-w-68 max-w-68 rounded-2xl shadow-xl"
+        className="min-w-68 max-w-68 shadow-xl"
       >
         <Popover.Arrow />
         <div className="flex w-full justify-start pl-4 pt-3 text-xs font-medium text-zinc-400">

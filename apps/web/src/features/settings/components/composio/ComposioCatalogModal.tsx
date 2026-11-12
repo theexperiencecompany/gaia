@@ -53,7 +53,7 @@ export function ComposioCatalogModal({
           <Modal.Dialog
             className={modalVariants({
               size: "4xl",
-              className: "max-w-4xl rounded-2xl shadow-none",
+              className: "max-w-4xl shadow-none",
             })}
           >
             <Modal.CloseTrigger aria-label="Close" />
