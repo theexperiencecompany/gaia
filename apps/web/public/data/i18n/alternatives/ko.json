@@ -3630,7 +3630,7 @@
     "faqs": [
       {
         "question": "Does GAIA have bidirectional linking like Roam Research?",
-        "answer": "GAIA uses a graph-based memory that automatically infers relationships between people, projects, emails, meetings, and tasks — achieving the connected knowledge goal of bidirectional linking without requiring manual bracket notation. You don't build the graph; GAIA builds it from your activity."
+        "answer": "GAIA uses a graph-based memory that automatically infers relationships between people, projects, emails, meetings, and tasks — achieving the connected knowledge goal of bidirectional linking without requiring manual [[bracket]] notation. You don't build the graph; GAIA builds it from your activity."
       },
       {
         "question": "Roam Research와 비교해 GAIA의 요금은 어떤가요?",

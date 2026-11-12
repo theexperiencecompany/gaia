@@ -3630,7 +3630,7 @@
     "faqs": [
       {
         "question": "GAIA a-t-il des liens bidirectionnels comme Roam Research ?",
-        "answer": "GAIA utilise une mémoire basée sur un graphe qui déduit automatiquement les relations entre personnes, projets, e-mails, réunions et tâches — atteignant l’objectif de connaissances connectées des liens bidirectionnels sans nécessiter de notation manuelle entre crochets. Vous ne construisez pas le graphe ; GAIA le construit à partir de votre activité."
+        "answer": "GAIA utilise une mémoire basée sur un graphe qui déduit automatiquement les relations entre personnes, projets, e-mails, réunions et tâches — atteignant l’objectif de connaissances connectées des liens bidirectionnels sans nécessiter de notation manuelle [[entre crochets]]. Vous ne construisez pas le graphe ; GAIA le construit à partir de votre activité."
       },
       {
         "question": "Comment le tarif de GAIA se compare-t-il à celui de Roam Research ?",

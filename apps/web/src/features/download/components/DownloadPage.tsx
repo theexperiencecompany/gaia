@@ -289,7 +289,7 @@ function DesktopSection() {
           Beta
         </Chip>
       }
-      description="Native apps for macOS, Windows, and Linux."
+      description="Get the native desktop experience with enhanced performance."
       actions={
         <div className="flex flex-col gap-3 justify-center items-center">
           <DesktopDownloadButton os={primaryOs} isPrimary />
