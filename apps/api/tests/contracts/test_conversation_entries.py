@@ -32,9 +32,11 @@ class _HeldFlushes:
 
     def __init__(self) -> None:
         self.held: list[Coroutine[Any, Any, Any]] = []
+        self.spawned: list[tuple[str, dict[str, object]]] = []
 
-    def __call__(self, operation: str, coro: Coroutine[Any, Any, Any], **_: object) -> None:
+    def __call__(self, operation: str, coro: Coroutine[Any, Any, Any], **context: object) -> None:
         self.held.append(coro)
+        self.spawned.append((operation, context))
 
     async def run_all(self) -> None:
         held, self.held = self.held, []
@@ -120,6 +122,9 @@ async def test_an_entry_is_read_the_moment_append_returns(
     )
 
     assert held.held, "the flush must not have run yet"
+    assert held.spawned == [
+        ("conversation_flush", {"conversation_id": conversation.conversation_id})
+    ]
     assert await _ids(repo, conversation) == [(seq, "m1")]
 
 
@@ -163,8 +168,10 @@ async def test_the_same_id_appended_twice_is_one_entry_with_one_seq(
     cid, uid = conversation.conversation_id, conversation.user_id
     first = await repo.append(cid, user_id=uid, entries=[_message("same")])
     again = await repo.append(cid, user_id=uid, entries=[_message("same")])
+    assert len(held.held) == 2, "a repeat that sees a pending outbox still flushes it"
     await held.run_all()
     after_flush = await repo.append(cid, user_id=uid, entries=[_message("same")])
+    assert held.held == [], "a repeat with nothing pending writes and flushes nothing"
     racing = await asyncio.gather(
         repo.append(cid, user_id=uid, entries=[_message("twin")]),
         repo.append(cid, user_id=uid, entries=[_message("twin")]),
@@ -302,8 +309,12 @@ async def test_append_to_a_missing_conversation_raises_and_writes_nothing(
     raw_collection: Any,
     entries_collection: Any,
 ) -> None:
-    with pytest.raises(ConversationNotFoundError):
-        await repo.append(f"c-{uuid.uuid4().hex}", user_id="u", entries=[_message("m1")])
+    missing = f"c-{uuid.uuid4().hex}"
+    with pytest.raises(ConversationNotFoundError) as raised:
+        await repo.append(missing, user_id="u", entries=[_message("m1")])
+
+    assert raised.value.message == f"conversation {missing} does not exist for this user"
+    assert raised.value.meta == {"conversation_id": missing}
 
     assert held.held == []
     assert await raw_collection.count_documents({}) == 0
@@ -549,3 +560,110 @@ async def test_a_driver_failure_surfaces_as_the_stores_error_naming_the_operatio
     assert raised.value.why == "no primary"
     assert raised.value.meta == {"error_type": "ServerSelectionTimeoutError"}
     assert raised.value.__cause__ is failure
+
+
+async def test_an_entry_without_its_id_is_refused_before_anything_is_written(
+    repo: ConversationRepository, conversation: ConversationDocument, held: _HeldFlushes
+) -> None:
+    with pytest.raises(ValueError, match="^an appended entry carries its producer-minted id$"):
+        await repo.append(
+            conversation.conversation_id,
+            user_id=conversation.user_id,
+            entries=[_message("m1"), MessageModel(type="user", response="no id")],
+        )
+
+    assert await _ids(repo, conversation) == []
+    assert held.held == []
+
+
+async def test_one_id_twice_in_a_batch_is_one_entry_holding_its_first_copy(
+    repo: ConversationRepository, conversation: ConversationDocument, held: _HeldFlushes
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+
+    seqs = await repo.append(
+        cid, user_id=uid, entries=[_message("d", "first"), _message("d", "second")]
+    )
+
+    assert seqs == [1, 1]
+    saved = await repo.get_message(cid, "d", user_id=uid)
+    assert saved is not None and saved.response == "first"
+    assert await _ids(repo, conversation) == [(1, "d")]
+
+
+async def test_an_append_that_loses_every_conditional_write_raises_and_commits_nothing(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    held: _HeldFlushes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    attempts: list[int] = []
+
+    async def lost(*_: object) -> bool:
+        attempts.append(1)
+        return False
+
+    monkeypatch.setattr(conversations_module, "CONVERSATION_APPEND_MAX_ATTEMPTS", 3)
+    monkeypatch.setattr(repo, "_commit", lost)
+
+    with pytest.raises(ConversationStoreError) as raised:
+        await repo.append(cid, user_id=uid, entries=[_message("m1")])
+
+    assert raised.value.message == f"append to conversation {cid} lost every conditional write"
+    assert raised.value.why == "the head moved under each of 3 attempts"
+    assert raised.value.meta == {"conversation_id": cid}
+    assert len(attempts) == 3
+    assert await _ids(repo, conversation) == []
+
+
+async def test_parking_cards_that_loses_every_conditional_write_raises(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+
+    async def lost(*_: object, **__: object) -> int:
+        return 0
+
+    monkeypatch.setattr(conversations_module, "CONVERSATION_APPEND_MAX_ATTEMPTS", 2)
+    monkeypatch.setattr(repo, "_apply_pipeline_update_unfetched", lost)
+
+    with pytest.raises(ConversationStoreError) as raised:
+        await repo.park_folded_cards(
+            cid, user_id=uid, message_id="m1", entries=[{"tool_name": "x"}]
+        )
+
+    assert (
+        raised.value.message == f"parking cards on conversation {cid} lost every conditional write"
+    )
+    assert raised.value.meta == {"conversation_id": cid}
+
+
+async def test_a_flush_of_a_conversation_deleted_under_it_takes_back_what_it_inserted(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    held: _HeldFlushes,
+    raw_collection: Any,
+    entries_collection: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    await repo.append(cid, user_id=uid, entries=[_message("m1")])
+    held.drop_all()
+    other = await _chat(repo, uid)
+    await repo.append(other, user_id=uid, entries=[_message("kept")])
+    await held.run_all()
+    insert = repo._insert_entries
+
+    async def insert_then_delete(entries: Any) -> None:
+        await insert(entries)
+        await raw_collection.delete_one({"conversation_id": cid})
+
+    monkeypatch.setattr(repo, "_insert_entries", insert_then_delete)
+
+    await repo.flush_outbox(cid, user_id=uid)
+
+    assert await entries_collection.count_documents({"conversation_id": cid}) == 0
+    assert await entries_collection.count_documents({"conversation_id": other}) == 1

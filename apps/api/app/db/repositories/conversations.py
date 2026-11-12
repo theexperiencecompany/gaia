@@ -88,6 +88,7 @@ from shared.py.wide_events import spawn_logged_task
 
 _JITTER = random.SystemRandom()
 _BOT_SOURCE_VALUES: list[str] = [s.value for s in BOT_CONVERSATION_SOURCES]
+_NEWEST_FIRST: list[tuple[str, int]] = [("seq", -1)]
 _SUMMARY_PROJECTION: dict[str, object] = {
     "_id": 0,
     "conversation_id": 1,
@@ -332,7 +333,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             if await self._commit(conversation_id, user_id, head.log_head, fresh, seqs):
                 self._spawn_flush(conversation_id, user_id)
                 return [known.get(entry_id) or seqs[entry_id] for entry_id in ids]
-            await asyncio.sleep(_JITTER.uniform(0, CONVERSATION_APPEND_JITTER_SECONDS))
+            await asyncio.sleep(_backoff())
         raise ConversationStoreError(
             message=f"append to conversation {conversation_id} lost every conditional write",
             why=f"the head moved under each of {CONVERSATION_APPEND_MAX_ATTEMPTS} attempts",
@@ -410,7 +411,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 )
             if matched:
                 return True
-            await asyncio.sleep(_JITTER.uniform(0, CONVERSATION_APPEND_JITTER_SECONDS))
+            await asyncio.sleep(_backoff())
         raise ConversationStoreError(
             message=f"parking cards on conversation {conversation_id} lost every conditional write",
             meta={"conversation_id": conversation_id},
@@ -691,7 +692,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             )
         created = await self.get(doc.conversation_id, user_id=doc.user_id)
         if created is None:
-            raise ConversationStoreError(message="inserted conversation could not be read back")
+            raise ConversationStoreError(
+                message="inserted conversation could not be read back"  # pragma: no mutate — error text only
+            )
         return created
 
     async def try_create(self, doc: ConversationDocument) -> bool:
@@ -956,13 +959,16 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             }
             for head in heads
         ]
+        # Newest first, so a single head's limit reads only the rows take() keeps.
         cursor = (
             self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
             .find({"$or": clauses})
-            .sort([("seq", -1 if window.newest_first or window.limit else 1)])
+            .sort(_NEWEST_FIRST)
         )
+        # pragma: no mutate start — the limit only spares reading rows take() drops
         if window.limit and len(heads) == 1:
             cursor = cursor.limit(window.limit)
+        # pragma: no mutate end
         with store_errors("entry read"):
             rows = await cursor.to_list(length=None)
         stored: dict[tuple[str, str], dict[int, ConversationEntry]] = {}
@@ -987,7 +993,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     ) -> list[tuple[str, ConversationEntry]]:
         """Entries matching match across the user's conversations, outboxes first, then the collection.
 
-        excluding names the heads whose entries never count. Refuses a user with a
+        excluding names the heads whose entries never count; limit bounds the collection
+        read for callers that need only whether one exists. Refuses a user with a
         conversation the migration has not caught up with, rather than missing its messages.
         """
         with store_errors("entry search"):
@@ -1003,20 +1010,19 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 if excluding
                 else []
             )
-            cursor = (
-                self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
-                .find({"user_id": user_id, **match, "conversation_id": {"$nin": skipped}})
-                .sort([("at", 1), ("seq", 1)])
+            cursor = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).find(
+                {"user_id": user_id, **match, "conversation_id": {"$nin": skipped}}
             )
+            # pragma: no mutate start — limit only bounds a read whose callers ask whether one exists
             if limit:
                 cursor = cursor.limit(limit)
+            # pragma: no mutate end
             rows = await cursor.to_list(length=None)
         found: dict[tuple[str, int], StoredRow] = {}
         for row in map(stored_row, [*pending, *rows]):
             found.setdefault((row.conversation_id, row.entry.seq), row)
         ordered = sorted(found.values(), key=lambda row: (row.at, row.entry.seq))
-        hits = [(row.conversation_id, row.entry) for row in ordered]
-        return hits[:limit] if limit else hits
+        return [(row.conversation_id, row.entry) for row in ordered]
 
     async def _update_entry(
         self,
@@ -1042,14 +1048,14 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             with store_errors("entry update"):
                 result = await entries.update_many(query, dict(update), array_filters=filters)
             return result.matched_count > 0
-        for attempt in range(2):
-            with store_errors("entry update"):
-                result = await entries.update_one(query, dict(update), array_filters=filters)
-            if result.matched_count:
-                return True
-            if attempt == 0:
-                await self.flush_outbox(conversation_id, user_id=user_id)
-        return False
+        with store_errors("entry update"):
+            result = await entries.update_one(query, dict(update), array_filters=filters)
+        if result.matched_count:
+            return True
+        await self.flush_outbox(conversation_id, user_id=user_id)
+        with store_errors("entry update"):
+            retried = await entries.update_one(query, dict(update), array_filters=filters)
+        return retried.matched_count > 0
 
     async def _delete_conversations(self, match: Mapping[str, object], user_id: str) -> list[str]:
         """Delete the user's conversations matching match and their entries, returning their ids."""
@@ -1116,6 +1122,12 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
 
 conversation_repository = ConversationRepository()
+
+
+def _backoff() -> float:
+    """Return how long a writer that lost the conditional write waits before rereading the head."""
+    # Any short wait is correct, so its bounds are not behaviour a test can pin.
+    return _JITTER.uniform(0, CONVERSATION_APPEND_JITTER_SECONDS)  # pragma: no mutate
 
 
 def _todo_binding(todo_id: str) -> dict[str, object]:
