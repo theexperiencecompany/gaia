@@ -162,7 +162,7 @@ async def get_short_link_file_route(slug: str) -> FileResponse:
 )
 async def get_short_link_pdf_route(slug: str) -> Response:
     """The artifact behind a slug as an A4 PDF. No auth, like the link itself."""
-    log.set(short_link={"operation": "pdf", "slug_hash": hash_short_link_slug(slug)})
+    log.set(operation="pdf", short_link={"slug_hash": hash_short_link_slug(slug)})
     exported = await public_artifact_pdf(slug)
     if exported is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)

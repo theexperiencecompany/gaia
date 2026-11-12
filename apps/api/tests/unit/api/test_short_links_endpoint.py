@@ -456,7 +456,8 @@ class TestShortLinkPdf:
         assert response.headers["content-type"] == "application/pdf"
         assert response.headers["content-disposition"] == 'attachment; filename="Q3 plan.pdf"'
         export.assert_awaited_once_with(SLUG)
-        assert event["short_link"] == {"operation": "pdf", "slug_hash": hash_short_link_slug(SLUG)}
+        assert event["operation"] == "pdf"
+        assert event["short_link"] == {"slug_hash": hash_short_link_slug(SLUG)}
         assert event["artifact"] == {"kind": "report", "pdf_bytes": 8}
         assert SLUG not in str(event)
 
