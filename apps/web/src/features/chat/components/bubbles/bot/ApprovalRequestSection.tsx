@@ -218,7 +218,7 @@ export default function ApprovalRequestSection({
             <Button
               isIconOnly
               size="sm"
-              variant="tertiary"
+              variant="ghost"
               isDisabled={locked}
               aria-label="More approval options"
             >

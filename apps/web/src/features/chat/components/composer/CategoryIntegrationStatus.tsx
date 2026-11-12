@@ -35,7 +35,7 @@ export const CategoryIntegrationStatus: React.FC<
     return (
       <Chip
         size="sm"
-        variant="tertiary"
+        variant="soft"
         color="danger"
         className={shapeVariants({
           shape: "pill",

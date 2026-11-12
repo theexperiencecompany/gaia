@@ -59,7 +59,7 @@ function ApprovalOutcomeChip({
     <span className="ml-2 inline-flex min-w-0 items-center gap-1.5">
       <Chip
         size="sm"
-        variant="tertiary"
+        variant="soft"
         color={chip.color}
         className="h-5 shrink-0 text-[10px]"
       >

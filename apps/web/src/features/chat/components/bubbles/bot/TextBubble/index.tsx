@@ -175,7 +175,7 @@ function BubbleContent({
     <div className="flex flex-col gap-3">
       <MarkdownRenderer content={content} isStreaming={isStreaming} />
       {!!disclaimer && showDisclaimer && (
-        <Chip color="warning" size="sm" variant="tertiary">
+        <Chip color="warning" size="sm" variant="soft">
           <Alert01Icon className="text-warning-500" height={17} />
           <Chip.Label className="text-xs font-medium text-warning-500">
             {disclaimer}

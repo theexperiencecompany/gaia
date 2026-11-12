@@ -3,8 +3,13 @@ import { useCallback } from "react";
 
 import { Gmail } from "@/components/shared/icons";
 import { sanitizeEmailHtml } from "@/features/mail/utils/sanitizeEmailHtml";
+import {
+  ACCORDION_INDICATOR,
+  ACCORDION_PANEL,
+  ACCORDION_ROOT,
+  ACCORDION_TRIGGER,
+} from "@/lib/heroui/accordionParity";
 import type { EmailThreadData } from "@/types/features/mailTypes";
-
 import { parseEmail } from "../../../../mail/utils/mailUtils";
 
 // Use the same formatTime function as EmailListCard
@@ -82,10 +87,13 @@ export default function EmailThreadCard({
     <div
       className={`mx-auto w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-colors duration-300`}
     >
-      <Accordion variant="default" defaultExpandedKeys={["email-thread"]}>
+      <Accordion
+        className={ACCORDION_ROOT}
+        defaultExpandedKeys={["email-thread"]}
+      >
         <Accordion.Item id="email-thread">
           <Accordion.Heading>
-            <Accordion.Trigger>
+            <Accordion.Trigger className={ACCORDION_TRIGGER}>
               <div className="flex items-center gap-3">
                 <Gmail width={22} height={22} />
                 <div className="flex flex-col">
@@ -94,10 +102,10 @@ export default function EmailThreadCard({
                   </span>
                 </div>
               </div>
-              <Accordion.Indicator />
+              <Accordion.Indicator className={ACCORDION_INDICATOR} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel>
+          <Accordion.Panel className={ACCORDION_PANEL}>
             <ScrollShadow className="max-h-[50vh]">
               <div className="space-y-3">
                 {emailThreadData.messages.map((message) => {
@@ -111,7 +119,7 @@ export default function EmailThreadCard({
                         <div className="flex w-full flex-row items-center justify-between">
                           <div className="flex flex-row items-center gap-2">
                             <div className="w-15">
-                              <Chip variant="tertiary" size="sm">
+                              <Chip variant="soft" size="sm">
                                 From
                               </Chip>
                             </div>
@@ -128,7 +136,7 @@ export default function EmailThreadCard({
                         </div>
                         <div className="flex flex-row items-center gap-2">
                           <div className="w-15">
-                            <Chip variant="tertiary" size="sm">
+                            <Chip variant="soft" size="sm">
                               Subject
                             </Chip>
                           </div>

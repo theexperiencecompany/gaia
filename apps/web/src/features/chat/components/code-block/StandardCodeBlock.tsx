@@ -45,7 +45,7 @@ const StandardCodeBlock: React.FC<StandardCodeBlockProps> = ({
               className="text-xs text-zinc-400 hover:text-gray-300"
               size="sm"
               isIconOnly
-              variant="tertiary"
+              variant="ghost"
               onPress={onCopy}
             >
               {copied ? (

@@ -98,7 +98,7 @@ export default function ChatBubble_Actions({
             <Button
               isIconOnly
               className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-              variant="tertiary"
+              variant="ghost"
               onPress={handleReply}
             >
               <LinkBackwardIcon
@@ -114,7 +114,7 @@ export default function ChatBubble_Actions({
             <Button
               isIconOnly
               className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-              variant="tertiary"
+              variant="ghost"
               onPress={copyToClipboard}
             >
               <Copy01Icon className="cursor-pointer" height="20" width="20" />
@@ -128,7 +128,7 @@ export default function ChatBubble_Actions({
             <Button
               isIconOnly
               className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-              variant="tertiary"
+              variant="ghost"
               onPress={handlePinToggle}
             >
               <PinIcon className={`cursor-pointer`} height="20" width="20" />
@@ -141,7 +141,7 @@ export default function ChatBubble_Actions({
               <Button
                 isIconOnly
                 className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-                variant="tertiary"
+                variant="ghost"
                 onPress={handleThumbsUp}
               >
                 <ThumbsUpIcon
@@ -161,7 +161,7 @@ export default function ChatBubble_Actions({
               <Button
                 isIconOnly
                 className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-                variant="tertiary"
+                variant="ghost"
                 onPress={handleThumbsDown}
               >
                 <ThumbsDownIcon
@@ -180,7 +180,7 @@ export default function ChatBubble_Actions({
                 isIconOnly
                 isDisabled={isRetrying}
                 className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-                variant="tertiary"
+                variant="ghost"
                 onPress={onRetry}
               >
                 <div className={isRetrying ? "animate-spin" : ""}>

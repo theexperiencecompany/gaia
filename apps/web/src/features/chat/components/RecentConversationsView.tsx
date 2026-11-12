@@ -125,11 +125,7 @@ const RecentConversationsView = memo(() => {
                 )}
               </div>
               <div className="mt-2 flex items-center gap-1">
-                <Chip
-                  size="sm"
-                  variant="tertiary"
-                  className="text-zinc-400 px-1"
-                >
+                <Chip size="sm" variant="soft" className="text-zinc-400 px-1">
                   <MessageMultiple02Icon
                     width={15}
                     height={15}
@@ -141,11 +137,7 @@ const RecentConversationsView = memo(() => {
                   </Chip.Label>
                 </Chip>
 
-                <Chip
-                  size="sm"
-                  variant="tertiary"
-                  className="text-zinc-400 px-1"
-                >
+                <Chip size="sm" variant="soft" className="text-zinc-400 px-1">
                   <Calendar03Icon width={15} height={15} className="mx-1" />
                   <Chip.Label>
                     {new Date(conversation.updated_at).toLocaleDateString(
@@ -162,7 +154,7 @@ const RecentConversationsView = memo(() => {
                     <Tooltip.Trigger>
                       <Chip
                         size="sm"
-                        variant="tertiary"
+                        variant="soft"
                         className="text-zinc-400 px-1"
                       >
                         <DiscordIcon width={13} height={13} color="#5865f2" />

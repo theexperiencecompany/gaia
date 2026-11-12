@@ -171,7 +171,7 @@ function TabStrip({
           shape="pill"
           isIconOnly
           size="sm"
-          variant="tertiary"
+          variant="ghost"
           className="text-zinc-400"
           aria-label="Close browser panel"
           onPress={onClose}
@@ -211,7 +211,7 @@ function Omnibox({
               href={pageUrl}
               target="_blank"
               rel="noopener noreferrer"
-              variant="tertiary"
+              variant="ghost"
               size="sm"
               isIconOnly
               className="shrink-0 text-zinc-400"

@@ -71,7 +71,7 @@ export function DeviceApprovalPrompt({
         </div>
 
         <div className="flex items-center justify-between gap-3 rounded-2xl bg-zinc-900 p-3">
-          <Chip variant="tertiary" color="accent" className="font-mono">
+          <Chip variant="soft" color="accent" className="font-mono">
             {code}
           </Chip>
           <Button
