@@ -83,14 +83,14 @@ class TestPostApprovalDecision:
         mock_decide.side_effect = ApprovalRequestNotFoundError()
         resp = await client.post(f"{APPROVALS_BASE}/a1/decision", json={"decision": "approve"})
         assert resp.status_code == 410
-        assert "expired or already resolved" in resp.json()["message"]
+        assert resp.json()["message"] == "Approval request expired or already resolved"
 
     @patch(DECIDE_CARD, new_callable=AsyncMock)
     async def test_cross_user_decision_is_403(self, mock_decide: AsyncMock, client: AsyncClient):
         mock_decide.side_effect = ApprovalRequestForbiddenError()
         resp = await client.post(f"{APPROVALS_BASE}/a1/decision", json={"decision": "approve"})
         assert resp.status_code == 403
-        assert "another user" in resp.json()["message"]
+        assert resp.json()["message"] == "Approval request belongs to another user"
 
     @patch(DECIDE_CARD, new_callable=AsyncMock)
     async def test_service_error_is_500(self, mock_decide: AsyncMock, client: AsyncClient):
