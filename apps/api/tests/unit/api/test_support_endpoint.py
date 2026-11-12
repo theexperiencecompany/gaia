@@ -105,38 +105,6 @@ class TestGetMySupportRequests:
 class TestSubmitSupportRequest:
     """POST /api/v1/support/requests (+ attachments variant)."""
 
-    async def test_submit_captures_analytics(self, client: AsyncClient) -> None:
-        result = SupportRequestSubmissionResponse(
-            success=True, message="Submitted", ticket_id="T-123"
-        )
-        with (
-            patch(
-                f"{SUPPORT_ENDPOINT}.create_support_request",
-                new_callable=AsyncMock,
-                return_value=result,
-            ),
-            patch(f"{SUPPORT_ENDPOINT}.capture") as mock_capture,
-        ):
-            resp = await client.post(
-                "/api/v1/support/requests",
-                json={
-                    "type": "support",
-                    "title": "Need help",
-                    "description": "It broke completely",
-                },
-            )
-
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(
-            UserId(FAKE_USER.user_id),
-            SupportFormSubmitted(
-                request_type="support",
-                title_length=len("Need help"),
-                description_length=len("It broke completely"),
-                attachment_count=0,
-            ),
-        )
-
     async def test_submit_passes_the_callers_identity_to_the_service(
         self, client: AsyncClient
     ) -> None:
@@ -149,7 +117,6 @@ class TestSubmitSupportRequest:
                 new_callable=AsyncMock,
                 return_value=result,
             ) as create,
-            patch(f"{SUPPORT_ENDPOINT}.capture"),
         ):
             resp = await client.post(
                 "/api/v1/support/requests",
@@ -166,35 +133,6 @@ class TestSubmitSupportRequest:
         assert kwargs["user_id"] == "507f1f77bcf86cd799439011"
         assert kwargs["user_email"] == "test@example.com"
         assert kwargs["user_name"] == "Test User"
-
-    async def test_submit_with_attachments_captures_analytics(self, client: AsyncClient) -> None:
-        result = SupportRequestSubmissionResponse(
-            success=True, message="Submitted", ticket_id="T-124"
-        )
-        with (
-            patch(
-                f"{SUPPORT_ENDPOINT}.create_support_request_with_attachments",
-                new_callable=AsyncMock,
-                return_value=result,
-            ),
-            patch(f"{SUPPORT_ENDPOINT}.capture") as mock_capture,
-        ):
-            resp = await client.post(
-                "/api/v1/support/requests/with-attachments",
-                data={"type": "feature", "title": "New idea", "description": "Add a thing"},
-                files=[("attachments", ("a.png", b"png", "image/png"))],
-            )
-
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(
-            UserId(FAKE_USER.user_id),
-            SupportFormSubmitted(
-                request_type="feature",
-                title_length=len("New idea"),
-                description_length=len("Add a thing"),
-                attachment_count=1,
-            ),
-        )
 
     async def test_submit_with_attachments_invalid_type_returns_400_exact_detail(
         self, client: AsyncClient
@@ -387,7 +325,7 @@ def pipeline() -> Iterator[SimpleNamespace]:
         patch(f"{SERVICE}.support_request_repository", repo),
         patch(f"{SERVICE}.send_support_team_notification", new_callable=AsyncMock) as team,
         patch(f"{SERVICE}.send_support_to_user_email", new_callable=AsyncMock) as user,
-        patch(f"{SUPPORT_ENDPOINT}.capture") as capture,
+        patch(f"{SERVICE}.capture") as capture,
     ):
         yield SimpleNamespace(repo=repo, team=team, user=user, capture=capture)
 
