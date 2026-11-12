@@ -8,7 +8,7 @@ Requires the local infra containers (`nx run docker:up` from the repo root, or `
 USE_REAL_SERVICES=1 nx run api:test:real
 ```
 
-The shared DB connection fixtures (`mongodb_url`, `redis_url`, `postgres_url`, `mongo_db`, `real_redis`, `hil_approvals_collection`) live in `db_fixtures.py` — the e2e suite's real-infra tests (`tests/e2e/test_hil_*_e2e.py`) import the same fixtures rather than redefining them. Reuse them; never hand-roll a connection in a test file.
+The shared DB connection fixtures (`mongodb_url`, `redis_url`, `postgres_url`, `mongo_db`, `real_redis`) live in `db_fixtures.py` — the e2e suite's real-infra tests import the same fixtures rather than redefining them. Reuse them; never hand-roll a connection in a test file.
 
 Sub-suites:
 

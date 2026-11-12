@@ -97,14 +97,12 @@ class TestThreadClaim:
         refused = _sub("s2", thread="notion-mcp_executor_conv-1")
         assert not await reg.claim(refused)
         assert [s.subagent_id for s in await reg.live()] == ["s1"]
-        assert await reg.holds_thread("notion-mcp_executor_conv-1")
 
     async def test_the_thread_frees_when_its_run_deregisters(self, redis) -> None:
         reg = RunningSubagents(CONV)
         first = _sub("s1", thread="spawn_conv-1_call-1")
         assert await reg.claim(first)
         await reg.deregister(first)
-        assert not await reg.holds_thread("spawn_conv-1_call-1")
         assert await reg.claim(_sub("s1", thread="spawn_conv-1_call-1"))
 
     async def test_a_claimed_thread_lapses_so_a_dead_run_cannot_hold_it(self, redis) -> None:

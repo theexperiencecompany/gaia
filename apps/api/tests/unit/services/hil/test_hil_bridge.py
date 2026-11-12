@@ -76,7 +76,7 @@ def published_frame(bridge: dict) -> dict[str, Any]:
     return json.loads(raw[len("data: ") :])["tool_data"]
 
 
-async def publish_ledger(tool_call: GatedCall = TOOL_CALL, **overrides: Any) -> None:
+async def publish_ledger(*, tool_call: GatedCall = TOOL_CALL, **overrides: Any) -> None:
     approval = GatedApproval(
         approval_id="ap_1",
         stream_id=STREAM_ID,
@@ -336,7 +336,9 @@ class TestLedgerCardPublish:
     ) -> None:
         bridge["conversations"].mark_background_with_live_approval = AsyncMock()
 
-        await publish_ledger(**owner)
+        await publish_ledger(
+            owner_run_type=owner.get("owner_run_type", ""), owner_id=owner.get("owner_id", "")
+        )
 
         bridge["conversations"].mark_background_with_live_approval.assert_not_awaited()
 

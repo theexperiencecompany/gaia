@@ -94,6 +94,8 @@ from shared.py.wide_events import WorkflowContext, get_trace_id, log, wide_task
 #: Task name for a queued executor run. Tests drain by this name to wait out
 #: exactly the runs a turn handed off, not every background task in the process.
 DETACHED_EXECUTOR_TASK_NAME = "detached-executor-run"
+#: Task name for the run a live chat turn hands off, drained by name the same way.
+LIVE_EXECUTOR_TASK_NAME = "live-executor-run"
 
 
 @traceable(name="executor_background", run_type="chain")

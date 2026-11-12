@@ -25,7 +25,10 @@ from app.agents.core.background.executor_queue import (
     release_lock_if_owned,
     try_acquire_lock,
 )
-from app.agents.core.background.executor_runner import run_executor_background
+from app.agents.core.background.executor_runner import (
+    LIVE_EXECUTOR_TASK_NAME,
+    run_executor_background,
+)
 from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
@@ -344,6 +347,7 @@ async def _dispatch_executor(
             task=task,
             configurable=configurable,
         ),
+        name=LIVE_EXECUTOR_TASK_NAME,
     )
 
     log.info(

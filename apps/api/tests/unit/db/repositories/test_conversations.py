@@ -9,7 +9,7 @@ in the base repository goes through.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Iterator
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -60,116 +60,6 @@ def _count_filter(collection: MagicMock) -> dict[str, Any]:
     """Return the single count_documents call's filter."""
     collection.count_documents.assert_awaited_once()
     return collection.count_documents.await_args.args[0]
-
-
-class TestSetMessageResponse:
-    """set_message_response — background delivery settling a message's text."""
-
-    async def test_targets_the_named_message_of_the_owning_user(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        await repo.set_message_response(
-            CONVERSATION_ID, user_id=USER_ID, message_id=MESSAGE_ID, response="the answer"
-        )
-
-        filter_, update, kwargs = _update_call(collection)
-        assert filter_ == {
-            "conversation_id": CONVERSATION_ID,
-            "messages.message_id": MESSAGE_ID,
-            "user_id": USER_ID,
-        }
-        assert update == {"$set": {"messages.$.response": "the answer"}}
-        assert kwargs["array_filters"] is None
-        assert collection.get_collection.call_args.args == ("conversations",)
-
-    async def test_does_not_advance_the_sync_clock(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        """Documented invariant: this write leaves updatedAt alone."""
-        await repo.set_message_response(
-            CONVERSATION_ID, user_id=USER_ID, message_id=MESSAGE_ID, response="the answer"
-        )
-
-        _filter, update, _kwargs = _update_call(collection)
-        assert set(update) == {"$set"}
-        assert set(update["$set"]) == {"messages.$.response"}
-
-    async def test_reports_true_when_a_message_matched(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        assert (
-            await repo.set_message_response(
-                CONVERSATION_ID, user_id=USER_ID, message_id=MESSAGE_ID, response="x"
-            )
-            is True
-        )
-
-    async def test_reports_false_when_nothing_matched(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        _matched(collection, 0)
-
-        assert (
-            await repo.set_message_response(
-                CONVERSATION_ID, user_id=USER_ID, message_id=MESSAGE_ID, response="x"
-            )
-            is False
-        )
-
-
-class TestSetMessageToolData:
-    """set_message_tool_data — delivery re-persisting a message's whole frame list."""
-
-    async def test_replaces_the_whole_list_on_the_named_message(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        await repo.set_message_tool_data(
-            CONVERSATION_ID, user_id=USER_ID, message_id=MESSAGE_ID, entries=TOOL_DATA_ENTRIES
-        )
-
-        filter_, update, kwargs = _update_call(collection)
-        assert filter_ == {
-            "conversation_id": CONVERSATION_ID,
-            "messages.message_id": MESSAGE_ID,
-            "user_id": USER_ID,
-        }
-        # ``$set`` on the whole array, not ``$push``/``$each`` — a stale entry
-        # must not survive the write.
-        assert update == {"$set": {"messages.$.tool_data": TOOL_DATA_ENTRIES}}
-        assert kwargs["array_filters"] is None
-
-    async def test_does_not_advance_the_sync_clock(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        await repo.set_message_tool_data(
-            CONVERSATION_ID, user_id=USER_ID, message_id=MESSAGE_ID, entries=TOOL_DATA_ENTRIES
-        )
-
-        _filter, update, _kwargs = _update_call(collection)
-        assert set(update) == {"$set"}
-        assert set(update["$set"]) == {"messages.$.tool_data"}
-
-    async def test_reports_true_when_a_message_matched(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        assert (
-            await repo.set_message_tool_data(
-                CONVERSATION_ID, user_id=USER_ID, message_id=MESSAGE_ID, entries=TOOL_DATA_ENTRIES
-            )
-            is True
-        )
-
-    async def test_reports_false_when_nothing_matched(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        _matched(collection, 0)
-
-        assert (
-            await repo.set_message_tool_data(
-                CONVERSATION_ID, user_id=USER_ID, message_id=MESSAGE_ID, entries=[]
-            )
-            is False
-        )
 
 
 class TestSetMessageApprovalStatus:
@@ -244,21 +134,6 @@ class TestSetMessageApprovalStatus:
         )
 
 
-async def _write_response(repo: ConversationRepository) -> None:
-    await repo.set_message_response(
-        CONVERSATION_ID, user_id=USER_ID, message_id=MESSAGE_ID, response="the answer"
-    )
-
-
-async def _write_tool_data(repo: ConversationRepository) -> None:
-    await repo.set_message_tool_data(
-        CONVERSATION_ID,
-        user_id=USER_ID,
-        message_id=MESSAGE_ID,
-        entries=[{"tool_name": "search", "data": {}}],
-    )
-
-
 async def _write_approval_status(repo: ConversationRepository) -> None:
     await repo.set_message_approval_status(
         CONVERSATION_ID, user_id=USER_ID, approval_id=APPROVAL_ID, status="approved"
@@ -283,33 +158,21 @@ class TestSettlementWritesRefreshTheCache:
         ):
             yield delete_cache, bump_generation
 
-    @pytest.mark.parametrize(
-        "write",
-        [_write_response, _write_tool_data, _write_approval_status],
-        ids=["set_message_response", "set_message_tool_data", "set_message_approval_status"],
-    )
     async def test_evicts_the_conversation_and_bumps_the_user_generation(
         self,
-        write: Callable[[ConversationRepository], Awaitable[None]],
         repo: ConversationRepository,
         collection: MagicMock,
         cache: tuple[AsyncMock, AsyncMock],
     ) -> None:
         delete_cache, bump_generation = cache
 
-        await write(repo)
+        await _write_approval_status(repo)
 
         delete_cache.assert_awaited_once_with(f"test-conversations:{USER_ID}:{CONVERSATION_ID}")
         bump_generation.assert_awaited_once_with(CACHE_POLICY, USER_ID)
 
-    @pytest.mark.parametrize(
-        "write",
-        [_write_response, _write_tool_data, _write_approval_status],
-        ids=["set_message_response", "set_message_tool_data", "set_message_approval_status"],
-    )
     async def test_leaves_the_cache_alone_when_nothing_matched(
         self,
-        write: Callable[[ConversationRepository], Awaitable[None]],
         repo: ConversationRepository,
         collection: MagicMock,
         cache: tuple[AsyncMock, AsyncMock],
@@ -317,7 +180,7 @@ class TestSettlementWritesRefreshTheCache:
         _matched(collection, 0)
         delete_cache, bump_generation = cache
 
-        await write(repo)
+        await _write_approval_status(repo)
 
         delete_cache.assert_not_awaited()
         bump_generation.assert_not_awaited()

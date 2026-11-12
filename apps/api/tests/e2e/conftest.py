@@ -27,12 +27,12 @@ import pytest
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.core.lazy_loader import providers
-from app.override.langgraph_bigtool.create_agent import (
+from app.override.langgraph_bigtool.agent_config import (
     AgentConfig,
     HookConfig,
     ToolRetrievalConfig,
-    create_agent,
 )
+from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from tests.helpers import BindableToolsFakeModel, pg_advisory_lock, skip_items_without_real_services
 from tests.integration.real.db_fixtures import (

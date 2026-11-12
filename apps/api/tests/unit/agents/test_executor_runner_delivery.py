@@ -995,43 +995,6 @@ def _logged(mock, level: str) -> tuple[str, dict]:
     return call.args[0], call.kwargs
 
 
-class TestFailurePathsAreDiagnosable:
-    """Every branch here drops a user's result on the floor.
-
-    The structured log fields are the only way to find which conversation
-    and message it happened to — a blanked id turns an incident into a
-    search of the whole collection. Asserting them is a structural assert
-    (tests/CLAUDE.md rule 7); the prose message is deliberately not asserted.
-    """
-
-    async def _merge_with_log(self, *, existing, set_response=True, set_tool_data=True):
-        bot_message = MessageModel(type="bot", response="new", date="2026-01-01")
-        bot_message.message_id = "orig-msg-1"
-        with (
-            patch.object(
-                conversation_repository, "get_message", new=AsyncMock(return_value=existing)
-            ),
-            patch.object(
-                conversation_repository,
-                "set_message_response",
-                new=AsyncMock(return_value=set_response),
-            ),
-            patch.object(
-                conversation_repository,
-                "set_message_tool_data",
-                new=AsyncMock(return_value=set_tool_data),
-            ),
-            patch.object(rd, "get_approval", new=AsyncMock(return_value=None)),
-            patch.object(rd, "log") as log,
-        ):
-            await rd._merge_resumed_result(
-                _run(RunKind.QUEUED, bot_message_id="orig-msg-1"),
-                bot_message,
-                [{"tool_name": "new_tool", "data": {}}],
-            )
-        return log
-
-
 class TestDeletedConversationIsNotAnError:
     """#906 split these arms on purpose: a deleted-mid-run conversation is expected, not an error-level event.
 

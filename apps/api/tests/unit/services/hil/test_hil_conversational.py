@@ -14,7 +14,6 @@ The LLM is mocked at ainvoke_structured (the real boundary); everything between 
 verdict and decide_ledger is the production code under test.
 """
 
-from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -662,7 +661,7 @@ class TestLedgerRows:
     """Ledger-enabled users' approvals live in approval_ledger; a chat reply decides them there."""
 
     @pytest.fixture
-    def ledger(self, resolver: dict) -> Iterator[dict[str, AsyncMock]]:
+    def ledger(self, resolver: dict) -> dict[str, AsyncMock]:
         return {"decide": resolver["resolve"], **resolver}
 
     @pytest.mark.regression

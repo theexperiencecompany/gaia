@@ -10,15 +10,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import fakeredis.aioredis
 import pytest
 
-from app.agents.core.background import (
-    executor_channel as ec,
-    executor_queue as eq,
-    executor_runner as er,
-)
+from app.agents.core.background import executor_queue as eq, executor_runner as er
 from app.agents.core.background.executor_queue import release_lock_if_owned
 from app.agents.core.subagents import delegation as landing
 from app.agents.core.subagents.delegation import Delegation, SubagentDisplay
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext
+from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
 
 pytestmark = pytest.mark.unit
@@ -45,8 +42,7 @@ SUBAGENT_CONFIGURABLE: AgentConfigurable = {
 async def spawned() -> AsyncIterator[AsyncMock]:
     client = fakeredis.aioredis.FakeRedis(decode_responses=True)
     with (
-        patch.object(eq.redis_cache, "redis", client),
-        patch.object(ec.redis_cache, "redis", client),
+        patch.object(redis_cache, "redis", client),
         patch.object(eq, "StreamManager", AsyncMock()),
         patch.object(eq, "websocket_manager", AsyncMock()),
         patch.object(er, "_spawn_detached_run") as spawn,
@@ -61,8 +57,8 @@ def _delegation() -> Delegation:
         ctx=SubagentExecutionContext(
             subagent_graph=MagicMock(),
             agent_name="spawned_subagent",
-            config={"configurable": dict(SUBAGENT_CONFIGURABLE)},
-            configurable=dict(SUBAGENT_CONFIGURABLE),
+            config={"configurable": dict(SUBAGENT_CONFIGURABLE), "agent_name": "spawned_subagent"},
+            configurable=SUBAGENT_CONFIGURABLE.copy(),
             integration_id="spawn",
             initial_state={},
             user_id="u1",
@@ -71,7 +67,7 @@ def _delegation() -> Delegation:
         tool_call_id="call-1",
         task="summarize",
         display=SubagentDisplay(name="summarize", agent_type="spawned"),
-        parent_configurable=dict(SUBAGENT_CONFIGURABLE),
+        parent_configurable=SUBAGENT_CONFIGURABLE.copy(),
     )
 
 

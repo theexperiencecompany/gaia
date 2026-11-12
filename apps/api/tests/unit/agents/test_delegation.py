@@ -10,7 +10,7 @@ from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from dataclasses import replace
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fakeredis.aioredis
@@ -37,7 +37,9 @@ from app.agents.prompts.delegation_prompts import (
     THREAD_BUSY_REFUSAL,
 )
 from app.constants.agents import AgentTag
+from app.constants.cache import RUNNING_SUBAGENT_THREAD_PREFIX
 from app.constants.log_tags import LogTag
+from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, RunningSubagent
 from app.models.chat_models import MessageModel, ToolDataEntry
@@ -76,13 +78,13 @@ LIVE: AgentConfigurable = {
 
 
 def _delegation(parent: AgentConfigurable | None = None, **ctx_overrides: Any) -> Delegation:
-    parent = dict(parent if parent is not None else LIVE)
-    configurable = {**parent, "thread_id": THREAD, **ctx_overrides}
+    parent = (parent if parent is not None else LIVE).copy()
+    configurable = cast(AgentConfigurable, {**parent, "thread_id": THREAD, **ctx_overrides})
     return Delegation(
         ctx=SubagentExecutionContext(
             subagent_graph=MagicMock(),
             agent_name="spawned_subagent",
-            config={"configurable": dict(configurable)},
+            config={"configurable": dict(configurable), "agent_name": "spawned_subagent"},
             configurable=configurable,
             integration_id="spawn",
             initial_state={},
@@ -95,6 +97,10 @@ def _delegation(parent: AgentConfigurable | None = None, **ctx_overrides: Any) -
         display=SubagentDisplay(name="summarise the report", agent_type="spawned"),
         parent_configurable=parent,
     )
+
+
+async def _thread_held() -> bool:
+    return bool(await redis_cache.client.exists(f"{RUNNING_SUBAGENT_THREAD_PREFIX}{THREAD}"))
 
 
 async def _drain() -> None:
@@ -124,7 +130,7 @@ def client_edges() -> Iterator[SimpleNamespace]:
 
     with (
         patch.object(executor_queue, "StreamManager", AsyncMock()) as stream_manager,
-        patch.object(executor_queue.websocket_manager, "broadcast_to_user", new=_broadcast),
+        patch.object(websocket_manager, "broadcast_to_user", new=_broadcast),
         patch(f"{FOLDED_CARDS}.conversation_repository") as conversations,
         patch(f"{MODULE}.stream_manager") as streams,
         patch(f"{FOLDED}.stream_manager", new=streams),
@@ -222,7 +228,7 @@ class TestABlockingRun:
         held_during: list[bool] = []
 
         async def _run(**_kwargs: Any) -> SubagentOutcome:
-            held_during.append(await RunningSubagents(CONVERSATION).holds_thread(THREAD))
+            held_during.append(await _thread_held())
             return SubagentOutcome(text="done")
 
         with _blocking([]) as h:
@@ -231,14 +237,14 @@ class TestABlockingRun:
 
         assert result == "done"
         assert held_during == [True]
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
         assert _events(h.writer) == ["subagent_start", "subagent_end"]
 
     async def test_a_failed_run_frees_its_thread_and_closes_its_row(self, redis: Any) -> None:
         with _blocking([RuntimeError("graph exploded")]) as h, pytest.raises(RuntimeError):
             await delegate(_delegation(), background=False)
 
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
         assert _events(h.writer) == ["subagent_start", "subagent_end"]
 
     async def test_graph_control_flow_bubbles_up_with_the_row_left_open(self, redis: Any) -> None:
@@ -246,7 +252,7 @@ class TestABlockingRun:
             await delegate(_delegation(), background=False)
 
         assert _events(h.writer) == ["subagent_start"]
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
 
     async def test_a_held_thread_refuses_in_whole_sentences(self, redis: Any) -> None:
         await RunningSubagents(CONVERSATION).claim(
@@ -277,7 +283,7 @@ class TestABlockingRun:
                 ToolMessage(content="ok", tool_call_id="t1"),
             ),
         )
-        parent = {**LIVE, "workflow_id": "wf-1", "execution_mode": "background"}
+        parent: AgentConfigurable = {**LIVE, "workflow_id": "wf-1", "execution_mode": "background"}
         with _blocking([outcome]):
             result = await delegate(_delegation(parent), background=True)
 
@@ -300,7 +306,7 @@ class TestABackgroundDispatch:
         landed = client_edges.deliver.await_args
         assert landed.args[2] == "summarise the report (subagent row-1): the summary"
         assert landed.kwargs["tag"] is AgentTag.SUBAGENT_RESULT
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
 
     async def test_a_replay_of_the_dispatching_node_does_not_run_it_twice(
         self, redis: Any, client_edges: SimpleNamespace
@@ -397,7 +403,7 @@ class TestABackgroundRunOwnsItsStream:
 
         (landed,) = [c.args[2] for c in client_edges.deliver.await_args_list]
         assert landed.endswith(": the summary")
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
 
 
 FULL_DISPLAY = SubagentDisplay(
@@ -512,7 +518,7 @@ class TestWhatTheExecutorIsTold:
                 ToolMessage(content="ok", tool_call_id="t1"),
             ),
         )
-        parent = {**LIVE, "workflow_id": "wf-1"}
+        parent: AgentConfigurable = {**LIVE, "workflow_id": "wf-1"}
         with patch(f"{MODULE}.execute_subagent_stream", new=AsyncMock(return_value=outcome)):
             await delegate(_delegation(parent), background=True)
             await _drain()
@@ -572,7 +578,7 @@ class TestABackgroundRunsBoundary:
             "error": "graph exploded",
         }
         assert await RunningSubagents(CONVERSATION).get("row-1") is None
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
 
     async def test_a_landing_that_cannot_be_delivered_is_recorded(
         self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
@@ -611,7 +617,7 @@ class TestABackgroundRunTheUserStopped:
         assert result == delegation_prompts.STOPPED_BEFORE_START.format(name="summarise the report")
         execute.assert_not_awaited()
         assert await RunningSubagents(CONVERSATION).live() == []
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
 
     @pytest.mark.regression
     async def test_it_lands_nothing_so_the_stopped_executor_does_not_restart(
@@ -623,7 +629,7 @@ class TestABackgroundRunTheUserStopped:
             await _drain()
 
         client_edges.deliver.assert_not_awaited()
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
 
     @pytest.mark.regression
     async def test_its_record_names_its_own_stream_and_the_stream_that_dispatched_it(
@@ -749,10 +755,13 @@ class TestABackgroundRunsStreamLifecycle:
         assert conversations.append_message_tool_data.await_args.kwargs["user_id"] == ""
 
 
-GROUP = {"tool_name": "subagent_group", "data": {"subagent_id": "row-1", "tool_calls": []}}
-HELD_CARD = {"tool_name": "approval_request", "data": {"approval_id": "appr-1"}}
-NEW_CARD = {"tool_name": "approval_request", "data": {"approval_id": "appr-2"}}
-SEARCH = {"tool_name": "search", "data": {"q": "x"}}
+GROUP: ToolDataEntry = {
+    "tool_name": "subagent_group",
+    "data": {"subagent_id": "row-1", "tool_calls": []},
+}
+HELD_CARD: ToolDataEntry = {"tool_name": "approval_request", "data": {"approval_id": "appr-1"}}
+NEW_CARD: ToolDataEntry = {"tool_name": "approval_request", "data": {"approval_id": "appr-2"}}
+SEARCH: ToolDataEntry = {"tool_name": "search", "data": {"q": "x"}}
 
 
 class TestSavingABackgroundRunsFrames:
@@ -801,7 +810,8 @@ class TestSavingABackgroundRunsFrames:
     async def test_a_run_with_no_message_to_fold_into_saves_nothing_and_says_so(
         self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
     ) -> None:
-        parent = {k: v for k, v in LIVE.items() if k != "bot_message_id"}
+        parent = LIVE.copy()
+        del parent["bot_message_id"]
 
         await self._run([GROUP, SEARCH], parent)
 
