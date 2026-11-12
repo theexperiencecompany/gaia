@@ -15,6 +15,8 @@ directives out of it:
     [[wait:<ms>]]                 hold the next step this long before answering
     [[pace:<ms>]]                 stream the say text one word per chunk, this
                                   far apart
+    [[narrate:<text>]]            text the front door streams with its hand-off
+                                  call, the preamble GAIA then retracts
 
 Timing: a wait belongs to the next tool directive after it, or to the final
 reply when no tool follows; consecutive waits add up. Each tier waits only on
@@ -86,7 +88,7 @@ RETRIEVE_TOOLS_TOOL = "retrieve_tools"
 # through execute — retrieving it again would loop forever.
 EXECUTE_TOOL = "execute"
 
-_DIRECTIVE_OPEN_RE = re.compile(r"\[\[(tool|say|fail|wait|pace):")
+_DIRECTIVE_OPEN_RE = re.compile(r"\[\[(tool|say|fail|wait|pace|narrate):")
 _CLOSE = "]]"
 # Consumes exactly one JSON value and reports where it ended, so a ``]]`` inside
 # the value (a nested directive) cannot be mistaken for the closing delimiter.
@@ -192,16 +194,27 @@ class PaceDirective:
     ms: int
 
 
-Directive = ToolDirective | SayDirective | FailDirective | WaitDirective | PaceDirective
+@dataclass(frozen=True)
+class NarrateDirective:
+    """A [[narrate:...]] preamble the front door streams alongside its hand-off call."""
+
+    text: str
+
+
+Directive = (
+    ToolDirective | SayDirective | FailDirective | WaitDirective | PaceDirective | NarrateDirective
+)
 
 
 @dataclass(frozen=True)
 class ToolCallResponse:
-    """A tool call as the answer to one invocation, sent after ``delay_ms``."""
+    """A tool call as the answer to one invocation, sent after ``delay_ms``, after any ``text``."""
 
     name: str
     args: dict[str, Any]
     delay_ms: int = 0
+    text: str = ""
+    pace_ms: int = 0
 
 
 @dataclass(frozen=True)
@@ -239,6 +252,9 @@ def parse_directives(text: str) -> list[Directive]:
         elif opener.group(1) == "pace":
             ms, pos = _scan_ms(text, opener.end(), "pace")
             directive = PaceDirective(ms=ms)
+        elif opener.group(1) == "narrate":
+            say, pos = _scan_say(text, opener.end())
+            directive = NarrateDirective(text=say.text)
         else:
             directive, pos = _scan_tool(text, opener.end())
         if directive is None:
@@ -509,6 +525,15 @@ def _terminal(script: _Script) -> SayResponse:
     return SayResponse(say.text if say is not None else DEFAULT_REPLY, **timing)
 
 
+def _narration(script: _Script) -> dict[str, Any]:
+    """Return the preamble a front-door hand-off streams, paced like the reply; empty without one."""
+    narrate = next((d for d in script.closing if isinstance(d, NarrateDirective)), None)
+    if narrate is None:
+        return {}
+    pace = next((d for d in reversed(script.closing) if isinstance(d, PaceDirective)), None)
+    return {"text": narrate.text, "pace_ms": pace.ms if pace is not None else 0}
+
+
 def _resolve_work(messages: Sequence[dict[str, Any]], available_tools: frozenset[str]) -> Response:
     """Executor/subagent tier: aggregate the task + its steers, emit the next step."""
     script, primary_idx = _collect_work_directives(messages)
@@ -562,7 +587,9 @@ def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozense
         # fallbacks live in _resolve_work. Comms forwards and is done.
         if nxt.name not in available_tools and CALL_EXECUTOR_TOOL in available_tools:
             return ToolCallResponse(
-                name=CALL_EXECUTOR_TOOL, args={"task": task_text, **SCRIPTED_HAND_OFF_ARGS}
+                name=CALL_EXECUTOR_TOOL,
+                args={"task": task_text, **SCRIPTED_HAND_OFF_ARGS},
+                **_narration(script),
             )
         return ToolCallResponse(name=nxt.name, args=nxt.args, delay_ms=script.tool_waits[di])
     return _terminal(script)
