@@ -655,6 +655,25 @@ class TestBriefDeliveryWhileBriefsOff:
         assert (refused.value.status_code, refused.value.code) == (409, BRIEFS_OFF)
         mock_create.assert_not_awaited()
 
+    @patch(
+        "app.services.workflow.service.WorkflowQueueService.queue_workflow_generation",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    @patch("app.services.workflow.service.workflow_scheduler")
+    @patch("app.services.workflow.service.ChromaClient")
+    @patch(f"{_REPO}.mark_activated_with_triggers", new_callable=AsyncMock)
+    @patch(f"{_REPO}.create", new_callable=AsyncMock)
+    async def test_a_workflow_that_tells_the_user_now_is_still_created(
+        self, mock_create, _mock_activate, mock_chroma, _mock_scheduler, _mock_queue
+    ):
+        mock_chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
+
+        result = await WorkflowService.create_workflow(_make_create_request(), USER_ID)
+
+        assert result.delivery is WorkflowDelivery.NOW
+        mock_create.assert_awaited_once()
+
     @patch("app.services.workflow.service.WorkflowService.get_workflow", new_callable=AsyncMock)
     @patch(f"{_REPO}.update_for_user", new_callable=AsyncMock)
     async def test_moving_a_workflow_onto_the_brief_is_refused_before_the_write(

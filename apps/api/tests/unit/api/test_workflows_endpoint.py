@@ -397,7 +397,13 @@ class TestCreateWorkflow:
             response = await client.post(BASE_URL, json=_create_workflow_payload(delivery="brief"))
 
         assert response.status_code == 409
-        assert response.json()["code"] == BRIEFS_OFF
+        body = response.json()
+        assert {key: body[key] for key in ("code", "message", "why", "fix")} == {
+            "code": BRIEFS_OFF,
+            "message": "Briefs are off, so a workflow cannot add its results to your brief",
+            "why": "With briefs off, its results would go nowhere",
+            "fix": "Choose Tell me now or Don't notify me, or turn briefs back on in Settings",
+        }
         mock_create.assert_not_called()
 
     async def test_create_workflow_service_error_returns_500(self, client: AsyncClient):
