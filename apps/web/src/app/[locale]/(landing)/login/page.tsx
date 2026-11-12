@@ -24,10 +24,12 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ return_url?: string }>;
 }) {
-  const { return_url: returnUrl } = await searchParams;
   // Self-host instances run local email/password auth; everything else keeps
   // the classic WorkOS OAuth redirect.
-  const authMode = await resolveInstanceAuthMode();
+  const [{ return_url: returnUrl }, authMode] = await Promise.all([
+    searchParams,
+    resolveInstanceAuthMode(),
+  ]);
   if (authMode === "local") {
     return (
       <AuthShell

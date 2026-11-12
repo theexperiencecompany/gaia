@@ -4,6 +4,9 @@ import type {
 } from "@shared/api/generated";
 import { api } from "@/lib/api/typed";
 
+/** How long a signed-out visitor waits on crediting a workflow's creator before sign-in goes ahead. */
+const WORKFLOW_CREDIT_TIMEOUT_MS = 3_000;
+
 export const referralsApi = {
   /** 403 REFERRAL_SUBSCRIPTION_REQUIRED for a non-subscriber; silent so the page can say it kindly. */
   getMe: () => api.get("/api/v1/referrals/me", { silent: true }),
@@ -30,6 +33,7 @@ export const referralsApi = {
     api.post("/api/v1/referrals/workflow-credit/{workflow_id}", {
       path: { workflow_id: workflowId },
       silent: true,
+      signal: AbortSignal.timeout(WORKFLOW_CREDIT_TIMEOUT_MS),
     }),
 
   /** Spends this week's referral nudge when show is true; ask only where the card would appear. */

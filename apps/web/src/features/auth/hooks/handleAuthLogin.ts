@@ -18,6 +18,10 @@ export const oauthLoginUrl = (returnUrl?: string): string => {
     : `${apiBaseUrl}/oauth/login/workos`;
 };
 
+/** The instance's sign-in page, which picks local or WorkOS sign-in and returns to returnUrl. */
+export const loginPagePath = (returnUrl: string): string =>
+  `/login?return_url=${encodeURIComponent(returnUrl)}`;
+
 export const handleAuthLogin = (returnUrl?: string) => {
   window.location.href = oauthLoginUrl(returnUrl);
 };

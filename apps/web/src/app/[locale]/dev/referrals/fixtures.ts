@@ -174,14 +174,19 @@ export const FIXTURE_WEEKLY: Record<GalleryState, ReferralWeeklyCardResponse> =
   };
 
 export const FIXTURE_SUGGESTIONS: ReferralSuggestion[] = [
-  { name: "Jordan Lee", email: "jordan@northwind.co", reason: "met", count: 6 },
+  {
+    name: "Jordan Lee",
+    email: "jordan@northwind.example",
+    reason: "met",
+    count: 6,
+  },
   {
     name: "Ana Ruiz",
-    email: "ana.ruiz@gmail.com",
+    email: "ana.ruiz@mail.example",
     reason: "emailed",
     count: 11,
   },
-  { name: null, email: "dev@pollinate.studio", reason: "emailed", count: 4 },
+  { name: null, email: "dev@pollinate.example", reason: "emailed", count: 4 },
 ];
 
 export const FIXTURE_RESOLVE: Record<
@@ -209,7 +214,7 @@ export const FIXTURE_RESOLVE: Record<
 };
 
 /** Every gallery invite lands as sent, except the one address that already got one. */
-export const ALREADY_INVITED_EMAIL = "ana.ruiz@gmail.com";
+export const ALREADY_INVITED_EMAIL = "ana.ruiz@mail.example";
 
 export const fixtureSender: InviteSender = async (email) => {
   await new Promise((resolve) => setTimeout(resolve, 400));
@@ -266,7 +271,7 @@ export const FIXTURE_SUGGESTION_PHASES: {
   {
     suggestion: {
       name: "Hana Sato",
-      email: "hana@sato.design",
+      email: "hana@sato.example",
       reason: "met",
       count: 3,
     },
@@ -275,7 +280,7 @@ export const FIXTURE_SUGGESTION_PHASES: {
   {
     suggestion: {
       name: "Felix Brandt",
-      email: "felix@brandt.dev",
+      email: "felix@brandt.example",
       reason: "emailed",
       count: 8,
     },
@@ -284,7 +289,7 @@ export const FIXTURE_SUGGESTION_PHASES: {
   {
     suggestion: {
       name: "Elif Kaya",
-      email: "elif@kaya.io",
+      email: "elif@kaya.example",
       reason: "emailed",
       count: 2,
     },
@@ -293,7 +298,7 @@ export const FIXTURE_SUGGESTION_PHASES: {
   {
     suggestion: {
       name: "Jonah Weiss",
-      email: "jonah@weiss.fm",
+      email: "jonah@weiss.example",
       reason: "met",
       count: 1,
     },
@@ -301,7 +306,7 @@ export const FIXTURE_SUGGESTION_PHASES: {
   },
 ];
 
-/** People whose address GAIA wrote into a reply, one per hover-card invite state. */
+/** People whose address GAIA wrote into a reply, one per hover-card invite state; .example so the card's real invite reaches no one. */
 export const FIXTURE_CONTACTS: {
   label: string;
   metadata: URLResponse;
@@ -309,22 +314,22 @@ export const FIXTURE_CONTACTS: {
 }[] = [
   {
     label: "Not invited yet",
-    metadata: { url: "maya@lumen.studio", title: "Maya Chen" },
+    metadata: { url: "maya@lumen.example", title: "Maya Chen" },
     phase: null,
   },
   {
     label: "Sent, inside the undo window",
-    metadata: { url: "oscar@fjord.no", title: "Oscar Lund" },
+    metadata: { url: "oscar@fjord.example", title: "Oscar Lund" },
     phase: { phase: "held" },
   },
   {
     label: "Sent",
-    metadata: { url: "sofia@arcade.co", title: "Sofia Marin" },
+    metadata: { url: "sofia@arcade.example", title: "Sofia Marin" },
     phase: { phase: "done", status: "sent" },
   },
   {
     label: "Already invited",
-    metadata: { url: "ravi@kiln.app", title: null },
+    metadata: { url: "ravi@kiln.example", title: null },
     phase: { phase: "done", status: "already_invited" },
   },
 ];

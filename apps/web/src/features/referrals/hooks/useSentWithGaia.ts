@@ -4,10 +4,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
 import {
-  patchCurrentUser,
+  patchOnboardingPreferences,
   useCurrentUser,
 } from "@/features/auth/hooks/useCurrentUser";
-import { mergedOnboardingUpdate } from "@/lib/onboardingPreferences";
 import { toast } from "@/lib/toast";
 import { SENT_WITH_GAIA_COPY } from "../referralCopy";
 
@@ -26,10 +25,7 @@ export function useSentWithGaia() {
         sent_with_gaia: next,
       });
       if (!response.success) throw new Error(response.message);
-      patchCurrentUser(
-        queryClient,
-        mergedOnboardingUpdate(user.onboarding, { sent_with_gaia: next }),
-      );
+      patchOnboardingPreferences(queryClient, { sent_with_gaia: next });
     } catch {
       toast.error(SENT_WITH_GAIA_COPY.saveFailed);
     } finally {

@@ -6,7 +6,7 @@ interface WorkflowMeterSectionProps {
 }
 
 /** Whether a creator has anything on their workflow meter worth a row: a published workflow, or credit from one. */
-export function hasWorkflowMeter(meter: ReferralWorkflowMeter): boolean {
+function hasWorkflowMeter(meter: ReferralWorkflowMeter): boolean {
   return meter.published > 0 || meter.subscribed > 0 || meter.months_earned > 0;
 }
 

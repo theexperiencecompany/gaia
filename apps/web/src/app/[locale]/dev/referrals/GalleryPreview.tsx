@@ -74,8 +74,9 @@ function WeeklyPreview() {
             card={FIXTURE_WEEKLY[state]}
             onDismiss={() => undefined}
           />
-          {/* biome-ignore lint/performance/noImgElement: previews a dynamic OG route, next/image would re-encode it. */}
-          <img
+          {/* Unoptimized: the OG route renders the PNG under test, and re-encoding would alter it. */}
+          <Image
+            unoptimized
             src={weeklyImagePath(FIXTURE_WEEKLY[state])}
             alt={`Weekly time-saved share card, ${state}`}
             width={1200}

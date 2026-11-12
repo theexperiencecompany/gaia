@@ -6,11 +6,12 @@ and referrals are real rows.
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-from typing import Any
 from unittest.mock import MagicMock, patch
 import uuid
 
+from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
+from redis.asyncio import Redis
 
 from app.config.settings import settings
 from app.constants.referrals import INVITE_PATH, ReferralNudge, ReferralSource
@@ -56,7 +57,7 @@ LOOP_COLLECTIONS = (
 
 
 @pytest.fixture
-async def clean(mongo_db: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+async def clean(mongo_db: AsyncIOMotorDatabase, monkeypatch: pytest.MonkeyPatch) -> None:
     for name in LOOP_COLLECTIONS:
         await mongo_db.drop_collection(name)
     monkeypatch.setattr("app.db.mongodb.indexes.get_async_collection", lambda name: mongo_db[name])
@@ -64,7 +65,7 @@ async def clean(mongo_db: Any, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def attributed(clean: None, real_redis: Any) -> Iterator[MagicMock]:
+def attributed(clean: None, real_redis: Redis) -> Iterator[MagicMock]:
     with patch("app.services.referrals.attribution.capture") as capture:
         yield capture
 
@@ -217,7 +218,7 @@ class TestWeeklyCard:
     """The Monday card draws on the same weekly nudge slot as every other referral pitch."""
 
     @pytest.fixture
-    def nudge_capture(self, clean: None, real_redis: Any) -> Iterator[MagicMock]:
+    def nudge_capture(self, clean: None, real_redis: Redis) -> Iterator[MagicMock]:
         with patch("app.services.referrals.nudges.capture") as capture:
             yield capture
 

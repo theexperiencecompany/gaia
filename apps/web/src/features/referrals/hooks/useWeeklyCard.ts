@@ -4,6 +4,7 @@ import type { ReferralWeeklyCardResponse } from "@shared/api/generated";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addWeeks, format, startOfISOWeek } from "date-fns";
 import { useEffect, useState } from "react";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { referralsApi } from "../api/referralsApi";
 
@@ -25,6 +26,11 @@ function useLocalWeek(): string {
   return week;
 }
 
+/** One claim per account per local week: a new week or a new account is a new key. */
+function weeklyCardKey(userId: string, week: string) {
+  return ["referrals", "weekly-card", userId, week] as const;
+}
+
 /**
  * The Monday recap card. A shown card spends the user's weekly referral nudge,
  * so the server's answer is asked once per local week and never refetched within it.
@@ -32,13 +38,15 @@ function useLocalWeek(): string {
 export function useWeeklyCard() {
   const queryClient = useQueryClient();
   const { isPaid, isUnknown } = useIsPaid();
-  // One claim per local week: a new week is a new key, so last week's answer never carries over.
-  const key = ["referrals", "weekly-card", useLocalWeek()];
+  const { userId } = useCurrentUser();
+  const key = weeklyCardKey(userId, useLocalWeek());
   const claim = useQuery({
     queryKey: key,
     queryFn: referralsApi.claimWeeklyCard,
-    enabled: !isUnknown && isPaid,
+    enabled: Boolean(userId) && !isUnknown && isPaid,
     staleTime: Number.POSITIVE_INFINITY,
+    // A re-claim answers show: false once the week is spent, so the answer outlives the view.
+    gcTime: Number.POSITIVE_INFINITY,
     retry: false,
     refetchOnWindowFocus: false,
   });
@@ -46,9 +54,16 @@ export function useWeeklyCard() {
   const dismissal = useMutation({
     mutationFn: referralsApi.dismissWeeklyCard,
     onMutate: () => {
+      const previous =
+        queryClient.getQueryData<ReferralWeeklyCardResponse>(key);
       queryClient.setQueryData<ReferralWeeklyCardResponse>(key, (card) =>
         card ? { ...card, show: false } : card,
       );
+      return { previous };
+    },
+    // An unrecorded dismissal does not count toward the pause, so the card stays dismissable.
+    onError: (_error, _variables, context) => {
+      queryClient.setQueryData(key, context?.previous);
     },
   });
 

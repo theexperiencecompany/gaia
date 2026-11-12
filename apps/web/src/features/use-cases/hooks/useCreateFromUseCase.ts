@@ -1,10 +1,11 @@
 import { useTransition } from "react";
-import { handleAuthLogin } from "@/features/auth/hooks/handleAuthLogin";
+import { loginPagePath } from "@/features/auth/hooks/handleAuthLogin";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { referralsApi } from "@/features/referrals/api/referralsApi";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
+import { usePathname, useRouter } from "@/i18n/navigation";
 import type { UseCase } from "@/types/features/workflowTypes";
 
 function buildWorkflowRequest(
@@ -64,19 +65,22 @@ export function useCreateFromUseCase(
   const { createWorkflow } = useWorkflowCreation();
   const { selectWorkflow } = useWorkflowSelection();
   const { isAuthenticated } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
 
   const handleCreateWorkflow = () => {
     if (!isAuthenticated) {
       startCreateTransition(async () => {
         if (communityWorkflow) {
           try {
+            // Awaited so its cookie is set before sign-in; the request's own timeout bounds the wait.
             await referralsApi.creditWorkflow(communityWorkflow.id);
           } catch (error) {
-            // The credit is a bonus for the creator; login never waits on it.
+            // The credit is a bonus for the creator; a failed one never blocks sign-in.
             console.error("Workflow credit error:", error);
           }
         }
-        handleAuthLogin(window.location.pathname);
+        router.push(loginPagePath(pathname));
       });
       return;
     }
