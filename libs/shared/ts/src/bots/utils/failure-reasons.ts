@@ -2,7 +2,6 @@
  * Why a bot operation failed, as one closed code set shared by every platform,
  * so `| json | reason="account_not_linked"` finds the same failure on each.
  */
-import { BOT_STREAM_ERROR } from "../api/chat-stream";
 import { getApiErrorCode, getHttpStatus } from "./logger";
 import { wideLog } from "./wide-events";
 
@@ -123,12 +122,6 @@ function reasonFromStatus(
 /** Classifies a failed GAIA API call, stream or platform send into one reason. */
 export function classifyBotFailure(error: unknown): BotFailureReason {
   const text = errorText(error);
-  if (text === BOT_STREAM_ERROR.notAuthenticated) {
-    return BOT_FAILURE_REASON.ACCOUNT_NOT_LINKED;
-  }
-  if (text === BOT_STREAM_ERROR.planRequired) {
-    return BOT_FAILURE_REASON.PLAN_REQUIRED;
-  }
   if (DESTINATION_BLOCKED_PATTERNS.some((p) => p.test(text))) {
     return BOT_FAILURE_REASON.DESTINATION_BLOCKED;
   }

@@ -1,5 +1,6 @@
 import axios, { type AxiosInstance } from "axios";
 import type {
+  BotMessageAccepted,
   ConversationStopResponse,
   DeliveryFailureReport,
 } from "../../api/generated";
@@ -24,11 +25,9 @@ import { getErrorReason, getHttpStatus } from "../utils/logger";
 import { isOwnApiUrl } from "../utils/own-api";
 import { wideLog } from "../utils/wide-events";
 import {
-  type MessageBoundaryHandler,
-  type NoticeHandler,
-  type ReactionHandler,
-  streamChat,
-} from "./chat-stream";
+  type ConversationEvent,
+  readConversationEvents,
+} from "./conversation-events";
 import {
   downloadApiBinaryRequest,
   downloadArtifactRequest,
@@ -188,32 +187,54 @@ export class GaiaClient {
   }
 
   /**
-   * Streams a chat response via SSE (authenticated users only).
+   * Posts a message into the user's bot session and returns at once with its seq;
+   * the reply arrives on the conversation's events stream.
    */
-  async chatStream(
-    request: ChatRequest,
-    onChunk: (text: string) => void | Promise<void>,
-    onDone: (fullText: string, conversationId: string) => void | Promise<void>,
-    onError: (error: Error) => void | Promise<void>,
-    onMessageBoundary?: MessageBoundaryHandler,
-    onNotice?: NoticeHandler,
-    onReaction?: ReactionHandler,
-  ): Promise<string> {
-    return streamChat(
-      {
-        client: this.client,
-        userHeaders: (ctx) => this.userHeaders(ctx),
-        storeSessionToken: (ctx, token) => this.storeSessionToken(ctx, token),
-        clearSessionToken: (ctx) => this.clearSessionToken(ctx),
-      },
-      request,
-      onChunk,
-      onDone,
-      onError,
-      "/api/v1/bot/chat-stream",
-      onMessageBoundary,
-      onNotice,
-      onReaction,
+  async postMessage(request: ChatRequest): Promise<BotMessageAccepted> {
+    const ctx = {
+      platform: request.platform,
+      platformUserId: request.platformUserId,
+    };
+    const accepted = await this.requestWithAuth(async () => {
+      const { data } = await this.client.post<BotMessageAccepted>(
+        "/api/v1/bot/messages",
+        {
+          message: request.message,
+          platform: request.platform,
+          platform_user_id: request.platformUserId,
+          channel_id: request.channelId,
+          is_dm: request.isDm ?? false,
+          ...(request.platformMessageId
+            ? { platform_message_id: request.platformMessageId }
+            : {}),
+          ...(request.fileIds && request.fileIds.length > 0
+            ? { file_ids: request.fileIds }
+            : {}),
+          ...(request.fileData && request.fileData.length > 0
+            ? { file_data: request.fileData }
+            : {}),
+        },
+        { headers: this.userHeaders(ctx) },
+      );
+      return data;
+    }, ctx);
+    this.storeSessionToken(ctx, accepted.session_token);
+    return accepted;
+  }
+
+  /** One connection to a conversation's events stream, after a seq or a stream id. */
+  conversationEvents(
+    ctx: BotUserContext,
+    conversationId: string,
+    after: string,
+    signal: AbortSignal,
+  ): AsyncGenerator<ConversationEvent> {
+    return readConversationEvents(
+      this.client,
+      this.userHeaders(ctx),
+      conversationId,
+      after,
+      signal,
     );
   }
 

@@ -12,7 +12,6 @@ export {
   BaseBotAdapter,
   BotServer,
   type OutboundFile,
-  PerUserInboundQueue,
   richMessageToMarkdown,
   runBotProcess,
 } from "./adapter";
@@ -46,6 +45,17 @@ export {
   outboundMessageEnvelopeSchemaFor,
   outboundReactionSchema,
 } from "./consumer/envelope";
+export type {
+  ConversationEventSource,
+  ConversationSurface,
+  SentBubble,
+  StreamingOptions,
+} from "./conversation";
+export {
+  ConversationFollower,
+  ConversationFollowers,
+  STREAMING_DEFAULTS,
+} from "./conversation";
 export type {
   DeliveryFailure,
   ReportDeliveryFailure,
@@ -113,12 +123,8 @@ export type {
   IncomingMedia,
   MediaKind,
   MediaOutcome,
-  MessageEditor,
   MessageSlot,
-  NewMessageSender,
   ReactionOutcome,
-  SentBubble,
-  StreamingOptions,
   WideEventBoundaryFields,
   WideEventEntry,
 } from "./utils";
@@ -159,7 +165,6 @@ export {
   getHttpStatus,
   handleConversationList,
   handleNewConversation,
-  handleStreamingChat,
   handleTodoComplete,
   handleTodoCreate,
   handleTodoDelete,
@@ -179,7 +184,6 @@ export {
   MediaReadTimeoutError,
   mediaKindFromMime,
   OUTBOUND_FILE_LIMITS,
-  PLACEHOLDER_SLOT,
   PLATFORM_LIMITS,
   PLATFORM_MARKDOWN,
   parseTextArgs,
@@ -191,7 +195,6 @@ export {
   readStreamBytesCapped,
   recordBotFailure,
   renderForPlatform,
-  STREAMING_DEFAULTS,
   sanitizeErrorForLog,
   sendChunked,
   stepDelivery,

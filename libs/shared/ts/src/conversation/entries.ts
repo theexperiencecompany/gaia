@@ -21,6 +21,8 @@ export const ENTRY_KIND = {
   WORK_FINISHED: "work_finished",
   REPLY: "reply",
   REPLY_SETTLED: "reply_settled",
+  INTEGRATION_NEEDED: "integration_needed",
+  INTEGRATION_CONNECTED: "integration_connected",
 } as const;
 
 const REPLY_OUTCOME = {
@@ -143,6 +145,21 @@ const WorkFinishedSchema = z.object({
   report: z.string(),
 });
 
+const IntegrationNeededSchema = z.object({
+  kind: z.literal(ENTRY_KIND.INTEGRATION_NEEDED),
+  id,
+  integration_id: z.string(),
+  integration_name: z.string(),
+});
+
+const IntegrationConnectedSchema = z.object({
+  kind: z.literal(ENTRY_KIND.INTEGRATION_CONNECTED),
+  id,
+  integration_id: z.string(),
+  integration_name: z.string(),
+  needed_id: z.string(),
+});
+
 export const ReplySchema = z.object({
   kind: z.literal(ENTRY_KIND.REPLY),
   id,
@@ -167,7 +184,7 @@ const ReplySettledSchema = z
       REPLY_OUTCOME.SILENT,
     ]),
     answers: z.array(z.string()),
-    through: z.number().int().min(1),
+    through: z.number().int().min(0),
     quote_target: z.string().nullable(),
   })
   .refine(
@@ -187,6 +204,8 @@ export const EntrySchema = z.discriminatedUnion("kind", [
   ApprovalRequestedSchema,
   ApprovalDecidedSchema,
   WorkFinishedSchema,
+  IntegrationNeededSchema,
+  IntegrationConnectedSchema,
   ReplySchema,
   ReplySettledSchema,
 ]);

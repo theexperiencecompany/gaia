@@ -47,6 +47,9 @@ import type {
   OutboundReaction,
 } from "../consumer/envelope";
 import { OutboundConsumer } from "../consumer/outbound-consumer";
+import { STREAMING_DEFAULTS } from "../conversation/delivery-options";
+import type { ConversationSurface } from "../conversation/follower.types";
+import { ConversationFollowers } from "../conversation/followers";
 import {
   createDeliveryFailureReporter,
   DELIVERY_FAILURE_KIND,
@@ -58,13 +61,22 @@ import type {
   AuthStatus,
   BotCommand,
   BotConfig,
+  ChatRequest,
   CommandContext,
   OutboundNotifications,
   PlatformName,
   RichMessageTarget,
 } from "../types";
-import { BOT_FAILURE_REASON, recordBotFailure } from "../utils/failure-reasons";
-import { formatBotError, renderForPlatform } from "../utils/formatters";
+import {
+  BOT_FAILURE_REASON,
+  classifyBotFailure,
+  recordBotFailure,
+} from "../utils/failure-reasons";
+import {
+  buildPlanRequiredMessage,
+  formatBotError,
+  renderForPlatform,
+} from "../utils/formatters";
 import {
   type BotLogger,
   createBotLogger,
@@ -156,6 +168,8 @@ export abstract class BaseBotAdapter {
 
   private _botServer: BotServer | null = null;
   private _outboundConsumer: OutboundConsumer | null = null;
+  /** One follower per conversation a message was posted into, created at boot. */
+  private followers!: ConversationFollowers;
 
   /**
    * Shared HTTP server for this bot process, available during all lifecycle methods. Created in
@@ -205,6 +219,11 @@ export abstract class BaseBotAdapter {
           this.platform,
         );
         this.analytics = new Analytics(this.config.posthogProjectToken);
+        this.followers = new ConversationFollowers(
+          (ctx, conversationId, after, signal) =>
+            this.gaia.conversationEvents(ctx, conversationId, after, signal),
+          STREAMING_DEFAULTS[this.platform],
+        );
 
         for (const cmd of commands) {
           this.commands.set(cmd.name, cmd);
@@ -266,6 +285,7 @@ export abstract class BaseBotAdapter {
           await this._outboundConsumer.stop();
           this._outboundConsumer = null;
         }
+        await this.followers.stopAll();
         await this.stop();
         if (this._botServer) {
           await this._botServer.stop();
@@ -687,8 +707,100 @@ export abstract class BaseBotAdapter {
   }
 
   /**
+   * Posts one inbound chat message and follows its conversation. Returns once the
+   * message is accepted; the reply, reactions and late results render through
+   * surface in the background, so nothing the user sends next waits on this one.
+   */
+  protected postAndFollow(
+    request: ChatRequest,
+    surface: ConversationSurface,
+    onAuthError: (authUrl: string) => Promise<void>,
+  ): Promise<void> {
+    return withWideEvent(
+      "chat",
+      {
+        platform: request.platform,
+        component: "base-adapter",
+        user_hash: hashLogIdentifier(request.platformUserId),
+        // channelId can be a raw PII identifier (a WhatsApp wa_id), so it is hashed too.
+        channel_hash: hashLogIdentifier(request.channelId),
+        message_length: request.message.length,
+        has_files: Boolean(request.fileIds?.length || request.fileData?.length),
+      },
+      async () => {
+        const analytics = await this.analyticsFor(request.platformUserId);
+        analytics.client.capture(analytics.distinctId, "bot:message_received", {
+          interaction_type: "chat",
+          message_length: request.message.length,
+        });
+        let accepted: Awaited<ReturnType<GaiaClient["postMessage"]>>;
+        try {
+          accepted = await this.gaia.postMessage(request);
+        } catch (error) {
+          await this.reportPostRefused(error, request, surface, onAuthError);
+          analytics.client.capture(analytics.distinctId, "bot:error", {
+            context: "chat:post",
+            duration_ms: 0,
+          });
+          return;
+        }
+        wideLog.set({
+          conversation_id: accepted.conversation_id,
+          seq: accepted.seq,
+        });
+        this.followers.follow(
+          {
+            platform: request.platform,
+            platformUserId: request.platformUserId,
+          },
+          accepted.conversation_id,
+          accepted.seq,
+          surface,
+        );
+      },
+    );
+  }
+
+  /** Tells the user why their message was not accepted: the link prompt, the plan prompt, or the error. */
+  private async reportPostRefused(
+    error: unknown,
+    request: ChatRequest,
+    surface: ConversationSurface,
+    onAuthError: (authUrl: string) => Promise<void>,
+  ): Promise<void> {
+    if (classifyBotFailure(error) === BOT_FAILURE_REASON.ACCOUNT_NOT_LINKED) {
+      wideLog.fail(BOT_FAILURE_REASON.ACCOUNT_NOT_LINKED);
+      const { authUrl } = await this.gaia.createLinkToken(
+        request.platform,
+        request.platformUserId,
+      );
+      wideLog.audit("auth_link_issued", {
+        user_hash: hashLogIdentifier(request.platformUserId),
+      });
+      await onAuthError(authUrl);
+      return;
+    }
+    const reason = recordBotFailure("chat_post_failed", error, {
+      context: "chat:post",
+    });
+    const text =
+      reason === BOT_FAILURE_REASON.PLAN_REQUIRED
+        ? buildPlanRequiredMessage(this.gaia.getPricingUrl())
+        : formatBotError(error, request.platform);
+    if (isLostReply(reason)) {
+      this.reportDeliveryFailure({
+        kind: DELIVERY_FAILURE_KIND.REPLY_FAILED,
+        reason,
+        error_message: describeErrorForAlert(error, "chat"),
+        destination_id: request.platformUserId,
+      });
+    }
+    await surface.send(renderForPlatform(text, request.platform), null);
+  }
+
+  /**
    * The analytics client bound to this user's resolved identity, for handing to
-   * shared helpers like {@link handleStreamingChat}.
+   * shared helpers.
    */
   protected async analyticsFor(
     platformUserId: string,

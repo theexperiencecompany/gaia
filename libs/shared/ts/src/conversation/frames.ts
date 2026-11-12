@@ -172,9 +172,19 @@ export const ConversationFrameSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
+/** One `data:` line of the events stream: a frame and the stream id to resume after (null for a log replay). */
+export const ConversationEventSchema = z.object({
+  stream_id: z.string().nullable(),
+  frame: ConversationFrameSchema,
+});
+
 type FrameParseError =
   | { kind: "invalid_json"; raw: string }
   | { kind: "invalid_frame"; raw: string; issues: string[] };
+
+type ParseResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: FrameParseError };
 
 export type FrameParseResult =
   | { ok: true; frame: z.infer<typeof ConversationFrameSchema> }
@@ -190,16 +200,28 @@ const readJson = (
   }
 };
 
-/** Parse one `data:` line of the conversation stream into a typed frame or a typed error. */
-export function parseConversationFrame(raw: string): FrameParseResult {
+function parseWith<T>(schema: z.ZodType<T>, raw: string): ParseResult<T> {
   const json = readJson(raw);
   if (!json.ok) return { ok: false, error: { kind: "invalid_json", raw } };
-  const parsed = ConversationFrameSchema.safeParse(json.value);
+  const parsed = schema.safeParse(json.value);
   if (!parsed.success) {
     const issues = parsed.error.issues.map(
       (issue) => `${issue.path.join(".")}: ${issue.message}`,
     );
     return { ok: false, error: { kind: "invalid_frame", raw, issues } };
   }
-  return { ok: true, frame: parsed.data };
+  return { ok: true, value: parsed.data };
+}
+
+/** Parse one frame's JSON into a typed frame or a typed error. */
+export function parseConversationFrame(raw: string): FrameParseResult {
+  const parsed = parseWith(ConversationFrameSchema, raw);
+  return parsed.ok ? { ok: true, frame: parsed.value } : parsed;
+}
+
+/** Parse one `data:` line of the events stream into a typed event or a typed error. */
+export function parseConversationEvent(
+  raw: string,
+): ParseResult<z.infer<typeof ConversationEventSchema>> {
+  return parseWith(ConversationEventSchema, raw);
 }
