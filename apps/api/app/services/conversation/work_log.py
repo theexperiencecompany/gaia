@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 
+from app.agents.core.background.executor_queue import get_lock_holder, parse_lock_value
 from app.constants.hil import ApprovalResolution
 from app.models.agent_config import StepTurnRef
 from app.models.conversation_log_models import (
@@ -83,6 +84,16 @@ async def record_work_finished(
         tool_data=tuple(tool_data),
     )
     await accept(runtime_ports(), conversation_id, user_id, entry)
+
+
+async def running_step_task(conversation_id: str, user_id: str) -> str | None:
+    """Return the task id of the executor running in the conversation when the step started it; else None."""
+    holder = await get_lock_holder(conversation_id)
+    if holder is None:
+        return None
+    task_id = parse_lock_value(holder)[1]
+    state = await runtime_ports().log.state(conversation_id, user_id)
+    return task_id if any(work.task_id == task_id for work in state.work) else None
 
 
 async def record_approval_requested(

@@ -46,6 +46,7 @@ from app.models.hil_models import (
     LedgerState,
 )
 from app.services.analytics_service import capture
+from app.services.conversation.work_log import record_approval_requested, running_step_task
 from app.services.feature_flags import is_hil_ledger_enabled, is_jev_judge_enabled
 from app.services.hil.approvals_store import approval_id_for, get_approval
 from app.services.hil.bridge import (
@@ -272,6 +273,11 @@ async def _decide_ledger(
         # later turn of the same worker can revoke what it proposed.
         configurable: AgentConfigurable = configurable_of(request)
         owner = configurable.get("thread_id") or "unknown"
+        task_id = (
+            await running_step_task(context.conversation_id, context.user_id)
+            if configurable.get("conversation_step") is not None
+            else None
+        )
         # blocked_by arrives with ordering chains (Phase 3): the chain joins the
         # fingerprint there, so identical calls on different chains never share
         # an envelope.
@@ -290,8 +296,13 @@ async def _decide_ledger(
                 proposing_run_id=context.stream_id,
                 owner_run_type=context.owner_run_type,
                 owner_id=context.owner_id,
+                task_id=task_id,
             )
         )
+        if task_id is not None:
+            await record_approval_requested(
+                context.conversation_id, context.user_id, task_id, ap_id
+            )
         log.info(
             f"{LogTag.HIL} Ledger registered gated call",
             approval_id=ap_id,

@@ -22,6 +22,7 @@ from redis.asyncio import Redis
 from app.agents.context.slots import TIME_CONTEXT_MARKER, mark
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.graph_manager import GraphManager
+from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
 from app.constants.graphs import GraphName
 from app.db.redis import redis_cache
@@ -75,6 +76,7 @@ from app.services.conversation.work_log import (
     record_user_stop,
     record_work_finished,
     record_work_started,
+    running_step_task,
 )
 from shared.py.wide_events import _spawned_tasks
 from tests.e2e._harness.graph_run import comms_graph
@@ -631,3 +633,20 @@ async def test_work_handed_to_running_work_is_logged_and_stopped_with_it(
     assert [(w.task_id, w.joins) for w in started] == [("t1", None), ("t2", "t1")]
     assert [(w.task_id, w.answers, w.joined) for w in state.work] == [("t1", ("m1", "m2"), ("t2",))]
     assert rig.effects.cancelled == [("t1", "t2")]
+
+
+@pytest.mark.service
+async def test_a_ledger_approval_is_held_by_the_step_task_running_in_the_conversation(
+    rig_for: RigFactory, real_redis: Redis
+) -> None:
+    model = gated("on it")
+    rig = await rig_for(model)
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "send the invoice")
+    await rig.settle()
+    before_lock = await running_step_task(rig.conversation_id, rig.user_id)
+    await real_redis.set(f"{EXECUTOR_BUSY_PREFIX}{rig.conversation_id}", "stream-1:t1")
+    held_by = await running_step_task(rig.conversation_id, rig.user_id)
+    await real_redis.set(f"{EXECUTOR_BUSY_PREFIX}{rig.conversation_id}", "stream-2:t-legacy")
+    legacy = await running_step_task(rig.conversation_id, rig.user_id)
+    assert (before_lock, held_by, legacy) == (None, "t1", None)

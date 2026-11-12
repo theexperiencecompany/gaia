@@ -77,6 +77,7 @@ def _row(**overrides: Any) -> MagicMock:
     row.feedback = None
     row.owner_run_type = ""
     row.owner_id = ""
+    row.task_id = None
     # Real datetime: the decision path computes card age from it, and a
     # MagicMock would TypeError on the subtraction, hiding real type errors.
     row.created_at = datetime.now(UTC)
@@ -229,6 +230,24 @@ class TestDecideLedger:
             pytest.raises(ApprovalRequestNotFoundError),
         ):
             await decide_ledger("ap_nope", user_id=USER_ID, kind="approve", v=None, via="card")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(("task_id", "logged"), [("t1", True), (None, False)])
+async def test_a_decision_on_step_logged_work_is_appended_to_the_conversation_log(
+    task_id: str | None, logged: bool
+) -> None:
+    with (
+        patch.object(ledger_decide, "approval_ledger_repository", new=_repo(_row(task_id=task_id))),
+        patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
+        patch.object(ledger_decide, "_deliver_verdict", new=AsyncMock()),
+        patch.object(ledger_decide, "record_approval_decided", new=AsyncMock()) as decided,
+    ):
+        await ledger_decide.decide_ledger("ap_abc", user_id=USER_ID, kind="deny", v=3, via="card")
+    if logged:
+        decided.assert_awaited_once_with("conv-1", USER_ID, "ap_abc", "deny")
+    else:
+        decided.assert_not_awaited()
 
 
 @pytest.mark.unit
