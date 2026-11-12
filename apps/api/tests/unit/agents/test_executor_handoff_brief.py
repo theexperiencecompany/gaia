@@ -303,8 +303,21 @@ class TestTheSimStubRunsABriefsScriptOnce:
                 "last_run": _LAST_RUN,
                 "playbook_check": f"{_FALLBACK_NOTE}\n\n{PLAYBOOK_CHECK_BRIEF}",
             },
+            {
+                "acceptance_criteria": ["done"],
+                "intent": ExecutorIntent(
+                    desired_outcome="the scripted directives run", time_horizon="one_shot"
+                ),
+            },
         ],
-        ids=["criteria", "last-run", "last-run-no-criteria", "playbook-note", "every-section"],
+        ids=[
+            "criteria",
+            "last-run",
+            "last-run-no-criteria",
+            "playbook-note",
+            "every-section",
+            "intent",
+        ],
     )
     def test_a_brief_quoting_the_request_yields_one_tool_call(
         self, sections: dict[str, Any]
