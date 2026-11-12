@@ -2175,7 +2175,6 @@ score:URL Structure=93
 /features/workflows	perf/cache-headers/cache-control
 /for	content/keyword-stuffing/keyword-stuffing	read
 /for/agency-owners	core/meta-description/meta-description
-/for/consultants	content/keyword-stuffing/keyword-stuffing	client
 /for/content-creators	content/keyword-stuffing/keyword-stuffing	content
 /for/data-analysts	content/keyword-stuffing/keyword-stuffing	data
 /for/data-scientists	content/keyword-stuffing/keyword-stuffing	data
@@ -2187,7 +2186,6 @@ score:URL Structure=93
 /for/virtual-assistants	content/keyword-stuffing/keyword-stuffing	client
 /fr/alternative-to	content/keyword-stuffing/keyword-stuffing	avec
 /fr/alternative-to	content/keyword-stuffing/keyword-stuffing	les
-/fr/alternative-to	content/keyword-stuffing/keyword-stuffing	pour
 /fr/alternative-to	links/no-contextual-inbound/no-contextual-inbound
 /fr/alternative-to/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /fr/alternative-to/asana	content/keyword-stuffing/keyword-stuffing	les
@@ -3480,148 +3478,61 @@ score:URL Structure=93
 /learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	zero
 /manifesto	links/no-contextual-inbound/no-contextual-inbound
 /manifesto	perf/cache-headers/cache-control
-/marketplace	perf/cache-headers/cache-control
 /marketplace/adspo-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
-/marketplace/adspo-mcp-other	images/svg-inline/svg-inline
-/marketplace/adspo-mcp-other	perf/cache-headers/cache-control
-/marketplace/agentmail	content/keyword-stuffing/keyword-stuffing	agentmail
 /marketplace/agentmail	content/keyword-stuffing/keyword-stuffing	email
-/marketplace/agentmail	images/svg-inline/svg-inline
-/marketplace/agentmail	perf/cache-headers/cache-control
-/marketplace/airtable	images/svg-inline/svg-inline
-/marketplace/airtable	perf/cache-headers/cache-control
 /marketplace/arxiv-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
-/marketplace/arxiv-mcp-education	images/svg-inline/svg-inline
-/marketplace/arxiv-mcp-education	perf/cache-headers/cache-control
-/marketplace/asana	images/svg-inline/svg-inline
-/marketplace/asana	perf/cache-headers/cache-control
 /marketplace/asana	perf/dom-size/dom-max-children
 /marketplace/astro-docs-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
-/marketplace/astro-docs-mcp-developer	images/svg-inline/svg-inline
 /marketplace/astro-docs-mcp-developer	links/orphan-pages/orphan-pages
 /marketplace/astro-docs-mcp-developer	links/weak-internal-links/weak-internal-links
-/marketplace/astro-docs-mcp-developer	perf/cache-headers/cache-control
 /marketplace/bible-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
-/marketplace/bible-mcp-other	images/svg-inline/svg-inline
-/marketplace/bible-mcp-other	perf/cache-headers/cache-control
 /marketplace/brave-search-mcp-other	content/keyword-stuffing/keyword-stuffing	search
 /marketplace/brave-search-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	l8nwDVzfVQS1OxvB-z4c4C6v8H3o30SH4zlVhVnG6gQ
-/marketplace/brave-search-mcp-other	images/svg-inline/svg-inline
-/marketplace/brave-search-mcp-other	perf/cache-headers/cache-control
 /marketplace/browser-tool-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
-/marketplace/browser-tool-mcp-capabilities	images/svg-inline/svg-inline
-/marketplace/browser-tool-mcp-capabilities	perf/cache-headers/cache-control
-/marketplace/calcom	images/svg-inline/svg-inline
-/marketplace/calcom	perf/cache-headers/cache-control
 /marketplace/calendly	content/keyword-stuffing/keyword-stuffing	event
-/marketplace/calendly	images/svg-inline/svg-inline
-/marketplace/calendly	perf/cache-headers/cache-control
-/marketplace/clickup	images/svg-inline/svg-inline
-/marketplace/clickup	perf/cache-headers/cache-control
 /marketplace/clickup	perf/dom-size/dom-max-children
 /marketplace/code-interpreter-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
-/marketplace/code-interpreter-mcp-developer	images/svg-inline/svg-inline
-/marketplace/code-interpreter-mcp-developer	perf/cache-headers/cache-control
-/marketplace/context7	images/svg-inline/svg-inline
-/marketplace/context7	perf/cache-headers/cache-control
 /marketplace/deepwiki	content/keyword-stuffing/keyword-stuffing	deepwiki
-/marketplace/deepwiki	images/svg-inline/svg-inline
-/marketplace/deepwiki	perf/cache-headers/cache-control
 /marketplace/dodo-payments-mcp-finance	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
-/marketplace/dodo-payments-mcp-finance	images/svg-inline/svg-inline
-/marketplace/dodo-payments-mcp-finance	perf/cache-headers/cache-control
-/marketplace/doi-resolver-mcp-education	images/svg-inline/svg-inline
-/marketplace/doi-resolver-mcp-education	perf/cache-headers/cache-control
 /marketplace/dropbox	content/keyword-stuffing/keyword-stuffing	team
-/marketplace/dropbox	images/svg-inline/svg-inline
-/marketplace/dropbox	perf/cache-headers/cache-control
 /marketplace/dropbox	perf/dom-size/dom-max-children
-/marketplace/dropbox-mcp-productivity	images/svg-inline/svg-inline
-/marketplace/dropbox-mcp-productivity	perf/cache-headers/cache-control
 /marketplace/duckduckgo-search-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	l8nwDVzfVQS1OxvB-z4c4C6v8H3o30SH4zlVhVnG6gQ
-/marketplace/duckduckgo-search-mcp-capabilities	images/svg-inline/svg-inline
-/marketplace/duckduckgo-search-mcp-capabilities	perf/cache-headers/cache-control
 /marketplace/fetch-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
-/marketplace/fetch-mcp-capabilities	images/svg-inline/svg-inline
-/marketplace/fetch-mcp-capabilities	perf/cache-headers/cache-control
 /marketplace/github	content/keyword-stuffing/keyword-stuffing	repository
-/marketplace/github	images/svg-inline/svg-inline
-/marketplace/github	perf/cache-headers/cache-control
 /marketplace/github	perf/dom-size/dom-max-children
 /marketplace/github	perf/dom-size/dom-total-nodes
-/marketplace/gmail	images/svg-inline/svg-inline
-/marketplace/gmail	perf/cache-headers/cache-control
 /marketplace/gmail	perf/dom-size/dom-max-children
 /marketplace/google-classroom-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
-/marketplace/google-classroom-mcp-education	images/svg-inline/svg-inline
-/marketplace/google-classroom-mcp-education	perf/cache-headers/cache-control
 /marketplace/google-scholar-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI
-/marketplace/google-scholar-mcp-education	images/svg-inline/svg-inline
-/marketplace/google-scholar-mcp-education	perf/cache-headers/cache-control
 /marketplace/google_maps	images/svg-inline/svg-inline
 /marketplace/google_maps	perf/cache-headers/cache-control
 /marketplace/google_maps	url/hyphens/url-hyphens
 /marketplace/googlecalendar	content/keyword-stuffing/keyword-stuffing	calendar
 /marketplace/googlecalendar	content/placeholder-contact/placeholder-contact	email
-/marketplace/googlecalendar	images/svg-inline/svg-inline
-/marketplace/googlecalendar	perf/cache-headers/cache-control
 /marketplace/googledocs	content/keyword-stuffing/keyword-stuffing	document
 /marketplace/googledocs	content/placeholder-contact/placeholder-contact	email
-/marketplace/googledocs	images/svg-inline/svg-inline
-/marketplace/googledocs	perf/cache-headers/cache-control
 /marketplace/googledrive	content/keyword-stuffing/keyword-stuffing	file
-/marketplace/googledrive	images/svg-inline/svg-inline
-/marketplace/googledrive	perf/cache-headers/cache-control
 /marketplace/googledrive	perf/dom-size/dom-max-children
 /marketplace/googlemeet	content/keyword-stuffing/keyword-stuffing	conference
-/marketplace/googlemeet	images/svg-inline/svg-inline
-/marketplace/googlemeet	perf/cache-headers/cache-control
 /marketplace/googlesheets	content/keyword-stuffing/keyword-stuffing	spreadsheet
 /marketplace/googlesheets	content/placeholder-contact/placeholder-contact	phone
 /marketplace/googlesheets	content/placeholder-text/placeholder-content	unrendered-template
-/marketplace/googlesheets	images/svg-inline/svg-inline
-/marketplace/googlesheets	perf/cache-headers/cache-control
 /marketplace/googletasks	content/keyword-stuffing/keyword-stuffing	list
 /marketplace/googletasks	content/keyword-stuffing/keyword-stuffing	task
 /marketplace/googletasks	content/keyword-stuffing/keyword-stuffing	tasks
-/marketplace/googletasks	images/svg-inline/svg-inline
-/marketplace/googletasks	perf/cache-headers/cache-control
 /marketplace/granola-mcp-productivity	content/keyword-stuffing/keyword-stuffing	meeting
 /marketplace/granola-mcp-productivity	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
-/marketplace/granola-mcp-productivity	images/svg-inline/svg-inline
-/marketplace/granola-mcp-productivity	perf/cache-headers/cache-control
 /marketplace/gumroad-mcp-finance	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
-/marketplace/gumroad-mcp-finance	images/svg-inline/svg-inline
-/marketplace/gumroad-mcp-finance	perf/cache-headers/cache-control
-/marketplace/hackernews	content/keyword-stuffing/keyword-stuffing	news
-/marketplace/hackernews	images/svg-inline/svg-inline
-/marketplace/hackernews	perf/cache-headers/cache-control
-/marketplace/hubspot	images/svg-inline/svg-inline
-/marketplace/hubspot	perf/cache-headers/cache-control
 /marketplace/hubspot	perf/dom-size/dom-max-children
 /marketplace/instagram	content/keyword-stuffing/keyword-stuffing	media
-/marketplace/instagram	images/svg-inline/svg-inline
-/marketplace/instagram	perf/cache-headers/cache-control
-/marketplace/jira	images/svg-inline/svg-inline
-/marketplace/jira	perf/cache-headers/cache-control
 /marketplace/jira	perf/dom-size/dom-max-children
 /marketplace/keyloom-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	component
 /marketplace/keyloom-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
-/marketplace/keyloom-mcp-capabilities	images/svg-inline/svg-inline
-/marketplace/keyloom-mcp-capabilities	perf/cache-headers/cache-control
 /marketplace/linear	content/keyword-stuffing/keyword-stuffing	issue
-/marketplace/linear	images/svg-inline/svg-inline
-/marketplace/linear	perf/cache-headers/cache-control
-/marketplace/linkedin	images/svg-inline/svg-inline
-/marketplace/linkedin	perf/cache-headers/cache-control
-/marketplace/linkup-mcp-capabilities	images/svg-inline/svg-inline
-/marketplace/linkup-mcp-capabilities	perf/cache-headers/cache-control
 /marketplace/manufact-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	server
 /marketplace/manufact-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
-/marketplace/manufact-mcp-capabilities	images/svg-inline/svg-inline
 /marketplace/manufact-mcp-capabilities	links/orphan-pages/orphan-pages
 /marketplace/manufact-mcp-capabilities	links/weak-internal-links/weak-internal-links
-/marketplace/manufact-mcp-capabilities	perf/cache-headers/cache-control
 /marketplace/microsoft_teams	content/keyword-stuffing/keyword-stuffing	team
 /marketplace/microsoft_teams	content/keyword-stuffing/keyword-stuffing	teams
 /marketplace/microsoft_teams	content/placeholder-contact/placeholder-contact	email
@@ -3629,159 +3540,75 @@ score:URL Structure=93
 /marketplace/microsoft_teams	perf/cache-headers/cache-control
 /marketplace/microsoft_teams	url/hyphens/url-hyphens
 /marketplace/neon-database-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
-/marketplace/neon-database-mcp-developer	images/svg-inline/svg-inline
 /marketplace/neon-database-mcp-developer	links/orphan-pages/orphan-pages
 /marketplace/neon-database-mcp-developer	links/weak-internal-links/weak-internal-links
-/marketplace/neon-database-mcp-developer	perf/cache-headers/cache-control
-/marketplace/notion	images/svg-inline/svg-inline
-/marketplace/notion	perf/cache-headers/cache-control
 /marketplace/open-web-search-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	search
 /marketplace/open-web-search-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
-/marketplace/open-web-search-mcp-capabilities	images/svg-inline/svg-inline
-/marketplace/open-web-search-mcp-capabilities	perf/cache-headers/cache-control
 /marketplace/outlook	content/keyword-stuffing/keyword-stuffing	calendar
 /marketplace/outlook	content/keyword-stuffing/keyword-stuffing	folder
 /marketplace/outlook	content/keyword-stuffing/keyword-stuffing	use
 /marketplace/outlook	content/keyword-stuffing/keyword-stuffing	user
 /marketplace/outlook	content/placeholder-contact/placeholder-contact	email
-/marketplace/outlook	images/svg-inline/svg-inline
-/marketplace/outlook	perf/cache-headers/cache-control
 /marketplace/outlook	perf/dom-size/dom-max-children
 /marketplace/outlook	perf/dom-size/dom-total-nodes
 /marketplace/page/2	content/word-count/word-count
 /marketplace/page/2	links/no-contextual-inbound/no-contextual-inbound
-/marketplace/page/2	perf/cache-headers/cache-control
 /marketplace/page/3	content/word-count/word-count
 /marketplace/page/3	links/no-contextual-inbound/no-contextual-inbound
-/marketplace/page/3	perf/cache-headers/cache-control
-/marketplace/paper-search-openai-mcp-education	images/svg-inline/svg-inline
-/marketplace/paper-search-openai-mcp-education	perf/cache-headers/cache-control
 /marketplace/paper-search-v2-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
-/marketplace/paper-search-v2-mcp-education	images/svg-inline/svg-inline
-/marketplace/paper-search-v2-mcp-education	perf/cache-headers/cache-control
 /marketplace/paypal-mcp-finance	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
-/marketplace/paypal-mcp-finance	images/svg-inline/svg-inline
-/marketplace/paypal-mcp-finance	perf/cache-headers/cache-control
-/marketplace/perplexity	images/svg-inline/svg-inline
-/marketplace/perplexity	perf/cache-headers/cache-control
 /marketplace/pixellab-mcp-ai-ml	images/offscreen-lazy/offscreen-images-not-lazy	dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI
-/marketplace/pixellab-mcp-ai-ml	images/svg-inline/svg-inline
-/marketplace/pixellab-mcp-ai-ml	perf/cache-headers/cache-control
 /marketplace/polymarket-mcp-analytics	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
-/marketplace/polymarket-mcp-analytics	images/svg-inline/svg-inline
-/marketplace/polymarket-mcp-analytics	perf/cache-headers/cache-control
-/marketplace/posthog	images/svg-inline/svg-inline
-/marketplace/posthog	perf/cache-headers/cache-control
 /marketplace/postman-code-eu-mcp-developer	content/keyword-stuffing/keyword-stuffing	code
 /marketplace/postman-code-eu-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
-/marketplace/postman-code-eu-mcp-developer	images/svg-inline/svg-inline
-/marketplace/postman-code-eu-mcp-developer	perf/cache-headers/cache-control
 /marketplace/postman-code-mcp-developer	content/keyword-stuffing/keyword-stuffing	api
 /marketplace/postman-code-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
-/marketplace/postman-code-mcp-developer	images/svg-inline/svg-inline
-/marketplace/postman-code-mcp-developer	perf/cache-headers/cache-control
 /marketplace/postman-full-eu-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
-/marketplace/postman-full-eu-mcp-developer	images/svg-inline/svg-inline
-/marketplace/postman-full-eu-mcp-developer	perf/cache-headers/cache-control
 /marketplace/postman-full-mcp-developer	content/keyword-stuffing/keyword-stuffing	api
 /marketplace/postman-full-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
-/marketplace/postman-full-mcp-developer	images/svg-inline/svg-inline
-/marketplace/postman-full-mcp-developer	perf/cache-headers/cache-control
 /marketplace/postman-minimal-eu-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
-/marketplace/postman-minimal-eu-mcp-developer	images/svg-inline/svg-inline
-/marketplace/postman-minimal-eu-mcp-developer	perf/cache-headers/cache-control
 /marketplace/postman-minimal-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
-/marketplace/postman-minimal-mcp-developer	images/svg-inline/svg-inline
 /marketplace/postman-minimal-mcp-developer	links/orphan-pages/orphan-pages
 /marketplace/postman-minimal-mcp-developer	links/weak-internal-links/weak-internal-links
-/marketplace/postman-minimal-mcp-developer	perf/cache-headers/cache-control
 /marketplace/prisma-mcp-developer	content/keyword-stuffing/keyword-stuffing	database
 /marketplace/prisma-mcp-developer	content/keyword-stuffing/keyword-stuffing	postgres
 /marketplace/prisma-mcp-developer	content/keyword-stuffing/keyword-stuffing	prisma
 /marketplace/prisma-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
-/marketplace/prisma-mcp-developer	images/svg-inline/svg-inline
-/marketplace/prisma-mcp-developer	perf/cache-headers/cache-control
 /marketplace/pumpgtm-mcp-other	content/placeholder-text/placeholder-content	unrendered-template
 /marketplace/pumpgtm-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
-/marketplace/pumpgtm-mcp-other	images/svg-inline/svg-inline
-/marketplace/pumpgtm-mcp-other	perf/cache-headers/cache-control
-/marketplace/reddit	images/svg-inline/svg-inline
-/marketplace/reddit	perf/cache-headers/cache-control
 /marketplace/render-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
-/marketplace/render-mcp-developer	images/svg-inline/svg-inline
 /marketplace/render-mcp-developer	links/orphan-pages/orphan-pages
 /marketplace/render-mcp-developer	links/weak-internal-links/weak-internal-links
-/marketplace/render-mcp-developer	perf/cache-headers/cache-control
 /marketplace/resend-mcp-communication	content/placeholder-contact/placeholder-contact	email
 /marketplace/resend-mcp-communication	content/placeholder-text/placeholder-content	js-artifact
 /marketplace/resend-mcp-communication	content/placeholder-text/placeholder-content	unrendered-template
 /marketplace/resend-mcp-communication	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
-/marketplace/resend-mcp-communication	images/svg-inline/svg-inline
-/marketplace/resend-mcp-communication	perf/cache-headers/cache-control
 /marketplace/resend-mcp-communication	perf/dom-size/dom-max-children
-/marketplace/scientific-computation-mcp-analytics	images/svg-inline/svg-inline
-/marketplace/scientific-computation-mcp-analytics	perf/cache-headers/cache-control
 /marketplace/scrapegraph-ai-mcp-ai-ml	images/offscreen-lazy/offscreen-images-not-lazy	71xjMW8R_mMbIymmucrB2-ZgJY6zxBL76MNK-v8y_3A
-/marketplace/scrapegraph-ai-mcp-ai-ml	images/svg-inline/svg-inline
-/marketplace/scrapegraph-ai-mcp-ai-ml	perf/cache-headers/cache-control
 /marketplace/semantic-scholar-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI
-/marketplace/semantic-scholar-mcp-education	images/svg-inline/svg-inline
-/marketplace/semantic-scholar-mcp-education	perf/cache-headers/cache-control
 /marketplace/sequential-thinking-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI
-/marketplace/sequential-thinking-mcp-capabilities	images/svg-inline/svg-inline
-/marketplace/sequential-thinking-mcp-capabilities	perf/cache-headers/cache-control
-/marketplace/shopify-mcp-finance	images/svg-inline/svg-inline
-/marketplace/shopify-mcp-finance	perf/cache-headers/cache-control
-/marketplace/slack	images/svg-inline/svg-inline
-/marketplace/slack	perf/cache-headers/cache-control
 /marketplace/slack	perf/dom-size/dom-max-children
 /marketplace/strava-mcp-personal	images/offscreen-lazy/offscreen-images-not-lazy	dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI
-/marketplace/strava-mcp-personal	images/svg-inline/svg-inline
-/marketplace/strava-mcp-personal	perf/cache-headers/cache-control
 /marketplace/supabase-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	l8nwDVzfVQS1OxvB-z4c4C6v8H3o30SH4zlVhVnG6gQ
-/marketplace/supabase-mcp-developer	images/svg-inline/svg-inline
 /marketplace/supabase-mcp-developer	links/orphan-pages/orphan-pages
 /marketplace/supabase-mcp-developer	links/weak-internal-links/weak-internal-links
-/marketplace/supabase-mcp-developer	perf/cache-headers/cache-control
 /marketplace/todoist	content/keyword-stuffing/keyword-stuffing	need
 /marketplace/todoist	content/keyword-stuffing/keyword-stuffing	use
-/marketplace/todoist	images/svg-inline/svg-inline
-/marketplace/todoist	perf/cache-headers/cache-control
 /marketplace/todoist	perf/dom-size/dom-max-children
 /marketplace/trello	content/keyword-stuffing/keyword-stuffing	board
-/marketplace/trello	images/svg-inline/svg-inline
-/marketplace/trello	perf/cache-headers/cache-control
 /marketplace/trello	perf/dom-size/dom-max-children
 /marketplace/trello	perf/dom-size/dom-total-nodes
 /marketplace/twitter	content/keyword-stuffing/keyword-stuffing	user
-/marketplace/twitter	images/svg-inline/svg-inline
-/marketplace/twitter	perf/cache-headers/cache-control
 /marketplace/twitter	perf/dom-size/dom-max-children
 /marketplace/wakatime-mcp-analytics	images/offscreen-lazy/offscreen-images-not-lazy	GWNzsIGGO33nMDvAMWjVBWUvq2otiHKiyVYBnMXPqN8
-/marketplace/wakatime-mcp-analytics	images/svg-inline/svg-inline
-/marketplace/wakatime-mcp-analytics	perf/cache-headers/cache-control
 /marketplace/whoop-mcp-personal	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
-/marketplace/whoop-mcp-personal	images/svg-inline/svg-inline
-/marketplace/whoop-mcp-personal	perf/cache-headers/cache-control
 /marketplace/wix-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	71xjMW8R_mMbIymmucrB2-ZgJY6zxBL76MNK-v8y_3A
-/marketplace/wix-mcp-other	images/svg-inline/svg-inline
-/marketplace/wix-mcp-other	perf/cache-headers/cache-control
 /marketplace/world-cup-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
-/marketplace/world-cup-mcp-other	images/svg-inline/svg-inline
-/marketplace/world-cup-mcp-other	perf/cache-headers/cache-control
 /marketplace/yelp	content/keyword-stuffing/keyword-stuffing	business
-/marketplace/yelp	images/svg-inline/svg-inline
-/marketplace/yelp	perf/cache-headers/cache-control
 /marketplace/youtube-mcp-analytics	images/offscreen-lazy/offscreen-images-not-lazy	71xjMW8R_mMbIymmucrB2-ZgJY6zxBL76MNK-v8y_3A
-/marketplace/youtube-mcp-analytics	images/svg-inline/svg-inline
-/marketplace/youtube-mcp-analytics	perf/cache-headers/cache-control
 /marketplace/zoho-mail-mcp-communication	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
-/marketplace/zoho-mail-mcp-communication	images/svg-inline/svg-inline
-/marketplace/zoho-mail-mcp-communication	perf/cache-headers/cache-control
 /marketplace/zoom	content/keyword-stuffing/keyword-stuffing	meeting
 /marketplace/zoom	content/placeholder-contact/placeholder-contact	address
-/marketplace/zoom	images/svg-inline/svg-inline
-/marketplace/zoom	perf/cache-headers/cache-control
 /marketplace?search=Discord	content/word-count/word-count
 /marketplace?search=Discord	perf/cache-headers/cache-control
 /marketplace?search=Figma	content/word-count/word-count
@@ -3822,7 +3649,6 @@ score:URL Structure=93
 /pt-br/alternative-to/gemini-assistant	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/alternative-to/google-assistant	content/keyword-stuffing/keyword-stuffing	assistente
 /pt-br/alternative-to/google-assistant	content/keyword-stuffing/keyword-stuffing	google
-/pt-br/alternative-to/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
 /pt-br/alternative-to/google-calendar	content/keyword-stuffing/keyword-stuffing	google
 /pt-br/alternative-to/granola	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/alternative-to/granola	content/keyword-stuffing/keyword-stuffing	reuni
@@ -3855,7 +3681,6 @@ score:URL Structure=93
 /pt-br/alternative-to/todoist	content/keyword-stuffing/keyword-stuffing	tarefas
 /pt-br/alternative-to/todoist	content/keyword-stuffing/keyword-stuffing	todoist
 /pt-br/alternative-to/trello	content/keyword-stuffing/keyword-stuffing	trello
-/pt-br/automate	content/keyword-stuffing/keyword-stuffing	asana
 /pt-br/automate	content/keyword-stuffing/keyword-stuffing	tarefas
 /pt-br/automate	links/no-contextual-inbound/no-contextual-inbound
 /pt-br/automate/airtable-google-calendar	content/keyword-stuffing/keyword-stuffing	agenda
@@ -4408,9 +4233,6 @@ score:URL Structure=93
 /use-cases/assignment-tracker	content/keyword-stuffing/keyword-stuffing	due
 /use-cases/assignment-tracker	content/word-count/word-count
 /use-cases/assignment-tracker	links/orphan-pages/orphan-pages
-/use-cases/auto-draft-replies	content/keyword-stuffing/keyword-stuffing	reply
-/use-cases/auto-draft-replies	content/keyword-stuffing/keyword-stuffing	user
-/use-cases/auto-draft-replies	content/word-count/word-count
 /use-cases/auto-draft-replies	links/orphan-pages/orphan-pages
 /use-cases/auto-draft-replies	links/weak-internal-links/weak-internal-links
 /use-cases/auto-draft-replies-3c3bbe	crawl/sitemap-coverage/sitemap-coverage
@@ -4423,8 +4245,6 @@ score:URL Structure=93
 /use-cases/code-review-reminders	links/weak-internal-links/weak-internal-links
 /use-cases/competitor-watch	content/word-count/word-count
 /use-cases/competitor-watch	links/orphan-pages/orphan-pages
-/use-cases/dailyposthogmetricsreport	content/keyword-stuffing/keyword-stuffing	metrics
-/use-cases/dailyposthogmetricsreport	content/word-count/word-count
 /use-cases/drink-water-reminder	content/word-count/word-count
 /use-cases/drink-water-reminder	links/orphan-pages/orphan-pages
 /use-cases/email-to-task	content/word-count/word-count
@@ -4440,15 +4260,11 @@ score:URL Structure=93
 /use-cases/follow-up-reminders	links/weak-internal-links/weak-internal-links
 /use-cases/hackernewsfrontpage-6763ab	content/word-count/word-count
 /use-cases/inbox-triage	content/keyword-stuffing/keyword-stuffing	action
-/use-cases/inbox-triage	content/word-count/word-count
 /use-cases/inbox-triage	links/orphan-pages/orphan-pages
 /use-cases/inbox-triage	links/weak-internal-links/weak-internal-links
 /use-cases/lecture-notes-summarizer	content/keyword-stuffing/keyword-stuffing	notes
 /use-cases/lecture-notes-summarizer	content/word-count/word-count
 /use-cases/lecture-notes-summarizer	links/orphan-pages/orphan-pages
-/use-cases/meeting-briefing	content/keyword-stuffing/keyword-stuffing	attendees
-/use-cases/meeting-briefing	content/keyword-stuffing/keyword-stuffing	search
-/use-cases/meeting-briefing	content/word-count/word-count
 /use-cases/meeting-notes-summary	content/keyword-stuffing/keyword-stuffing	action
 /use-cases/meeting-notes-summary	content/word-count/word-count
 /use-cases/meeting-notes-summary	links/orphan-pages/orphan-pages
@@ -4476,7 +4292,6 @@ score:URL Structure=93
 /use-cases/save-the-bug	content/word-count/word-count
 /use-cases/save-the-bug	links/orphan-pages/orphan-pages
 /use-cases/save-the-bug	links/weak-internal-links/weak-internal-links
-/use-cases/scrapenewengineeringjobpostings-1b2627	content/keyword-stuffing/keyword-stuffing	job
 /use-cases/social-post-drafts	content/word-count/word-count
 /use-cases/social-post-drafts	links/orphan-pages/orphan-pages
 /use-cases/study-plan-today	content/word-count/word-count
