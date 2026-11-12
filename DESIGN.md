@@ -580,6 +580,23 @@ Used for richer UI inside cards.
 
 Chart palette (Recharts): `["#a78bfa", "#34d399", "#60a5fa", "#f472b6", "#fb923c"]`
 
+### HeroUI control dimensions
+
+v2's sizes on v3's components, set once as `--gaia-*` variables in the `gaia` layer of `apps/web/src/app/styles/base.css`. Never restate them per component.
+
+| Control | sm | md (default) | lg |
+|---|---|---|---|
+| Button height | 32px | 40px | 48px |
+| Button min-width | 64px | 80px | 96px |
+| Button text | 12px | 14px | 16px |
+| Button radius | 8px | 12px | 14px |
+| Icon-only button | 32px square, 8px radius | 40px square | 48px square |
+| Chip min-height | 24px | 28px | 32px |
+| Chip radius | 8px | 8px | 8px |
+| Checkbox control | 20px, 8px gap to its label | | |
+
+Buttons use font-weight 400.
+
 ### Overlay Hierarchy
 
 | Use case | Component |
