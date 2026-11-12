@@ -57,7 +57,7 @@ Settings live in `apps/api/app/config/settings.py` and run in one of three modes
 ## API Environment Variables
 
 <Note>
-  On a self-hosted instance, the provider and tool keys (AI providers, search, Firecrawl, OpenWeather, LlamaParse, GitHub, Cloudinary, Google OAuth, Composio, Resend, E2B) can be set in **Settings → Providers & Tools** instead, where they are stored encrypted. The environment variable is used when nothing is saved there.
+  On a self-hosted instance, the provider and tool keys (AI providers, search, Firecrawl, OpenWeather, LlamaParse, GitHub, Cloudinary, Composio, Resend, E2B) can be set in **Settings → Providers & Tools** instead, where they are stored encrypted. The environment variable is used when nothing is saved there.
 </Note>
 
 ### Always Required
@@ -128,8 +128,6 @@ In production and self-host, these are also required:
 | `WORKOS_API_KEY`            | Only when `AUTH_MODE=workos` | WorkOS API key for authentication |
 | `WORKOS_CLIENT_ID`          | Only when `AUTH_MODE=workos` | WorkOS client ID                 |
 | `WORKOS_COOKIE_PASSWORD`    | Only when `AUTH_MODE=workos` | Secret for session cookies (min 32 chars) |
-| `GOOGLE_CLIENT_ID`          | Prod only | Google OAuth client ID               |
-| `GOOGLE_CLIENT_SECRET`      | Prod only | Google OAuth client secret           |
 | `DISCORD_OAUTH_CLIENT_ID`   | Optional  | Discord OAuth app client ID          |
 | `DISCORD_OAUTH_CLIENT_SECRET` | Optional | Discord OAuth app client secret     |
 | `SLACK_OAUTH_CLIENT_ID`     | Optional  | Slack OAuth app client ID            |
@@ -318,11 +316,6 @@ AUTH_MODE=local
 # WORKOS_API_KEY=sk_test_xxxx
 # WORKOS_CLIENT_ID=client_xxxx
 # WORKOS_COOKIE_PASSWORD=your-32-character-random-secret
-
-# Google OAuth (optional in dev)
-
-GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=GOCSPX-xxxx
 
 # AI (add what you need — or configure in Settings → Providers & Tools)
 

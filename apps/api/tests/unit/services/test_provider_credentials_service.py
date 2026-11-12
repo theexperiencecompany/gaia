@@ -24,12 +24,10 @@ import app.services.providers.provider_credentials_service as service_module
 from app.services.providers.provider_credentials_service import (
     CloudinaryAccount,
     CredentialResolution,
-    GoogleOAuthClient,
     ProviderConfig,
     cloudinary_account,
     delete,
     env_config,
-    google_oauth_client,
     inspect_credential,
     invalidate,
     is_usable,
@@ -113,8 +111,6 @@ def clean_state(monkeypatch):
         "CLOUDINARY_CLOUD_NAME",
         "CLOUDINARY_API_KEY",
         "CLOUDINARY_API_SECRET",
-        "GOOGLE_CLIENT_ID",
-        "GOOGLE_CLIENT_SECRET",
         "FIRECRAWL_API_KEY",
         "INSTANCE_SECRET",
     ):
@@ -378,8 +374,8 @@ class TestResolvePrecedenceAndFallbacks:
 class TestToolProviderEnvFallbacks:
     """Resolve tool/integration lanes all-or-nothing.
 
-    Single-key providers resolve from their one env var; the multi-variable pairs
-    (cloudinary, google_oauth) resolve ONLY when every variable is present, so a
+    Single-key providers resolve from their one env var; the multi-variable
+    cloudinary account resolves ONLY when every variable is present, so a
     half-set env must never report the provider as configured.
     """
 
@@ -426,26 +422,6 @@ class TestToolProviderEnvFallbacks:
 
         assert await resolve("cloudinary") is None
 
-    async def test_google_oauth_pair_resolves_secret_as_key(self, repo) -> None:
-        settings.GOOGLE_CLIENT_ID = "client-id.apps.googleusercontent.com"
-        settings.GOOGLE_CLIENT_SECRET = "GOCSPID-test"
-
-        config = await resolve("google_oauth")
-
-        assert config is not None and config.api_key == "GOCSPID-test"
-
-    @pytest.mark.parametrize(
-        ("client_id", "client_secret"),
-        [(None, "GOCSPID-test"), ("client-id", None)],
-    )
-    async def test_google_oauth_half_pair_is_not_configured(
-        self, repo, client_id, client_secret
-    ) -> None:
-        settings.GOOGLE_CLIENT_ID = client_id
-        settings.GOOGLE_CLIENT_SECRET = client_secret
-
-        assert await resolve("google_oauth") is None
-
 
 # ---------------------------------------------------------------------------
 # resolve — 60s TTL cache
@@ -453,17 +429,11 @@ class TestToolProviderEnvFallbacks:
 
 
 class TestCardSavedAccounts:
-    """Cloudinary and Google OAuth work from what their Settings card saves, with no .env."""
+    """Cloudinary works from what its Settings card saves, with no .env."""
 
     @pytest.fixture(autouse=True)
     def _no_env_halves(self) -> None:
-        for name in (
-            "CLOUDINARY_CLOUD_NAME",
-            "CLOUDINARY_API_KEY",
-            "CLOUDINARY_API_SECRET",
-            "GOOGLE_CLIENT_ID",
-            "GOOGLE_CLIENT_SECRET",
-        ):
+        for name in ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"):
             setattr(settings, name, None)
 
     async def test_a_saved_cloudinary_account_works_without_env(self, repo, fixed_secret) -> None:
@@ -483,24 +453,11 @@ class TestCardSavedAccounts:
             cloud_name="my-cloud", api_key="cl-key", api_secret="cl-secret"
         )
 
-    async def test_a_saved_google_client_works_without_env(self, repo, fixed_secret) -> None:
-        await upsert(
-            "google_oauth",
-            ProviderConfig(api_key="GOCSPX-secret", account_id="id.apps.example"),
-        )
-
-        config = await resolve("google_oauth")
-
-        assert google_oauth_client(config) == GoogleOAuthClient(
-            client_id="id.apps.example", client_secret="GOCSPX-secret"
-        )
-
     @pytest.mark.parametrize(
         ("provider", "fields"),
         [
             ("cloudinary", {"api_key": "k", "account_id": "c"}),
             ("cloudinary", {"api_key": "k", "api_secret": "s"}),
-            ("google_oauth", {"api_key": "s"}),
         ],
     )
     async def test_a_partial_saved_account_is_not_usable(
@@ -758,12 +715,6 @@ class TestEnvConfigShapes:
             account_id="cloud",
             api_secret="cs",  # pragma: allowlist secret
         )
-
-    def test_google_oauth(self) -> None:
-        settings.GOOGLE_CLIENT_ID = "gid"
-        settings.GOOGLE_CLIENT_SECRET = "gsecret"  # pragma: allowlist secret
-
-        assert env_config("google_oauth") == ProviderConfig(api_key="gsecret", account_id="gid")
 
     def test_a_single_key_tool(self) -> None:
         settings.TAVILY_API_KEY = "tvly"

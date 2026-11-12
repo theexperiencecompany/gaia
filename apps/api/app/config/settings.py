@@ -446,13 +446,6 @@ class Settings(BrowserHostSettings):
     RABBITMQ_URL: str | None = None
 
     # ----------------------------------------------
-    # Authentication & OAuth
-    # ----------------------------------------------
-    GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
-    GOOGLE_CLIENT_ID: str | None = None
-    GOOGLE_CLIENT_SECRET: str | None = None
-
-    # ----------------------------------------------
     # External API Integration Keys
     # ----------------------------------------------
     TAVILY_API_KEY: str | None = None

@@ -162,7 +162,6 @@ class TestStatus:
             "openai",
             "resend",
             "cloudinary",
-            "google_oauth",
             "firecrawl",
             "openweather",
             "llamaparse",
@@ -340,50 +339,30 @@ class TestStatus:
             "env_shadowed": True,
         }
 
-    @pytest.mark.parametrize(
-        ("provider", "body"),
-        [
-            (
-                "cloudinary",
-                {"api_key": STORED_KEY, "account_id": "my-cloud", "api_secret": "cl-secret"},
-            ),
-            ("google_oauth", {"api_key": STORED_KEY, "account_id": "id.apps.example"}),
-        ],
-    )
     async def test_a_card_saved_account_is_configured_with_no_env(
-        self,
-        client: AsyncClient,
-        monkeypatch: pytest.MonkeyPatch,
-        provider: str,
-        body: dict[str, str],
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        for name in (
-            "CLOUDINARY_CLOUD_NAME",
-            "CLOUDINARY_API_KEY",
-            "CLOUDINARY_API_SECRET",
-            "GOOGLE_CLIENT_ID",
-            "GOOGLE_CLIENT_SECRET",
-        ):
+        for name in ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"):
             monkeypatch.setattr(settings, name, None)
+        body = {"api_key": STORED_KEY, "account_id": "my-cloud", "api_secret": "cl-secret"}
 
-        assert (await client.put(f"{API}/providers/{provider}", json=body)).status_code == 200
-        status = (await client.get(f"{API}/status")).json()["providers"][provider]
-        listed = (await client.get(f"{API}/providers")).json()["providers"][provider]
+        assert (await client.put(f"{API}/providers/cloudinary", json=body)).status_code == 200
+        status = (await client.get(f"{API}/status")).json()["providers"]["cloudinary"]
+        listed = (await client.get(f"{API}/providers")).json()["providers"]["cloudinary"]
 
         assert status == {"configured": True, "source": "stored", "env_shadowed": False}
         assert listed["configured"] is True
         assert listed["account_id"] == body["account_id"]
 
-    @pytest.mark.parametrize("provider", ["cloudinary", "google_oauth"])
     async def test_a_saved_key_alone_is_not_configured(
-        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch, provider: str
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        for name in ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_SECRET", "GOOGLE_CLIENT_ID"):
+        for name in ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_SECRET"):
             monkeypatch.setattr(settings, name, "env-value")
 
-        await client.put(f"{API}/providers/{provider}", json={"api_key": STORED_KEY})
+        await client.put(f"{API}/providers/cloudinary", json={"api_key": STORED_KEY})
 
-        status = (await client.get(f"{API}/status")).json()["providers"][provider]
+        status = (await client.get(f"{API}/status")).json()["providers"]["cloudinary"]
         assert status["configured"] is False
 
     async def test_an_unconfigured_provider_reports_unset(

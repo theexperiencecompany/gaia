@@ -98,8 +98,6 @@ CAPABILITY_REQUIREMENTS: tuple[CapabilityRequirement, ...] = (
         capability="GAIA Cloud's own integrations, voice and operations",
         applies=lambda profile: profile.kind is DeploymentKind.PRODUCTION,
         keys=(
-            "GOOGLE_CLIENT_ID",
-            "GOOGLE_CLIENT_SECRET",
             "TAVILY_API_KEY",
             "FIRECRAWL_API_KEY",
             "LLAMA_INDEX_KEY",

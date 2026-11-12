@@ -4874,7 +4874,6 @@
           "openai",
           "resend",
           "cloudinary",
-          "google_oauth",
           "firecrawl",
           "openweather",
           "llamaparse",

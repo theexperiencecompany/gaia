@@ -218,22 +218,6 @@ _DECLARED_SPECS: dict[CredentialProviderName, ProviderSpec] = {
         requires=frozenset({"account_id", "api_key", "api_secret"}),
         registry_key=CLOUDINARY_PROVIDER,
     ),
-    # The secret travels as api_key, the client id as account_id; only the pair works.
-    CredentialProviderName.GOOGLE_OAUTH: ProviderSpec(
-        preset=ProviderPreset(
-            label="Google OAuth",
-            description="Google account integration (Gmail, Calendar). Paste the OAuth client ID and client secret from Google Cloud Console.",
-            key_url="https://console.cloud.google.com/apis/credentials",
-            favicon_url=favicon_url("accounts.google.com"),
-            api_key_label="Client secret",
-            account_id_label="Client ID",
-        ),
-        env={
-            "account_id": lambda: settings.GOOGLE_CLIENT_ID,
-            "api_key": lambda: settings.GOOGLE_CLIENT_SECRET,
-        },
-        requires=frozenset({"account_id", "api_key"}),
-    ),
     CredentialProviderName.FIRECRAWL: _api_key_spec(
         ProviderPreset(
             label="Firecrawl",
