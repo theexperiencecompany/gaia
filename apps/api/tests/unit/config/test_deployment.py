@@ -9,6 +9,7 @@ from app.config.deployment import (
     BlobStoreKind,
     DeploymentKind,
     InvalidDeploymentError,
+    LinkBase,
     OriginPolicy,
     baseline_profile,
     deployment_profile,
@@ -310,6 +311,25 @@ def test_each_kind_exposes_its_own_network_surface(
     assert profile.https_only is https_only
     assert profile.private_network_endpoints is private_endpoints
     assert profile.dev_tools is dev_tools
+
+
+@pytest.mark.parametrize(
+    ("kind", "edge_web_server", "link_base"),
+    [
+        (DeploymentKind.PRODUCTION, True, LinkBase.GAIA_LINK_DOMAIN),
+        (DeploymentKind.DEVELOPMENT, False, LinkBase.INSTANCE_WEB_ROUTE),
+        (DeploymentKind.SELFHOST, False, LinkBase.INSTANCE_WEB_ROUTE),
+    ],
+)
+def test_only_production_sits_behind_the_edge_and_serves_links_from_gaias_domain(
+    kind: DeploymentKind, edge_web_server: bool, link_base: LinkBase
+) -> None:
+    profile = deployment_profile(
+        kind, "workos", unlimited_usage=False, local_code_sandbox=False, blob_store=None
+    )
+
+    assert profile.edge_web_server is edge_web_server
+    assert profile.link_base is link_base
 
 
 @pytest.mark.parametrize(
