@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.constants.openui_artifacts import ARTIFACT_VALIDATOR_TIMEOUT_SECONDS
+from app.constants.openui_artifacts import ARTIFACT_VALIDATOR_TIMEOUT_SECONDS, REPO_ROOT
 from app.services.openui_artifacts import validate
 from app.services.openui_artifacts.validate import (
     ArtifactValidation,
@@ -154,3 +154,13 @@ async def test_a_verdict_missing_a_field_is_malformed_too() -> None:
     with _spawn(_process(stdout=json.dumps(incomplete).encode())):
         with pytest.raises(ArtifactValidatorError, match="malformed output"):
             await validate_program("r", "b", interactive=False)
+
+
+@pytest.mark.parametrize("target", ["dev", "worker"])
+def test_running_the_api_natively_builds_the_validator_first(target: str) -> None:
+    """Regression: on a fresh checkout every artifact failed until the bundle was built by hand."""
+    project = json.loads((REPO_ROOT / "apps" / "api" / "project.json").read_text())
+
+    assert {"projects": ["artifact-validate"], "target": "build"} in project["targets"][target].get(
+        "dependsOn", []
+    )

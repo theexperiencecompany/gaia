@@ -55,6 +55,7 @@ from workos.session import SessionModule
 
 from app.config.rate_limits import RateLimitConfig
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
+from app.constants.briefing import BriefingFrequency
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
 from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
@@ -77,6 +78,17 @@ async def users_get(user_id: str) -> UserDocument | None:
     if user_id == UNKNOWN_USER_ID:
         return None
     return UserDocument.model_validate({"id": user_id, "onboarding": {"completed": True}})
+
+
+async def briefs_off_users_get(user_id: str) -> UserDocument:
+    """Stand in for user_repository.get with a user who turned their briefs off."""
+    return UserDocument.model_validate(
+        {
+            "id": user_id,
+            "onboarding": {"completed": True},
+            "briefing_schedule": {"frequency": BriefingFrequency.OFF},
+        }
+    )
 
 
 def session_set_cookie(name: str, value: str, max_age: int, *, secure: bool) -> str:

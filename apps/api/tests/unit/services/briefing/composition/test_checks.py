@@ -126,6 +126,7 @@ POOL = FactPool(
         timezone="UTC",
         today=date(2026, 11, 11),
         calendar_events=1,
+        calendar_connected=True,
         calendar_span="today",
         recent_openings=[],
     ),

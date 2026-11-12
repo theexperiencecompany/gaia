@@ -80,6 +80,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
     since = context.week_start_utc(clock)
     completed = await context.gather_completed_since(user_id, since)
     week = await context.gather_week(user_id, clock, completed)
+    has_calendar = await context.calendar_connected(user_id)
     seen_at = datetime.now(UTC)
     gathered = await gather_week_candidates(user_id, clock, since, completed, week.ahead)
     goals = await context.stated_goals(user_id, user)
@@ -100,6 +101,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
             timezone=user.timezone or Timezone.utc().value,
             today=clock.now_local.date(),
             calendar_events=len(week.ahead),
+            calendar_connected=has_calendar,
             calendar_span=WEEK_AHEAD_SPAN,
         ),
         seen_at,
@@ -115,6 +117,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
             ),
             open_todos=0,
             calendar=week.ahead,
+            calendar_connected=has_calendar,
             event_ids=event_ids(gathered.pool),
             span=WEEK_AHEAD,
             todos_note=None,

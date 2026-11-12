@@ -176,6 +176,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     work = await context.gather_tracked_work(user_id, since)
     artifacts = gather_artifacts(work)
     open_count, open_titles = await context.user_open_todo_summary(user_id)
+    has_calendar = await context.calendar_connected(user_id)
     calendar = await context.gather_calendar(user_id, clock, days=1)
     completed = await context.gather_completed_since(user_id, since)
     held = await pending_brief_items_repository.list_for_user(user_id, sort=[("created_at", 1)])
@@ -196,18 +197,19 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             timezone=user.timezone or Timezone.utc().value,
             today=clock.now_local.date(),
             calendar_events=len(calendar),
+            calendar_connected=has_calendar,
             calendar_span=TODAY_SPAN,
             recent_openings=openings,
         ),
     )
-    chosen = laid.chosen
-    remembered = chosen_signals(chosen, scouts.remembered)
+    remembered = chosen_signals(laid.chosen, scouts.remembered)
     facts = build_facts(
-        chosen,
+        laid.chosen,
         FactSources(
             artifacts=artifacts,
             open_todos=open_count,
             calendar=calendar,
+            calendar_connected=has_calendar,
             event_ids=event_ids(gathered.pool),
             span=TODAY,
             todos_note=user_todos_note(open_count, open_titles),

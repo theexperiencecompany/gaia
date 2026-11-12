@@ -1,6 +1,5 @@
 import { defineComponent } from "@openuidev/react-lang";
 import { AreaChartCondensed } from "@openuidev/react-ui/Charts/AreaChartCondensed";
-import { BarChartCondensed } from "@openuidev/react-ui/Charts/BarChartCondensed";
 import { LineChartCondensed } from "@openuidev/react-ui/Charts/LineChartCondensed";
 import type { ReactNode } from "react";
 import type { z } from "zod";
@@ -18,6 +17,7 @@ import {
   lineSchema,
   stackedBarsSchema,
 } from "../specs";
+import { BarsView } from "./BarsView";
 import { Figure } from "./ChartFigure";
 import { FunnelView } from "./FunnelView";
 import { GaugeView } from "./GaugeView";
@@ -77,25 +77,13 @@ export const areaDef = seriesChartDef("Area", areaSchema, (data, palette) => (
   />
 ));
 export const barsDef = seriesChartDef("Bars", barsSchema, (data, palette) => (
-  <BarChartCondensed
-    data={data}
-    categoryKey="category"
-    variant="grouped"
-    customPalette={palette}
-    isAnimationActive={false}
-  />
+  <BarsView data={data} palette={palette} variant="grouped" />
 ));
 export const stackedBarsDef = seriesChartDef(
   "StackedBars",
   stackedBarsSchema,
   (data, palette) => (
-    <BarChartCondensed
-      data={data}
-      categoryKey="category"
-      variant="stacked"
-      customPalette={palette}
-      isAnimationActive={false}
-    />
+    <BarsView data={data} palette={palette} variant="stacked" />
   ),
 );
 
