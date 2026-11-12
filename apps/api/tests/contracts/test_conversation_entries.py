@@ -13,7 +13,7 @@ from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 
 from app.db.repositories import conversations as conversations_module
-from app.db.repositories.conversation_entries import EntryWindow
+from app.db.repositories.conversation_entries import EMBEDDED_FINGERPRINT, EntryWindow
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import MessageModel, ToolDataEntry
 from app.models.conversation_models import ConversationDescriptionHit, ConversationDocument
@@ -460,7 +460,7 @@ async def test_search_skips_a_todos_chat_and_an_unmigrated_chat_never_blocks_the
 
 _REFUSAL = (
     "has messages the entries migration has not copied: run python -m "
-    "app.scripts.migrate_conversation_entries --apply (or --since for a second pass)"
+    "app.scripts.migrate_conversation_entries --apply"
 )
 
 
@@ -475,8 +475,11 @@ async def test_a_migrated_head_reads_until_the_old_build_writes_its_array_again(
             "createdAt": datetime.now(UTC).isoformat(),
             "messages": [old],
             "log_head": 1,
-            "migrated_last_id": "o1",
         }
+    )
+    # Marked the way the migration marks a head it copied: the array's fingerprint at copy time.
+    await raw_collection.update_one(
+        {"conversation_id": "migrated"}, [{"$set": {"migrated_fingerprint": EMBEDDED_FINGERPRINT}}]
     )
     await entries_collection.insert_one(
         {

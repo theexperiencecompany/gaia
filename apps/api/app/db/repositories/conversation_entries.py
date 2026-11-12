@@ -27,30 +27,28 @@ from app.utils.errors import ConversationStoreError, UnmigratedConversationError
 
 LOG_HEAD_FIELD = "log_head"
 OUTBOX_FIELD = "outbox"
-#: The message_id the migration last copied from the embedded array, so a later write by the old build shows.
-MIGRATED_LAST_ID_FIELD = "migrated_last_id"
-#: On a migrated entry: the hash of the embedded element it was copied from (verify compares it).
-MIGRATION_HASH_FIELD = "migration_hash"
+#: The fingerprint of the embedded array as the migration last copied it, so any later old-build write shows.
+MIGRATED_FINGERPRINT_FIELD = "migrated_fingerprint"
+#: On a migrated entry: each field's hash as its embedded element held it (verify and the merge compare them).
+MIGRATION_FIELDS_FIELD = "migration_fields"
 _EMBEDDED_FIELD = "_embedded"
 #: Head fields that never reach a ConversationDocument (or the client it is returned to).
 HEAD_INTERNAL_FIELDS = (
     "messages",
     LOG_HEAD_FIELD,
     OUTBOX_FIELD,
-    MIGRATED_LAST_ID_FIELD,
+    MIGRATED_FINGERPRINT_FIELD,
     _EMBEDDED_FIELD,
 )
 
-#: The last embedded message_id, as the migration records it; missing when the array holds none.
-EMBEDDED_LAST_ID: dict[str, object] = {
-    "$arrayElemAt": [{"$ifNull": ["$messages.message_id", []]}, -1]
-}
+#: A server-side hash of the whole embedded array: any append, trim or in-place edit changes it.
+EMBEDDED_FINGERPRINT: dict[str, object] = {"$toHashedIndexKey": {"$ifNull": ["$messages", []]}}
 #: Heads whose embedded array holds messages the entries do not: never migrated, or written since.
 UNMIGRATED_HEADS: dict[str, object] = {
     "messages.0": {"$exists": True},
     "$or": [
         {LOG_HEAD_FIELD: {"$exists": False}},
-        {"$expr": {"$ne": [EMBEDDED_LAST_ID, f"${MIGRATED_LAST_ID_FIELD}"]}},
+        {"$expr": {"$ne": [EMBEDDED_FINGERPRINT, f"${MIGRATED_FINGERPRINT_FIELD}"]}},
     ],
 }
 #: Added to every head read so the refusal below needs no second query and never ships the array.
@@ -58,7 +56,7 @@ EMBEDDED_STATE_STAGE: dict[str, object] = {
     "$addFields": {
         _EMBEDDED_FIELD: {
             "count": {"$size": {"$ifNull": ["$messages", []]}},
-            "last_id": EMBEDDED_LAST_ID,
+            "fingerprint": EMBEDDED_FINGERPRINT,
         }
     }
 }
@@ -73,7 +71,7 @@ _APPEND_HEAD_FIELDS: dict[str, object] = {
     "user_id": 1,
     LOG_HEAD_FIELD: 1,
     OUTBOX_FIELD: 1,
-    MIGRATED_LAST_ID_FIELD: 1,
+    MIGRATED_FINGERPRINT_FIELD: 1,
     _EMBEDDED_FIELD: 1,
 }
 _EXISTING_FIELDS: dict[str, object] = {"_id": 0, "id": 1, "seq": 1}
@@ -142,7 +140,7 @@ def head_from_raw(raw: Mapping[str, object]) -> Head:
     embedded = document.embedded
     if embedded is not None and embedded.count:
         migrated = document.log_head is not None
-        if not migrated or document.migrated_last_id != embedded.last_id:
+        if not migrated or document.migrated_fingerprint != embedded.fingerprint:
             raise unmigrated(f"conversation {document.conversation_id}")
     return Head(document=document, fields=head_fields(raw))
 
@@ -233,7 +231,7 @@ def unmigrated(subject: str) -> UnmigratedConversationError:
     return UnmigratedConversationError(
         message=(
             f"{subject} has messages the entries migration has not copied: run "
-            f"python -m {CONVERSATION_ENTRIES_MIGRATION_SCRIPT} --apply (or --since for a second pass)"
+            f"python -m {CONVERSATION_ENTRIES_MIGRATION_SCRIPT} --apply"
         ),
         why="its messages still live only in the embedded messages array",
     )
@@ -344,7 +342,7 @@ def waiting_for(message_id: str) -> dict[str, object]:
 
 
 def absorbing(message_id: str, message: Mapping[str, object]) -> dict[str, object]:
-    """Build the entry as committed: stamped at commit time, the cards waiting for its id after its own tool_data.
+    """Build the entry as committed, stamped at commit time unless it carries its own, its waiting cards after its tool_data.
 
     The entry itself is a $literal, so text that starts with "$" is never read as a path.
     """
@@ -359,7 +357,7 @@ def absorbing(message_id: str, message: Mapping[str, object]) -> dict[str, objec
                 "$mergeObjects": [
                     "$$message",
                     {
-                        "at": "$$NOW",
+                        "at": {"$ifNull": ["$$message.at", "$$NOW"]},
                         "tool_data": {"$cond": [{"$eq": [tool_data, []]}, "$$REMOVE", tool_data]},
                     },
                 ]
