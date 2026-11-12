@@ -52,6 +52,7 @@ from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.constants.agents import EXECUTOR_SPAWN_EXCLUDED_TOOLS
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME
+from app.constants.graphs import GraphName
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.agent_config import (
@@ -217,7 +218,7 @@ async def build_executor_graph(
 
 
 @lazy_provider(
-    name="executor_agent",
+    name=GraphName.EXECUTOR,
     required_keys=[],
     strategy=MissingKeyStrategy.WARN,
     auto_initialize=False,
@@ -307,7 +308,7 @@ def comms_tools() -> dict[str, BaseTool]:
 
 
 @lazy_provider(
-    name="comms_agent",
+    name=GraphName.COMMS,
     required_keys=[],
     strategy=MissingKeyStrategy.WARN,
     auto_initialize=False,

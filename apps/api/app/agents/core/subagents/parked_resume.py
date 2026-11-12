@@ -11,6 +11,7 @@ from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.subagents.delegation import Delegation, resume_background
 from app.agents.middleware.subagent import spawner_of
+from app.constants.graphs import GraphName
 from app.models.agent_models import SubagentKind, SubagentResumeItem
 from app.models.hil_models import HILApprovalRecord
 
@@ -39,7 +40,7 @@ async def _rebuild(item: SubagentResumeItem) -> Delegation:
     # delegation tool whose subagent can no longer be built.
     if item["kind"] != SubagentKind.SPAWN:
         raise SubagentResumeError(f"no builder for a parked {item['kind']!r} subagent")
-    spawner = spawner_of(await GraphManager.get_graph("executor_agent"))
+    spawner = spawner_of(await GraphManager.get_graph(GraphName.EXECUTOR))
     return await spawner.build_delegation(
         task=item["task"],
         context=item["context"],
