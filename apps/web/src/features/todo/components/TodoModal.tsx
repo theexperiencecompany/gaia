@@ -12,6 +12,7 @@ import {
 import { AlertCircleIcon, TaskAddIcon } from "@icons";
 import { format } from "date-fns";
 import { useEffect, useMemo } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
@@ -302,7 +303,7 @@ function TodoTextInputFields({
     <div className="flex flex-col">
       <Input
         placeholder="Title"
-        className="rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-1 text-2xl font-semibold text-zinc-100 shadow-none placeholder:text-zinc-500 hover:bg-transparent focus:border-foreground focus:bg-transparent focus:ring-0"
+        className={`${inputVariants({ variant: "underlined" })} text-2xl font-semibold text-zinc-100 placeholder:text-zinc-500`}
         value={title}
         onChange={(e) => onTitleChange(e.target.value)}
         required
@@ -315,7 +316,7 @@ function TodoTextInputFields({
         value={description}
         onChange={(e) => onDescriptionChange(e.target.value)}
         rows={1}
-        className="max-h-40 min-h-9 resize-none field-sizing-content rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-1 text-zinc-200 shadow-none placeholder:text-zinc-500 hover:bg-transparent focus:border-foreground focus:bg-transparent focus:ring-0"
+        className={`${inputVariants({ variant: "underlined" })} max-h-40 min-h-9 resize-none field-sizing-content text-zinc-200 placeholder:text-zinc-500`}
       />
     </div>
   );
