@@ -207,13 +207,13 @@ class TestGetPreferences:
 
     @patch("app.api.v1.endpoints.approvals.get_hil_preferences", new_callable=AsyncMock)
     async def test_default_preferences(self, mock_get: AsyncMock, client: AsyncClient):
-        mock_get.return_value = _prefs()
+        mock_get.return_value = HILPreferences()
         with patch("app.api.v1.endpoints.approvals.log") as log:
             resp = await client.get(f"{APPROVALS_BASE}/preferences")
         log.set.assert_called_once_with(user={"id": USER_ID}, hil={"operation": "get_preferences"})
         assert resp.status_code == 200
         body = resp.json()
-        assert body["mode"] == "always_allow"
+        assert body["mode"] == "auto"
         assert body["tool_overrides"] == {}
         mock_get.assert_awaited_once_with(USER_ID)
 

@@ -1,4 +1,5 @@
 import type { HilMode } from "@shared/chat";
+import { approvalModeLabel } from "@/features/settings/config/approvalModes";
 
 /** Search only earns its place once the list is too long to scan. */
 export const SEARCH_THRESHOLD = 12;
@@ -14,37 +15,24 @@ export const TOOL_SECTIONS: {
   title: string;
   destructive: boolean;
 }[] = [
-  { key: "risky", title: "Risky actions", destructive: true },
-  { key: "rest", title: "Everything else", destructive: false },
+  {
+    key: "risky",
+    title: "GAIA asks about these by default",
+    destructive: true,
+  },
+  {
+    key: "rest",
+    title: "GAIA runs these without asking by default",
+    destructive: false,
+  },
 ];
 
-/**
- * The mode says what happens to the tools picked below — never how many tools
- * are covered, which is the list's job (`policy.py`: the gated set is identical
- * in `auto` and `always_ask`). Describing it as scope is what let the old copy
- * promise "every change" while the list showed none were picked.
- */
-export const MODE_OPTIONS: {
-  mode: HilMode;
-  label: string;
-  description: string;
-}[] = [
-  {
-    mode: "auto",
-    label: "Auto",
-    description: "Only when an action goes beyond what you asked for.",
-  },
-  {
-    mode: "always_ask",
-    label: "Every time",
-    description: "Before every action you turned on below.",
-  },
-  {
-    mode: "always_allow",
-    label: "Never",
-    description: "GAIA runs everything without stopping.",
-  },
-];
+/** The never-ask banner: per-tool choices are kept but ignored until the mode changes. */
+export const INERT_MODE_NOTICE = `You picked ${approvalModeLabel("always_allow")}, so GAIA won't stop for any of these.`;
+
+export const INERT_MODE_SWITCH_TO: HilMode = "auto";
+
+export const INERT_MODE_SWITCH_LABEL = `Switch to ${approvalModeLabel(INERT_MODE_SWITCH_TO)}`;
 
 /** In this mode per-tool preferences are stored but have no effect at all. */
 export const isModeInert = (mode: HilMode): boolean => mode === "always_allow";

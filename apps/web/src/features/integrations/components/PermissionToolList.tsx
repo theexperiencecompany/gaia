@@ -10,6 +10,9 @@ import {
 } from "@/features/integrations/hooks/useIntegrationPermissions";
 import type { IntegrationToolEntry } from "@/features/integrations/hooks/useIntegrationTools";
 import {
+  INERT_MODE_NOTICE,
+  INERT_MODE_SWITCH_LABEL,
+  INERT_MODE_SWITCH_TO,
   isModeInert,
   SEARCH_THRESHOLD,
   TOOL_SECTIONS,
@@ -24,7 +27,7 @@ interface PermissionToolListProps {
 
 /**
  * The modal's second decision: which of this integration's tools GAIA is
- * allowed to stop on. When the chosen mode is "Never" every switch here is
+ * allowed to stop on. When the chosen mode is "Never ask" every switch here is
  * saved but ignored, so the list says so up front and offers the one press
  * that makes it mean something again.
  */
@@ -59,16 +62,16 @@ export const PermissionToolList = ({
       {inert && (
         <div className="mb-2 flex items-center gap-3 rounded-xl bg-amber-400/10 px-3 py-2">
           <p className="flex-1 text-xs leading-relaxed text-amber-400">
-            Nothing here will stop GAIA until you change the setting above.
+            {INERT_MODE_NOTICE}
           </p>
           <Button
             size="sm"
             variant="flat"
             className="h-7 shrink-0"
             isLoading={permissions.isSavingMode}
-            onPress={() => permissions.changeMode("auto")}
+            onPress={() => permissions.changeMode(INERT_MODE_SWITCH_TO)}
           >
-            Turn on
+            {INERT_MODE_SWITCH_LABEL}
           </Button>
         </div>
       )}
