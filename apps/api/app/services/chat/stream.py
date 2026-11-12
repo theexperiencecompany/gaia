@@ -60,6 +60,7 @@ from app.models.stream_events import (
     EmojiAckPayload,
     ErrorFrame,
     MainResponseCompleteFrame,
+    MessageBoundaryPayload,
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
@@ -72,6 +73,7 @@ from app.services.chat.persistence import (
     save_user_message,
     user_message_content_from,
 )
+from app.services.chat.reply_visibility import ReplyVisibility
 from app.services.chat.state import (
     aggregate_usage_metadata,
     inject_todo_progress,
@@ -235,7 +237,6 @@ class _StreamState:
         "e2e_ack_ms",
         "e2e_full_ms",
         "error",
-        "first_shown_at",
         "follow_up_actions",
         "held_completion",
         "is_cancelled",
@@ -253,12 +254,13 @@ class _StreamState:
         "turn_completed_at",
         "usage_metadata",
         "user_message_id",
+        "visibility",
     )
 
     @property
     def reply_date(self) -> datetime | None:
         """The saved reply's date: when it first showed, else when its turn completed."""
-        return self.first_shown_at or self.turn_completed_at
+        return self.visibility.first_shown_at or self.turn_completed_at
 
     def __init__(self, turn_id: str | None = None) -> None:
         self.complete_message: str = ""
@@ -298,9 +300,7 @@ class _StreamState:
         # the saved user/comms messages keep timestamps EARLIER than a delegated
         # executor's answer (saved mid-wait). The frontend sorts by createdAt.
         self.turn_completed_at: datetime | None = None
-        # When the reply's first text or card reached the client: where it sorts,
-        # so a message the user sends after reading it never lands above it.
-        self.first_shown_at: datetime | None = None
+        self.visibility: ReplyVisibility = ReplyVisibility()
         # Monotonic stamps (never logged raw) and their ms derivations. A None
         # ms means the span never happened — never zero-filled.
         self.t0_perf: float | None = None
@@ -743,7 +743,7 @@ async def _consume_agent_stream(
             await _publish_answer(stream_id, state)
             continue
 
-        if state.ttft_perf is None and _is_completion_frame(chunk):
+        if state.visibility.first_shown_at is None and _is_completion_frame(chunk):
             # Nothing visible yet, so the answer may be a reaction: a client told the
             # turn is complete now would show nothing until the reaction arrives.
             state.held_completion = True
@@ -778,12 +778,15 @@ async def _dispatch_stream_chunk(
         if frames is not None and frames.reasoning is not None:
             absorb_reasoning_delta(frames.reasoning, state.tool_entries)
 
-    if state.first_shown_at is None and _puts_something_on_screen(chunk):
-        state.first_shown_at = datetime.now(UTC)
-    if state.ttft_perf is None and extract_response_text(chunk):
+    if extract_response_text(chunk):
+        state.visibility.saw_text()
         # Init/description/keepalive/tool frames carry no "response"
         # key — this is first reply text, not first byte.
-        state.ttft_perf = time.perf_counter()
+        if state.ttft_perf is None:
+            state.ttft_perf = time.perf_counter()
+    if '"message_boundary"' in chunk:
+        _settle_visibility(chunk, state.visibility)
+    cards_before = len(state.tool_entries)
     try:
         state.follow_up_actions, _ = await process_data_chunk(
             stream_id,
@@ -803,6 +806,9 @@ async def _dispatch_stream_chunk(
             conversation_id=turn.conversation_id,
         )
         await stream_manager.publish_chunk(stream_id, chunk)
+    # Counted after normalisation, so a raw tool field (calendar_options) counts as the card it becomes.
+    if len(state.tool_entries) > cards_before:
+        state.visibility.saw_card()
 
 
 def _data_frame_payload(chunk: str) -> dict[str, object] | None:
@@ -968,21 +974,19 @@ async def _handle_stream_error(
     return user_error
 
 
-class _ShownChunk(BaseModel):
-    """A ``data:`` chunk, read only for whether it puts reply text or a card on screen."""
+class _BoundaryChunk(BaseModel):
+    """A ``data:`` chunk, read only for the message boundary it announces."""
 
     model_config = ConfigDict(extra="ignore")
 
-    response: str = ""
-    tool_data: object = None
+    message_boundary: MessageBoundaryPayload | None = None
 
 
-def _puts_something_on_screen(chunk: str) -> bool:
+def _settle_visibility(chunk: str, visibility: ReplyVisibility) -> None:
     payload = _data_frame_payload(chunk)
-    if payload is None:
-        return False
-    shown = _ShownChunk.model_validate(payload)
-    return bool(shown.response) or shown.tool_data is not None
+    boundary = _BoundaryChunk.model_validate(payload).message_boundary if payload else None
+    if boundary is not None:
+        visibility.settle(discarded=boundary.discarded)
 
 
 class _CompletionChunk(BaseModel):
@@ -990,12 +994,16 @@ class _CompletionChunk(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    main_response_complete: bool = False
+    # Untyped: a custom frame carrying any other value is not a completion, and must not fail the turn.
+    main_response_complete: object = None
 
 
 def _is_completion_frame(chunk: str) -> bool:
     payload = _data_frame_payload(chunk) if chunk.startswith("data: ") else None
-    return payload is not None and _CompletionChunk.model_validate(payload).main_response_complete
+    return (
+        payload is not None
+        and _CompletionChunk.model_validate(payload).main_response_complete is True
+    )
 
 
 async def _publish_answer(stream_id: str, state: _StreamState) -> None:

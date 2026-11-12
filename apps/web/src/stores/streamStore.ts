@@ -83,6 +83,9 @@ interface StreamActions {
   /** An executor result landed: end the conversation's oldest session waiting
    *  on one (its main turn first, then its steers). */
   endAwaitingSession: (conversationKey: string) => void;
+  /** Every executor wait in the conversation was cancelled: end each session
+   *  waiting on one, and leave its streaming sessions alone. */
+  endAllAwaitingSessions: (conversationKey: string) => void;
   setSessionLoadingText: (
     key: string,
     text: string,
@@ -208,6 +211,27 @@ export const useStreamStore = create<StreamStore>()(
           },
           false,
           "endAwaitingSession",
+        ),
+
+      endAllAwaitingSessions: (conversationKey) =>
+        set(
+          (state) => {
+            const awaiting = new Set(
+              conversationSessionKeys(state.sessions, conversationKey).filter(
+                (k) => state.sessions[k].phase === "awaiting_executor",
+              ),
+            );
+            if (awaiting.size === 0) return state;
+            return {
+              sessions: Object.fromEntries(
+                Object.entries(state.sessions).filter(
+                  ([k]) => !awaiting.has(k),
+                ),
+              ),
+            };
+          },
+          false,
+          "endAllAwaitingSessions",
         ),
 
       setSessionLoadingText: (key, text, toolInfo) =>

@@ -194,7 +194,9 @@ page as a whole must cover every group, including a group of one tool.
 
 use_cases: exactly {use_cases_count} items. Each is one sentence naming a concrete
 outcome someone would hand to GAIA ("Get a morning list of the issues assigned to
-you"). Spread them across the groups; no two may rest on the same tool.
+you"). Spread them across the groups. When there are at least {use_cases_count}
+tools, no two may rest on the same tool; with fewer, tools may repeat, but every
+item must still name a different outcome.
 
 how_it_works: exactly {how_it_works_count} steps, each a short title and a body
 of one or two sentences.
