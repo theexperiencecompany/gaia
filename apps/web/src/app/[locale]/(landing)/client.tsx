@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useEffect } from "react";
+import { HydrateOnVisible } from "@/components/shared/HydrateOnVisible";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
@@ -114,47 +115,69 @@ export default function LandingPageClient({
         </section>
 
         {/* Live demo — its own section over the bands-gradient wallpaper */}
-        <section className="relative z-20 w-full py-16 sm:py-12 mb-12 sm:mb-16">
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[10vh] bg-linear-to-b from-black to-transparent" />
-          <Image
-            src="/images/wallpapers/bands_gradient_1.webp"
-            alt=""
-            width={DEMO_WALLPAPER.width}
-            height={DEMO_WALLPAPER.height}
-            sizes="100vw"
-            className="absolute inset-0 z-0 h-full w-full object-cover"
-          />
-          <div className="relative z-10">
-            <ChatDemoSection />
-          </div>
-        </section>
+        <HydrateOnVisible>
+          <section className="relative z-20 w-full py-16 sm:py-12 mb-12 sm:mb-16">
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[10vh] bg-linear-to-b from-black to-transparent" />
+            <Image
+              src="/images/wallpapers/bands_gradient_1.webp"
+              alt=""
+              width={DEMO_WALLPAPER.width}
+              height={DEMO_WALLPAPER.height}
+              sizes="100vw"
+              className="absolute inset-0 z-0 h-full w-full object-cover"
+            />
+            <div className="relative z-10">
+              <ChatDemoSection />
+            </div>
+          </section>
+        </HydrateOnVisible>
 
         <div>
           {/* The core promise — GAIA runs your day, told in the chats you use */}
-          <RunsYourDaySection />
+          <HydrateOnVisible>
+            <RunsYourDaySection />
+          </HydrateOnVisible>
 
           {/* Capabilities — what GAIA does */}
-          <TiredBoringAssistants />
+          <HydrateOnVisible>
+            <TiredBoringAssistants />
+          </HydrateOnVisible>
 
           {/* The mechanism — schedules and triggers, told in a text thread */}
-          <WorkflowsSection />
+          <HydrateOnVisible>
+            <WorkflowsSection />
+          </HydrateOnVisible>
 
           {/* Depth — it knows you, not just your tools */}
-          <MemorySection />
+          <HydrateOnVisible>
+            <MemorySection />
+          </HydrateOnVisible>
 
           {/* Reach — where you can use it */}
-          <BotsShowcaseSection />
+          <HydrateOnVisible>
+            <BotsShowcaseSection />
+          </HydrateOnVisible>
 
-          <UseCasesSectionLanding />
+          <HydrateOnVisible>
+            <UseCasesSectionLanding />
+          </HydrateOnVisible>
 
-          <OpenSource />
+          <HydrateOnVisible>
+            <OpenSource />
+          </HydrateOnVisible>
 
           {/* Decision — price */}
-          <PricingSection />
+          <HydrateOnVisible>
+            <PricingSection />
+          </HydrateOnVisible>
 
           {/* Objections + final CTA */}
-          <FAQAccordion faqs={homepageFAQs} />
-          <FinalSection showSocials={false} />
+          <HydrateOnVisible>
+            <FAQAccordion faqs={homepageFAQs} />
+          </HydrateOnVisible>
+          <HydrateOnVisible>
+            <FinalSection showSocials={false} />
+          </HydrateOnVisible>
         </div>
       </div>
     </LazyMotionProvider>

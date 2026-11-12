@@ -6,6 +6,7 @@ import {
   MAIN_CONTENT_ID,
   SkipToContentLink,
 } from "@/components/navigation/SkipToContentLink";
+import { HydrateOnVisible } from "@/components/shared/HydrateOnVisible";
 import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { usePathname } from "@/i18n/navigation";
@@ -63,7 +64,11 @@ export default function LandingLayoutShell({
           </main>
         </LazyMotionProvider>
 
-        {chrome && <Footer />}
+        {chrome && (
+          <HydrateOnVisible>
+            <Footer />
+          </HydrateOnVisible>
+        )}
       </div>
     </LandingProvidersLayout>
   );
