@@ -525,6 +525,24 @@ class TestMessages:
         saved = await repo.get_message(doc.conversation_id, mid, user_id=doc.user_id)
         assert saved is not None and saved.reaction == chat_model
 
+    async def test_a_reaction_advances_updated_at_so_clients_sync_it(self, repo, raw_collection):
+        doc, mid = await _seed_user_message(repo)
+        stale = datetime(2020, 1, 1, tzinfo=UTC)
+        await raw_collection.update_one(
+            {"conversation_id": doc.conversation_id}, {"$set": {"updatedAt": stale}}
+        )
+
+        assert await repo.set_message_reaction(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            message_id=mid,
+            reaction=MessageReaction(emoji="👍", by=ReactionBy.CHAT_MODEL),
+        )
+
+        after = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert after is not None and after.updatedAt is not None
+        assert after.updatedAt > stale
+
     async def test_tool_data_and_follow_up_writes(self, repo):
         doc = _doc()
         await repo.create(doc)

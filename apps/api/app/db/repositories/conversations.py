@@ -454,10 +454,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             conversation_id,
             user_id,
             match,
-            {"$set": {"reaction": reaction.model_dump(mode="json")}},
+            {"$set": {"reaction": reaction.model_dump()}},
         ):
             return False
-        await self._set_fields(conversation_id, user_id, {})
+        await self._set_fields(conversation_id, user_id)
         return True
 
     async def update_artifact(
