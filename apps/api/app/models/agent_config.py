@@ -194,8 +194,7 @@ class AgentConfigurable(TypedDict, total=False):
     #: executor since comms can't be trusted to transcribe it into its task.
     playbook_fallback: str | None
     #: A pre-taken executor busy-lock the dispatch adopts instead of racing for
-    #: a fresh one, so a queued/workflow fire hands its reservation to the run
-    #: it starts. Keyed by ``WORKFLOW_LOCK_CONTEXT_KEY``.
+    #: a fresh one, so a workflow fire hands its reservation to the run it starts.
     executor_lock_reservation: str | None
 
     # --- tracing ------------------------------------------------------------

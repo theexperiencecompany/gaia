@@ -81,13 +81,11 @@ class PlaybookFallbackFailed(WorkflowRunFailed):
         self.cause = cause
 
 
-class WorkflowExecutorFailed(WorkflowRunFailed):
-    """The executor a fire delegated to ended in an error.
+class WorkflowTurnFailed(WorkflowRunFailed):
+    """The workflow's turn, or the work it handed off, ended without carrying the run out.
 
-    Comms answers such a run with an apology, and the delivery path has already
-    told the user the workflow failed. The message is that apology; recording
-    it as the run's successful result would say the workflow ran when it did
-    not, so the fire is closed out as a failure like any other raise.
+    Failed, stopped, or lost: recording it as a successful run would say the workflow ran
+    when it did not, so the fire is closed out, and the user told, as a failure.
     """
 
 

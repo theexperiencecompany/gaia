@@ -6,7 +6,6 @@ restart upserts in place and the model sees each input once.
 """
 
 from collections.abc import Mapping, Sequence
-import json
 from types import MappingProxyType
 
 from langchain_core.messages import AnyMessage, HumanMessage
@@ -23,7 +22,7 @@ from app.constants.conversation import (
     SERVER_RESTART_NOTE,
     WORK_DONE_NOTE,
     WORK_UNFINISHED_NOTE,
-    WORKFLOW_FIRED_NOTE,
+    WORKFLOW_RUN_REQUEST,
 )
 from app.models.chat_models import ReactionBy
 from app.models.conversation_log_models import (
@@ -60,7 +59,7 @@ def attempt_messages(
 ) -> list[AnyMessage]:
     """Render context and batch in seq order; a Stop the thread already records is not said twice.
 
-    said maps a user message's entry id to what the model reads when it is more than its text.
+    said maps a user message's or a workflow fire's id to what the model reads for it.
     """
     ordered = sorted([*context, *batch.waking], key=lambda logged: logged.seq)
     return [
@@ -93,6 +92,9 @@ def entry_messages(logged: LoggedEntry, said: Mapping[str, str] = AS_TYPED) -> l
             return [message]
         note = REACTION_NOTE.format(emoji=reaction.emoji)
         return [message, _message(logged, note, REACTION_NOTE_SUFFIX)]
+    if isinstance(entry, WorkflowFired):
+        request = WORKFLOW_RUN_REQUEST.format(title=entry.run.workflow.title)
+        return [_message(logged, said.get(entry.id, request))]
     if isinstance(entry, StopRequested):
         marker = _message(logged, INTERRUPTION_MARKER)
         marker.additional_kwargs[_SOURCE_KEY] = INTERRUPTION_SOURCE
@@ -109,10 +111,6 @@ def _note_text(logged: LoggedEntry) -> str | None:
             note = WORK_DONE_NOTE.format(report=report)
         case WorkFinished(outcome=outcome, report=report) if outcome is not WorkOutcome.CANCELLED:
             note = WORK_UNFINISHED_NOTE.format(outcome=outcome, report=report)
-        case WorkflowFired(workflow_id=workflow_id, context=context):
-            note = WORKFLOW_FIRED_NOTE.format(
-                workflow_id=workflow_id, context=json.dumps(context, default=str)
-            )
         case BargeIn(heard_text=heard):
             note = BARGE_IN_NOTE.format(heard=heard)
         case Notice(text=text):

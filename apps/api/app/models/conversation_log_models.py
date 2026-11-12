@@ -16,6 +16,7 @@ from app.models.message_models import (
 )
 from app.models.todo_wake_models import TodoRunWake
 from app.models.tool_data_models import ToolDataEntry
+from app.models.workflow_trigger_models import WorkflowTriggerContext
 from shared.py.analytics.catalog.properties import Identifier
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
@@ -136,14 +137,26 @@ class BargeIn(_Entry):
     heard_text: str
 
 
+class WorkflowRun(BaseModel):
+    """What a workflow's turn runs: the workflow, the trigger that fired it, and the fire's bookkeeping."""
+
+    model_config = _FROZEN
+
+    workflow: SelectedWorkflowData
+    # The execution record this run closes; its tool calls are recorded under this id.
+    execution_id: str = Field(min_length=1)
+    # The zone the run's clock reads, resolved by the fire.
+    timezone: str = Field(min_length=1)
+    # The busy-lock value the fire reserved the conversation with; the run's executor adopts it.
+    reservation: str = Field(min_length=1)
+    trigger: WorkflowTriggerContext
+
+
 class WorkflowFired(_Entry):
-    """A workflow fired into this conversation."""
+    """A workflow fired into this conversation; it is answered on its own, never merged."""
 
     kind: Literal[EntryKind.WORKFLOW_FIRED] = EntryKind.WORKFLOW_FIRED
-    workflow_id: str
-    execution_id: str
-    # The fire's ARQ context bag, forwarded verbatim as execute_workflow_by_id receives it.
-    context: dict[str, object]
+    run: WorkflowRun
 
 
 class TodoWoke(_Entry):

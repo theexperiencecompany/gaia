@@ -224,11 +224,18 @@ async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool
 
 
 def _batch(pending: Sequence[LoggedEntry]) -> Batch:
-    """Take the oldest pending input and every pending input after it in its merge group, unbroken."""
+    """Take the oldest pending input and every pending input after it in its merge group, unbroken.
+
+    A workflow fire is answered on its own: it merges with nothing, not even another fire.
+    """
     group = merge_group(_waking(pending[0]))
-    joined = tuple(
-        itertools.takewhile(lambda logged: merge_group(_waking(logged)) is group, pending)
-    )
+    joined: tuple[LoggedEntry, ...]
+    if group is MergeGroup.BACKGROUND:
+        joined = (pending[0],)
+    else:
+        joined = tuple(
+            itertools.takewhile(lambda logged: merge_group(_waking(logged)) is group, pending)
+        )
     return Batch(start=joined[0].seq, end=joined[-1].seq, waking=joined, first_at=joined[0].at)
 
 
@@ -431,7 +438,8 @@ async def _look_for_joiners(ports: RuntimePorts, attempt: _Attempt) -> None:
         if isinstance(logged.entry, StopRequested):
             attempt.closed = True
         elif logged.seq in state.unsettled_waking:
-            if merge_group(_waking(logged)) is not attempt.group:
+            joinable = attempt.group is MergeGroup.INTERACTIVE
+            if not joinable or merge_group(_waking(logged)) is not attempt.group:
                 attempt.closed = True
             else:
                 attempt.joiners = (*attempt.joiners, logged)

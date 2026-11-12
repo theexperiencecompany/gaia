@@ -7,7 +7,7 @@ context slots, and the instant reaction, which is never asked for.
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Protocol, TypeVar, cast
@@ -20,15 +20,17 @@ import pytest
 from redis.asyncio import Redis
 
 from app.agents.context.slots import TIME_CONTEXT_MARKER, PromptSlot, mark, slot_of
+from app.agents.core.background.executor_queue import build_lock_value, try_acquire_lock
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.graph_manager import GraphManager
+from app.agents.tools.run_record import append_call
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
 from app.constants.graphs import GraphName
 from app.db.redis import redis_cache
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
-from app.models.agent_config import StepTurnRef
+from app.models.agent_config import AgentConfigurable, StepTurnRef
 from app.models.agent_models import AgentRunnableConfig
 from app.models.conversation_frame_models import EntryFrame, ToolDataEvent, WorkDeltaFrame
 from app.models.conversation_log_models import (
@@ -36,6 +38,7 @@ from app.models.conversation_log_models import (
     ApprovalRequested,
     Batch,
     DisplayState,
+    Entry,
     IntegrationConnected,
     LoggedEntry,
     Reply,
@@ -45,6 +48,7 @@ from app.models.conversation_log_models import (
     StopRequested,
     UserMessage,
     WorkFinished,
+    WorkflowFired,
     WorkOutcome,
     WorkStarted,
 )
@@ -52,6 +56,8 @@ from app.models.conversation_send_models import SendMessageRequest
 from app.models.message_models import ReplyToMessageData
 from app.models.tool_data_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
+from app.models.workflow_execution_models import RecordedCall
+from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
 from app.services.conversation.bot_followers import list_active_bot_conversations
 from app.services.conversation.comms_runner import (
     CommsGraphRunner,
@@ -70,7 +76,7 @@ from app.services.conversation.integration_log import (
     continue_after_connect,
     record_integration_needed,
 )
-from app.services.conversation.log import accept
+from app.services.conversation.log import Accepted, accept
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports
@@ -86,6 +92,15 @@ from app.services.conversation.work_log import (
     record_work_started,
     running_step_task,
 )
+from app.services.workflow.execution_service import WorkflowFireOverlapped, WorkflowTurnFailed
+from app.workers.tasks import workflow_tasks
+from app.workers.tasks.workflow_tasks import (
+    _Fire,
+    _reserve_conversation,
+    _run_and_record_success,
+    execute_workflow_as_chat,
+)
+from shared.py.analytics.catalog.workflows import WorkflowExecuted
 from shared.py.wide_events import _spawned_tasks
 from tests.e2e._harness.graph_run import comms_graph
 from tests.integration.real.test_comms_runner_real import (
@@ -760,3 +775,245 @@ async def test_the_production_turn_builder_frames_the_message_with_prompt_contex
     assert any(m.additional_kwargs.get(TIME_CONTEXT_MARKER) for m in prompt[asked + 1 :])
     assert shown.count("what time is it?") == 1
     assert [reply.text for reply in await rig.of(Reply)] == ["it is noon"]
+
+
+# ---- workflow fires on the step ----
+
+_CALL = RecordedCall(tool_name="GMAIL_FETCH_EMAILS", args={"max_results": 3})
+
+
+@dataclass
+class _Turns:
+    """Every production turn the step built, with the attempt it was built for."""
+
+    built: list[tuple[StepClaim, Batch, CommsTurn]] = field(default_factory=list)
+
+    async def build(self, claim: StepClaim, batch: Batch) -> CommsTurn:
+        turn = await build_comms_turn(claim, batch)
+        self.built.append((claim, batch, turn))
+        return turn
+
+    def configurable(self, index: int) -> AgentConfigurable:
+        return self.built[index][2].config["configurable"]
+
+
+def _workflow(user_id: str) -> Workflow:
+    return Workflow(
+        id=f"wf_{uuid4().hex[:8]}",
+        user_id=user_id,
+        title="Morning inbox",
+        description="Summarise my unread mail",
+        prompt="Fetch unread mail and summarise it",
+        steps=[WorkflowStep(id="s1", title="Fetch mail", description="Read unread mail")],
+        trigger_config=TriggerConfig(type=TriggerType.SCHEDULE),
+    )
+
+
+def _hand_off_work(
+    rig: Rig, turns: _Turns, execution_id: str, outcome: WorkOutcome
+) -> Callable[[], Awaitable[object]]:
+    """Do what call_executor and its executor do: start work, record its call, finish it."""
+
+    async def work() -> None:
+        claim, batch, _turn = turns.built[-1]
+        assert await record_work_started(
+            step_turn_ref(claim, batch), rig.conversation_id, rig.user_id, "t1"
+        )
+        await append_call(execution_id, _CALL)
+        await record_work_finished(rig.conversation_id, rig.user_id, "t1", outcome, "3 unread")
+
+    return work
+
+
+@asynccontextmanager
+async def _fire_rig(
+    rig_for: RigFactory, model: GatedModel, turns: _Turns
+) -> AsyncIterator[tuple[Rig, AsyncMock]]:
+    """Build a workflow conversation answered by model, with the chat-app delivery recorded."""
+    rig = await rig_for(model, build_turn=turns.build)
+    notified = AsyncMock()
+    with (
+        patch.object(
+            workflow_tasks,
+            "get_or_create_workflow_conversation",
+            AsyncMock(return_value=rig.conversation_id),
+        ),
+        patch.object(workflow_tasks, "_notify_run_finished", notified),
+    ):
+        yield rig, notified
+
+
+@pytest.mark.service
+async def test_a_fire_gets_one_reply_in_its_conversation_and_the_job_sees_success_with_the_trace(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("on it", "Three unread: rent, dentist, flights")
+    turns = _Turns()
+    async with _fire_rig(rig_for, model, turns) as (rig, notified):
+        workflow = _workflow(rig.user_id)
+        model._during[0] = _hand_off_work(rig, turns, "exec_a", WorkOutcome.DONE)
+        conversation_id, trace = await execute_workflow_as_chat(
+            workflow,
+            AuthenticatedUser(user_id=rig.user_id),
+            {"trigger_type": TriggerType.SCHEDULE.value},
+            reservation=":fire-a",
+            execution_id="exec_a",
+        )
+        await rig.settle()
+    assert (conversation_id, trace) == (rig.conversation_id, [_CALL])
+    assert [entry.run.execution_id for entry in await rig.of(WorkflowFired)] == ["exec_a"]
+    assert [r.text for r in await rig.of(Reply)] == [
+        "on it",
+        "Three unread: rent, dentist, flights",
+    ]
+    assert [answers for _outcome, answers in await rig.answered()][-1][-1] == "workflow:exec_a"
+    notified.assert_awaited_once()
+    assert notified.await_args.args[3] == "Three unread: rent, dentist, flights"
+    fired_turn = turns.configurable(0)
+    assert fired_turn["stream_id"] == "exec_a"
+    assert fired_turn["executor_lock_reservation"] == ":fire-a"
+    assert fired_turn["workflow_id"] == workflow.id
+    assert fired_turn["execution_mode"] == "background"
+    assert any("Scheduled workflow: Morning inbox" in m for m in fired_turn["user_messages"])
+    assert any("Fetch mail" in text for text in humans(model.prompts[0]))
+
+
+@pytest.mark.service
+async def test_a_run_whose_work_fails_reports_failure_and_delivers_nothing(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("on it", "That did not work")
+    turns = _Turns()
+    async with _fire_rig(rig_for, model, turns) as (rig, notified):
+        model._during[0] = _hand_off_work(rig, turns, "exec_b", WorkOutcome.FAILED)
+        with pytest.raises(WorkflowTurnFailed, match="work failed") as raised:
+            await execute_workflow_as_chat(
+                _workflow(rig.user_id),
+                AuthenticatedUser(user_id=rig.user_id),
+                {},
+                reservation=":fire-b",
+                execution_id="exec_b",
+            )
+        await rig.settle()
+    assert raised.value.trace == [_CALL]
+    assert raised.value.conversation_id == rig.conversation_id
+    notified.assert_not_awaited()
+
+
+@pytest.mark.service
+async def test_a_second_fire_of_the_same_workflow_is_refused_while_the_first_is_answered(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("brief sent", hold=[0])
+    turns = _Turns()
+    async with _fire_rig(rig_for, model, turns) as (rig, _notified):
+        workflow = _workflow(rig.user_id)
+        conversation_id, lock_task = await _reserve_conversation(workflow, workflow.id)
+        first = asyncio.create_task(
+            execute_workflow_as_chat(
+                workflow,
+                AuthenticatedUser(user_id=rig.user_id),
+                {},
+                reservation=build_lock_value(None, lock_task),
+                execution_id="exec_c",
+            )
+        )
+        await model.entered(0).wait()
+        with pytest.raises(WorkflowFireOverlapped):
+            await _reserve_conversation(workflow, workflow.id)
+        first.cancel()
+        await asyncio.wait({first})
+    assert conversation_id == rig.conversation_id
+    assert not await try_acquire_lock(
+        f"{EXECUTOR_BUSY_PREFIX}{conversation_id}", build_lock_value(None, "intruder")
+    )
+    assert len(await rig.of(WorkflowFired)) == 1
+
+
+@pytest.mark.service
+async def test_a_fire_during_a_users_chat_turn_is_answered_after_it_never_merged(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("it is noon", "brief sent")
+    turns = _Turns()
+    appended = asyncio.Event()
+
+    async def accept_and_say(
+        ports: RuntimePorts, conversation_id: str, user_id: str, entry: Entry
+    ) -> Accepted:
+        accepted = await accept(ports, conversation_id, user_id, entry)
+        appended.set()
+        return accepted
+
+    async with _fire_rig(rig_for, model, turns) as (rig, _notified):
+        workflow = _workflow(rig.user_id)
+        fire_task: list[asyncio.Task[tuple[str, list[RecordedCall]]]] = []
+
+        async def fire_mid_chat() -> None:
+            fire = execute_workflow_as_chat(
+                workflow,
+                AuthenticatedUser(user_id=rig.user_id),
+                {},
+                reservation=":fire-d",
+                execution_id="exec_d",
+            )
+            fire_task.append(asyncio.create_task(fire))
+            await appended.wait()
+
+        model._during[0] = fire_mid_chat
+        with patch.object(workflow_tasks, "accept", accept_and_say):
+            await rig.send("m1", "what time is it?")
+            await model.entered(0).wait()
+            await appended.wait()
+            await fire_task[0]
+        await rig.settle()
+    batches = [[logged.entry.kind for logged in batch.waking] for _c, batch, _t in turns.built]
+    assert batches == [["user_message"], ["workflow_fired"]]
+    assert await rig.answered() == [
+        (ReplyOutcome.ANSWERED, ("m1",)),
+        (ReplyOutcome.ANSWERED, ("workflow:exec_d",)),
+    ]
+    assert "what time is it?" not in humans(model.prompts[1])[-3:]
+    assert [m.id for m in await rig.of(UserMessage)] == ["m1"]
+
+
+@pytest.mark.service
+async def test_a_successful_fire_records_success_and_emits_workflow_executed_once(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("Your brief: all quiet")
+    turns = _Turns()
+    async with _fire_rig(rig_for, model, turns) as (rig, notified):
+        workflow = _workflow(rig.user_id)
+        fire = _Fire(
+            workflow=workflow,
+            workflow_id=workflow.id,
+            context={},
+            user=AuthenticatedUser(user_id=rig.user_id),
+            reservation=":fire-e",
+            execution_id="exec_e",
+        )
+        captured = AsyncMock()
+        completed = AsyncMock()
+        with (
+            patch.object(workflow_tasks, "enforce_tiered_limit", AsyncMock()),
+            patch.object(
+                workflow_tasks.playbook_repository,
+                "get_for_workflow",
+                AsyncMock(return_value=None),
+            ),
+            patch.object(workflow_tasks.WorkflowService, "increment_execution_count", AsyncMock()),
+            patch.object(workflow_tasks, "complete_execution", completed),
+            patch.object(workflow_tasks, "distrust_fresh_playbook", AsyncMock()),
+            patch.object(workflow_tasks, "_rearm_quietly", AsyncMock()),
+            patch.object(workflow_tasks, "capture", captured),
+        ):
+            await _run_and_record_success(fire, TriggerType.SCHEDULE.value, "exec_e")
+        await rig.settle()
+    executed = [
+        c.args[1] for c in captured.call_args_list if isinstance(c.args[1], WorkflowExecuted)
+    ]
+    assert executed == [WorkflowExecuted(workflow_id=workflow.id, trigger_type="schedule")]
+    assert completed.await_args.kwargs["status"] == "success"
+    assert completed.await_args.kwargs["conversation_id"] == rig.conversation_id
+    notified.assert_awaited_once()

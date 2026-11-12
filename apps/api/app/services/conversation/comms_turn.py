@@ -1,22 +1,33 @@
 """The production turn of a comms attempt: its run config and the system prompt, context and clock around its inputs."""
 
-from typing import cast
+from typing import Literal, cast
 
+from langchain_core.messages import AnyMessage, HumanMessage
 from langgraph.constants import CONF
 
 from app.agents.core.messages import MessageScope, build_turn_context
 from app.agents.llm.lane import AgentRole
+from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
 from app.constants.chat import ConversationSource
+from app.constants.conversation import WORKFLOW_RUN_REQUEST
 from app.db.repositories.conversations import conversation_repository
 from app.helpers.agent_helpers import (
     AgentIdentity,
     AgentLane,
     AgentTurn,
+    background_authorization,
     build_agent_config,
 )
 from app.models.agent_config import AgentConfigurable, StepTurnRef
 from app.models.agent_models import agent_user_context
-from app.models.conversation_log_models import Batch, StepClaim, UserMessage
+from app.models.conversation_log_models import (
+    Batch,
+    StepClaim,
+    UserMessage,
+    WorkFinished,
+    WorkflowFired,
+    WorkflowRun,
+)
 from app.services.conversation.comms_runner import CommsTurn
 from app.services.delivery.presence import read_presence
 from app.utils.auth_utils import require_owner
@@ -29,8 +40,12 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
     """Build the config and turn context of an attempt on batch, the way a live chat turn builds them."""
     user = await require_owner(claim.user_id)
     said = [logged.entry for logged in batch.waking if isinstance(logged.entry, UserMessage)]
+    fired = _workflow_run(batch)
     texts = [message.text for message in said]
-    query = "\n\n".join(texts)
+    query = WORKFLOW_RUN_REQUEST.format(title=fired.workflow.title) if fired else "\n\n".join(texts)
+    mode: Literal["interactive", "background"] = "interactive"
+    if fired is not None:
+        user, mode = user.with_timezone(fired.timezone), "background"
     source = _source(said)
     pinned = next((message for message in reversed(said) if message.selected_tool), None)
     presence = await read_presence(claim.user_id)
@@ -46,6 +61,7 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
             conversation_id=claim.conversation_id,
             source=source,
             active_todo_id=todo_id,
+            execution_mode=mode,
             presence=presence,
             opens_thread=batch.start == 1,
         ),
@@ -62,21 +78,24 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
             selected_tool=pinned.selected_tool if pinned else None,
             tool_category=pinned.tool_category if pinned else None,
             active_todo_id=todo_id,
-            execution_mode="interactive",
+            execution_mode=mode,
             source=source,
-            user_messages=texts,
+            user_messages=_workflow_authorization(fired) if fired else texts,
             user_request=query,
             user_preferences=user_preferences,
             writing_style=writing_style,
+            workflow_id=fired.workflow.id if fired else None,
             presence=presence,
         ),
     )
     configurable = cast(AgentConfigurable, config[CONF])
     configurable["conversation_step"] = step_turn_ref(claim, batch)
+    if fired is not None:
+        _stamp_workflow_run(configurable, fired)
     return CommsTurn(
         config=config,
         opening=[*context.chain, *(m for m in (context.presence,) if m is not None)],
-        closing=[context.clock],
+        closing=[*await _delivery_note(claim, batch), context.clock],
         state={
             "query": query,
             "intent": query,
@@ -86,6 +105,44 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
             **({"active_todo_id": todo_id} if todo_id else {}),
         },
     )
+
+
+async def _delivery_note(claim: StepClaim, batch: Batch) -> list[AnyMessage]:
+    """Tell a reply that reports a workflow's work that it is read as plain text, with no cards."""
+    if not any(isinstance(logged.entry, WorkFinished) for logged in batch.waking):
+        return []
+    if not await conversation_repository.is_workflow_execution(claim.conversation_id):
+        return []
+    return [HumanMessage(content=PLATFORM_DELIVERY_NOTE)]
+
+
+def _workflow_run(batch: Batch) -> WorkflowRun | None:
+    """Return the workflow run a batch answers; a fire is always batched alone."""
+    first = batch.waking[0].entry
+    return first.run if isinstance(first, WorkflowFired) else None
+
+
+def _workflow_authorization(run: WorkflowRun) -> list[str]:
+    """Return what authorizes the run's gated calls: its workflow's own title and description."""
+    return background_authorization(
+        [],
+        execution_mode="background",
+        workflow_title=run.workflow.title,
+        workflow_description=run.workflow.description,
+    )
+
+
+def _stamp_workflow_run(configurable: AgentConfigurable, run: WorkflowRun) -> None:
+    """Carry the fire onto the run: its record, its reservation, and how its result is delivered.
+
+    The executor inherits all of it; its tool calls land in the run record keyed by the execution id.
+    """
+    configurable["stream_id"] = run.execution_id
+    configurable["workflow_id"] = run.workflow.id
+    configurable["workflow_title"] = run.workflow.title
+    configurable["workflow_notify_on_completion"] = run.trigger.workflow_notify_on_completion
+    configurable["playbook_fallback"] = run.trigger.playbook_fallback
+    configurable["executor_lock_reservation"] = run.reservation
 
 
 def _source(said: list[UserMessage]) -> str:
@@ -100,6 +157,8 @@ def step_turn_ref(claim: StepClaim, batch: Batch) -> StepTurnRef:
         "batch_start": batch.start,
         "cause_through": batch.end,
         "answers": [
-            logged.entry.id for logged in batch.waking if isinstance(logged.entry, UserMessage)
+            logged.entry.id
+            for logged in batch.waking
+            if isinstance(logged.entry, UserMessage | WorkflowFired)
         ],
     }

@@ -33,7 +33,6 @@ from app.models.agent_config import (
     read_run_metadata,
     run_analytics_context,
 )
-from app.models.chat_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
 
 __all__ = [
@@ -54,7 +53,6 @@ __all__ = [
     "RunMetadata",
     "RunUserMissingError",
     "RunningSubagent",
-    "SilentRunResult",
     "SubagentKind",
     "SubagentResumeItem",
     "agent_configurable",
@@ -214,16 +212,6 @@ class AgentRunnableConfig(RunnableConfig):
     """
 
     agent_name: str
-
-
-@dataclass(frozen=True)
-class SilentRunResult:
-    """What one ``call_agent_silent`` turn produced."""
-
-    message: str
-    tool_data: list[ToolDataEntry]
-    #: The run's stream id, which keys its run record of every tool call it made.
-    stream_id: str
 
 
 @dataclass(frozen=True, slots=True)

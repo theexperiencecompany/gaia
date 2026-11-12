@@ -13269,6 +13269,30 @@ export interface components {
             start_hour: number;
         };
         /**
+         * QuietHoursBypass
+         * @description A run let through the user's quiet hours, with the reason it says it interrupts them.
+         */
+        QuietHoursBypass: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "bypass";
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * QuietHoursHold
+         * @description A run held until the user's quiet hours ended.
+         */
+        QuietHoursHold: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "hold";
+        };
+        /**
          * Reaction
          * @description An emoji on a user message; a field updated in place, never a state change.
          */
@@ -15909,6 +15933,27 @@ export interface components {
             type: "string" | "integer" | "boolean" | "number";
         };
         /**
+         * TriggerEmailData
+         * @description The ``email_data`` of a Gmail-triggered run, as the prompt reads it.
+         */
+        TriggerEmailData: {
+            /**
+             * Message Text
+             * @default
+             */
+            message_text?: string;
+            /**
+             * Sender
+             * @default Unknown
+             */
+            sender?: string;
+            /**
+             * Subject
+             * @default No Subject
+             */
+            subject?: string;
+        };
+        /**
          * TriggerOption
          * @description A single selectable value for a trigger config field.
          */
@@ -16958,15 +17003,9 @@ export interface components {
         };
         /**
          * WorkflowFired
-         * @description A workflow fired into this conversation.
+         * @description A workflow fired into this conversation; it is answered on its own, never merged.
          */
         WorkflowFired: {
-            /** Context */
-            context: {
-                [key: string]: unknown;
-            };
-            /** Execution Id */
-            execution_id: string;
             /**
              * Id
              * @description Producer-minted idempotency key
@@ -16977,8 +17016,7 @@ export interface components {
              * @enum {string}
              */
             kind: "workflow_fired";
-            /** Workflow Id */
-            workflow_id: string;
+            run: components["schemas"]["WorkflowRun"];
         };
         /**
          * WorkflowListResponse
@@ -17010,6 +17048,20 @@ export interface components {
              */
             message: string;
             workflow: components["schemas"]["WorkflowWithIntegrations"];
+        };
+        /**
+         * WorkflowRun
+         * @description What a workflow's turn runs: the workflow, the trigger that fired it, and the fire's bookkeeping.
+         */
+        WorkflowRun: {
+            /** Execution Id */
+            execution_id: string;
+            /** Reservation */
+            reservation: string;
+            /** Timezone */
+            timezone: string;
+            trigger: components["schemas"]["WorkflowTriggerContext"];
+            workflow: components["schemas"]["SelectedWorkflowDataOutput"];
         };
         /**
          * WorkflowStatusResponse
@@ -17091,6 +17143,44 @@ export interface components {
              * @description Clear, actionable title for the step
              */
             title: string;
+        };
+        /**
+         * WorkflowTriggerContext
+         * @description The keys ``format_workflow_execution_message`` reads off a run's trigger context.
+         *
+         *     The bag itself is open by construction — schedulers spread arbitrary provider
+         *     trigger data through it alongside the agent's own keys — so this is a view of
+         *     it, parsed once here, not its full shape.
+         */
+        WorkflowTriggerContext: {
+            email_data?: components["schemas"]["TriggerEmailData"];
+            /** Playbook Fallback */
+            playbook_fallback?: string | null;
+            /** Quiet Hours */
+            quiet_hours?: (components["schemas"]["QuietHoursBypass"] | components["schemas"]["QuietHoursHold"]) | null;
+            /**
+             * Tracked Todos Context
+             * @default
+             */
+            tracked_todos_context?: string;
+            /** Trigger Data */
+            trigger_data?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Triggered At
+             * @default Unknown
+             */
+            triggered_at?: string;
+            /** Type */
+            type?: string | null;
+            /** Workflow Id */
+            workflow_id?: string | null;
+            /**
+             * Workflow Notify On Completion
+             * @default true
+             */
+            workflow_notify_on_completion?: boolean;
         };
         /**
          * WorkflowTriggerResponse
@@ -17817,6 +17907,8 @@ export type PublishWorkflowResponse = components['schemas']['PublishWorkflowResp
 export type PushTokenRequest = components['schemas']['PushTokenRequest'];
 export type PushTokenResponse = components['schemas']['PushTokenResponse'];
 export type QuietHours = components['schemas']['QuietHours'];
+export type QuietHoursBypass = components['schemas']['QuietHoursBypass'];
+export type QuietHoursHold = components['schemas']['QuietHoursHold'];
 export type Reaction = components['schemas']['Reaction'];
 export type ReactionBy = components['schemas']['ReactionBy'];
 export type ReadinessResponse = components['schemas']['ReadinessResponse'];
@@ -17954,6 +18046,7 @@ export type TranscribeAudioResponse = components['schemas']['TranscribeAudioResp
 export type TriageEmailSummary = components['schemas']['TriageEmailSummary'];
 export type TriggerConfig = components['schemas']['TriggerConfig'];
 export type TriggerConfigFieldSchema = components['schemas']['TriggerConfigFieldSchema'];
+export type TriggerEmailData = components['schemas']['TriggerEmailData'];
 export type TriggerOption = components['schemas']['TriggerOption'];
 export type TriggerOptionGroup = components['schemas']['TriggerOptionGroup'];
 export type TriggerOptionsResponse = components['schemas']['TriggerOptionsResponse'];
@@ -18010,9 +18103,11 @@ export type WorkflowFired = components['schemas']['WorkflowFired'];
 export type WorkflowListResponse = components['schemas']['WorkflowListResponse'];
 export type WorkflowMessageResponse = components['schemas']['WorkflowMessageResponse'];
 export type WorkflowResponse = components['schemas']['WorkflowResponse'];
+export type WorkflowRun = components['schemas']['WorkflowRun'];
 export type WorkflowStatusResponse = components['schemas']['WorkflowStatusResponse'];
 export type WorkflowStepInput = components['schemas']['WorkflowStepInput'];
 export type WorkflowStepOutput = components['schemas']['WorkflowStepOutput'];
+export type WorkflowTriggerContext = components['schemas']['WorkflowTriggerContext'];
 export type WorkflowTriggerResponse = components['schemas']['WorkflowTriggerResponse'];
 export type WorkflowWithIntegrations = components['schemas']['WorkflowWithIntegrations'];
 export type WorkOutcome = components['schemas']['WorkOutcome'];

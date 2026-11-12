@@ -1,28 +1,17 @@
-"""Agent execution: streaming and silent modes.
+"""Agent execution for the per-turn chat stream: call_agent() yields SSE frames.
 
-- call_agent() is an AsyncGenerator of SSE frames (interactive chat).
-- call_agent_silent() returns a results tuple (workflows, background tasks).
-
-Both share _core_agent_logic() for common setup (messages, graph, config).
+_core_agent_logic() does its setup (messages, graph, config).
 """
 
 import asyncio
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, replace
 import json
-from typing import Any, Literal, cast
-from uuid import uuid4
+from typing import cast
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langgraph.constants import CONF
-from pydantic import BaseModel, ConfigDict, Field
 
-from app.agents.core.background.executor_capture import (
-    await_executor_done,
-    drain_executor_tool_data,
-    register_executor_capture,
-    teardown_executor_capture,
-)
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.messages import (
     MessageAttachments,
@@ -32,8 +21,6 @@ from app.agents.core.messages import (
 from app.agents.llm.lane import AgentRole, dev_model_id, dev_option_for
 from app.config.langfuse import trace_id_for_message
 from app.config.settings import settings
-from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY, WORKFLOW_LOCK_CONTEXT_KEY
-from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.graphs import GraphName
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
@@ -41,10 +28,8 @@ from app.helpers.agent_helpers import (
     AgentLane,
     AgentTracing,
     AgentTurn,
-    background_authorization,
     build_agent_config,
     build_initial_state,
-    execute_graph_silent,
     execute_graph_streaming,
     opens_thread,
     recent_user_messages,
@@ -53,67 +38,34 @@ from app.models.agent_models import (
     AgentConfigurable,
     AgentConfigurableView,
     AgentRunnableConfig,
-    ExecutionMode,
-    SilentRunResult,
     agent_user_context,
-    read_agent_configurable,
 )
 from app.models.message_models import MessageRequestWithHistory
 from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
-from app.services.chat.state import aggregate_usage_metadata
 from app.services.delivery.presence import read_presence
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.wide_events import log
 
 
-class _AgentTriggerContext(BaseModel):
-    """The agent-owned keys of a background run's ``trigger_context``, parsed once.
-
-    The bag is open — schedulers spread provider trigger data through it — so
-    this reads only the keys the scheduling task itself sets.
-    ``execution_mode`` stays ``object``: an unrecognised mode falls back to
-    interactive below rather than failing the run.
-    """
-
-    model_config = ConfigDict(extra="ignore")
-
-    trigger_type: str | None = None
-    active_todo_id: str | None = None
-    todo_id: str | None = None
-    todo_title: str | None = None
-    execution_mode: object = None
-    workflow_id: str | None = None
-    workflow_title: str = ""
-    workflow_notify_on_completion: bool = True
-    playbook_fallback: str | None = Field(
-        default=None, validation_alias=PLAYBOOK_FALLBACK_CONTEXT_KEY
-    )
-    executor_lock_reservation: str | None = Field(
-        default=None, validation_alias=WORKFLOW_LOCK_CONTEXT_KEY
-    )
-
-
 @dataclass(frozen=True)
 class AgentRunOptions:
     """The optional settings of one agent run, shared by every entry point.
 
-    trigger_context is the workflow/todo/trigger data of a background run;
     usage_metadata_callback collects token usage; source names the
     surface the turn came from; presence is where the user was before this
     turn; the two langfuse_* fields seed the trace.
     """
 
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None
-    trigger_context: dict[str, Any] | None = None
     source: str | None = None
     presence: PresenceSnapshot | None = None
     langfuse_trace_id: str | None = None
     langfuse_tags: list[str] | None = None
     #: The tracked todo whose own chat an interactive turn is in, so the turn knows
-    #: which todo "this" is; a background run names its todo in trigger_context.
+    #: which todo "this" is.
     active_todo_id: str | None = None
     #: The instant reaction running beside this turn's setup; its result is the emoji placed.
     instant_reaction: asyncio.Task[str | None] | None = None
@@ -145,7 +97,6 @@ async def _core_agent_logic(
     config metadata + configurable so child agents inherit it.
     """
     options = options or AgentRunOptions()
-    trigger_context = options.trigger_context
     usage_metadata_callback = options.usage_metadata_callback
     source = options.source
     langfuse_trace_id = options.langfuse_trace_id
@@ -153,15 +104,8 @@ async def _core_agent_logic(
 
     user_id = user.user_id
 
-    # Extract active todo binding + execution mode from trigger_context (scheduled
-    # runs set these; an interactive turn binds a todo only inside that todo's chat).
-    trigger = _AgentTriggerContext.model_validate(trigger_context or {})
+    # An interactive turn binds a todo only inside that todo's chat.
     active_todo_id: str | None = options.active_todo_id
-    execution_mode: ExecutionMode = "interactive"
-    if trigger_context:
-        active_todo_id = trigger.active_todo_id or trigger.todo_id
-        if trigger.execution_mode == "background":
-            execution_mode = "background"
 
     # Read once here, not left to build_agent_config: the comms context below
     # renders it too, and a workflow fire arrives without one. A voice call
@@ -179,7 +123,6 @@ async def _core_agent_logic(
                 conversation_id=conversation_id,
                 source=source,
                 active_todo_id=active_todo_id,
-                execution_mode=execution_mode,
                 presence=presence,
                 opens_thread=opens_thread(request.messages, request.message),
                 instant_reaction=options.instant_reaction,
@@ -191,15 +134,12 @@ async def _core_agent_logic(
                 selected_calendar_event=request.selectedCalendarEvent,
                 reply_to_message=request.replyToMessage,
                 currently_uploaded_file_ids=request.uploaded_file_ids,
-                trigger_context=trigger_context,
             ),
         ),
         GraphManager.get_graph(GraphName.COMMS),
     )
 
-    initial_state = build_initial_state(
-        request, user_id or "", conversation_id, history, trigger_context
-    )
+    initial_state = build_initial_state(request, user_id or "", conversation_id, history)
 
     # DEV-ONLY: the chat-header model selector picks a model per role. It wins over
     # plan routing inside resolve_lane. Never reached in production.
@@ -212,7 +152,6 @@ async def _core_agent_logic(
     # Established here (comms has the full user document) so the executor and
     # every subagent inherit it — worker tiers read it off configurable.
     user_preferences, writing_style = onboarding_preferences(user.onboarding)
-    workflow = request.selectedWorkflow
 
     # This is the top-level run, so build_agent_config resolves the comms lane
     # here; the executor and every subagent inherit it whole.
@@ -227,19 +166,12 @@ async def _core_agent_logic(
             selected_tool=request.selectedTool,
             tool_category=request.toolCategory,
             active_todo_id=active_todo_id,
-            execution_mode=execution_mode,
+            execution_mode="interactive",
             source=source,
-            user_messages=background_authorization(
-                recent_user_messages(request.messages, request.message),
-                execution_mode=str(execution_mode),
-                workflow_title=workflow.title if workflow else "",
-                workflow_description=workflow.description if workflow else "",
-                todo_title=trigger.todo_title or "",
-            ),
+            user_messages=recent_user_messages(request.messages, request.message),
             user_request=request.message,
             user_preferences=user_preferences,
             writing_style=writing_style,
-            workflow_id=trigger.workflow_id,
             presence=presence,
         ),
         tracing=AgentTracing(
@@ -262,21 +194,10 @@ async def _core_agent_logic(
     ):
         configurable["dev_executor_model"] = executor_dev
 
-    # Workflow runs carry their id/title so the background executor's delivery
-    # path can route the final result to the workflow-completion notification
-    # instead of a normal conversation message. Absent for interactive chat.
-    if trigger_context and trigger.workflow_id:
-        configurable["workflow_id"] = trigger.workflow_id
-        configurable["workflow_title"] = trigger.workflow_title
-        configurable["workflow_notify_on_completion"] = trigger.workflow_notify_on_completion
-        configurable["playbook_fallback"] = trigger.playbook_fallback
-        configurable["executor_lock_reservation"] = trigger.executor_lock_reservation
-
     log.set(
         agent={
             "model": AgentConfigurableView.model_validate(configurable).model,
             "has_workflow": bool(request.selectedWorkflow),
-            "has_trigger_context": bool(trigger_context),
             "has_calendar_event": bool(request.selectedCalendarEvent),
             "has_reply": bool(request.replyToMessage),
             "history_message_count": len(history),
@@ -286,16 +207,13 @@ async def _core_agent_logic(
     return graph, initial_state, config
 
 
-def _run_started(
-    conversation_id: str, mode: Literal["interactive", "background"], options: AgentRunOptions
-) -> AgentRunStarted:
-    """Build a comms run's start event, naming the caller that fired it when known."""
+def _run_started(conversation_id: str, options: AgentRunOptions) -> AgentRunStarted:
+    """Build an interactive comms run's start event."""
     return AgentRunStarted(
         agent="comms",
-        mode=mode,
+        mode="interactive",
         conversation_id=conversation_id,
-        trigger_type=_AgentTriggerContext.model_validate(options.trigger_context or {}).trigger_type
-        or None,
+        trigger_type=None,
         source=options.source or None,
     )
 
@@ -315,9 +233,7 @@ async def call_agent(
     """
     options = options or AgentRunOptions()
     ids = ids or StreamMessageIds()
-    with agent_run_lifecycle(
-        user.user_id, _run_started(conversation_id, "interactive", options)
-    ) as run:
+    with agent_run_lifecycle(user.user_id, _run_started(conversation_id, options)) as run:
         try:
             graph, initial_state, config = await _core_agent_logic(
                 request,
@@ -363,79 +279,3 @@ async def call_agent(
 
         async for chunk in execute_graph_streaming(graph, initial_state, config):
             yield chunk
-
-
-async def call_agent_silent(
-    request: MessageRequestWithHistory,
-    conversation_id: str,
-    user: AuthenticatedUser,
-    options: AgentRunOptions | None = None,
-    stream_id: str | None = None,
-) -> SilentRunResult:
-    """Execute agent in silent mode for background processing.
-
-    Comms may delegate to a detached background executor; this waits for it
-    and merges its tool_data so background/workflow runs render like live
-    chat, or carries the queued task_id if delegation was queued instead.
-    stream_id keys the run record; a caller that seeded one passes its id.
-    """
-    options = options or AgentRunOptions()
-    usage_metadata_callback = options.usage_metadata_callback
-
-    stream_id = stream_id or str(uuid4())
-    try:
-        with agent_run_lifecycle(
-            user.user_id, _run_started(conversation_id, "background", options)
-        ):
-            graph, initial_state, config = await _core_agent_logic(
-                request,
-                conversation_id,
-                user,
-                AgentRunOptions(
-                    usage_metadata_callback=usage_metadata_callback,
-                    trigger_context=options.trigger_context,
-                    source=options.source,
-                    presence=options.presence,
-                ),
-            )
-
-            # Mirror the live-chat path: wait for the detached executor and fold
-            # its tool_data onto this message. Bind stream_id + register the
-            # collector before the graph runs so tool events are captured.
-            cast(AgentConfigurable, config[CONF])["stream_id"] = stream_id
-            register_executor_capture(stream_id)
-
-            complete_message, tool_data = await execute_graph_silent(graph, initial_state, config)
-
-            # Wait for the detached executor (if one was spawned) and fold its
-            # reconstructed tool_data into this message's tool_data.
-            await await_executor_done(stream_id, timeout=BACKGROUND_EXECUTOR_WAIT_TIMEOUT)
-            executor_tool_data = drain_executor_tool_data(stream_id)
-            if executor_tool_data:
-                tool_data = [*tool_data, *executor_tool_data]
-
-            if usage_metadata_callback:
-                totals = aggregate_usage_metadata(usage_metadata_callback.usage_metadata or {})
-                total_input, total_output = totals.input_tokens, totals.output_tokens
-                log.set(
-                    agent={"model": read_agent_configurable(config).model},
-                    token_input=total_input,
-                    token_output=total_output,
-                    token_total=total_input + total_output,
-                )
-
-            return SilentRunResult(
-                message=complete_message,
-                tool_data=tool_data,
-                stream_id=stream_id,
-            )
-
-    except Exception as exc:
-        log.error(
-            f"{LogTag.AGENT} Error when calling silent agent",
-            error_type=type(exc).__name__,
-            error=str(exc),
-        )
-        raise
-    finally:
-        teardown_executor_capture(stream_id)

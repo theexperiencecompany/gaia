@@ -19,10 +19,20 @@ from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.interruption import record_interruption
 from app.agents.core.messages import MessageAttachments, MessageScope, human_content
 from app.agents.core.nodes.drain_conversation_log import close_feed, feed, open_feed
-from app.constants.conversation import COMMS_CANCEL_CONFIRM_SECONDS, TURN_CONTEXT_ID_SUFFIX
+from app.constants.conversation import (
+    COMMS_CANCEL_CONFIRM_SECONDS,
+    TURN_CONTEXT_ID_SUFFIX,
+    WORKFLOW_RUN_REQUEST,
+)
 from app.constants.graphs import GraphName
 from app.models.agent_models import AgentConfigurable, AgentRunnableConfig, agent_configurable
-from app.models.conversation_log_models import Batch, LoggedEntry, StepClaim, UserMessage
+from app.models.conversation_log_models import (
+    Batch,
+    LoggedEntry,
+    StepClaim,
+    UserMessage,
+    WorkflowFired,
+)
 from app.services.conversation.comms_events import CommsEventMapper, GraphEvent
 from app.services.conversation.comms_input import (
     absorbed_messages,
@@ -185,18 +195,29 @@ class CommsGraphRunner:
 async def reframed_messages(claim: StepClaim, entries: Sequence[LoggedEntry]) -> dict[str, str]:
     """Return, per user message that carries more than text, what the model reads, built as a chat turn builds it.
 
-    Its files are listed, and a pinned tool, a workflow, a calendar event or a replied-to message reframe its text.
+    Its files are listed, and a pinned tool, a workflow, a calendar event or a replied-to message reframe its text;
+    a workflow fire reads as its workflow's run request with its steps and trigger.
     """
     reframed = [
         logged.entry
         for logged in entries
-        if isinstance(logged.entry, UserMessage) and _reframes(logged.entry)
+        if isinstance(logged.entry, WorkflowFired)
+        or (isinstance(logged.entry, UserMessage) and _reframes(logged.entry))
     ]
     scope = MessageScope(user_id=claim.user_id, conversation_id=claim.conversation_id)
-    contents = await asyncio.gather(
-        *(human_content(scope, _attachments(message), message.text) for message in reframed)
+    contents = await asyncio.gather(*(human_content(scope, *_framing(entry)) for entry in reframed))
+    return {entry.id: content for entry, content in zip(reframed, contents, strict=True)}
+
+
+def _framing(entry: UserMessage | WorkflowFired) -> tuple[MessageAttachments, str]:
+    """Return what reframes an input and the words it reframes; a workflow fire asks to run its workflow."""
+    if isinstance(entry, UserMessage):
+        return _attachments(entry), entry.text
+    run = entry.run
+    attachments = MessageAttachments(
+        selected_workflow=run.workflow, trigger_context=run.trigger.model_dump()
     )
-    return {message.id: content for message, content in zip(reframed, contents, strict=True)}
+    return attachments, WORKFLOW_RUN_REQUEST.format(title=run.workflow.title)
 
 
 def _reframes(message: UserMessage) -> bool:

@@ -125,11 +125,6 @@ EXECUTOR_SPAWN_EXCLUDED_TOOLS = frozenset(
 #: any further reading of that size.
 LARGE_TOOL_RESULT_CHARS = 25_000
 
-# The trigger-context key carrying the busy-lock value a workflow fire reserved.
-# Written by the workflow worker, read by call_executor so the dispatched
-# executor takes the reservation over instead of queueing behind a stale lock.
-WORKFLOW_LOCK_CONTEXT_KEY = "executor_lock_reservation"
-
 # After this many consecutive suspect replays the worker disables the playbook.
 PLAYBOOK_SUSPECT_STREAK_LIMIT = 2
 

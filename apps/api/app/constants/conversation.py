@@ -52,7 +52,8 @@ WORK_UNFINISHED_NOTE = (
     "[Background work ended {outcome}. The user has not seen this yet, so tell them in your "
     "reply: {report}]"
 )
-WORKFLOW_FIRED_NOTE = "[Workflow {workflow_id} fired. Its context: {context}]"
+# What a workflow turn asks, before its steps and trigger reframe it.
+WORKFLOW_RUN_REQUEST = "Execute workflow: {title}"
 INTEGRATION_CONNECTED_NOTE = (
     "[The user just connected {integration}. Carry on with the work that was waiting on it; "
     "the user did not type a message.]"

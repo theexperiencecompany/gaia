@@ -36,11 +36,11 @@ from app.config.rate_limits import RateLimitPeriod
 from app.config.settings import settings
 from app.constants.agents import (
     PLAYBOOK_FALLBACK_CONTEXT_KEY,
-    WORKFLOW_LOCK_CONTEXT_KEY,
     AgentTag,
     wrap_agent_payload,
 )
 from app.constants.cache import (
+    BACKGROUND_EXECUTOR_WAIT_TIMEOUT,
     EXECUTOR_BUSY_PREFIX,
 )
 from app.constants.log_tags import LogTag
@@ -52,8 +52,7 @@ from app.db.repositories.workflows import workflow_repository
 from app.decorators import enforce_cost_budget
 from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.decorators.rate_limiting import enforce_tiered_limit
-from app.models.chat_models import MessageModel
-from app.models.message_models import MessageRequestWithHistory
+from app.models.conversation_log_models import WorkflowFired, WorkflowRun
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -80,7 +79,11 @@ from app.models.workflow_models import (
     Workflow,
     WorkflowUpdate,
 )
+from app.models.workflow_trigger_models import WorkflowTriggerContext
 from app.services.analytics_service import capture
+from app.services.conversation.log import accept
+from app.services.conversation.outcome import await_outcome
+from app.services.conversation.runtime import runtime_ports
 from app.services.cost_budget import format_reset_date
 from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.notification_service import notification_service
@@ -94,16 +97,15 @@ from app.services.triggers.trigger_gate import quiet_hours_hold
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
     add_playbook_run_messages,
-    add_workflow_execution_messages,
     build_selected_workflow_data,
     get_or_create_workflow_conversation,
 )
 from app.services.workflow.execution_service import (
     PlaybookFallbackFailed,
-    WorkflowExecutorFailed,
     WorkflowFireOverlapped,
     WorkflowFireTimedOut,
     WorkflowRunFailed,
+    WorkflowTurnFailed,
     complete_execution,
     create_execution,
     record_skipped_execution,
@@ -655,10 +657,7 @@ async def _record_execution_failure(
         except Exception as e2:
             log.debug(f"{LogTag.WORKER} Failed to update workflow stats: %s" % e2)
 
-    # An executor that died was already announced by the delivery path, as the
-    # workflow's failure notification; a second one here would say it twice.
-    if not isinstance(error, WorkflowExecutorFailed):
-        await _notify_workflow_failed(error, workflow)
+    await _notify_workflow_failed(error, workflow)
 
 
 def _fallback_note(result: PlaybookRunResult) -> str:
@@ -783,6 +782,8 @@ class _Fire:
     user: AuthenticatedUser
     #: The busy-lock value this fire reserved its conversation with.
     reservation: str
+    #: The execution record this fire closes; its run's tool calls are recorded under it.
+    execution_id: str
     #: What the user's quiet hours did to this fire, for its history and its message.
     quiet_hours: QuietHoursBypass | QuietHoursHold | None = None
 
@@ -816,13 +817,13 @@ async def _run_workflow(fire: _Fire) -> tuple[str, list[RecordedCall], str]:
         )
         log.set_ns("playbook", mode="agent", reason="lookup_failed", llm_calls=0)
         return *await execute_workflow_as_chat(
-            workflow, user, context, reservation=reservation
+            workflow, user, context, reservation=reservation, execution_id=fire.execution_id
         ), AGENT_RUN_SUMMARY
 
     if playbook is None:
         log.set_ns("playbook", mode="agent", reason="no_playbook", llm_calls=0)
         return *await execute_workflow_as_chat(
-            workflow, user, context, reservation=reservation
+            workflow, user, context, reservation=reservation, execution_id=fire.execution_id
         ), AGENT_RUN_SUMMARY
 
     if playbook.workflow_hash != workflow_hash(workflow.prompt, workflow.steps):
@@ -840,7 +841,7 @@ async def _run_workflow(fire: _Fire) -> tuple[str, list[RecordedCall], str]:
             llm_calls=0,
         )
         return *await execute_workflow_as_chat(
-            workflow, user, context, reservation=reservation
+            workflow, user, context, reservation=reservation, execution_id=fire.execution_id
         ), SHORTCUT_DISCARDED_SUMMARY
 
     # A distrusted playbook isn't replayed — the agent heals it instead, then
@@ -865,7 +866,7 @@ async def _run_workflow(fire: _Fire) -> tuple[str, list[RecordedCall], str]:
                 llm_calls=0,
             )
             return *await execute_workflow_as_chat(
-                workflow, user, context, reservation=reservation
+                workflow, user, context, reservation=reservation, execution_id=fire.execution_id
             ), AGENT_RUN_SUMMARY
         log.set_ns(
             "playbook",
@@ -876,7 +877,9 @@ async def _run_workflow(fire: _Fire) -> tuple[str, list[RecordedCall], str]:
             heal_attempts=playbook.heal_attempts,
             llm_calls=0,
         )
-        healed = await execute_workflow_as_chat(workflow, user, context, reservation=reservation)
+        healed = await execute_workflow_as_chat(
+            workflow, user, context, reservation=reservation, execution_id=fire.execution_id
+        )
         await playbook_repository.increment_heal_attempts(
             workflow_id,
             workflow.user_id,
@@ -902,17 +905,21 @@ async def _run_workflow(fire: _Fire) -> tuple[str, list[RecordedCall], str]:
         ) from exc
 
 
-async def _notify_replay_finished(
-    workflow: Workflow, user: AuthenticatedUser, conversation_id: str, text: str
+async def _notify_run_finished(
+    workflow: Workflow,
+    user: AuthenticatedUser,
+    conversation_id: str,
+    text: str,
+    *,
+    notify_on_completion: bool,
 ) -> None:
-    """Deliver a finished replay the same way the executor path delivers an agent run.
+    """Deliver a finished run, replayed or answered by the agent, into the user's chat app and in-app.
 
-    Into the user's linked platforms, then the in-app heads-up; gated on
-    notify_on_completion and best-effort, like that path.
+    Gated on notify_on_completion and best-effort.
     """
-    if not workflow.notify_on_completion:
+    if not notify_on_completion:
         log.info(
-            f"{LogTag.WORKER} Replay completion notification skipped (workflow is silent)",
+            f"{LogTag.WORKER} Run completion notification skipped (workflow is silent)",
             workflow_id=workflow.id,
         )
         return
@@ -934,7 +941,7 @@ async def _notify_replay_finished(
         )
     except Exception as e:
         log.warning(
-            f"{LogTag.WORKER} Replay completion notification failed",
+            f"{LogTag.WORKER} Run completion notification failed",
             workflow_id=workflow.id,
             error=str(e),
             error_type=type(e).__name__,
@@ -982,7 +989,9 @@ async def _deliver_replay(
         trace=result.trace,
         playbook=playbook,
     )
-    await _notify_replay_finished(workflow, user, conversation_id, text)
+    await _notify_run_finished(
+        workflow, user, conversation_id, text, notify_on_completion=workflow.notify_on_completion
+    )
     summary = REPLAY_SUMMARY if result.narration_failed is None else REPLAY_NARRATION_FAILED_SUMMARY
     return conversation_id, result.trace, summary
 
@@ -1103,6 +1112,7 @@ async def _finish_after_replay(
         user,
         {**context, PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result)},
         reservation=fire.reservation,
+        execution_id=fire.execution_id,
         replayed=result.trace,
     )
     # This was a heal run too: it carried the heal brief and ended with a
@@ -1613,6 +1623,7 @@ async def _execute_workflow_fire(workflow_id: str, context: dict[str, object] | 
             context=context or {},
             user=owner,
             reservation=build_lock_value(None, lock_task_id),
+            execution_id=execution_id,
             quiet_hours=stamp.quiet_hours,
         )
         return await _run_and_record_success(fire, trigger_type, execution_id)
@@ -1724,13 +1735,10 @@ async def execute_workflow_as_playbook(
     return conversation_id, result
 
 
-# The plan-quota charge moved to _run_workflow, the single place a fire is
-# billed — a replay that stops partway calls this to finish, and one result
-# must never cost two executions. The seam still reads trigger_type's origin.
-async def _run_trace(stream_id: str, workflow_id: str) -> list[RecordedCall]:
+async def _run_trace(record_id: str, workflow_id: str) -> list[RecordedCall]:
     """Return the finished run's record; one that cannot be read is logged, the run still done."""
     try:
-        return await read_run_record(stream_id)
+        return await read_run_record(record_id)
     except Exception as exc:
         # The work already happened: failing the execution would misreport it.
         log.error(
@@ -1748,112 +1756,64 @@ async def execute_workflow_as_chat(
     context: dict[str, object],
     *,
     reservation: str,
+    execution_id: str,
     replayed: Sequence[RecordedCall] = (),
 ) -> tuple[str, list[RecordedCall]]:
-    """Run a workflow as a silent chat turn; return its conversation id and trace.
+    """Fire the workflow into its conversation, wait for the step to answer it, and deliver the answer.
 
-    The trace is the run's record, which opens with replayed (a stopped replay's
-    calls this fire) so the agent can freeze them. Runs under the fire's
-    reservation (see _reserve_conversation), which the executor adopts; the
-    background path delivers the result.
+    Returns the conversation id and the run's record (keyed by execution_id), which
+    opens with replayed (a stopped replay's calls this fire) so the agent can freeze
+    them. The run's executor adopts the fire's reservation; WorkflowTurnFailed when
+    the turn or the work it handed off did not complete.
     """
-
-    # Avoid circular import
-    from app.agents.core.agent import (  # noqa: PLC0415 -- agent cycle
-        AgentRunOptions,
-        call_agent_silent,
-    )
-
     user_id = user.user_id
-
-    try:
-        log.info(
-            f"{LogTag.WORKER} Executing workflow as chat session",
-            workflow_id=workflow.id,
-            user_id=user_id,
-        )
-
-        user_data = _in_run_timezone(workflow, user)
-
-        # Get or create the workflow conversation for thread context
-        conversation_id = await get_or_create_workflow_conversation(
-            workflow_id=workflow.id,
-            user_id=user_id,
-            workflow_title=workflow.title,
-        )
-        log.set(conversation_context_found=bool(conversation_id))
-
-        # Drop the checkpoint threads this conversation accumulated, so the run
-        # starts clean instead of replaying every previous run. The previous run
-        # reaches the executor as its recorded trace (see call_executor).
-        if settings.WORKFLOW_THREAD_RESET_ENABLED:
-            await reset_workflow_threads(conversation_id)
-
-        selected_workflow_data = build_selected_workflow_data(workflow)
-
-        # Persist the trigger as the user message. The text is left empty so the
-        # UI renders just the workflow card (via selectedWorkflow), not a literal
-        # "Run workflow: ..." bubble. The result is saved by the delivery path.
-        trigger_message = MessageModel(
-            type="user",
-            response="",
-            date=datetime.now(UTC).isoformat(),
-            message_id=str(uuid4()),
-            selectedWorkflow=selected_workflow_data,
-        )
-        await add_workflow_execution_messages(
+    conversation_id = await get_or_create_workflow_conversation(
+        workflow_id=workflow.id,
+        user_id=user_id,
+        workflow_title=workflow.title,
+    )
+    # Each run starts from a clean thread instead of replaying every previous run; the
+    # previous run reaches the executor as its recorded trace (see call_executor).
+    if settings.WORKFLOW_THREAD_RESET_ENABLED:
+        await reset_workflow_threads(conversation_id)
+    await seed_run_record(execution_id, replayed)
+    run = WorkflowRun(
+        workflow=build_selected_workflow_data(workflow),
+        execution_id=execution_id,
+        timezone=_in_run_timezone(workflow, user).timezone or Timezone.utc().value,
+        reservation=reservation,
+        # A caller firing this for something quieter lowers the default through the context.
+        trigger=WorkflowTriggerContext.model_validate(
+            {
+                "workflow_notify_on_completion": workflow.notify_on_completion,
+                **context,
+                "workflow_id": workflow.id,
+            }
+        ),
+    )
+    ports = runtime_ports()
+    fired = await accept(
+        ports, conversation_id, user_id, WorkflowFired(id=f"workflow:{execution_id}", run=run)
+    )
+    outcome = await await_outcome(
+        ports.log, conversation_id, user_id, fired.appended.logged, BACKGROUND_EXECUTOR_WAIT_TIMEOUT
+    )
+    trace = await _run_trace(execution_id, workflow.id)
+    if outcome.failure is not None:
+        raise WorkflowTurnFailed(
+            f"the workflow's run did not complete: {outcome.failure}",
             conversation_id=conversation_id,
-            workflow_execution_messages=[trigger_message],
-            user_id=user_id,
+            trace=trace,
         )
-
-        request = MessageRequestWithHistory(
-            message=f"Execute workflow: {workflow.title}",
-            messages=[],
-            selectedWorkflow=selected_workflow_data,
+    if outcome.text:
+        await _notify_run_finished(
+            workflow,
+            user,
+            conversation_id,
+            outcome.text,
+            notify_on_completion=run.trigger.workflow_notify_on_completion,
         )
-
-        stream_id = str(uuid4())
-        await seed_run_record(stream_id, replayed)
-
-        # Same entry as chat, silent. workflow_id/title in the trigger context
-        # routes the executor's final result to the completion notification.
-        result = await call_agent_silent(
-            request=request,
-            conversation_id=conversation_id,
-            user=user_data,
-            stream_id=stream_id,
-            options=AgentRunOptions(
-                trigger_context={
-                    # Default; a caller firing this for something quieter (a
-                    # tracked todo with delivery off) lowers it via the context,
-                    # whose keys are GAIA's (a payload nests under trigger_data).
-                    "workflow_notify_on_completion": workflow.notify_on_completion,
-                    **(context or {}),
-                    WORKFLOW_LOCK_CONTEXT_KEY: reservation,
-                    "workflow_id": workflow.id,
-                    "workflow_title": workflow.title,
-                    "execution_mode": "background",
-                }
-            ),
-        )
-
-        # Every tool call the run made, by any path, in the order each finished.
-        return conversation_id, await _run_trace(result.stream_id, workflow.id)
-
-    except Exception as e:
-        # Re-raise so caller marks execution as failed instead of fake-success.
-        log.error(
-            "workflow_chat_execution_failed",
-            workflow_id=workflow.id,
-            workflow_title=getattr(workflow, "title", None),
-            user_id=user.user_id,
-            error_type=type(e).__name__,
-            error=str(e)[:_ERROR_EXCERPT_CHARS],
-            outcome="agent_error",
-            exc_info=True,
-        )
-        raise
+    return conversation_id, trace
 
 
 async def regenerate_workflow_steps(

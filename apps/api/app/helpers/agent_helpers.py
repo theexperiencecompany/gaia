@@ -183,16 +183,6 @@ class _ToolMessageKwargs(BaseModel):
     todo_tool: bool = False
 
 
-class _TriggerBinding(BaseModel):
-    """The agent-owned keys of a trigger payload that seed the initial state."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    active_todo_id: str | None = None
-    todo_id: str | None = None
-    execution_mode: ExecutionMode | None = None
-
-
 @dataclass(slots=True, frozen=True)
 class _PendingMcpApp:
     """An MCP-App tool call awaiting its result, so the mcp_app frame can carry both."""
@@ -756,12 +746,8 @@ def build_initial_state(
     user_id: str,
     conversation_id: str,
     history: list[AnyMessage],
-    # The trigger payload merged with the agent's own keys (active_todo_id,
-    # execution_mode, workflow_*). Genuinely open: schedulers spread arbitrary
-    # provider trigger data through it, so only the agent-owned keys are read.
-    trigger_context: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    """Construct the initial LangGraph state (query, history, tool selections, trigger context)."""
+    """Construct the initial LangGraph state (query, history, tool selections)."""
     state: dict[str, object] = {
         "query": request.message,
         "intent": request.message,
@@ -774,17 +760,6 @@ def build_initial_state(
         "selected_workflow": request.selectedWorkflow,
         "selected_calendar_event": request.selectedCalendarEvent,
     }
-
-    if trigger_context:
-        state["trigger_context"] = trigger_context
-        # Bind active todo + execution mode so banners and tools default
-        # to the firing todo. Scheduled runs always set these; comms-driven
-        # turns may set them when delegating todo-bound work.
-        binding = _TriggerBinding.model_validate(trigger_context)
-        if active_todo_id := binding.active_todo_id or binding.todo_id:
-            state["active_todo_id"] = active_todo_id
-        if binding.execution_mode:
-            state["execution_mode"] = binding.execution_mode
 
     return state
 

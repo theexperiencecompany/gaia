@@ -15713,6 +15713,40 @@
         "title": "QuietHours",
         "type": "object"
       },
+      "QuietHoursBypass": {
+        "description": "A run let through the user's quiet hours, with the reason it says it interrupts them.",
+        "properties": {
+          "kind": {
+            "const": "bypass",
+            "default": "bypass",
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "QuietHoursBypass",
+        "type": "object"
+      },
+      "QuietHoursHold": {
+        "description": "A run held until the user's quiet hours ended.",
+        "properties": {
+          "kind": {
+            "const": "hold",
+            "default": "hold",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "title": "QuietHoursHold",
+        "type": "object"
+      },
       "Reaction": {
         "additionalProperties": false,
         "description": "An emoji on a user message; a field updated in place, never a state change.",
@@ -21117,6 +21151,28 @@
         "title": "TriggerConfigFieldSchema",
         "type": "object"
       },
+      "TriggerEmailData": {
+        "description": "The ``email_data`` of a Gmail-triggered run, as the prompt reads it.",
+        "properties": {
+          "message_text": {
+            "default": "",
+            "title": "Message Text",
+            "type": "string"
+          },
+          "sender": {
+            "default": "Unknown",
+            "title": "Sender",
+            "type": "string"
+          },
+          "subject": {
+            "default": "No Subject",
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "title": "TriggerEmailData",
+        "type": "object"
+      },
       "TriggerOption": {
         "description": "A single selectable value for a trigger config field.",
         "properties": {
@@ -23487,17 +23543,8 @@
       },
       "WorkflowFired": {
         "additionalProperties": false,
-        "description": "A workflow fired into this conversation.",
+        "description": "A workflow fired into this conversation; it is answered on its own, never merged.",
         "properties": {
-          "context": {
-            "additionalProperties": true,
-            "title": "Context",
-            "type": "object"
-          },
-          "execution_id": {
-            "title": "Execution Id",
-            "type": "string"
-          },
           "id": {
             "description": "Producer-minted idempotency key",
             "minLength": 1,
@@ -23510,16 +23557,13 @@
             "title": "Kind",
             "type": "string"
           },
-          "workflow_id": {
-            "title": "Workflow Id",
-            "type": "string"
+          "run": {
+            "$ref": "#/components/schemas/WorkflowRun"
           }
         },
         "required": [
           "id",
-          "workflow_id",
-          "execution_id",
-          "context"
+          "run"
         ],
         "title": "WorkflowFired",
         "type": "object"
@@ -23573,6 +23617,42 @@
           "message"
         ],
         "title": "WorkflowResponse",
+        "type": "object"
+      },
+      "WorkflowRun": {
+        "additionalProperties": false,
+        "description": "What a workflow's turn runs: the workflow, the trigger that fired it, and the fire's bookkeeping.",
+        "properties": {
+          "execution_id": {
+            "minLength": 1,
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "reservation": {
+            "minLength": 1,
+            "title": "Reservation",
+            "type": "string"
+          },
+          "timezone": {
+            "minLength": 1,
+            "title": "Timezone",
+            "type": "string"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/WorkflowTriggerContext"
+          },
+          "workflow": {
+            "$ref": "#/components/schemas/SelectedWorkflowDataOutput"
+          }
+        },
+        "required": [
+          "workflow",
+          "execution_id",
+          "timezone",
+          "reservation",
+          "trigger"
+        ],
+        "title": "WorkflowRun",
         "type": "object"
       },
       "WorkflowStatusResponse": {
@@ -23699,6 +23779,94 @@
           "description"
         ],
         "title": "WorkflowStep",
+        "type": "object"
+      },
+      "WorkflowTriggerContext": {
+        "description": "The keys ``format_workflow_execution_message`` reads off a run's trigger context.\n\nThe bag itself is open by construction \u2014 schedulers spread arbitrary provider\ntrigger data through it alongside the agent's own keys \u2014 so this is a view of\nit, parsed once here, not its full shape.",
+        "properties": {
+          "email_data": {
+            "$ref": "#/components/schemas/TriggerEmailData"
+          },
+          "playbook_fallback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playbook Fallback"
+          },
+          "quiet_hours": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "bypass": "#/components/schemas/QuietHoursBypass",
+                    "hold": "#/components/schemas/QuietHoursHold"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/QuietHoursBypass"
+                  },
+                  {
+                    "$ref": "#/components/schemas/QuietHoursHold"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet Hours"
+          },
+          "tracked_todos_context": {
+            "default": "",
+            "title": "Tracked Todos Context",
+            "type": "string"
+          },
+          "trigger_data": {
+            "additionalProperties": true,
+            "title": "Trigger Data",
+            "type": "object"
+          },
+          "triggered_at": {
+            "default": "Unknown",
+            "title": "Triggered At",
+            "type": "string"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "workflow_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow Id"
+          },
+          "workflow_notify_on_completion": {
+            "default": true,
+            "title": "Workflow Notify On Completion",
+            "type": "boolean"
+          }
+        },
+        "title": "WorkflowTriggerContext",
         "type": "object"
       },
       "WorkflowTriggerResponse": {

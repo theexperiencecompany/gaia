@@ -26,10 +26,13 @@ from app.models.conversation_log_models import (
     UserMessage,
     WorkFinished,
     WorkflowFired,
+    WorkflowRun,
     WorkOutcome,
     WorkStarted,
 )
+from app.models.message_models import SelectedWorkflowData
 from app.models.todo_wake_models import TodoRunWake
+from app.models.workflow_trigger_models import WorkflowTriggerContext
 from app.services.conversation.reducer import reduce
 
 EMPTY = ConversationState(
@@ -68,8 +71,20 @@ def barge(entry_id: str, reply_id: str) -> BargeIn:
     return BargeIn(id=entry_id, reply_id=reply_id, heard_text="heard")
 
 
-def fired(entry_id: str) -> WorkflowFired:
-    return WorkflowFired(id=entry_id, workflow_id="wf_1", execution_id="ex_1", context={})
+def workflow_run(execution_id: str = "ex_1") -> WorkflowRun:
+    return WorkflowRun(
+        workflow=SelectedWorkflowData(
+            id="wf_1", title="Morning brief", description="Brief me", steps=[]
+        ),
+        execution_id=execution_id,
+        timezone="Asia/Kolkata",
+        reservation=f":{execution_id}-reservation",
+        trigger=WorkflowTriggerContext(workflow_id="wf_1"),
+    )
+
+
+def fired(entry_id: str, execution_id: str = "ex_1") -> WorkflowFired:
+    return WorkflowFired(id=entry_id, run=workflow_run(execution_id))
 
 
 def todo_woke(entry_id: str) -> TodoWoke:

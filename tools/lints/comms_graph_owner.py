@@ -96,8 +96,6 @@ LEGACY_CALLERS: frozenset[str] = frozenset(
         "agents/core/background/workflow_platform_delivery.py",
         # Records a browser handoff button exchange; removed when the step takes this over (plan PR 8).
         "services/browser/handoff_buttons.py",
-        # Runs a workflow as a chat turn through call_agent_silent; removed when the step takes this over (plan PR 9).
-        "workers/tasks/workflow_tasks.py",
     }
 )
 

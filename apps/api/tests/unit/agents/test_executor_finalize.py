@@ -33,15 +33,11 @@ from app.agents.core.background import (
     executor_progress,
     executor_queue as eq,
     executor_runner as er,
-    result_delivery as rd,
     running_registry,
-    workflow_platform_delivery as wpd,
 )
 from app.agents.core.background.confirmation_gate import spend_confirmation
 from app.agents.core.background.executor_capture import (
     await_executor_done,
-    drain_executor_tool_data,
-    teardown_executor_capture,
 )
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import (
@@ -78,7 +74,6 @@ from app.models.agent_models import InboxEntry
 from app.models.chat_models import SourceCategory
 from app.models.executor_activity_models import ExecutorActivity
 from app.models.user_models import AuthenticatedUser
-from app.services.delivery.chat_channel import InApp
 from app.services.hil import bridge
 from shared.py.wide_events import log, log_context
 from tests.helpers import WideEventRecorder, captured_wide_event
@@ -420,78 +415,6 @@ class TestDoneSignalAndOrdering:
         await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "txt", "final")
 
         assert done_state_at_note_time == [False]
-
-
-class TestBackgroundRunCardsSurviveTheCommsDrain:
-    """A scheduled workflow's tool cards must reach the bot message it saves.
-
-    The comms silent path and the executor's delivery read the run's cards off
-    the SAME session. call_agent_silent waits on done_event, drains, and
-    tears the session down in its finally — so a delivery that reads the
-    session AFTER signalling done finds nothing left. The symptom: a workflow
-    run whose execution record listed every tool call saved a bot message with
-    an empty tool_data, and the chat showed no "Used N tools" thread.
-    """
-
-    @staticmethod
-    def _delivery_seams(stack: ExitStack) -> AsyncMock:
-        """Patch delivery's I/O only; the real card-attaching logic runs."""
-        stack.enter_context(patch.object(er, "StreamManager")).is_cancelled = AsyncMock(
-            return_value=False
-        )
-        stack.enter_context(patch.object(er, "release_lock_if_owned", new_callable=AsyncMock))
-        stack.enter_context(patch.object(er, "ExecutorInbox")).return_value.read = AsyncMock(
-            return_value=[]
-        )
-        stack.enter_context(
-            patch.object(rd, "narrate_executor_result", new_callable=AsyncMock, return_value="done")
-        )
-        stack.enter_context(
-            patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[])
-        )
-        stack.enter_context(
-            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None)
-        )
-        stack.enter_context(
-            patch.object(wpd, "deliver_result_to_platforms", AsyncMock(return_value=None))
-        )
-        stack.enter_context(
-            patch.object(
-                wpd,
-                "resolve_proactive_target",
-                AsyncMock(return_value=InApp(reason="no_chat_app")),
-            )
-        )
-        stack.enter_context(
-            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock)
-        )
-        return stack.enter_context(patch.object(rd, "update_messages", new_callable=AsyncMock))
-
-    async def test_a_workflow_run_saves_the_cards_it_produced(self) -> None:
-        session = create_session("s1", RunKind.LIVE)
-        mark_executor_spawned("s1")
-        session.tool_events.append(
-            {"tool_data": {"tool_name": "tool_calls_data", "data": {"tool_call_id": "tc-1"}}}
-        )
-        run = _run(RunKind.LIVE, workflow_id="wf-1", source_category=SourceCategory.BG)
-
-        async def comms_silent_path() -> None:
-            """Run what call_agent_silent does around a workflow's graph run."""
-            await await_executor_done("s1")
-            drain_executor_tool_data("s1")
-            teardown_executor_capture("s1")
-
-        with ExitStack() as stack:
-            save = self._delivery_seams(stack)
-            # The comms consumer is already waiting when the run finalizes, exactly
-            # as it is in a workflow fire.
-            await asyncio.gather(
-                comms_silent_path(),
-                er._finalize_executor_run(run, TASK, "the digest", "final"),
-            )
-
-        saved = save.await_args.args[0].messages[0]
-        assert [entry["tool_name"] for entry in (saved.tool_data or [])] == ["tool_calls_data"]
 
 
 async def test_a_step_dispatched_live_run_logs_its_cards_on_work_finished(boundaries) -> None:

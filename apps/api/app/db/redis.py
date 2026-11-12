@@ -208,6 +208,12 @@ class AsyncRedisCommands(Protocol):
         """XADD — returns the new entry's stream id."""
         ...
 
+    async def xrevrange(
+        self, name: str, *, count: int | None = None
+    ) -> list[tuple[str, dict[str, str]]]:
+        """XREVRANGE — [(entry_id, fields)] newest first."""
+        ...
+
     async def xread(
         self,
         streams: Mapping[str, str],

@@ -748,33 +748,6 @@ class TestBuildInitialState:
         assert state["memory_user_id"] == USER_ID
         assert state["conversation_id"] == CONV_ID
         assert state["messages"] == []
-        assert "trigger_context" not in state
-
-    def test_with_trigger_context(self):
-        request = MagicMock()
-        request.message = "Trigger"
-        request.selectedTool = "tool_x"
-        request.selectedWorkflow = None
-        request.selectedCalendarEvent = None
-
-        ctx = {"trigger": "reminder", "data": {}}
-        state = build_initial_state(request, USER_ID, CONV_ID, [], trigger_context=ctx)
-
-        assert state["trigger_context"] == ctx
-        assert state["selected_tool"] == "tool_x"
-
-    def test_a_trigger_binds_its_todo_and_execution_mode_into_state(self):
-        request = MagicMock()
-        request.message = "Trigger"
-        request.selectedTool = None
-        request.selectedWorkflow = None
-        request.selectedCalendarEvent = None
-
-        ctx = {"todo_id": "todo-3", "execution_mode": "background"}
-        state = build_initial_state(request, USER_ID, CONV_ID, [], trigger_context=ctx)
-
-        assert state["active_todo_id"] == "todo-3"
-        assert state["execution_mode"] == "background"
 
 
 class TestOpensThread:

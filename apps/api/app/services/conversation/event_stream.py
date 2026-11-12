@@ -75,6 +75,12 @@ async def read_frames(
     ]
 
 
+async def latest_frame_id(conversation_id: str) -> str:
+    """Return the id of the stream's newest frame, so a reader can start after it."""
+    newest = await redis_cache.client.xrevrange(_key(conversation_id), count=1)
+    return newest[0][0] if newest else EVENTS_STREAM_START
+
+
 async def replay_from_log(
     log: ConversationLog, conversation_id: str, user_id: str, after_seq: int
 ) -> list[StreamedFrame]:
