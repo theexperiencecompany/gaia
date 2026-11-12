@@ -318,6 +318,8 @@ class LinkEnvelope(ResponseModel):
     downloadable: bool
     #: The viewer is the link's owner, so the page offers its share settings.
     is_owner: bool
+    #: The target's id, for the owner's share settings; None for every other viewer.
+    owner_target_id: str | None
 
 
 class LinkDenialEnvelope(ErrorEnvelope):

@@ -10362,6 +10362,17 @@
             "title": "Is Owner",
             "type": "boolean"
           },
+          "owner_target_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Target Id"
+          },
           "target_type": {
             "$ref": "#/components/schemas/ShortLinkTargetType"
           },
@@ -10402,7 +10413,8 @@
           "view",
           "content",
           "downloadable",
-          "is_owner"
+          "is_owner",
+          "owner_target_id"
         ],
         "title": "LinkEnvelope",
         "type": "object"
