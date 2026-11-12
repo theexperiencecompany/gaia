@@ -72,7 +72,7 @@ export interface IntegrationConnectionData {
 
 export type IntegrationAuthType = "oauth" | "bearer" | "none";
 
-export type IntegrationManagedBy = "composio" | "mcp" | "internal" | "self";
+export type IntegrationManagedBy = "composio" | "mcp" | "internal";
 
 export type IntegrationCreator = CommunityIntegrationCreator;
 

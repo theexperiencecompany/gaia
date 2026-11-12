@@ -71,7 +71,7 @@ class TestGetPublicIntegration:
         fake_native.name = "Google Calendar"
         fake_native.description = "Calendar integration"
         fake_native.category = "productivity"
-        fake_native.managed_by = "self"
+        fake_native.managed_by = "composio"
         fake_native.mcp_config = None
         fake_native.content = None
 

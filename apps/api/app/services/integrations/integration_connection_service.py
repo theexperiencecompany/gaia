@@ -11,9 +11,7 @@ from app.config.oauth_config import (
     CatalogCached,
     all_integrations,
     get_integration_by_id,
-    get_integration_scopes,
 )
-from app.config.token_repository import token_repository
 from app.constants.integrations import (
     INTEGRATION_STATUS_CONNECTED,
     MAX_ACCOUNTS_PER_INTEGRATION,
@@ -24,6 +22,7 @@ from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.integrations.composio import ComposioConnectLink
 from app.models.mcp_config import McpAuthChallenge, McpProbeResult
+from app.models.oauth_models import ManagedBy
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
     IntegrationConfigItem,
@@ -50,7 +49,6 @@ from app.services.mcp.mcp_client import MCPClient, get_mcp_client
 from app.services.mcp.mcp_oauth import build_oauth_auth_url
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_state_service import attach_connected_account, create_oauth_state
-from app.utils.oauth_utils import build_google_oauth_url
 from shared.py.wide_events import log
 
 
@@ -423,62 +421,10 @@ async def connect_composio_integration(
     )
 
 
-async def connect_self_integration(
-    user_id: str,
-    user_email: str,
-    integration_id: str,
-    integration_name: str,
-    provider: str,
-    redirect_path: str,
-) -> ConnectIntegrationResponse:
-    """Handle self-managed integration connection (Google)."""
-    log.set(integration={"provider": provider, "action": "connect_self"})
-    if provider != "google":
-        return ConnectIntegrationResponse(
-            status="error",
-            integration_id=integration_id,
-            name=integration_name,
-            error=f"Provider {provider} not implemented",
-        )
-
-    state_token = await create_oauth_state(
-        user_id=user_id,
-        redirect_path=redirect_path,
-        integration_id=integration_id,
-    )
-
-    await update_user_integration_status(user_id, integration_id, "created")
-
-    auth_url = await build_google_oauth_url(
-        user_email=user_email,
-        state_token=state_token,
-        integration_scopes=get_integration_scopes(integration_id),
-        user_id=user_id,
-    )
-
-    log.set(
-        integration={
-            "provider": provider,
-            "action": "connect_self",
-            "managed_by": "self",
-            "auth_type": "oauth2",
-            "status": "redirect",
-        }
-    )
-    return ConnectIntegrationResponse(
-        status="redirect",
-        integration_id=integration_id,
-        name=integration_name,
-        redirect_url=auth_url,
-        message="OAuth authentication required",
-    )
-
-
 async def initiate_integration_connection(
     user_id: str,
     resolved: ResolvedIntegration,
     *,
-    user_email: str = "",
     redirect_path: str = "/integrations",
     bearer_token: str | None = None,
     reconnect_account_id: str | None = None,
@@ -517,25 +463,16 @@ async def initiate_integration_connection(
                 is_platform=resolved.source == "platform",
                 bearer_token=bearer_token,
             )
-        if resolved.managed_by in ("composio", "self"):
+        if resolved.managed_by == "composio":
             if not provider:
                 return _error("Provider not configured")
-            if resolved.managed_by == "composio":
-                return await connect_composio_integration(
-                    user_id=user_id,
-                    integration_id=integration_id,
-                    integration_name=resolved.name,
-                    provider=provider,
-                    redirect_path=redirect_path,
-                    reconnect_account_id=reconnect_account_id,
-                )
-            return await connect_self_integration(
+            return await connect_composio_integration(
                 user_id=user_id,
-                user_email=user_email,
                 integration_id=integration_id,
                 integration_name=resolved.name,
                 provider=provider,
                 redirect_path=redirect_path,
+                reconnect_account_id=reconnect_account_id,
             )
         return _error(f"Unsupported integration type: {resolved.managed_by}")
     except Exception as e:
@@ -571,12 +508,6 @@ async def disconnect_integration(user_id: str, integration_id: str) -> Integrati
         if not provider:
             raise ValueError(f"Provider not configured for {integration_id}")
         await composio_service.delete_all_connected_accounts(user_id=user_id, provider=provider)
-
-    elif resolved.managed_by == "self":
-        provider = resolved.platform_integration.provider if resolved.platform_integration else None
-        if not provider:
-            raise ValueError(f"Provider not configured for {integration_id}")
-        await token_repository.revoke_token(user_id=user_id, provider=provider)
 
     elif resolved.managed_by == "mcp":
         mcp_client = await get_mcp_client(user_id=user_id)
@@ -614,7 +545,7 @@ async def remove_from_workspace(user_id: str, integration_id: str) -> bool:
     return await remove_user_integration(user_id, integration_id)
 
 
-async def _invalidate_caches(user_id: str, integration_id: str, managed_by: str) -> None:
+async def _invalidate_caches(user_id: str, integration_id: str, managed_by: ManagedBy) -> None:
     """Invalidate relevant caches after disconnect."""
     # Determine whether to delete record or set status to "created"
     if managed_by == "mcp":

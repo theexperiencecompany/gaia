@@ -8275,7 +8275,6 @@
           },
           "managedBy": {
             "enum": [
-              "self",
               "composio",
               "mcp",
               "internal"
@@ -8554,7 +8553,6 @@
           },
           "managedBy": {
             "enum": [
-              "self",
               "composio",
               "mcp",
               "internal"
@@ -11550,7 +11548,6 @@
           },
           "managedBy": {
             "enum": [
-              "self",
               "composio",
               "mcp",
               "internal"

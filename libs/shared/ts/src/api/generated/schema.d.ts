@@ -9707,7 +9707,7 @@ export interface components {
              * Managedby
              * @enum {string}
              */
-            managedBy: "self" | "composio" | "mcp" | "internal";
+            managedBy: "composio" | "mcp" | "internal";
             /** Name */
             name: string;
             /**
@@ -9845,7 +9845,7 @@ export interface components {
              * Managedby
              * @enum {string}
              */
-            managedBy: "self" | "composio" | "mcp" | "internal";
+            managedBy: "composio" | "mcp" | "internal";
             /** Name */
             name: string;
             /** Publishedat */
@@ -11226,7 +11226,7 @@ export interface components {
              * Managedby
              * @enum {string}
              */
-            managedBy: "self" | "composio" | "mcp" | "internal";
+            managedBy: "composio" | "mcp" | "internal";
             /** Name */
             name: string;
             /**

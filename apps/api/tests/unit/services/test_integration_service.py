@@ -5,7 +5,7 @@ Covers:
   format_community_integrations)
 - integration_resolver.py (IntegrationResolver.resolve, get_mcp_config, get_server_url)
 - integration_connection_service.py (build_integrations_config, connect_mcp_integration,
-  connect_composio_integration, connect_self_integration, disconnect_integration,
+  connect_composio_integration, disconnect_integration,
   _invalidate_caches)
 - user_integrations.py (get_user_integrations, get_user_integration_records,
   add_user_integration, remove_user_integration, check_user_has_integration)
@@ -74,7 +74,6 @@ from app.services.integrations.integration_connection_service import (
     build_integrations_config,
     connect_composio_integration,
     connect_mcp_integration,
-    connect_self_integration,
     disconnect_integration,
 )
 from app.services.integrations.integration_resolver import (
@@ -138,7 +137,7 @@ def _make_oauth_integration(**overrides: Any) -> OAuthIntegration:
         "provider": "google",
         "scopes": [],
         "available": True,
-        "managed_by": "self",
+        "managed_by": "internal",
         "mcp_config": None,
         "composio_config": None,
         "subagent_config": None,
@@ -235,23 +234,8 @@ class TestIntegrationResolverResolve:
 
     @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_platform_self_managed(self, mock_get_by_id, mock_repo):
-        oauth_int = _make_oauth_integration(
-            integration_id="gcal", managed_by="self", provider="google"
-        )
-        mock_get_by_id.return_value = oauth_int
-
-        result = await IntegrationResolver.resolve("gcal")
-
-        assert result is not None
-        assert result.requires_auth is True
-        assert result.auth_type == "oauth"
-        assert result.managed_by == "self"
-
-    @patch("app.services.integrations.integration_resolver.integration_repository")
-    @patch("app.services.integrations.integration_resolver.get_integration_by_id")
     async def test_resolve_platform_no_auth(self, mock_get_by_id, mock_repo):
-        """Platform integration with no mcp, composio, or self — requires no auth."""
+        """Platform integration with no mcp or composio config — requires no auth."""
         mcp_cfg = MCPConfig(server_url=SERVER_URL, requires_auth=False)
         oauth_int = _make_oauth_integration(
             integration_id="public-tool", managed_by="mcp", mcp_config=mcp_cfg
@@ -2502,7 +2486,11 @@ class TestBuildIntegrationsConfig:
     @patch(
         "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [
-            _make_oauth_integration(integration_id="no-mcp", managed_by="self"),
+            _make_oauth_integration(
+                integration_id="no-mcp",
+                managed_by="composio",
+                composio_config=ComposioConfig(auth_config_id="ac_1", toolkit="SLACK"),
+            ),
         ],
     )
     def test_auth_type_none_when_no_mcp_config(self):
@@ -2986,59 +2974,6 @@ class TestConnectComposioIntegration:
         seams["attach"].assert_not_awaited()
 
 
-class TestConnectSelfIntegration:
-    @patch(
-        "app.services.integrations.integration_connection_service.build_google_oauth_url",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.services.integrations.integration_connection_service.get_integration_scopes",
-    )
-    @patch(
-        "app.services.integrations.integration_connection_service.update_user_integration_status",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.services.integrations.integration_connection_service.create_oauth_state",
-        new_callable=AsyncMock,
-    )
-    async def test_connect_google_success(
-        self,
-        mock_create_state,
-        mock_update_status,
-        mock_get_scopes,
-        mock_build_url,
-    ):
-        mock_create_state.return_value = "state-token"
-        mock_get_scopes.return_value = ["email", "calendar"]
-        mock_build_url.return_value = "https://accounts.google.com/auth"
-
-        result = await connect_self_integration(
-            user_id=USER_ID,
-            user_email="test@example.com",
-            integration_id="gcal",
-            integration_name="Google Calendar",
-            provider="google",
-            redirect_path="/integrations",
-        )
-
-        assert result.status == "redirect"
-        assert result.redirect_url == "https://accounts.google.com/auth"
-
-    async def test_connect_unsupported_provider_returns_error(self):
-        result = await connect_self_integration(
-            user_id=USER_ID,
-            user_email="test@example.com",
-            integration_id="microsoft",
-            integration_name="Microsoft",
-            provider="microsoft",
-            redirect_path="/integrations",
-        )
-
-        assert result.status == "error"
-        assert "not implemented" in result.error.lower()
-
-
 class TestDisconnectIntegration:
     @patch(
         "app.services.integrations.integration_connection_service._invalidate_caches",
@@ -3222,69 +3157,6 @@ class TestDisconnectIntegration:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.token_repository",
-    )
-    @patch(
-        "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
-        new_callable=AsyncMock,
-    )
-    async def test_disconnect_self_managed_integration(
-        self, mock_resolve, mock_token_repo, mock_invalidate
-    ):
-        platform_int = _make_oauth_integration(
-            integration_id="gcal", managed_by="self", provider="google"
-        )
-        mock_resolve.return_value = ResolvedIntegration(
-            integration_id="gcal",
-            name="Google Calendar",
-            description="",
-            category="productivity",
-            managed_by="self",
-            source="platform",
-            requires_auth=True,
-            auth_type="oauth",
-            mcp_config=None,
-            platform_integration=platform_int,
-            custom_doc=None,
-        )
-        mock_token_repo.revoke_token = AsyncMock()
-
-        result = await disconnect_integration(USER_ID, "gcal")
-
-        assert isinstance(result, IntegrationSuccessResponse)
-        mock_token_repo.revoke_token.assert_awaited_once_with(user_id=USER_ID, provider="google")
-
-    @patch(
-        "app.services.integrations.integration_connection_service._invalidate_caches",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
-        new_callable=AsyncMock,
-    )
-    async def test_disconnect_self_no_provider_raises(self, mock_resolve, mock_invalidate):
-        mock_resolve.return_value = ResolvedIntegration(
-            integration_id="x",
-            name="X",
-            description="",
-            category="c",
-            managed_by="self",
-            source="platform",
-            requires_auth=True,
-            auth_type="oauth",
-            mcp_config=None,
-            platform_integration=None,
-            custom_doc=None,
-        )
-
-        with pytest.raises(ValueError, match="Provider not configured"):
-            await disconnect_integration(USER_ID, "x")
-
-    @patch(
-        "app.services.integrations.integration_connection_service._invalidate_caches",
-        new_callable=AsyncMock,
-    )
-    @patch(
         "app.services.integrations.integration_connection_service.remove_user_integration",
         new_callable=AsyncMock,
     )
@@ -3390,7 +3262,7 @@ class TestInvalidateCaches:
 
         mock_get_by_id.return_value = _make_oauth_integration(integration_id="gcal")
 
-        await _invalidate_caches(USER_ID, "gcal", "self")
+        await _invalidate_caches(USER_ID, "gcal", "internal")
 
         mock_remove.assert_awaited_once()
         mock_update_status.assert_not_awaited()

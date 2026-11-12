@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 from app.models.integration_models import UserIntegrationStatus
-from app.models.oauth_models import IntegrationContent
+from app.models.oauth_models import IntegrationContent, ManagedBy
 from app.schemas.common import ResponseModel, SuccessResponse
 
 
@@ -40,7 +40,7 @@ class IntegrationConfigItem(CamelModel):
     display_priority: int
     included_integrations: list[str]
     is_featured: bool
-    managed_by: Literal["self", "composio", "mcp", "internal"]
+    managed_by: ManagedBy
     auth_type: Literal["none", "oauth", "bearer"] | None = None
     requires_auth: bool = False
     source: Literal["platform"] = "platform"
@@ -98,7 +98,7 @@ class IntegrationResponse(CamelModel, CloneCountMixin):
     name: str
     description: str
     category: str
-    managed_by: Literal["self", "composio", "mcp", "internal"]
+    managed_by: ManagedBy
     source: Literal["platform", "custom"]
     is_featured: bool
     display_priority: int
@@ -134,7 +134,7 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
     description: str
     category: str
     source: Literal["platform", "custom"]
-    managed_by: Literal["self", "composio", "mcp", "internal"]
+    managed_by: ManagedBy
     status: Literal["connected", "created", "expired", "not_connected"]
     # When the upstream grant died, so the UI can say how long it has been broken.
     expired_at: datetime | None = None

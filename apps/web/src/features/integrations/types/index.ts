@@ -50,7 +50,7 @@ export interface Integration {
   expiredAt?: string;
   displayPriority?: number;
   isFeatured?: boolean;
-  managedBy?: "self" | "composio" | "mcp" | "internal";
+  managedBy?: "composio" | "mcp" | "internal";
   available?: boolean;
   /** Composio integration this instance has no auth config for; Connect cannot work. */
   instanceSetupRequired?: boolean;

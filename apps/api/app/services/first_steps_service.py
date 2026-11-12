@@ -47,9 +47,8 @@ async def set_first_steps_collapsed(user_id: str, collapsed: bool) -> FirstSteps
 async def _build_checklist(user: UserDocument) -> FirstStepsResponse:
     sent_message, integration_status, created = await asyncio.gather(
         conversation_repository.has_sent_message(user.id),
-        # The canonical connected-set reader: it covers the self-managed
-        # Google integrations (Gmail) and Composio accounts that predate a
-        # ``user_integrations`` row, which a raw collection count would miss.
+        # The canonical connected-set reader: it covers Composio accounts that
+        # predate a ``user_integrations`` row, which a raw collection count would miss.
         get_all_integrations_status(user.id),
         # Auto-provisioned system workflows and todo-backed ones are not the
         # user authoring a workflow.

@@ -40,6 +40,7 @@ from app.constants.onboarding import (
 )
 from app.models.integration_models import IntegrationAccount
 from app.models.mail_models import GmailMessagesResponse, GmailMessageSummary
+from app.models.mcp_config import ComposioConfig
 from app.models.oauth_models import OAuthIntegration
 from app.models.onboarding_models import (
     EmailSummary,
@@ -88,7 +89,8 @@ GMAIL_CONFIG = OAuthIntegration(
     category="productivity",
     provider="google",
     scopes=[],
-    managed_by="self",
+    managed_by="composio",
+    composio_config=ComposioConfig(auth_config_id="ac_gmail", toolkit="GMAIL"),
 )
 
 

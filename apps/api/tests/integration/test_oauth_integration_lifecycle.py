@@ -7,8 +7,7 @@ the real oauth/integration services (oauth_state_service,
 integration_connection_service, user_integration_status, user_integrations,
 integration_resolver, oauth_config, oauth_service, integration_pause).
 
-Mocked: Redis, MongoDB collections, the Composio service, the token
-repository, and the MCP client.
+Mocked: Redis, MongoDB collections, the Composio service, and the MCP client.
 """
 
 from collections.abc import Iterator
@@ -45,7 +44,6 @@ from app.services.integrations.integration_connection_service import (
     build_integrations_config,
     connect_composio_integration,
     connect_mcp_integration,
-    connect_self_integration,
     disconnect_integration,
 )
 from app.services.integrations.integration_expiry import expire_account
@@ -74,7 +72,6 @@ from tests.integration_account_factories import with_nickname
 
 USER_ID = "507f1f77bcf86cd799439011"
 USER_ID_2 = "507f1f77bcf86cd799439022"
-USER_EMAIL = "test@example.com"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -634,67 +631,6 @@ class TestComposioIntegrationConnection:
 
 
 # ---------------------------------------------------------------------------
-# Tests — Self-Managed Integration Connection (Google)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-class TestSelfManagedIntegrationConnection:
-    """connect_self_integration: Google OAuth URL generation."""
-
-    async def test_connect_google_returns_redirect_with_scopes(self) -> None:
-        """Self-managed Google connect produces redirect with correct scopes."""
-
-        with (
-            patch(
-                "app.services.integrations.integration_connection_service.create_oauth_state",
-                AsyncMock(return_value="state_xyz"),
-            ),
-            patch(
-                "app.services.integrations.integration_connection_service.update_user_integration_status",
-                AsyncMock(return_value=True),
-            ),
-            patch(
-                "app.services.integrations.integration_connection_service.build_google_oauth_url",
-                AsyncMock(
-                    return_value="https://accounts.google.com/o/oauth2/auth?scope=calendar&state=state_xyz"
-                ),
-            ),
-            patch(
-                "app.services.integrations.integration_connection_service.get_integration_scopes",
-                return_value=["https://www.googleapis.com/auth/calendar.events"],
-            ),
-        ):
-            response = await connect_self_integration(
-                user_id=USER_ID,
-                user_email=USER_EMAIL,
-                integration_id="googlecalendar",
-                integration_name="Google Calendar",
-                provider="google",
-                redirect_path="/integrations",
-            )
-
-            assert response.status == "redirect"
-            assert response.redirect_url is not None
-            assert "accounts.google.com" in response.redirect_url
-
-    async def test_connect_non_google_provider_returns_error(self) -> None:
-        """Self-managed connect with non-Google provider returns error."""
-
-        response = await connect_self_integration(
-            user_id=USER_ID,
-            user_email=USER_EMAIL,
-            integration_id="unknown",
-            integration_name="Unknown",
-            provider="microsoft",
-            redirect_path="/integrations",
-        )
-
-        assert response.status == "error"
-        assert "not implemented" in (response.error or "").lower()
-
-
-# ---------------------------------------------------------------------------
 # Tests — Disconnect Integration
 # ---------------------------------------------------------------------------
 
@@ -1185,7 +1121,7 @@ class TestOAuthConfigHelpers:
             assert integration.id, f"Integration missing id: {integration}"
             assert integration.name, f"Integration {integration.id} missing name"
             assert integration.provider, f"Integration {integration.id} missing provider"
-            assert integration.managed_by in ("self", "composio", "mcp", "internal"), (
+            assert integration.managed_by in ("composio", "mcp", "internal"), (
                 f"Integration {integration.id} has invalid managed_by: {integration.managed_by}"
             )
 

@@ -18,7 +18,7 @@ from app.constants.integrations import INTEGRATION_ACCOUNT_ID_PREFIX, ConnectMod
 from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.helpers.slug_helpers import generate_integration_slug
 from app.models.mcp_config import MCPConfig
-from app.models.oauth_models import IntegrationContent, OAuthIntegration
+from app.models.oauth_models import IntegrationContent, ManagedBy, OAuthIntegration
 
 # Type alias for auth_type
 AuthType = Literal["none", "oauth", "bearer"]
@@ -161,9 +161,7 @@ class Integration(MongoDocument):
     category: str = Field(..., description="e.g., productivity, communication, developer")
 
     # Management and source
-    managed_by: Literal["self", "composio", "mcp", "internal"] = Field(
-        ..., description="Which system manages the integration"
-    )
+    managed_by: ManagedBy = Field(..., description="Which system manages the integration")
     source: Literal["platform", "custom"] = Field(
         "custom", description="Platform (from code) or custom (user-created)"
     )
@@ -358,7 +356,7 @@ class IntegrationResponse(BaseModel):
     name: str
     description: str
     category: str
-    managed_by: Literal["self", "composio", "mcp", "internal"]
+    managed_by: ManagedBy
     source: Literal["platform", "custom"]
     is_featured: bool
     display_priority: int

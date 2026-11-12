@@ -58,6 +58,9 @@ class IntegrationContent(BaseModel):
     faqs: list[IntegrationFAQ] = []
 
 
+ManagedBy = Literal["composio", "mcp", "internal"]
+
+
 class OAuthIntegration(BaseModel):
     """OAuth integration configuration."""
 
@@ -74,7 +77,7 @@ class OAuthIntegration(BaseModel):
     included_integrations: list[str] = []
     is_featured: bool = False
     short_name: str | None = None
-    managed_by: Literal["self", "composio", "mcp", "internal"]
+    managed_by: ManagedBy
     composio_config: ComposioConfig | None = None
     mcp_config: MCPConfig | None = None
     # Tool names/slugs this integration's HIL gate treats as destructive (e.g.
