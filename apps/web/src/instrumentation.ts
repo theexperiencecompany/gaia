@@ -1,5 +1,8 @@
+import { warnWhenInternalApiTokenMissing } from "@/lib/internalApiHeaders";
+
 export async function register() {
   // Sentry auto-instrumentation is intentionally disabled — see apps/web/CLAUDE.md before re-enabling.
+  warnWhenInternalApiTokenMissing();
 }
 
 export const onRequestError: (

@@ -16,6 +16,7 @@ from sentry_sdk.types import Event, Hint
 from app.config.deployment import DeploymentKind
 from app.config.loggers import REQUEST_LOGGER_NAME
 from app.config.settings import settings
+from app.constants.http import INTERNAL_CALLER_HEADER
 from app.constants.log_tags import LogTag
 from shared.py.logging import (
     ARQ_LOGGER_DISPLAY_NAME,
@@ -216,11 +217,39 @@ def _attribute_user(event: Event) -> None:
         event["user"] = {**merged, "id": user_id}
 
 
+class _EventRequest(BaseModel):
+    """A captured request; every field but headers is carried through untouched."""
+
+    model_config = ConfigDict(extra="allow")
+
+    headers: dict[str, object] = {}
+
+
+class _EventWithRequest(BaseModel):
+    """The captured request on a Sentry event, the one part _drop_internal_token rewrites."""
+
+    request: _EventRequest | None = None
+
+
+def _drop_internal_token(event: Event) -> None:
+    """Remove the web server's INTERNAL_API_TOKEN header from a captured request."""
+    request = _EventWithRequest.model_validate(event).request
+    if request is None:
+        return
+    request.headers = {
+        name: value
+        for name, value in request.headers.items()
+        if name.lower() != INTERNAL_CALLER_HEADER.lower()
+    }
+    event["request"] = request.model_dump()
+
+
 def _before_send(event: Event, hint: Hint) -> Event | None:
-    """Decide every event's fate: drop retried LLM attempts, then group and attribute it."""
+    """Decide every event's fate: drop retried LLM attempts, then scrub, group and attribute it."""
     event = _drop_llm_attempt_errors(event, hint)
     if event is None:
         return None
+    _drop_internal_token(event)
     try:
         _attribute_user(event)
         fingerprint = _stable_fingerprint(event)
