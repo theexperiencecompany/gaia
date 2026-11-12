@@ -96,7 +96,5 @@ export {
   DEFAULT_SIMILARITY_CONFIG,
   getRelevantLoadingMessage,
 } from "./similarity";
-export type { OwnToolDataFold } from "./streamFold";
-export { createOwnToolDataFold, foldOwnToolData } from "./streamFold";
 export type { ParsedContent } from "./thinkingParser";
 export { parseThinkingFromText } from "./thinkingParser";

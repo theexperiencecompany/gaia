@@ -66,9 +66,7 @@ export function useBgMessageWebSocket() {
     }
     const isBotReply = message.type === "bot";
 
-    // Remove streaming placeholder (id === task_id) if one exists in the store.
-    // The placeholder was created by useExecutorStream for live tool progress;
-    // now the final message is here, so the placeholder is no longer needed.
+    // A placeholder keyed by task_id is one an earlier client saved for live tool progress; the result replaces it.
     if (isBotReply && message.task_id) {
       const state = useChatStore.getState();
       const msgs = state.messagesByConversation[conversation_id] ?? [];
@@ -96,9 +94,7 @@ export function useBgMessageWebSocket() {
       todoRunWake: message.todo_run_wake ?? null,
     };
 
-    // Persist to IndexedDB (dbEventEmitter syncs to store automatically). When
-    // this matches a queued executor placeholder (keyed by task_id, from
-    // useExecutorStream), replace it atomically so no duplicate is left behind.
+    // Persist to IndexedDB (dbEventEmitter syncs to store automatically), replacing such a placeholder atomically.
     try {
       if (isBotReply && message.task_id) {
         await db.replaceMessage(message.task_id, iMessage);
