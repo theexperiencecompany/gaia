@@ -10,6 +10,7 @@ import {
 } from "@icons";
 import { useCallback, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { AddMemoryModal } from "@/features/memory/components/AddMemoryModal";
@@ -89,7 +90,7 @@ export function MemoryList({ onChanged }: MemoryListProps) {
         <TextField
           value={list.query}
           onChange={list.setQuery}
-          className="max-w-xs"
+          className={inputVariants({ size: "sm", className: "max-w-xs" })}
         >
           <InputGroup variant="secondary">
             <InputGroup.Prefix>
@@ -101,8 +102,8 @@ export function MemoryList({ onChanged }: MemoryListProps) {
         <div className="flex-1" />
         {totalCount > 0 && (
           <Button
-            size="sm"
             variant="danger-soft"
+            size="sm"
             className="rounded-xl"
             isPending={isClearing}
             onPress={handleClearAll}

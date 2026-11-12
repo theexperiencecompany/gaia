@@ -6,6 +6,7 @@ import {
   PROMPT_ACTION_LABEL,
 } from "@shared/utils";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useInlineIntegrationConnect } from "@/features/integrations/hooks/useInlineIntegrationConnect";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -105,7 +106,7 @@ function InlineConnectAction({
         {needsBearerToken && (
           <Input
             type="password"
-            className="max-w-xs"
+            className={inputVariants({ size: "sm", className: "max-w-xs" })}
             placeholder="Paste API token"
             autoComplete="off"
             value={token}

@@ -9,6 +9,7 @@ import type {
 import { formatApprovalAge, RECONFIRM_AGE_SECONDS } from "@shared/chat";
 import { flattenArgsPreview, statusAfterDecision } from "@shared/utils";
 import { useMemo, useRef, useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ShieldAlertIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
@@ -195,7 +196,7 @@ export default function ApprovalRequestSection({
 
       <div className="mt-3 flex items-center gap-2">
         <TextField
-          className="flex-1"
+          className={inputVariants({ size: "sm", className: "flex-1" })}
           value={feedback}
           onChange={setFeedback}
           isDisabled={locked}

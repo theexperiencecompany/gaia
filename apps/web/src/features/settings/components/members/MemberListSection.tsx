@@ -53,8 +53,8 @@ export function MemberListSection({
             </Chip>
           ) : (
             <Button
-              size="sm"
               variant="danger-soft"
+              size="sm"
               isPending={removingUserId === member.user_id}
               onPress={() => void remove(member)}
             >

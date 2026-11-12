@@ -10,7 +10,10 @@ import {
 import type { ComponentType } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { tabsVariants } from "@/components/shared/controlVariants";
+import {
+  inputVariants,
+  tabsVariants,
+} from "@/components/shared/controlVariants";
 import { shapeVariants } from "@/components/shared/shape";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { track } from "@/lib/analytics";
@@ -118,7 +121,7 @@ export default function SkillsManagement() {
           aria-label="Search skills"
           value={query}
           onChange={setQuery}
-          className="max-w-56"
+          className={inputVariants({ size: "sm", className: "max-w-56" })}
         >
           <SearchField.Group>
             <SearchField.SearchIcon>

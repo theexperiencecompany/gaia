@@ -10,6 +10,7 @@ import {
 } from "@icons";
 import { type ReactNode, useState } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { devicesApi } from "@/features/devices/api/devicesApi";
 import { PAIRING_CODE_LENGTH } from "@/features/devices/constants";
 import { useBridge } from "@/features/devices/hooks/useBridge";
@@ -216,7 +217,10 @@ function CliOnboardingSteps({
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <Input
-                className="max-w-[12rem]"
+                className={inputVariants({
+                  size: "sm",
+                  className: "max-w-[12rem]",
+                })}
                 placeholder="e.g. NS2V-YC5S"
                 autoComplete="off"
                 value={code}

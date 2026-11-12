@@ -54,15 +54,15 @@ function ServerStateIndicator({
   if (state === "error")
     return (
       <Tooltip>
-        <Button
+        <GaiaButton
+          variant="warning-soft"
           size="sm"
-          variant="secondary"
           isDisabled={disabled}
           onPress={onRetry}
         >
           <RedoIcon width={14} height={14} />
           Retry
-        </Button>
+        </GaiaButton>
         <Tooltip.Content>{error ?? "Failed to connect"}</Tooltip.Content>
       </Tooltip>
     );

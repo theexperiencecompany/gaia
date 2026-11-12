@@ -174,10 +174,10 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
           <div className="flex items-center gap-2">
             {isTrackedTodo(todo) && <OpenTodoChatButton todoId={todo.id} />}
             <Button
+              variant="danger-soft"
               type="button"
               isIconOnly
               size="sm"
-              variant="danger-soft"
               onPress={handleDelete}
               aria-label="Delete todo"
             >

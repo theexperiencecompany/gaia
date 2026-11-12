@@ -14,9 +14,9 @@ export function InstanceSetupNotice() {
     return (
       <Tooltip>
         <LinkButton
+          variant="warning-soft"
           href={COMPOSIO_SETUP_PATH}
           size="sm"
-          variant="secondary"
           className="shrink-0 text-xs"
         >
           Set up

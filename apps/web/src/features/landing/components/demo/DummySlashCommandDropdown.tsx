@@ -4,6 +4,7 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useMemo, useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
@@ -551,7 +552,12 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
           {openedViaButton && (
             <div className="flex items-center gap-2 p-3">
               <div className="flex-1">
-                <InputGroup className={shapeVariants({ shape: "pill" })}>
+                <InputGroup
+                  className={inputVariants({
+                    size: "sm",
+                    className: shapeVariants({ shape: "pill" }),
+                  })}
+                >
                   <InputGroup.Prefix>
                     <SearchIcon size={16} />
                   </InputGroup.Prefix>

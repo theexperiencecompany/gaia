@@ -36,3 +36,9 @@ export const sliderVariants = tv({
   variants: { size: { sm: "gaia-slider-sm", md: "" } },
   defaultVariants: { size: "md" },
 });
+
+/** v2's small text field (32px, 8px inset); on a TextField root or a bare Input. */
+export const inputVariants = tv({
+  variants: { size: { sm: "gaia-input-sm", md: "" } },
+  defaultVariants: { size: "md" },
+});
