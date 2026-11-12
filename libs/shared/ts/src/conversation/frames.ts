@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type {
   ConversationEvent,
+  ConversationUpdatedFrame,
   EntryFrame,
   EntryUpdatedFrame,
   LiveTask,
@@ -27,6 +28,7 @@ export const FRAME_KIND = {
   WORK_DELTA: "work_delta",
   RETRACT: "retract",
   STATE: "state",
+  CONVERSATION_UPDATED: "conversation_updated",
 } as const;
 
 export const DISPLAY_STATE = {
@@ -197,6 +199,11 @@ const StateFrameSchema = z.object({
   work: z.array(LiveTaskSchema),
 }) satisfies z.ZodType<StateFrame>;
 
+const ConversationUpdatedFrameSchema = z.object({
+  kind: z.literal(FRAME_KIND.CONVERSATION_UPDATED),
+  description: z.string(),
+}) satisfies z.ZodType<ConversationUpdatedFrame>;
+
 export const ConversationFrameSchema = z.discriminatedUnion("kind", [
   EntryFrameSchema,
   EntryUpdatedFrameSchema,
@@ -204,6 +211,7 @@ export const ConversationFrameSchema = z.discriminatedUnion("kind", [
   WorkDeltaFields.extend({ payload: deltaPayload }),
   RetractFrameSchema,
   StateFrameSchema,
+  ConversationUpdatedFrameSchema,
 ]);
 
 const ConversationEventSchema = z.object({

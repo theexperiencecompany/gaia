@@ -1,4 +1,4 @@
-export { ENTRY_KIND } from "./entries";
+export { ENTRY_KIND, FAILURE_REASON } from "./entries";
 export type { ConversationStreamEvent, FrameParseResult } from "./frames";
 export { DISPLAY_STATE, FRAME_KIND, parseConversationEvent } from "./frames";
 export type {

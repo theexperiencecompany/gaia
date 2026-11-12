@@ -47,11 +47,71 @@ describe("parseConversationEvent", () => {
         reply_to: null,
         retry_of: null,
         file_ids: [],
+        files: [],
+        selected_tool: null,
+        tool_category: null,
+        selected_workflow: null,
+        selected_calendar_event: null,
+        reply_to_message: null,
         voice: false,
         reaction: null,
         revision: 0,
       },
     });
+  });
+
+  it("parses a user message's attachments and send selections", () => {
+    const sent = {
+      kind: "user_message",
+      id: "m1",
+      text: "summarise this",
+      surface: "web",
+      file_ids: ["f1"],
+      files: [
+        { fileId: "f1", filename: "q3.pdf", url: "https://files/q3.pdf" },
+      ],
+      selected_tool: "gmail_send",
+      tool_category: "gmail",
+      selected_workflow: {
+        id: "w1",
+        title: "Weekly digest",
+        description: "Digest the week",
+        steps: [{ id: "s1", title: "Read", description: "r", category: "x" }],
+      },
+      reply_to_message: { id: "m0", content: "earlier", role: "assistant" },
+    };
+    const frame = frameOf({ kind: "entry", seq: 1, at: AT, entry: sent });
+    expect(frame).toMatchObject({ entry: sent });
+  });
+
+  it("parses a title update", () => {
+    const updated = { kind: "conversation_updated", description: "Q3 plan" };
+    expect(frameOf(updated)).toEqual(updated);
+  });
+
+  it("parses why a reply failed, and the target a reply quotes when it opens", () => {
+    expect(
+      frameOf({
+        kind: "entry",
+        seq: 2,
+        at: AT,
+        entry: { ...settled("failed", []), failure: "step_limit" },
+      }),
+    ).toMatchObject({ entry: { failure: "step_limit" } });
+    expect(
+      frameOf({
+        kind: "entry",
+        seq: 2,
+        at: AT,
+        entry: {
+          kind: "reply",
+          id: "e",
+          reply_id: "r",
+          attempt_id: "a",
+          quote_target: "m1",
+        },
+      }),
+    ).toMatchObject({ entry: { quote_target: "m1" } });
   });
 
   it("parses every entry kind the server can append", () => {

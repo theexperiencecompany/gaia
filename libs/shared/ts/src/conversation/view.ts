@@ -223,6 +223,9 @@ export function applyFrame(
       return applied(retract(view, frame.attempt_id));
     case FRAME_KIND.STATE:
       return applied(applyState(view, frame));
+    // The title is the conversation's metadata, held with the conversation list, not in the log's view.
+    case FRAME_KIND.CONVERSATION_UPDATED:
+      return applied(view);
     default: {
       const unhandled: never = frame;
       return unhandled;

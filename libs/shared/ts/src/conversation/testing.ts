@@ -1,3 +1,4 @@
+import type { FailureReason, ToolDataEntry } from "../api/generated";
 import type {
   ConversationFrame,
   DisplayState,
@@ -25,6 +26,12 @@ export const userMessage = (
   reply_to: null,
   retry_of: null,
   file_ids: [],
+  files: [],
+  selected_tool: null,
+  tool_category: null,
+  selected_workflow: null,
+  selected_calendar_event: null,
+  reply_to_message: null,
   voice: false,
   reaction,
   revision,
@@ -35,6 +42,7 @@ export const reply = (
   attemptId: string,
   text = "",
   revision = 0,
+  quoteTarget: string | null = null,
 ): Entry => ({
   kind: "reply",
   id: `entry-${replyId}`,
@@ -44,6 +52,7 @@ export const reply = (
   tool_data: [],
   follow_up_actions: [],
   heard_through: null,
+  quote_target: quoteTarget,
   revision,
 });
 
@@ -53,6 +62,7 @@ export const replySettled = (
   through: number,
   quoteTarget: string | null = null,
   outcome: "answered" | "stopped" | "failed" | "silent" = "answered",
+  failure: FailureReason | null = null,
 ): Entry => ({
   kind: "reply_settled",
   id: `settled-${replyId}`,
@@ -61,25 +71,33 @@ export const replySettled = (
   answers,
   through,
   quote_target: quoteTarget,
+  failure,
 });
 
-export const workStarted = (taskId: string, causeThrough: number): Entry => ({
+export const workStarted = (
+  taskId: string,
+  causeThrough: number,
+  joins: string | null = null,
+): Entry => ({
   kind: "work_started",
   id: `started-${taskId}`,
   task_id: taskId,
   cause_through: causeThrough,
   answers: [],
+  joins,
 });
 
 export const workFinished = (
   taskId: string,
   outcome: "done" | "failed" | "cancelled" | "lost" = "done",
+  toolData: ToolDataEntry[] = [],
 ): Entry => ({
   kind: "work_finished",
   id: `finished-${taskId}`,
   task_id: taskId,
   outcome,
   report: "report",
+  tool_data: toolData,
 });
 
 export const approvalRequested = (
@@ -90,6 +108,8 @@ export const approvalRequested = (
   id: `requested-${approvalId}`,
   task_id: taskId,
   approval_id: approvalId,
+  summary: "",
+  expires_at: null,
 });
 
 export const approvalDecided = (approvalId: string): Entry => ({
