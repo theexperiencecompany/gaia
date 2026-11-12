@@ -710,12 +710,16 @@ class TestPublishOutboundReaction:
             ),
         ):
             ok = await od.publish_outbound_reaction(
-                ConversationSource.TELEGRAM, "user-1", "777", "👍"
+                ConversationSource.TELEGRAM, "user-1", "777", "👍", replaces_emoji="🔎"
             )
         assert ok is od.OutboundResult.PUBLISHED
         _queue, body = publisher.publish_outbound.await_args.args
         envelope = json.loads(body)
-        assert envelope["reaction"] == {"target_platform_message_id": "777", "emoji": "👍"}
+        assert envelope["reaction"] == {
+            "target_platform_message_id": "777",
+            "emoji": "👍",
+            "replaces_emoji": "🔎",
+        }
         assert envelope.get("text") is None
         assert envelope["destination_id"] == "4242"
 

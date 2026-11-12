@@ -59,6 +59,7 @@ from app.models.chat_models import (
     ConversationSource,
     ConversationSyncItem,
     MessageModel,
+    MessageReaction,
     SavedSubagentGroup,
     SystemPurpose,
     ToolDataEntry,
@@ -420,6 +421,32 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """Set one message's pinned flag and advance the conversation's updatedAt."""
         if not await self._update_entry(
             conversation_id, user_id, {"id": message_id}, {"$set": {"pinned": pinned}}
+        ):
+            return False
+        await self._set_fields(conversation_id, user_id, {})
+        return True
+
+    async def set_message_reaction(
+        self,
+        conversation_id: str,
+        *,
+        user_id: str,
+        message_id: str,
+        reaction: MessageReaction,
+        only_if_unset: bool = False,
+    ) -> bool:
+        """Set a user message's reaction and advance updatedAt; False when nothing was written.
+
+        only_if_unset writes only while the message has no reaction, so a late one never replaces an earlier pick.
+        """
+        match: dict[str, object] = {"id": message_id, "type": USER_MESSAGE_TYPE}
+        if only_if_unset:
+            match["reaction"] = None
+        if not await self._update_entry(
+            conversation_id,
+            user_id,
+            match,
+            {"$set": {"reaction": reaction.model_dump(mode="json")}},
         ):
             return False
         await self._set_fields(conversation_id, user_id, {})

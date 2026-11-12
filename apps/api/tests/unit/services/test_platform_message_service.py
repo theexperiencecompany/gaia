@@ -220,6 +220,7 @@ class TestDeliverReactionToPlatform:
             "👍",
             destination_override=None,
             is_channel=False,
+            replaces_emoji=None,
         )
 
     async def test_a_group_conversation_reacts_in_its_channel(self) -> None:
@@ -239,7 +240,12 @@ class TestDeliverReactionToPlatform:
             ) as pub,
         ):
             ok = await pms.deliver_reaction_to_platform(
-                ConversationSource.SLACK, "user-1", "1700.1", "👍", conversation_id="conv-g"
+                ConversationSource.SLACK,
+                "user-1",
+                "1700.1",
+                "👍",
+                conversation_id="conv-g",
+                replaces_emoji="🔎",
             )
 
         assert ok is True
@@ -251,6 +257,7 @@ class TestDeliverReactionToPlatform:
             "👍",
             destination_override="C-group-1",
             is_channel=True,
+            replaces_emoji="🔎",
         )
 
     @pytest.mark.parametrize("result", [OutboundResult.SKIPPED, OutboundResult.FAILED])

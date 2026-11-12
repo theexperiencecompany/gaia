@@ -4,7 +4,9 @@
 Element i becomes the entry at seq i+1; the array stays in place until
 --drop-embedded. Safe to re-run: a migrated conversation the old build has not
 written since is left alone, and one it has written is merged by message id.
-emoji_ack messages are copied as ordinary entries (a later change folds them).
+Every pass folds each emoji_ack message into a reaction on the user message it
+answered (kept with empty text when it has cards, removed when it has none, left
+as plain text when its target is gone); --verify fails while any ack is unfolded.
 
 Usage::
 
@@ -50,7 +52,7 @@ async def _heads(
 
 async def _migrate(args: argparse.Namespace) -> int:
     actions: Counter[MigrationAction] = Counter()
-    copied = 0
+    copied = folded = 0
     async for ref in _heads(
         lambda after: conversation_entries_migration.heads_with_embedded(
             after_head_id=after, since=args.since, batch=_BATCH
@@ -59,17 +61,18 @@ async def _migrate(args: argparse.Namespace) -> int:
         outcome = await conversation_entries_migration.migrate(ref, apply=args.apply)
         actions[outcome.action] += 1
         copied += outcome.copied
+        folded += outcome.folded
         if outcome.action in {MigrationAction.REFUSED, MigrationAction.RACED}:
             print(f"  [{outcome.action}] {ref.conversation_id} {outcome.reason}")
         elif outcome.action is not MigrationAction.UNCHANGED:
             print(
                 f"  [{outcome.action}] {ref.conversation_id}: "
-                f"{outcome.copied} copied, {outcome.rewritten} rewritten"
+                f"{outcome.copied} copied, {outcome.rewritten} rewritten, {outcome.folded} acks folded"
             )
     print(
         "Summary: "
         + ", ".join(f"{n} {a}" for a, n in sorted(actions.items()))
-        + f"; {copied} entries"
+        + f"; {copied} entries; {folded} emoji_ack messages folded into reactions"
     )
     if not args.apply:
         print("Dry run only. Re-run with --apply to write.")

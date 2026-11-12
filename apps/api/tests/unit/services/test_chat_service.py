@@ -12,7 +12,8 @@ All external dependencies (Redis/stream_manager, MongoDB, agent, LLM) are
 mocked so tests exercise service logic only.
 """
 
-from collections.abc import AsyncGenerator, Iterator
+import asyncio
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
 import contextlib
 from datetime import datetime, timedelta
 import json
@@ -30,8 +31,9 @@ from app.agents.core.background.session import (
     teardown_session,
 )
 from app.constants.chat import EMPTY_RESPONSE_FALLBACK, TURN_REPLY_NOT_SAVED
+from app.constants.reactions import ReactionReason
 from app.core.stream_manager import stream_manager as _stream_manager
-from app.models.chat_models import ConversationModel, MessageKind
+from app.models.chat_models import ConversationModel, MessageReaction, ReactionBy
 from app.models.message_models import MessageRequestWithHistory, SelectedWorkflowData
 from app.models.user_models import AuthenticatedUser
 from app.services.chat.chunks import (
@@ -55,6 +57,7 @@ from app.services.chat.stream import (
     _StreamState,
     run_chat_stream_background,
 )
+from app.services.conversation.ack import ReactionDecision
 from app.utils.stream_publishers import ExtractedToolData
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
@@ -98,6 +101,7 @@ def _patch_stream_manager(sm: MagicMock) -> Iterator[MagicMock]:
             "app.services.chat.chunks.stream_manager",
             "app.services.chat.state.stream_manager",
             "app.services.chat.artifact_forwarder.stream_manager",
+            "app.services.conversation.reaction.stream_manager",
             "app.utils.stream_publishers.stream_manager",
         ):
             stack.enter_context(patch(path, sm))
@@ -429,28 +433,20 @@ class TestSaveBotReply:
     async def test_conversation_id_passed_to_update(self, test_user, basic_body):
         await _saved_bot_reply(test_user, basic_body, conversation_id="specific_conv_id")
 
-    async def test_react_ack_is_stamped_emoji_ack_with_target(self, test_user, basic_body) -> None:
-        """A comms REACT turn saves the bare emoji with kind + target so every surface (reload, sync, second device) renders it as a reaction badge."""
-        bot_msg = await _saved_bot_reply(
-            test_user,
-            basic_body,
-            complete_message="😎",
-            kind=MessageKind.EMOJI_ACK,
-            reacts_to_message_id="umsg_1",
-        )
-        assert bot_msg.response == "😎"
-        assert bot_msg.kind is MessageKind.EMOJI_ACK
-        assert bot_msg.reacts_to_message_id == "umsg_1"
-
-    async def test_plain_reply_stays_text_without_target(self, test_user, basic_body):
-        bot_msg = await _saved_bot_reply(test_user, basic_body, complete_message="all set")
-        assert bot_msg.kind is MessageKind.TEXT
-        assert bot_msg.reacts_to_message_id is None
-
 
 # ---------------------------------------------------------------------------
 # run_chat_stream_background — top-level orchestrator
 # ---------------------------------------------------------------------------
+
+
+def _reacted(emoji: str) -> ReactionDecision:
+    return ReactionDecision(emoji=emoji, reason=ReactionReason.REACTED)
+
+
+def _reactions(frames: list[tuple[str, dict[str, Any]]]) -> list[object]:
+    return [
+        frame["reaction"] for sid, frame in frames if "reaction" in frame and sid == "stream_turn"
+    ]
 
 
 def _make_stream_manager_mock(is_cancelled: bool = False) -> MagicMock:
@@ -507,6 +503,24 @@ class TestRunChatStreamBackground:
         """
         with patch("app.services.chat.artifact_forwarder.redis_cache.redis", None):
             yield
+
+    @pytest.fixture(autouse=True)
+    def instant_decision(self) -> Iterator[AsyncMock]:
+        """Stub JEV's decision to "no reaction"; a test that wants one sets the return value."""
+        with patch(
+            "app.services.conversation.reaction.decide_reaction",
+            new=AsyncMock(return_value=ReactionDecision(reason=ReactionReason.NEEDS_WORDS)),
+        ) as decide:
+            yield decide
+
+    @pytest.fixture(autouse=True)
+    def reaction_writes(self) -> Iterator[AsyncMock]:
+        """Stub the reaction field's write; it reports applied unless a test says otherwise."""
+        with patch(
+            "app.services.conversation.reaction.conversation_repository.set_message_reaction",
+            new=AsyncMock(return_value=True),
+        ) as write:
+            yield write
 
     @pytest.fixture(autouse=True)
     def saved_user_message(self) -> Iterator[AsyncMock]:
@@ -1998,6 +2012,9 @@ class TestRunChatStreamBackground:
         user: AuthenticatedUser,
         *reply_pieces: str,
         stream_manager: MagicMock | None = None,
+        body_update: dict[str, object] | None = None,
+        delegated: bool = False,
+        setup: Callable[[], Awaitable[None]] | None = None,
     ) -> tuple[list[tuple[str, dict[str, Any]]], AsyncMock, MagicMock]:
         """Run one turn whose comms reply streams as reply_pieces; return the JSON frames published, the save and the capture.
 
@@ -2005,10 +2022,13 @@ class TestRunChatStreamBackground:
         """
         body = MessageRequestWithHistory(
             message="Booked it",
-            messages=[{"role": "user", "content": "Booked it"}],
+            messages=[
+                {"role": "assistant", "content": "Which flight?"},
+                {"role": "user", "content": "Booked it"},
+            ],
             conversation_id="conv_existing_123",
             turn_id="umsg_1",
-        )
+        ).model_copy(update=body_update or {})
         graph = ScriptedGraph(
             [
                 *(message_chunk_event(message_id="m1", content=piece) for piece in reply_pieces),
@@ -2017,19 +2037,25 @@ class TestRunChatStreamBackground:
         )
         sm = stream_manager or _make_stream_manager_mock()
         save = AsyncMock()
+
+        async def agent_setup(*_: object, **__: object) -> tuple[object, ...]:
+            # The pre-model work (context assembly) a real turn does before the model is called.
+            if setup is not None:
+                await setup()
+            return graph, {}, {"agent_name": "comms_agent", "configurable": {}}
+
         with (
             _patch_stream_manager(sm),
             patch("app.helpers.agent_helpers.stream_manager", sm),
-            patch(
-                "app.agents.core.agent._core_agent_logic",
-                new=AsyncMock(
-                    return_value=(graph, {}, {"agent_name": "comms_agent", "configurable": {}})
-                ),
-            ),
+            patch("app.agents.core.agent._core_agent_logic", new=agent_setup),
             patch("app.services.analytics_service.capture"),
             patch("app.services.chat.stream.save_bot_reply", new=save),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
             patch("app.services.chat.stream.capture") as capture,
+            patch(
+                "app.services.chat.stream._executor_delegation",
+                return_value=(delegated, False),
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_turn",
@@ -2044,18 +2070,151 @@ class TestRunChatStreamBackground:
         ]
         return frames, save, capture
 
-    async def test_a_react_turn_tells_the_client_to_fold_the_reply_into_a_reaction(
-        self, test_user: AuthenticatedUser
+    async def test_an_instant_reaction_is_published_and_stored_on_the_users_message(
+        self, test_user: AuthenticatedUser, instant_decision: AsyncMock, reaction_writes: AsyncMock
     ) -> None:
+        instant_decision.return_value = _reacted("🔎")
+
+        frames, _, _ = await self._run_turn(test_user, "Done, it's booked.")
+
+        instant_decision.assert_awaited_once_with("Booked it", "Which flight?")
+        reaction_writes.assert_awaited_once_with(
+            "conv_existing_123",
+            user_id=USER_ID,
+            message_id="umsg_1",
+            reaction=MessageReaction(emoji="🔎", by=ReactionBy.JEV),
+            only_if_unset=True,
+        )
+        assert _reactions(frames) == [{"message_id": "umsg_1", "emoji": "🔎", "by": "jev"}]
+        # A reaction is not the answer: the turn still streams and closes after it.
+        order = [next(iter(frame)) for _, frame in frames]
+        assert order.index("reaction") < order.index("main_response_complete")
+        assert "response" in order
+
+    @pytest.mark.parametrize(
+        "body_update",
+        [
+            {"voice_mode": True},
+            {
+                "selectedWorkflow": SelectedWorkflowData(
+                    id="wf_1a2b", title="Daily", description="d", steps=[]
+                )
+            },
+            {"message": " ", "messages": [{"role": "user", "content": " "}]},
+        ],
+        ids=["voice", "workflow-run", "no-words"],
+    )
+    async def test_no_instant_reaction_for_a_message_the_user_did_not_type(
+        self,
+        test_user: AuthenticatedUser,
+        instant_decision: AsyncMock,
+        body_update: dict[str, object],
+    ) -> None:
+        instant_decision.return_value = _reacted("🔎")
+
+        frames, _, _ = await self._run_turn(test_user, "ok", body_update=body_update)
+
+        instant_decision.assert_not_awaited()
+        assert _reactions(frames) == []
+
+    async def test_no_frame_when_the_instant_classifier_picks_none(
+        self, test_user: AuthenticatedUser, instant_decision: AsyncMock, reaction_writes: AsyncMock
+    ) -> None:
+        frames, save, _ = await self._run_turn(test_user, "Booked your 9am flight.")
+
+        instant_decision.assert_awaited_once()
+        reaction_writes.assert_not_awaited()
+        assert _reactions(frames) == []
+        assert save.await_args.kwargs["reply"].complete_message == "Booked your 9am flight."
+
+    async def test_a_failed_instant_reaction_leaves_the_turn_untouched(
+        self, test_user: AuthenticatedUser, instant_decision: AsyncMock, reaction_writes: AsyncMock
+    ) -> None:
+        instant_decision.return_value = _reacted("🔎")
+        reaction_writes.side_effect = RuntimeError("mongo down")
+
+        frames, save, _ = await self._run_turn(test_user, "Booked your 9am flight.")
+
+        assert _reactions(frames) == []
+        assert "main_response_complete" in [next(iter(frame)) for _, frame in frames]
+        assert save.await_args.kwargs["reply"].complete_message == "Booked your 9am flight."
+
+    async def test_the_chat_models_reaction_replaces_an_instant_one(
+        self, test_user: AuthenticatedUser, instant_decision: AsyncMock, reaction_writes: AsyncMock
+    ) -> None:
+        instant_decision.return_value = _reacted("🔎")
+
+        reacted = asyncio.Event()
+        reaction_writes.side_effect = lambda *_, **__: reacted.set() or True
+
+        async def until_reacted() -> None:
+            await reacted.wait()
+
+        frames, _, _ = await self._run_turn(test_user, "REACT: 😎", setup=until_reacted)
+
+        assert _reactions(frames) == [
+            {"message_id": "umsg_1", "emoji": "🔎", "by": "jev"},
+            {"message_id": "umsg_1", "emoji": "😎", "by": "chat_model"},
+        ]
+        chat_model_write = reaction_writes.await_args_list[-1]
+        assert chat_model_write.kwargs == {
+            "user_id": USER_ID,
+            "message_id": "umsg_1",
+            "reaction": MessageReaction(emoji="😎", by=ReactionBy.CHAT_MODEL),
+        }
+
+    async def test_an_instant_reaction_still_deciding_never_lands_after_the_chat_models(
+        self, test_user: AuthenticatedUser, instant_decision: AsyncMock, reaction_writes: AsyncMock
+    ) -> None:
+        never = asyncio.Event()
+
+        async def slow_decision(*_: object) -> ReactionDecision:
+            await never.wait()
+            return _reacted("🔎")
+
+        instant_decision.side_effect = slow_decision
+
         frames, _, _ = await self._run_turn(test_user, "REACT: 😎")
 
-        acks = [(sid, frame) for sid, frame in frames if "emoji_ack" in frame]
-        assert acks == [
-            ("stream_turn", {"emoji_ack": {"emoji": "😎", "reacts_to_message_id": "umsg_1"}})
+        assert _reactions(frames) == [{"message_id": "umsg_1", "emoji": "😎", "by": "chat_model"}]
+        assert [c.kwargs["reaction"].by for c in reaction_writes.await_args_list] == [
+            ReactionBy.CHAT_MODEL
         ]
-        # Sent before the completion frame, so the client never closes the turn as an empty bubble.
-        order = [next(iter(frame)) for _, frame in frames]
-        assert order.index("emoji_ack") < order.index("main_response_complete")
+
+    async def test_a_reaction_turn_that_did_no_work_saves_no_bot_message(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        frames, save, capture = await self._run_turn(test_user, "REACT: 😎")
+
+        save.assert_not_awaited()
+        assert [frame for _, frame in frames if "response" in frame] == []
+        capture.assert_any_call(UserId(USER_ID), ChatTurnReacted(emoji="😎"))
+        assert [type(c.args[1]) for c in capture.call_args_list].count(ChatTurnReacted) == 1
+
+    async def test_a_reaction_turn_that_handed_off_work_saves_a_cards_only_message(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        _, save, _ = await self._run_turn(test_user, "REACT: 😎", delegated=True)
+
+        # The executor's cards attach to this message later, so it exists with no text of its own.
+        save.assert_awaited_once()
+        assert save.await_args.kwargs["reply"].complete_message == ""
+
+    async def test_a_reaction_turn_with_tool_cards_keeps_them_on_a_message_with_no_text(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        card = {"tool_name": "calendar_events", "data": {"events": []}, "timestamp": "t"}
+
+        async def recovered(
+            _stream_id: str, message: str, tool_data: dict[str, Any]
+        ) -> tuple[str, dict[str, Any]]:
+            return message, {"tool_data": [card]}
+
+        with patch("app.services.chat.stream.recover_stream_state", new=recovered):
+            _, save, _ = await self._run_turn(test_user, "REACT: 😎")
+
+        saved = save.await_args.kwargs["reply"]
+        assert (saved.complete_message, saved.tool_data["tool_data"]) == ("", [card])
 
     @pytest.mark.regression
     async def test_a_reaction_acknowledging_a_hand_off_lands_before_the_work_finishes(
@@ -2067,7 +2226,7 @@ class TestRunChatStreamBackground:
 
         async def the_executor_wait(stream_id: str, timeout: float) -> bool:
             published_before_the_wait.append(
-                any("emoji_ack" in call.args[1] for call in sm.publish_chunk.call_args_list)
+                any('"reaction"' in call.args[1] for call in sm.publish_chunk.call_args_list)
             )
             return True
 
@@ -2076,24 +2235,13 @@ class TestRunChatStreamBackground:
 
         assert published_before_the_wait == [True]
 
-    async def test_a_react_turn_is_saved_and_counted_as_a_reaction_to_the_users_message(
-        self, test_user: AuthenticatedUser
-    ) -> None:
-        _, save, capture = await self._run_turn(test_user, "REACT: 😎")
-
-        saved = save.await_args.kwargs["reply"]
-        assert saved.complete_message == "😎"
-        assert saved.kind is MessageKind.EMOJI_ACK
-        assert saved.reacts_to_message_id == "umsg_1"
-        capture.assert_any_call(UserId(USER_ID), ChatTurnReacted(emoji="😎"))
-
-    async def test_a_plain_reply_is_neither_folded_nor_counted_as_a_reaction(
+    async def test_a_plain_reply_is_saved_as_text_and_not_counted_as_a_reaction(
         self, test_user: AuthenticatedUser
     ) -> None:
         frames, save, capture = await self._run_turn(test_user, "Booked your 9am flight.")
 
-        assert not [frame for _, frame in frames if "emoji_ack" in frame]
-        assert save.await_args.kwargs["reply"].kind is MessageKind.TEXT
+        assert _reactions(frames) == []
+        assert save.await_args.kwargs["reply"].complete_message == "Booked your 9am flight."
         assert ChatTurnReacted not in [type(c.args[1]) for c in capture.call_args_list]
 
     @pytest.mark.regression
@@ -2104,8 +2252,7 @@ class TestRunChatStreamBackground:
         frames, _, _ = await self._run_turn(test_user, "<EM", "OJI>👍</EM", "OJI>")
 
         assert [frame for _, frame in frames if "response" in frame] == []
-        acks = [frame["emoji_ack"] for _, frame in frames if "emoji_ack" in frame]
-        assert acks == [{"emoji": "👍", "reacts_to_message_id": "umsg_1"}]
+        assert _reactions(frames) == [{"message_id": "umsg_1", "emoji": "👍", "by": "chat_model"}]
 
     @pytest.mark.regression
     async def test_a_reaction_beside_a_message_streams_and_saves_only_the_message(
@@ -2117,14 +2264,8 @@ class TestRunChatStreamBackground:
 
         streamed = "".join(frame["response"] for _, frame in frames if "response" in frame)
         assert streamed == "and more"
-        assert not [frame for _, frame in frames if "emoji_ack" in frame]
-        assert (
-            save.await_args.kwargs["reply"].complete_message,
-            save.await_args.kwargs["reply"].kind,
-        ) == (
-            "and more",
-            MessageKind.TEXT,
-        )
+        assert _reactions(frames) == []
+        assert save.await_args.kwargs["reply"].complete_message == "and more"
 
     @pytest.mark.regression
     async def test_a_silence_bubble_after_the_message_is_never_published_or_saved(

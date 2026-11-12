@@ -24,7 +24,7 @@ import pytest
 from app.constants.chat import EMPTY_RESPONSE_FALLBACK
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
-from app.models.chat_models import MessageKind, MessageModel
+from app.models.chat_models import MessageModel
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
@@ -394,20 +394,27 @@ class TestAReactionTheCatalogCannotCarryIsDeliveredAsText:
 
         bot, _ = await persist(state, FAKE_USER)
 
-        assert (bot.kind, bot.response, bot.reacts_to_message_id) == (
-            MessageKind.TEXT,
-            "<EMOJI>ok</EMOJI>",
-            None,
-        )
+        assert bot.response == "<EMOJI>ok</EMOJI>"
         assert state.saved
 
-    async def test_a_real_emoji_still_saves_an_emoji_ack(self):
+    async def test_a_real_emoji_is_a_reaction_and_saves_no_bot_message(self):
         state = _StreamState()
         state.complete_message = "<EMOJI>👍</EMOJI>"
 
-        bot, _ = await persist(state, FAKE_USER)
+        with (
+            patch.object(
+                chat_stream,
+                "recover_stream_state",
+                new=AsyncMock(side_effect=lambda _sid, msg, td: (msg, td)),
+            ),
+            patch.object(chat_stream, "react_as_chat_model", new=AsyncMock()) as react,
+            patch("app.services.chat.persistence.update_messages", new=AsyncMock()) as update,
+            patch.object(chat_stream, "capture"),
+        ):
+            await _persist_turn("s1", _body(), FAKE_USER, CONV, state)
 
-        assert (bot.kind, bot.response) == (MessageKind.EMOJI_ACK, "👍")
+        assert react.await_args.args[1] == "👍"
+        update.assert_not_awaited()
         assert state.saved
 
 

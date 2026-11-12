@@ -57,11 +57,11 @@ from app.services.bot.stream_frames import (
     approval_frame,
     comment_keepalive_frame,
     done_frame,
-    emoji_ack_frame,
     error_frame,
     keepalive_frame,
     message_boundary_frame,
     notice_frame,
+    reaction_frame,
     session_token_frame,
     stream_error_frame,
     text_frame,
@@ -456,13 +456,9 @@ def _bot_message_frame(data: BotWebStreamPayload) -> tuple[str | None, bool]:
     if "message_boundary" in present:
         return message_boundary_frame(data.message_boundary), False
 
-    # A turn resolved to a comms `<EMOJI>…</EMOJI>` ack: no text was streamed,
-    # and the bot delivers the bare emoji as the turn's reply.
-    if "emoji_ack" in present and data.emoji_ack is not None:
-        return emoji_ack_frame(
-            emoji=data.emoji_ack.emoji,
-            reacts_to_message_id=data.emoji_ack.reacts_to_message_id,
-        ), False
+    # GAIA reacted to the user's message: the bot sets it on the inbound platform message.
+    if data.reaction is not None:
+        return reaction_frame(data.reaction), False
 
     # Skip web-only fields.
     if present & _WEB_ONLY_STREAM_FIELDS:
