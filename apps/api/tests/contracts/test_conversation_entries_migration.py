@@ -743,3 +743,16 @@ async def test_the_entrypoint_parses_every_mode_and_exits_with_the_runs_code(
         "Rollback: rebuild embedded arrays from entries.",
     ):
         assert phrase in help_text
+
+
+async def test_a_conversation_whose_elements_all_lack_ids_migrates_and_reads(
+    migration: ConversationEntriesMigration, raw_collection: Any
+) -> None:
+    unnamed = [{"type": "user", "response": "a"}, {"type": "bot", "response": "b"}]
+    ref = await _legacy(raw_collection, unnamed)
+
+    assert (await migration.migrate(ref, apply=True)).action is MigrationAction.COPIED
+
+    assert await _read_ids(ref) == ["legacy-1", "legacy-2"]
+    assert (await migration.verify(ref)).ok
+    assert (await migration.migrate(ref, apply=True)).action is MigrationAction.UNCHANGED

@@ -93,10 +93,15 @@ def element_hash(element: Mapping[str, object]) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def element_ids(elements: Sequence[Mapping[str, object]]) -> list[str]:
-    """Each element's entry id: its message_id, or a legacy id from its position when it has none."""
+def identified(
+    elements: Sequence[Mapping[str, object]],
+) -> list[tuple[str, Mapping[str, object]]]:
+    """Pair each element with its entry id: its message_id, or a legacy id from its position."""
     return [
-        str(element["message_id"]) if element.get("message_id") else f"{_LEGACY_ID_PREFIX}{n}"
+        (
+            str(element["message_id"]) if element.get("message_id") else f"{_LEGACY_ID_PREFIX}{n}",
+            element,
+        )
         for n, element in enumerate(elements, 1)
     ]
 
@@ -166,7 +171,8 @@ class ConversationEntriesMigration(ConversationRepository):
         """Copy or merge one conversation's embedded array into its entries (only report when not apply)."""
         head = await self._embedded_head(ref)
         elements = _elements(head)
-        ids = element_ids(elements)
+        pairs = identified(elements)
+        ids = [entry_id for entry_id, _ in pairs]
         duplicated = sorted({i for i in ids if ids.count(i) > 1})
         if duplicated:
             return MigrationOutcome(
@@ -175,12 +181,12 @@ class ConversationEntriesMigration(ConversationRepository):
                 reason=f"message ids repeat in the embedded array: {', '.join(duplicated)}",
             )
         if LOG_HEAD_FIELD not in head:
-            if apply and not await self._copy(ref, elements, ids):
+            if apply and not await self._copy(ref, pairs):
                 return MigrationOutcome(ref.conversation_id, MigrationAction.RACED)
             return MigrationOutcome(
                 ref.conversation_id, MigrationAction.COPIED, copied=len(elements)
             )
-        return await self._merge(ref, head, elements, ids, apply=apply)
+        return await self._merge(ref, head, pairs, apply=apply)
 
     async def verify(self, ref: HeadRef) -> VerifyReport:
         """Compare the embedded array with the entries: each element present, in order, unchanged since copied."""
@@ -196,7 +202,7 @@ class ConversationEntriesMigration(ConversationRepository):
         if head.get(MIGRATED_LAST_ID_FIELD) != last_embedded_id(elements):
             report.mismatches.append("written by the old build since its last pass: run --since")
         seqs: list[int] = []
-        for entry_id, element in zip(element_ids(elements), elements, strict=True):
+        for entry_id, element in identified(elements):
             entry = by_id.get(entry_id)
             if entry is None:
                 report.mismatches.append(f"{entry_id} has no entry")
@@ -278,9 +284,7 @@ class ConversationEntriesMigration(ConversationRepository):
             MIGRATION_HASH_FIELD: element_hash(element),
         }
 
-    async def _copy(
-        self, ref: HeadRef, elements: Sequence[Mapping[str, object]], ids: Sequence[str]
-    ) -> bool:
+    async def _copy(self, ref: HeadRef, pairs: Sequence[tuple[str, Mapping[str, object]]]) -> bool:
         """First pass: entries at seq 1..n, then log_head, if the array is still the one copied.
 
         No append reaches an unmigrated head, so its entries can only be a pass that
@@ -288,7 +292,7 @@ class ConversationEntriesMigration(ConversationRepository):
         """
         entries = [
             self._entry(ref, element, entry_id, seq)
-            for seq, (entry_id, element) in enumerate(zip(ids, elements, strict=True), 1)
+            for seq, (entry_id, element) in enumerate(pairs, 1)
         ]
         with store_errors("migration copy"):  # pragma: no mutate — error label only
             await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(_of(ref))
@@ -297,12 +301,12 @@ class ConversationEntriesMigration(ConversationRepository):
                 {
                     "_id": ObjectId(ref.head_id),
                     LOG_HEAD_FIELD: {"$exists": False},
-                    "$expr": {"$eq": [{"$size": "$messages"}, len(elements)]},
+                    "$expr": {"$eq": [{"$size": "$messages"}, len(pairs)]},
                 },
                 {
                     "$set": {
-                        LOG_HEAD_FIELD: len(elements),
-                        MIGRATED_LAST_ID_FIELD: last_embedded_id(elements),
+                        LOG_HEAD_FIELD: len(pairs),
+                        MIGRATED_LAST_ID_FIELD: last_embedded_id([e for _, e in pairs]),
                     }
                 },
             )
@@ -312,22 +316,20 @@ class ConversationEntriesMigration(ConversationRepository):
         self,
         ref: HeadRef,
         head: Mapping[str, object],
-        elements: Sequence[Mapping[str, object]],
-        ids: Sequence[str],
+        pairs: Sequence[tuple[str, Mapping[str, object]]],
         *,
         apply: bool,
     ) -> MigrationOutcome:
         """Later pass: append elements the entries lack, rewrite ones the old build changed, then re-mark the head."""
         await self.flush_outbox(ref.conversation_id, user_id=ref.user_id)
         by_id = {str(entry["id"]): entry for entry in await self._stored(ref)}
-        pairs = list(zip(ids, elements, strict=True))
         fresh = [(i, e) for i, e in pairs if i not in by_id]
         changed = [
             (i, e)
             for i, e in pairs
             if i in by_id and by_id[i].get(MIGRATION_HASH_FIELD) != element_hash(e)
         ]
-        last_id = last_embedded_id(elements)
+        last_id = last_embedded_id([element for _, element in pairs])
         if not fresh and not changed and head.get(MIGRATED_LAST_ID_FIELD) == last_id:
             return MigrationOutcome(ref.conversation_id, MigrationAction.UNCHANGED)
         outcome = MigrationOutcome(
