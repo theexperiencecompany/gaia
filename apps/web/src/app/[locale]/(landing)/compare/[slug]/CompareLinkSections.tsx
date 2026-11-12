@@ -1,5 +1,9 @@
 import type { getTranslations } from "next-intl/server";
 import { SiteLink } from "@/components/seo/SiteLink";
+import {
+  type ComparisonCategoryGroup,
+  comparisonCategoryPath,
+} from "@/features/comparisons/data/comparisonCategories";
 import type { ComparisonData } from "@/features/comparisons/data/comparisonsData";
 import type { PersonaData } from "@/features/personas/data/personasData";
 
@@ -8,7 +12,9 @@ type Translator = Awaited<ReturnType<typeof getTranslations>>;
 interface CompareLinkSectionsProps {
   readonly name: string;
   readonly alternativeHref: string | null;
-  readonly category: string;
+  readonly category: ComparisonCategoryGroup<ComparisonData>;
+  /** The comparisons hub page that lists this comparison. */
+  readonly hubHref: string;
   readonly relatedComparisons: readonly ComparisonData[];
   readonly relatedPersonas: readonly PersonaData[];
   readonly t: Translator;
@@ -42,7 +48,7 @@ export function CompareRelatedSections({
       {relatedComparisons.length > 0 && (
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            {t("comparisons.compare_more_tools", { category })}
+            {t("comparisons.compare_more_tools", { category: category.label })}
           </h2>
           <div className="grid gap-4 sm:grid-cols-3">
             {relatedComparisons.map((comp) => (
@@ -58,6 +64,15 @@ export function CompareRelatedSections({
               </SiteLink>
             ))}
           </div>
+          <SiteLink
+            href={comparisonCategoryPath(category.slug)}
+            className="mt-4 inline-block text-sm text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
+          >
+            {t("comparisons.all_category_comparisons", {
+              count: category.items.length,
+              category: category.label,
+            })}
+          </SiteLink>
         </section>
       )}
 
@@ -90,14 +105,26 @@ export function CompareRelatedSections({
 
 export function CompareExploreMore({
   name,
+  hubHref,
   t,
-}: Pick<CompareLinkSectionsProps, "name" | "t">) {
+}: Pick<CompareLinkSectionsProps, "name" | "hubHref" | "t">) {
   return (
     <section className="mb-16">
       <h2 className="mb-6 text-3xl font-semibold text-white">
         {t("common.explore_more")}
       </h2>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
+        <SiteLink
+          href={hubHref}
+          className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
+        >
+          <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+            {t("comparisons.hub_title")}
+          </h3>
+          <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
+            {t("comparisons.hub_subtitle")}
+          </p>
+        </SiteLink>
         <SiteLink
           href="/learn"
           className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"

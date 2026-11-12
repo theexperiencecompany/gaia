@@ -69,7 +69,10 @@ export function appPagePath(appSlug: string): string {
   return `/automate/with/${appSlug}`;
 }
 
-/** Every app with its combos, the apps with the most combos first. */
+/** An app with one combo gets no page of its own: the page would only repeat that combo. */
+const MIN_APP_PAGE_COMBOS = 2;
+
+/** Every app with a page, with its combos, the apps with the most combos first. */
 export function comboAppGroups(
   combos: readonly IntegrationCombo[],
 ): ComboAppGroup[] {
@@ -82,6 +85,7 @@ export function comboAppGroups(
     }
   }
   return [...byApp]
+    .filter(([, group]) => group.combos.length >= MIN_APP_PAGE_COMBOS)
     .map(([slug, group]) => ({
       slug,
       name: group.name,

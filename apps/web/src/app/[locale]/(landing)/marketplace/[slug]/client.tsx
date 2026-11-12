@@ -34,6 +34,8 @@ interface IntegrationDetailClientProps {
   automateCombos?: AutomateCombo[];
   /** Curated docs guides for this slug (server-resolved, fallback included). */
   docsGuides?: readonly DocsGuideLink[];
+  /** The marketplace directory page that lists this integration. */
+  directoryHref: string;
 }
 
 export function IntegrationDetailClient({
@@ -44,6 +46,7 @@ export function IntegrationDetailClient({
   initialRelatedWorkflows,
   automateCombos,
   docsGuides,
+  directoryHref,
 }: IntegrationDetailClientProps) {
   const add = useAddIntegration(integration);
 
@@ -92,6 +95,7 @@ export function IntegrationDetailClient({
             integration={integration}
             comparisonSlug={comparisonSlug}
             alternativeSlug={alternativeSlug}
+            directoryHref={directoryHref}
           />
 
           <IntegrationRelatedIntegrations integrations={relatedIntegrations} />

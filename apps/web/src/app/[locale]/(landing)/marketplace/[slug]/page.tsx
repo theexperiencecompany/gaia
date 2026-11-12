@@ -5,6 +5,10 @@ import { getTranslatedAlternative } from "@/features/alternatives/data/getTransl
 import { getComparison } from "@/features/comparisons/data/comparisonsData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
 import {
+  marketplaceDirectoryHref,
+  marketplaceDirectoryPages,
+} from "@/features/integrations/lib/marketplaceDirectoryPages";
+import {
   marketplacePath,
   marketplaceSlug,
 } from "@/features/integrations/lib/marketplaceSlug";
@@ -16,10 +20,7 @@ import {
   getPublicIntegration,
   marketplaceApiIdentifier,
 } from "@/features/integrations/lib/serverMarketplaceApi";
-import type {
-  CommunityIntegration,
-  PublicIntegrationResponse,
-} from "@/features/integrations/types";
+import type { PublicIntegrationResponse } from "@/features/integrations/types";
 import { isRedirectedPath } from "@/lib/canonicalLinks";
 import {
   getMarketplaceFallbackGuides,
@@ -194,13 +195,24 @@ export default async function IntegrationPage({ params }: Props) {
   // Related integrations and workflows are fetched server-side so crawlers
   // see real links in the SSR HTML. Combos and the alternative guide come from
   // local JSON (no backend).
-  const [related, relatedWorkflows, automateCombos, alternative] =
+  const [native, community, relatedWorkflows, automateCombos, alternative] =
     await Promise.all([
-      getRelatedIntegrations(integration),
+      getNativeIntegrations(),
+      getAllCommunityIntegrations(),
       getIntegrationWorkflows(integration.integrationId, 4),
       getAutomateCombos(slug),
       getTranslatedAlternative(slug),
     ]);
+  // A native page relates only to natives.
+  const related = relatedIntegrations(
+    integration,
+    native,
+    integration.source === "platform" ? [] : community,
+  );
+  const directoryHref = marketplaceDirectoryHref(
+    marketplaceDirectoryPages(native, community),
+    integration.slug,
+  );
 
   return (
     <>
@@ -221,6 +233,7 @@ export default async function IntegrationPage({ params }: Props) {
             : undefined
         }
         relatedIntegrations={related}
+        directoryHref={directoryHref}
         initialRelatedWorkflows={relatedWorkflows}
         automateCombos={automateCombos}
         docsGuides={
@@ -248,15 +261,4 @@ async function getAutomateCombos(
       toolB: combo.toolB,
       tagline: combo.tagline,
     }));
-}
-
-/** A native page relates only to natives, so only a community page fetches the community catalog. */
-async function getRelatedIntegrations(
-  integration: PublicIntegrationResponse,
-): Promise<CommunityIntegration[]> {
-  const [native, community] = await Promise.all([
-    getNativeIntegrations(),
-    integration.source === "platform" ? [] : getAllCommunityIntegrations(),
-  ]);
-  return relatedIntegrations(integration, native, community);
 }

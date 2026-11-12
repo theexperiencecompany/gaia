@@ -357,7 +357,18 @@ function AlternativeArticle({
         <h2 className="mb-6 text-3xl font-semibold text-white">
           {t("common.explore_more")}
         </h2>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <SiteLink
+            href="/alternative-to"
+            className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
+          >
+            <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+              {t("alternatives.hub_title")}
+            </h3>
+            <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
+              {t("alternatives.hub_subtitle")}
+            </p>
+          </SiteLink>
           <SiteLink
             href="/compare"
             className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"

@@ -8,7 +8,8 @@ export const TRANSLATED_ROUTE_FAMILIES = [
 ] as const;
 
 /** Whether an internal path lives in a translated family, so a localized page should keep its locale when linking it. */
-export function isTranslatedPath(path: string): boolean {
+export function isTranslatedPath(href: string): boolean {
+  const path = href.split(/[?#]/, 1)[0];
   return TRANSLATED_ROUTE_FAMILIES.some(
     (family) => path === family || path.startsWith(`${family}/`),
   );

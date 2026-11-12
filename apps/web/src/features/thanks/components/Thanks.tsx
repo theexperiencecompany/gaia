@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect } from "react";
 
 import { type ToolCategory, toolCategories, tools } from "@/data/tools";
@@ -106,7 +107,10 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
         <div className="border-t border-zinc-800 pt-12 text-center">
           <p className="text-sm text-foreground-500">
             Thank you to all the maintainers, contributors, and communities
-            behind these amazing projects.
+            behind these amazing projects.{" "}
+            <Link href="/about" className="underline underline-offset-2">
+              Why we build GAIA in the open
+            </Link>
           </p>
         </div>
       </div>

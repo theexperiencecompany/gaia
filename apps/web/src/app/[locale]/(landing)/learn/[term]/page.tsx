@@ -10,12 +10,20 @@ import { RelatedAutomationsGrid } from "@/components/seo/RelatedAutomationsGrid"
 import { RelatedComparisonsGrid } from "@/components/seo/RelatedComparisonsGrid";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { getTranslatedGlossaryTerm } from "@/features/glossary/data/getTranslatedGlossary";
-import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
+import {
+  glossaryCategoryGroups,
+  glossaryCategoryPath,
+} from "@/features/glossary/data/glossaryCategories";
+import {
+  getAllGlossaryTermSlugs,
+  getAllGlossaryTerms,
+} from "@/features/glossary/data/glossaryData";
 import { getTranslatedCombo } from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { localizePath } from "@/i18n/config";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { LEARN_DOCS_LINKS } from "@/lib/docs-links";
+import { hubPageHref, hubPageOf } from "@/lib/hubPagination";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
@@ -65,19 +73,35 @@ export async function generateMetadata({
 export default async function GlossaryTermPage({ params }: PageProps) {
   const { locale, term } = await params;
   setRequestLocale(locale);
-  const [t, data] = await Promise.all([
+  const [t, tGlossary, data, glossary] = await Promise.all([
     getTranslations(),
+    getTranslations({ locale, namespace: "glossary" }),
     getTranslatedGlossaryTerm(term),
+    getAllGlossaryTerms(),
   ]);
 
   if (!data) {
     notFound();
   }
 
+  const categories = glossaryCategoryGroups(glossary, tGlossary);
+  const category = categories.find((group) => group.slug === data.category);
+  if (!category) {
+    throw new Error(
+      `glossary term ${term} has category ${data.category}, which the /learn hub does not list`,
+    );
+  }
+  const categoryPath = glossaryCategoryPath(category.slug);
+  const hubIndex = categories
+    .flatMap((group) => group.items)
+    .findIndex((entry) => entry.slug === term);
+  const hubHref = `${hubPageHref("/learn", hubPageOf(hubIndex))}#${category.slug}`;
+
   const termPath = `/learn/${term}`;
   const breadcrumbs = [
     { name: "Home", url: siteConfig.url },
     { name: "Glossary", url: localizePath("/learn", locale) },
+    { name: category.label, url: localizePath(categoryPath, locale) },
     { name: data.term, url: localizePath(termPath, locale) },
   ];
 
@@ -131,6 +155,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
           items={[
             { label: t("common.home"), href: "/" },
             { label: t("glossary.breadcrumb"), href: "/learn" },
+            { label: category.label, href: categoryPath },
             { label: data.term },
           ]}
         />
@@ -223,7 +248,18 @@ export default async function GlossaryTermPage({ params }: PageProps) {
           <h2 className="mb-6 text-3xl font-semibold text-white">
             {t("common.explore_more")}
           </h2>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <SiteLink
+              href={hubHref}
+              className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
+            >
+              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+                {t("glossary.hub_title")}
+              </h3>
+              <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
+                {t("glossary.hub_subtitle")}
+              </p>
+            </SiteLink>
             <SiteLink
               href="/compare"
               className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
