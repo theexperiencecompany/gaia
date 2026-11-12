@@ -1,6 +1,6 @@
 "use client";
 
-import { Chip, ListBox, SearchField, Select } from "@heroui/react";
+import { Chip, InputGroup, ListBox, Select, TextField } from "@heroui/react";
 import { SearchIcon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
@@ -101,7 +101,7 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
           {INTEGRATION_CATEGORIES.map((cat) => (
             <Chip
               key={cat.key}
-              variant="primary"
+              variant={category === cat.key ? "primary" : "soft"}
               color={category === cat.key ? "accent" : "default"}
               size="lg"
               className={cn(
@@ -146,17 +146,22 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
             </Select.Popover>
           </Select>
 
-          <SearchField
+          <TextField
             className="flex-1 sm:w-72 sm:flex-none min-w-0"
             aria-label="Search integrations"
             value={search}
             onChange={handleSearchChange}
           >
-            <SearchField.Group>
-              <SearchIcon className="text-zinc-400" />
-              <SearchField.Input placeholder="Search integrations..." />
-            </SearchField.Group>
-          </SearchField>
+            <InputGroup>
+              <InputGroup.Prefix>
+                <SearchIcon className="text-zinc-400" />
+              </InputGroup.Prefix>
+              <InputGroup.Input
+                type="search"
+                placeholder="Search integrations..."
+              />
+            </InputGroup>
+          </TextField>
         </div>
       </div>
     </div>
