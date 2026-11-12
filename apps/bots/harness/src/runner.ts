@@ -360,9 +360,14 @@ function reactedPositions(events: readonly TranscriptEvent[]): number[] {
   const reacted = new Set(
     events.flatMap((e) => (e.type === "reaction" ? [e.targetMessageId] : [])),
   );
-  return events
-    .filter((e) => e.type === "inbound")
-    .flatMap((e, index) => (reacted.has(e.messageId) ? [index + 1] : []));
+  const positions: number[] = [];
+  let inboundCount = 0;
+  for (const event of events) {
+    if (event.type !== "inbound") continue;
+    inboundCount += 1;
+    if (reacted.has(event.messageId)) positions.push(inboundCount);
+  }
+  return positions;
 }
 
 /** All text-bearing events carry a `text` field; this narrows to it. */
