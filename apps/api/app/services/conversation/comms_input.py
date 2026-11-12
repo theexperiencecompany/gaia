@@ -5,8 +5,9 @@ the entry's seq under additional_kwargs[LOG_SEQ], so re-sending a batch after a
 restart upserts in place and the model sees each input once.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 import json
+from types import MappingProxyType
 
 from langchain_core.messages import AnyMessage, HumanMessage
 
@@ -40,6 +41,8 @@ from app.models.conversation_log_models import (
     WorkOutcome,
 )
 
+#: No user message attached files.
+NO_FILES: Mapping[str, str] = MappingProxyType({})
 #: additional_kwargs key record_interruption tags its marker with.
 _SOURCE_KEY = "lc_source"
 
@@ -50,33 +53,43 @@ def entry_message_id(entry_id: str) -> str:
 
 
 def attempt_messages(
-    batch: Batch, context: Sequence[LoggedEntry], thread: Sequence[AnyMessage]
+    batch: Batch,
+    context: Sequence[LoggedEntry],
+    thread: Sequence[AnyMessage],
+    files: Mapping[str, str],
 ) -> list[AnyMessage]:
-    """Render context and batch in seq order; a Stop the thread already records is not said twice."""
+    """Render context and batch in seq order; a Stop the thread already records is not said twice.
+
+    files maps a user message's entry id to the block listing the files it attached.
+    """
     ordered = sorted([*context, *batch.waking], key=lambda logged: logged.seq)
     return [
         message
         for logged in ordered
         if not (isinstance(logged.entry, StopRequested) and _stop_recorded(thread, logged.seq))
-        for message in entry_messages(logged)
+        for message in entry_messages(logged, files)
     ]
 
 
-def absorbed_messages(entries: Sequence[LoggedEntry]) -> tuple[list[AnyMessage], bool]:
+def absorbed_messages(
+    entries: Sequence[LoggedEntry], files: Mapping[str, str]
+) -> tuple[list[AnyMessage], bool]:
     """Render entries absorbed into a running attempt up to the first Stop; True when a Stop was reached."""
     messages: list[AnyMessage] = []
     for logged in entries:
         if isinstance(logged.entry, StopRequested):
             return messages, True
-        messages.extend(entry_messages(logged))
+        messages.extend(entry_messages(logged, files))
     return messages, False
 
 
-def entry_messages(logged: LoggedEntry) -> list[AnyMessage]:
+def entry_messages(logged: LoggedEntry, files: Mapping[str, str] = NO_FILES) -> list[AnyMessage]:
     """Return the messages one log entry shows the model; most bookkeeping entries show nothing."""
     entry = logged.entry
     if isinstance(entry, UserMessage):
-        said = _message(logged, entry.text)
+        said = _message(
+            logged, "\n\n".join(part for part in (entry.text, files.get(entry.id, "")) if part)
+        )
         reaction = entry.reaction
         if reaction is None or reaction.by is not ReactionBy.JEV:
             return [said]

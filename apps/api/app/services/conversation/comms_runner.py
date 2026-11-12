@@ -17,11 +17,12 @@ from langgraph.types import StreamMode
 
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.interruption import record_interruption
+from app.agents.core.messages import uploaded_files_block
 from app.agents.core.nodes.drain_conversation_log import close_feed, feed, open_feed
 from app.constants.conversation import COMMS_CANCEL_CONFIRM_SECONDS, TURN_CONTEXT_ID_SUFFIX
 from app.constants.graphs import GraphName
 from app.models.agent_models import AgentConfigurable, AgentRunnableConfig, agent_configurable
-from app.models.conversation_log_models import Batch, LoggedEntry, StepClaim
+from app.models.conversation_log_models import Batch, LoggedEntry, StepClaim, UserMessage
 from app.services.conversation.comms_events import CommsEventMapper, GraphEvent
 from app.services.conversation.comms_input import (
     absorbed_messages,
@@ -60,17 +61,18 @@ class CommsGraphRun:
 
     def __init__(
         self,
+        claim: StepClaim,
         graph: CompiledAgentGraph,
         config: AgentRunnableConfig,
         state: dict[str, object],
-        mapper: CommsEventMapper,
         cancel_confirm_seconds: float,
     ) -> None:
+        self._claim = claim
         self._graph = graph
         self._config = config
         configurable: AgentConfigurable = agent_configurable(config)
         self._run_id = configurable["comms_run"]
-        self._mapper = mapper
+        self._mapper = CommsEventMapper(claim.user_id)
         self._confirm = cancel_confirm_seconds
         self._out: asyncio.Queue[RunEvent | Exception] = asyncio.Queue()
         self._wanted: asyncio.Queue[None] = asyncio.Queue()
@@ -91,11 +93,12 @@ class CommsGraphRun:
             yield item
             self._wanted.put_nowait(None)
 
-    def absorb(self, entries: Sequence[LoggedEntry]) -> None:
+    async def absorb(self, entries: Sequence[LoggedEntry]) -> None:
         """Feed entries to the next model call, never past a Stop; nothing joins once the run is stopping."""
         if self._sealed or self.task.done():
             return
-        messages, stopped = absorbed_messages(entries)
+        files = await attached_files(self._claim, entries)
+        messages, stopped = absorbed_messages(entries, files)
         feed(self._run_id, messages)
         self._sealed = stopped
 
@@ -168,18 +171,27 @@ class CommsGraphRunner:
         snapshot = await graph.aget_state(config)
         values: _ThreadValues = cast(_ThreadValues, snapshot.values or {})
         thread = values.get("messages", [])
+        files = await attached_files(claim, [*context, *batch.waking])
         messages = [
             *_turn_context(turn.opening, batch, 0),
-            *attempt_messages(batch, context, thread),
+            *attempt_messages(batch, context, thread, files),
             *_turn_context(turn.closing, batch, len(turn.opening)),
         ]
         return CommsGraphRun(
-            graph,
-            config,
-            {**turn.state, "messages": messages},
-            CommsEventMapper(claim.user_id),
-            self._confirm,
+            claim, graph, config, {**turn.state, "messages": messages}, self._confirm
         )
+
+
+async def attached_files(claim: StepClaim, entries: Sequence[LoggedEntry]) -> dict[str, str]:
+    """Return, per user message that attached files, the block listing them the way a chat turn does."""
+    said = [logged.entry for logged in entries if isinstance(logged.entry, UserMessage)]
+    blocks = await asyncio.gather(
+        *(
+            uploaded_files_block(message.file_ids, claim.user_id, claim.conversation_id)
+            for message in said
+        )
+    )
+    return {message.id: block for message, block in zip(said, blocks, strict=True) if block}
 
 
 def _turn_context(messages: Sequence[AnyMessage], batch: Batch, first: int) -> list[AnyMessage]:

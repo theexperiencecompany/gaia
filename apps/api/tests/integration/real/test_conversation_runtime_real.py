@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 from redis.asyncio import Redis
 
@@ -39,6 +40,7 @@ from app.models.conversation_log_models import (
     ReplySettled,
     StepClaim,
     StopRequested,
+    UserMessage,
     WorkFinished,
     WorkOutcome,
 )
@@ -58,6 +60,7 @@ from app.services.conversation.integration_log import (
     continue_after_connect,
     record_integration_needed,
 )
+from app.services.conversation.log import accept
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports
@@ -567,3 +570,33 @@ async def test_executor_cards_stream_as_work_deltas_and_land_on_the_tasks_reply(
     assert [(f.task_id, f.index) for f in work] == [("t1", 0), ("t1", 1), ("t1", 2), ("t1", 3)]
     assert shown == ["search_flights", "flight_list", "price_chart", "booking"]
     assert [(r.text, r.tool_data) for r in task_reply] == [("3 flights found", cards)]
+
+
+@pytest.mark.service
+async def test_a_messages_attached_files_are_listed_to_the_model(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    model = gated("that invoice is due Friday")
+    rig = await rig_for(model)
+    await mongo_db["files"].insert_one(
+        {
+            "file_id": "f-1",
+            "user_id": rig.user_id,
+            "conversation_id": rig.conversation_id,
+            "filename": "invoice-march.pdf",
+            "type": "application/pdf",
+            "size": 10,
+            "url": "https://files.example/f-1",
+            "description": "An invoice for March, due Friday",
+            "created_at": _now(),
+        }
+    )
+    message = UserMessage(
+        id="m1", text="when is this due?", surface=ConversationSource.WEB, file_ids=("f-1",)
+    )
+    await accept(rig.ports, rig.conversation_id, rig.user_id, message)
+    await rig.settle()
+    said = [text for text in humans(model.prompts[0]) if "when is this due?" in text]
+    assert len(said) == 1
+    assert "invoice-march.pdf" in said[0]
+    assert "An invoice for March, due Friday" in said[0]

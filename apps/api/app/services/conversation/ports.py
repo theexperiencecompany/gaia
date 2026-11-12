@@ -162,7 +162,7 @@ class CommsRun(Protocol):
         """Yield the run's events; Finished is last, and a failed run raises."""
         ...
 
-    def absorb(self, entries: Sequence[LoggedEntry]) -> None:
+    async def absorb(self, entries: Sequence[LoggedEntry]) -> None:
         """Give the run more waking entries to include before its next model call."""
         ...
 

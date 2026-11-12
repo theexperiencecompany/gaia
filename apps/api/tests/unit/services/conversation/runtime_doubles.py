@@ -353,7 +353,7 @@ class ScriptedRun:
             if isinstance(item, Finished):
                 return
 
-    def absorb(self, entries: Sequence[LoggedEntry]) -> None:
+    async def absorb(self, entries: Sequence[LoggedEntry]) -> None:
         self._calls.append(Absorbed(tuple(item.seq for item in entries)))
 
     async def cancel(self, reason: CancelReason) -> None:

@@ -428,7 +428,7 @@ async def _handle(
         case ModelOutput(has_tool_calls=has_tool_calls):
             _commit_quietly(attempt)
             if has_tool_calls and attempt.joiners:
-                run.absorb(attempt.joiners)
+                await run.absorb(attempt.joiners)
                 attempt.covers = (*attempt.covers, *attempt.joiners)
                 attempt.joiners = ()
         case Streamed(payload=payload):
