@@ -22,19 +22,31 @@ vi.mock("@/lib/toast", () => ({
   toast: { error: vi.fn() },
 }));
 
-const card = (id: string, integration: string): ApprovalRequestData => ({
-  approval_id: id,
-  tool_call_id: `call-${id}`,
-  gated_tool_name: "GMAIL_SEND_EMAIL",
-  integration_name: integration,
-  summary: `Send ${id}`,
-  args_preview: { to: "b@x" },
-  status: "pending",
-  feedback: null,
-  timeout_seconds: 300,
-  age_seconds: 60,
-  ledger_version: 0,
-});
+const card = (
+  id: string,
+  integration: string,
+  overrides: Partial<ApprovalRequestData> = {},
+): ApprovalRequestData =>
+  ({
+    approval_id: id,
+    tool_call_id: `call-${id}`,
+    gated_tool_name: "GMAIL_SEND_EMAIL",
+    integration_name: integration,
+    summary: `Send ${id}`,
+    description: {
+      action: "Send an email",
+      headline: `Send ${id}`,
+      confirm: "send it",
+      details: [{ label: "To", value: "b@x" }],
+    },
+    args_preview: { to: "b@x" },
+    status: "pending",
+    feedback: null,
+    auto_reason: null,
+    asked_at: new Date(Date.now() - 60_000).toISOString(),
+    ledger_version: 0,
+    ...overrides,
+  }) as ApprovalRequestData;
 
 describe("ApprovalReviewSheet", () => {
   beforeEach(() => {
@@ -197,7 +209,23 @@ describe("ApprovalReviewSheet", () => {
     expect(screen.getByRole("button", { name: /submit \(1\)/i })).toBeDefined();
     expect(
       vi.mocked(toast.error).mock.calls.map(([message]) => message),
-    ).toEqual(["Some approvals couldn't be submitted — please try again"]);
+    ).toEqual(["Some approvals couldn't be submitted, please try again"]);
+  });
+
+  it("says decisions are sent on Submit, never that they act immediately", () => {
+    render(
+      <ApprovalRequestGroup
+        items={[card("a", "gmail"), card("b", "cal"), card("c", "gmail")]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /review 3/i }));
+    const dialog = screen.getByRole("dialog");
+    expect(
+      within(dialog).getByText(
+        "Nothing is sent until you press Submit. Then GAIA carries on with your decisions.",
+      ),
+    ).toBeDefined();
+    expect(within(dialog).queryByText(/acts immediately/i)).toBeNull();
   });
 
   it("groups rows by integration with honest totals", () => {
@@ -210,5 +238,38 @@ describe("ApprovalReviewSheet", () => {
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText(/2.*gmail/i)).toBeDefined();
     expect(within(dialog).getByText(/1.*cal/i)).toBeDefined();
+  });
+});
+
+describe("ApprovalRequestGroup settled approvals", () => {
+  it.each([
+    ["executed", "You approved this, and it's done"],
+    ["denied", "You declined this"],
+    ["unknown", "You approved this, but GAIA couldn't confirm it went through"],
+    ["cancelled", "You stopped GAIA before answering, so nothing was done"],
+    ["revoked", "GAIA withdrew this request, so nothing was done"],
+  ] as const)(
+    "a %s card stays as a line saying what happened",
+    (status, line) => {
+      render(<ApprovalRequestGroup items={[card("a", "gmail", { status })]} />);
+      const settled = screen.getByTestId("approval-settled");
+      expect(within(settled).getByText(line)).toBeDefined();
+      expect(within(settled).getByText("Send a")).toBeDefined();
+    },
+  );
+
+  it("shows the reason a failed action gave", () => {
+    render(
+      <ApprovalRequestGroup
+        items={[
+          card("a", "gmail", { status: "failed", feedback: "Mailbox full" }),
+        ]}
+      />,
+    );
+    const settled = screen.getByTestId("approval-settled");
+    expect(
+      within(settled).getByText("You approved this, but it didn't go through"),
+    ).toBeDefined();
+    expect(within(settled).getByText("Mailbox full")).toBeDefined();
   });
 });

@@ -13,13 +13,17 @@ import { ShieldIcon } from "@icons";
 import type {
   ApprovalDecision,
   ApprovalRequestData,
-  ApprovalStatus,
   BatchDecisionOutcome,
+  SettledApprovalCardData,
 } from "@shared/chat";
-import { formatApprovalAge } from "@shared/chat";
-import { flattenArgsPreview } from "@shared/utils";
+import {
+  approvalAgeSeconds,
+  cardDescription,
+  formatApprovalAge,
+} from "@shared/chat";
 import { useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
+import { APPROVAL_COPY } from "@/features/chat/constants/approvalCopy";
 import { useMarkApprovalDecided } from "@/features/chat/hooks/useMarkApprovalDecided";
 import {
   BATCH_OUTCOME_REASON,
@@ -41,7 +45,7 @@ interface ApprovalReviewSheetProps {
   conversationId?: string;
   onSettled: (
     approvalId: string,
-    status: ApprovalStatus,
+    status: SettledApprovalCardData["status"],
     feedback: string | null,
   ) => void;
 }
@@ -131,7 +135,10 @@ export default function ApprovalReviewSheet({
           feedback: decisions[approval_id].feedback.trim() || undefined,
         })),
       });
-      markApprovalDecided(conversationId);
+      markApprovalDecided(
+        conversationId,
+        APPROVAL_COPY.carryingOnWithDecisions,
+      );
       const removeDecision = (approvalId: string) => {
         setDecisions((prev) => {
           const next = { ...prev };
@@ -147,13 +154,13 @@ export default function ApprovalReviewSheet({
         (o) => !o.resolved && o.reason !== BATCH_OUTCOME_REASON.NOT_FOUND,
       );
       if (kept.some((o) => o.reason === BATCH_OUTCOME_REASON.STALE)) {
-        toast.error("Some approvals already moved — kept for review");
+        toast.error(APPROVAL_COPY.sheetStale);
       }
       if (kept.some((o) => o.reason !== BATCH_OUTCOME_REASON.STALE)) {
-        toast.error("Some approvals couldn't be submitted — please try again");
+        toast.error(APPROVAL_COPY.batchPartlyFailed);
       }
     } catch {
-      toast.error("Couldn't submit your decisions — please try again");
+      toast.error(APPROVAL_COPY.batchFailed);
     } finally {
       setSubmitting(false);
     }
@@ -176,7 +183,7 @@ export default function ApprovalReviewSheet({
         <ModalHeader className="flex items-center gap-2">
           <ShieldIcon width={18} className="shrink-0 text-amber-400" />
           <span className="text-sm text-zinc-100">
-            {items.length} actions need your approval ({totals})
+            {APPROVAL_COPY.sheetTitle(items.length, totals)}
           </span>
         </ModalHeader>
         <ModalBody className="max-h-[50vh] overflow-y-auto">
@@ -188,10 +195,8 @@ export default function ApprovalReviewSheet({
               <div className="mb-3 space-y-2">
                 {list.map((item) => {
                   const picked = decisions[item.approval_id]?.decision ?? null;
-                  const preview = flattenArgsPreview(item.args_preview ?? {});
-                  const shown = preview.rows.slice(0, 6);
-                  const hidden =
-                    preview.rows.length - shown.length + preview.omitted;
+                  const description = cardDescription(item);
+                  const ageSeconds = approvalAgeSeconds(item);
                   return (
                     <div
                       key={item.approval_id}
@@ -199,32 +204,26 @@ export default function ApprovalReviewSheet({
                       className="rounded-2xl bg-zinc-900 p-3"
                     >
                       <div className="text-sm leading-snug text-zinc-100">
-                        {item.summary}
+                        {description.headline}
                       </div>
-                      {item.age_seconds != null && (
+                      {ageSeconds !== null && (
                         <div className="mt-0.5 text-[11px] text-zinc-500">
-                          {formatApprovalAge(item.age_seconds)}
+                          {APPROVAL_COPY.asked(formatApprovalAge(ageSeconds))}
                         </div>
                       )}
-                      {shown.length > 0 && (
+                      {description.details.length > 0 && (
                         <div className="mt-1.5 space-y-0.5">
-                          {shown.map((row) => (
+                          {description.details.map((detail) => (
                             <div
-                              key={`${row.group ?? "top"}:${row.key}`}
+                              key={detail.label}
                               className="text-xs text-zinc-400"
                             >
                               <span className="text-zinc-500">
-                                {row.group != null ? `${row.group} ` : ""}
-                                {row.key.replaceAll("_", " ")}:{" "}
+                                {`${detail.label}: `}
                               </span>
-                              {row.value}
+                              {detail.value}
                             </div>
                           ))}
-                          {hidden > 0 && (
-                            <div className="text-[11px] text-zinc-500">
-                              +{hidden} more
-                            </div>
-                          )}
                         </div>
                       )}
                       <div className="mt-2 flex items-center gap-2">
@@ -234,7 +233,7 @@ export default function ApprovalReviewSheet({
                           variant={picked === "approve" ? "solid" : "flat"}
                           onPress={() => toggle(item.approval_id, "approve")}
                         >
-                          Approve
+                          {APPROVAL_COPY.approve}
                         </Button>
                         <Button
                           size="sm"
@@ -242,14 +241,14 @@ export default function ApprovalReviewSheet({
                           color={picked === "deny" ? "danger" : "default"}
                           onPress={() => toggle(item.approval_id, "deny")}
                         >
-                          Deny
+                          {APPROVAL_COPY.deny}
                         </Button>
                         {picked === "deny" && (
                           <Input
                             className="flex-1"
                             size="sm"
                             variant="flat"
-                            placeholder="Why? (optional)"
+                            placeholder={APPROVAL_COPY.sheetFeedbackPlaceholder}
                             value={decisions[item.approval_id]?.feedback ?? ""}
                             onValueChange={(value) =>
                               setFeedback(item.approval_id, value)
@@ -266,15 +265,14 @@ export default function ApprovalReviewSheet({
         </ModalBody>
         <ModalFooter className="flex items-center justify-between">
           <span className="text-xs text-zinc-500">
-            Each decision acts immediately; Submit closes up and tells your
-            agent.
+            {APPROVAL_COPY.sheetFooter}
           </span>
           <Button
             color="primary"
             isDisabled={decidedIds.length === 0 || submitting}
             onPress={submit}
           >
-            {`Submit (${decidedIds.length})`}
+            {APPROVAL_COPY.submit(decidedIds.length)}
           </Button>
         </ModalFooter>
       </ModalContent>

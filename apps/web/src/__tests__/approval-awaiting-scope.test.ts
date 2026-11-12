@@ -6,6 +6,7 @@
  * session key; these pin that the named session settles and others are untouched.
  */
 import { beforeEach, describe, expect, it } from "vitest";
+import { APPROVAL_COPY } from "@/features/chat/constants/approvalCopy";
 import { useStreamStore } from "@/stores/streamStore";
 
 const startAwaitingSession = (key: string): void => {
@@ -18,6 +19,8 @@ const startAwaitingSession = (key: string): void => {
   });
 };
 
+const CARRYING_ON = APPROVAL_COPY.carryingOn("Send an email");
+
 describe("clearAwaitingApproval", () => {
   beforeEach(() => {
     for (const key of Object.keys(useStreamStore.getState().sessions)) {
@@ -29,11 +32,12 @@ describe("clearAwaitingApproval", () => {
     startAwaitingSession("conv-a");
     startAwaitingSession("conv-b");
 
-    useStreamStore.getState().clearAwaitingApproval("conv-a");
+    useStreamStore.getState().clearAwaitingApproval("conv-a", CARRYING_ON);
 
     const { sessions } = useStreamStore.getState();
     expect(sessions["conv-a"]?.awaitingApproval).toBe(false);
-    expect(sessions["conv-a"]?.loadingText).toBe("Resuming");
+    // Says what GAIA does next, never a bare "Resuming".
+    expect(sessions["conv-a"]?.loadingText).toBe("Carrying on: send an email");
     // The other conversation is still blocked on a decision the user has not
     // made — its indicator must keep asking.
     expect(sessions["conv-b"]?.awaitingApproval).toBe(true);
@@ -43,10 +47,9 @@ describe("clearAwaitingApproval", () => {
   it("clears the gated tool's label with the awaiting state", () => {
     startAwaitingSession("conv-a");
 
-    useStreamStore.getState().clearAwaitingApproval("conv-a");
+    useStreamStore.getState().clearAwaitingApproval("conv-a", CARRYING_ON);
 
-    // toolInfo prefixes the label with the gated tool's integration
-    // ("Posthog: Resuming"), and that tool is done.
+    // toolInfo prefixes the label with the gated tool's integration, and that tool is done.
     expect(
       useStreamStore.getState().sessions["conv-a"]?.toolInfo,
     ).toBeUndefined();
@@ -57,7 +60,7 @@ describe("clearAwaitingApproval", () => {
     store.startSession("conv-a");
     store.updateSession("conv-a", { loadingText: "Thinking" });
 
-    store.clearAwaitingApproval("conv-a");
+    store.clearAwaitingApproval("conv-a", CARRYING_ON);
 
     expect(useStreamStore.getState().sessions["conv-a"]?.loadingText).toBe(
       "Thinking",
@@ -66,7 +69,9 @@ describe("clearAwaitingApproval", () => {
 
   it("is a no-op for a key with no session", () => {
     expect(() =>
-      useStreamStore.getState().clearAwaitingApproval("does-not-exist"),
+      useStreamStore
+        .getState()
+        .clearAwaitingApproval("does-not-exist", CARRYING_ON),
     ).not.toThrow();
   });
 });

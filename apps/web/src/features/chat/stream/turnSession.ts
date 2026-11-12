@@ -846,9 +846,8 @@ export class TurnSession {
       conversationId: this.conversationId,
     });
     const store = useStreamStore.getState();
-    // A paused-on-approval turn also closes its stream and lands here; clearing
-    // the flag would swap "Waiting for your approval" for a generic executor
-    // spinner for the whole (user-blocked) wait. Preserve it.
+    // A paused-on-approval turn also closes its stream and lands here; keep the
+    // flag so the user's decision can still swap in what GAIA does next.
     const wasAwaitingApproval = store.sessions[key]?.awaitingApproval ?? false;
     store.updateSession(key, {
       phase: "awaiting_executor",

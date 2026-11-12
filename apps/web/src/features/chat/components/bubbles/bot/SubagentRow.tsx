@@ -10,15 +10,9 @@ import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type { ToolCallEntry } from "@/config/registries/toolRegistry";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { deriveStepKeys } from "./TextBubble/useSubagentSynthesis";
-import {
-  type ApprovalOutcome,
-  ToolCallRow,
-  WaitingForApprovalPill,
-} from "./ToolCallRow";
+import { ToolCallRow, WaitingForApprovalPill } from "./ToolCallRow";
 import { expandTransition } from "./toolCallDisplay";
 import type { EnrichedSubagentGroup } from "./UnifiedToolThread";
-
-export type { ApprovalOutcome };
 
 // A step where the model reasoned (ToolCallEntry carrying `reasoning`).
 // Mirrors ToolCallRow's layout so thinking sits naturally between tool steps.
@@ -79,8 +73,6 @@ function ThinkingStepRow({
 interface StepCallbacks {
   /** tool_call_ids blocked on a pending HIL approval. */
   pendingApprovalToolCallIds: Set<string>;
-  /** Settled HIL outcomes (status + receipt/feedback) keyed by tool_call_id. */
-  approvalOutcomeByToolCallId?: Map<string, ApprovalOutcome>;
 }
 
 // One timeline step: a thinking block when the entry carries `reasoning`, else a
@@ -88,11 +80,7 @@ interface StepCallbacks {
 export function StepRow(
   props: Readonly<StepCallbacks & { call: ToolCallEntry; isLast: boolean }>,
 ) {
-  const {
-    pendingApprovalToolCallIds,
-    approvalOutcomeByToolCallId,
-    ...rowProps
-  } = props;
+  const { pendingApprovalToolCallIds, ...rowProps } = props;
   if (props.call.reasoning != null) {
     return (
       <ThinkingStepRow reasoning={props.call.reasoning} isLast={props.isLast} />
@@ -101,16 +89,7 @@ export function StepRow(
   const awaitingApproval =
     !!props.call.tool_call_id &&
     pendingApprovalToolCallIds.has(props.call.tool_call_id);
-  const approvalOutcome = props.call.tool_call_id
-    ? approvalOutcomeByToolCallId?.get(props.call.tool_call_id)
-    : undefined;
-  return (
-    <ToolCallRow
-      {...rowProps}
-      awaitingApproval={awaitingApproval}
-      approvalOutcome={approvalOutcome}
-    />
-  );
+  return <ToolCallRow {...rowProps} awaitingApproval={awaitingApproval} />;
 }
 
 function deriveSubagentSteps(

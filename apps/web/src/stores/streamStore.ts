@@ -31,9 +31,8 @@ export interface TurnUiState {
   /** Loading indicator visibility — toggles within a phase (e.g. off at
    *  main_response_complete, back on when executor events resume). */
   spinnerActive: boolean;
-  /** The turn is blocked on a pending HIL approval. The loading indicator stays
-   *  visible but switches to a distinct "waiting for your approval" state
-   *  instead of the normal streaming spinner. */
+  /** The turn is blocked on a pending HIL approval; deciding it swaps the
+   *  loading text for what GAIA does next. */
   awaitingApproval: boolean;
   /** True from send until `main_response_complete` — the window where the
    *  composer is locked and sends are queued. */
@@ -86,8 +85,8 @@ interface StreamActions {
     toolInfo?: ActiveToolInfo,
   ) => void;
   resetSessionLoadingText: (key: string) => void;
-  /** The user decided this conversation's open approval gate. */
-  clearAwaitingApproval: (key: string) => void;
+  /** The user decided this conversation's open approval gate; `loadingText` says what happens next. */
+  clearAwaitingApproval: (key: string, loadingText: string) => void;
   setAuxLoading: (
     active: boolean,
     text?: string,
@@ -234,7 +233,7 @@ export const useStreamStore = create<StreamStore>()(
           "resetSessionLoadingText",
         ),
 
-      clearAwaitingApproval: (key) =>
+      clearAwaitingApproval: (key, loadingText) =>
         set(
           (state) => {
             const existing = state.sessions[key];
@@ -245,10 +244,9 @@ export const useStreamStore = create<StreamStore>()(
                 [key]: {
                   ...existing,
                   awaitingApproval: false,
-                  loadingText: "Resuming",
+                  loadingText,
                   // Clears with the text: it prefixes the label with the gated
-                  // tool's integration ("Posthog: Resuming"), and that tool is
-                  // done.
+                  // tool's integration, and that tool is done.
                   toolInfo: undefined,
                 },
               },

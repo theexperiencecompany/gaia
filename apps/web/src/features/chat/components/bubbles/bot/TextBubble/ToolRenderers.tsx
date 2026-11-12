@@ -385,7 +385,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   },
 
   // HIL approval — grouped so many decisions don't stack a full card each:
-  // pending show side by side, settled are removed (reply reflects them).
+  // pending show side by side, settled collapse to a one-line outcome.
   // Each approval_id is one entry, replaced in place via upsertApprovalToolData.
   approval_request: (data) => {
     const raw = (Array.isArray(data) ? data : [data]) as ApprovalRequestData[];

@@ -37,11 +37,17 @@ const card = (
     gated_tool_name: "GMAIL_SEND_EMAIL",
     integration_name: "gmail",
     summary: `Send ${approval_id}`,
+    description: {
+      action: "Send an email",
+      headline: `Send ${approval_id}`,
+      confirm: "send it",
+      details: [],
+    },
     args_preview: {},
     status,
     feedback: null,
     auto_reason: null,
-    timeout_seconds: 300,
+    asked_at: "2026-09-19T00:00:00Z",
   },
 });
 
