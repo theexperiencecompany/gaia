@@ -13,7 +13,7 @@ from langchain_core.messages import AnyMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.override.langgraph_bigtool.utils import INJECTED_MESSAGES_KEY, State
 
 # In-process like executor sessions: the attempt and its graph run share one event loop.
@@ -40,7 +40,8 @@ async def drain_conversation_log_hook(
 ) -> State:
     """Append the messages fed to this attempt since its last model call."""
     del store
-    run_id = agent_configurable(config).get("comms_run")
+    configurable: AgentConfigurable = agent_configurable(config)
+    run_id = configurable.get("comms_run")
     queued = _FEEDS.get(run_id) if run_id is not None else None
     if not queued:
         return state

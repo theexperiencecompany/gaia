@@ -12,7 +12,8 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.agents.core.interruption import (
@@ -32,7 +33,7 @@ def _call(call_id: str, name: str = "web_search") -> dict[str, Any]:
 
 class TestInterruptedToolMessages:
     def test_every_unanswered_call_gets_an_answer_with_the_exact_fields(self) -> None:
-        messages = [
+        messages: list[AnyMessage] = [
             AIMessage(
                 content="",
                 tool_calls=[_call("c1", "web_search"), _call("c2", "send_email")],
@@ -47,7 +48,7 @@ class TestInterruptedToolMessages:
         ]
 
     def test_an_answered_call_is_not_answered_again(self) -> None:
-        messages = [
+        messages: list[AnyMessage] = [
             AIMessage(content="", tool_calls=[_call("c1"), _call("c2")]),
             ToolMessage(content="ok", tool_call_id="c1"),
         ]
@@ -59,12 +60,12 @@ class TestInterruptedToolMessages:
     def test_a_call_with_an_empty_id_is_left_alone(self) -> None:
         # An id-less call cannot be matched to an answer; inventing one would
         # put an unrelated tool message into the transcript.
-        messages = [AIMessage(content="", tool_calls=[_call("")])]
+        messages: list[AnyMessage] = [AIMessage(content="", tool_calls=[_call("")])]
 
         assert _interrupted_tool_messages(messages, set()) == []
 
     def test_a_non_ai_message_does_not_end_the_scan(self) -> None:
-        messages = [
+        messages: list[AnyMessage] = [
             ToolMessage(content="ok", tool_call_id="c0"),
             AIMessage(content="", tool_calls=[_call("c1")]),
         ]
@@ -74,7 +75,7 @@ class TestInterruptedToolMessages:
         assert [m.tool_call_id for m in backfill] == ["c1"]
 
     def test_calls_from_every_ai_message_are_backfilled_in_order(self) -> None:
-        messages = [
+        messages: list[AnyMessage] = [
             AIMessage(content="", tool_calls=[_call("c1")]),
             ToolMessage(content="ok", tool_call_id="c1"),
             AIMessage(content="", tool_calls=[_call("c2")]),
@@ -90,7 +91,7 @@ class TestBuildInterruptionMessages:
         assert build_interruption_messages([]) == []
 
     def test_a_dangling_call_gets_an_answer_and_the_marker(self) -> None:
-        messages = [
+        messages: list[AnyMessage] = [
             HumanMessage(content="do a thing"),
             AIMessage(content="", tool_calls=[_call("c1")]),
         ]
@@ -105,20 +106,24 @@ class TestBuildInterruptionMessages:
         assert marker.additional_kwargs == {"lc_source": INTERRUPTION_SOURCE}
 
     def test_a_completed_reply_with_nothing_dangling_needs_no_record(self) -> None:
-        messages = [HumanMessage(content="do a thing"), AIMessage(content="Done.")]
+        messages: list[AnyMessage] = [
+            HumanMessage(content="do a thing"),
+            AIMessage(content="Done."),
+        ]
 
         assert build_interruption_messages(messages) == []
 
     def test_a_completed_reply_with_a_still_dangling_call_is_still_recorded(self) -> None:
-        messages = [AIMessage(content="Done.", tool_calls=[_call("c1")])]
+        messages: list[AnyMessage] = [AIMessage(content="Done.", tool_calls=[_call("c1")])]
 
         updates = build_interruption_messages(messages)
 
         assert [type(m) for m in updates] == [ToolMessage, HumanMessage]
+        assert isinstance(updates[0], ToolMessage)
         assert updates[0].tool_call_id == "c1"
 
     def test_a_trailing_human_message_gets_the_marker(self) -> None:
-        messages = [
+        messages: list[AnyMessage] = [
             HumanMessage(content="do a thing"),
             AIMessage(content="Done."),
             HumanMessage("next?"),
@@ -144,7 +149,7 @@ class TestRecordInterruption:
         cut = AIMessage(content="", tool_calls=[_call("c1")], id="ai-1")
         graph.aget_state = AsyncMock(return_value=_snapshot([cut]))
         graph.aupdate_state = AsyncMock()
-        config = {"configurable": {"thread_id": "thread-1"}}
+        config: RunnableConfig = {"configurable": {"thread_id": "thread-1"}}
 
         with patch("app.agents.core.interruption.log") as mock_log:
             await record_interruption(graph, config)

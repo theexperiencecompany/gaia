@@ -8,7 +8,7 @@ ModelOutput reaches the very next model call through the drain hook.
 import asyncio
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import TypedDict, cast
 from uuid import uuid4
 
 from langchain_core.messages import AnyMessage
@@ -31,6 +31,12 @@ from app.services.conversation.comms_input import (
 from app.services.conversation.ports import CancelReason, Finished, RunEvent
 
 _STREAM_MODES: list[StreamMode] = ["messages", "custom", "updates"]
+
+
+class _ThreadValues(TypedDict, total=False):
+    """The checkpoint values a run reads back; only the messages channel matters."""
+
+    messages: list[AnyMessage]
 
 
 @dataclass(frozen=True)
@@ -62,7 +68,8 @@ class CommsGraphRun:
     ) -> None:
         self._graph = graph
         self._config = config
-        self._run_id = agent_configurable(config)["comms_run"]
+        configurable: AgentConfigurable = agent_configurable(config)
+        self._run_id = configurable["comms_run"]
         self._mapper = mapper
         self._confirm = cancel_confirm_seconds
         self._out: asyncio.Queue[RunEvent | Exception] = asyncio.Queue()
@@ -159,8 +166,8 @@ class CommsGraphRunner:
         }
         config = cast(AgentRunnableConfig, {**turn.config, CONF: configurable})
         snapshot = await graph.aget_state(config)
-        values = cast(dict[str, Any], snapshot.values or {})
-        thread: list[AnyMessage] = values.get("messages", [])
+        values: _ThreadValues = cast(_ThreadValues, snapshot.values or {})
+        thread = values.get("messages", [])
         messages = [
             *_turn_context(turn.opening, batch, 0),
             *attempt_messages(batch, context, thread),

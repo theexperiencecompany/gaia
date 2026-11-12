@@ -121,8 +121,6 @@ apps/api/tests/unit/agents/test_executor_queue.py	typeddict-item
 apps/api/tests/unit/agents/test_github_discovery.py	arg-type
 apps/api/tests/unit/agents/test_held_replies.py	arg-type
 apps/api/tests/unit/agents/test_hil_approval_middleware.py	arg-type
-apps/api/tests/unit/agents/test_interruption.py	arg-type
-apps/api/tests/unit/agents/test_interruption.py	union-attr
 apps/api/tests/unit/agents/test_llm_runtime_config.py	arg-type
 apps/api/tests/unit/agents/test_llm_runtime_config.py	attr-defined
 apps/api/tests/unit/agents/test_llm_runtime_config.py	index

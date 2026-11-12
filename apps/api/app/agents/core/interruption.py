@@ -87,6 +87,11 @@ def build_interruption_messages(messages: list[AnyMessage]) -> list[AnyMessage]:
     return [*backfill, marker]
 
 
+def _calls_any(message: AIMessage, call_ids: set[str | None]) -> bool:
+    tool_calls: list[ToolCall] = message.tool_calls
+    return any(tc["id"] in call_ids for tc in tool_calls)
+
+
 class _GraphValues(TypedDict, total=False):
     """The checkpoint values read back here; only the messages channel matters."""
 
@@ -112,8 +117,7 @@ async def record_interruption(graph: CompiledStateGraph, config: RunnableConfig)
     calls = [
         message
         for message in messages
-        if isinstance(message, AIMessage)
-        and any(call["id"] in backfilled for call in message.tool_calls)
+        if isinstance(message, AIMessage) and _calls_any(message, backfilled)
     ]
     # as_node="tools": the reducer only appends, but attributing the write to
     # the tool node keeps the checkpoint's node history coherent.

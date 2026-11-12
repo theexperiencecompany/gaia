@@ -101,6 +101,7 @@ class CommsEventMapper:
         if self._summarized or self._answered:
             return False
         # LangGraph's messages mode yields (chunk, metadata) pairs (Type Safety item 12).
+        metadata: StreamChunkMetadata
         _chunk, metadata = cast(tuple[object, StreamChunkMetadata], payload)
         return bool(metadata.get("silent"))
 
