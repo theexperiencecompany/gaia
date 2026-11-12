@@ -16,7 +16,7 @@ from app.constants.referrals import (
     ReferralCopyVariant,
     ReferralLayoutVariant,
 )
-from app.models.referral_models import ReferralCodeDocument, ReferredFriendStatus
+from app.models.referral_models import ReferralCodeDocument, ReferredFriendStanding
 from app.models.user_models import UserDocument
 from app.schemas.referrals import ReferralMeResponse, ReferredFriend
 from app.services.referrals.offer import build_offer
@@ -124,7 +124,7 @@ class TestMe:
         self, client: AsyncClient, route_log: MagicMock
     ) -> None:
         friend = ReferredFriend(
-            first_name="Priya", status=ReferredFriendStatus.PAID, joined_at=NOW, paid_at=NOW
+            first_name="Priya", status=ReferredFriendStanding.PAID, joined_at=NOW, paid_at=NOW
         )
         overview = ReferralMeResponse(
             code="aryan-k7f2",

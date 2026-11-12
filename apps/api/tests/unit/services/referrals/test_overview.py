@@ -26,7 +26,9 @@ from app.models.payment_models import PlanDuration
 from app.models.referral_models import (
     ReferralCodeDocument,
     ReferralDocument,
+    ReferralRevokeReason,
     ReferralRewardState,
+    ReferredFriendStanding,
     ReferredFriendStatus,
 )
 from app.models.user_models import UserDocument
@@ -129,7 +131,7 @@ class TestOverview:
         def friend(first_name: str | None, paid: bool) -> ReferredFriend:
             return ReferredFriend(
                 first_name=first_name,
-                status=ReferredFriendStatus.PAID if paid else ReferredFriendStatus.JOINED,
+                status=ReferredFriendStanding.PAID if paid else ReferredFriendStanding.JOINED,
                 joined_at=JOINED,
                 paid_at=PAID if paid else None,
             )
@@ -162,6 +164,28 @@ class TestOverview:
             call(REFERRAL_COPY_FLAG, REFERRER.id),
             call(REFERRAL_LAYOUT_FLAG, REFERRER.id),
         ]
+
+    async def test_a_refunded_friend_shows_as_refunded_and_earns_no_month(
+        self, seams: Seams
+    ) -> None:
+        refund = {"revoke_reason": ReferralRevokeReason.REFUND, "revoked_at": PAID}
+        seams.list_for_referrer.return_value = [
+            _referral("priya", ReferralRewardState.REVOKED).model_copy(update=refund),
+            _referral("sam", ReferralRewardState.APPLIED).model_copy(update=refund),
+            _referral("kim", ReferralRewardState.APPLIED),
+        ]
+        seams.find_by_ids.return_value = [
+            UserDocument(id=uid, first_name=uid.title()) for uid in ("priya", "sam", "kim")
+        ]
+
+        overview = await get_referral_overview(REFERRER.id)
+
+        assert [(f.first_name, f.status, f.paid_at) for f in overview.friends] == [
+            ("Priya", ReferredFriendStanding.REFUNDED, None),
+            ("Sam", ReferredFriendStanding.REFUNDED, None),
+            ("Kim", ReferredFriendStanding.PAID, PAID),
+        ]
+        assert (overview.months_earned, overview.months_applied) == (1, 1)
 
     async def test_a_subscription_without_a_billing_date_shows_none(self, seams: Seams) -> None:
         seams.subscription.return_value = SimpleNamespace(next_billing_date=None)
