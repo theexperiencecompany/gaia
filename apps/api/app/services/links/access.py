@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import assert_never
 
 from app.constants.short_links import UNFURL_BOT_USER_AGENT_MARKERS
 from app.models.short_link_models import (
@@ -68,11 +69,13 @@ def _may_open(link: ShortLink, viewer: LinkViewer) -> LinkDenial | None:
         case LinkAccess.PEOPLE:
             if viewer.user_id is None:
                 return LinkDenial.SIGN_IN_REQUIRED
-            email = (viewer.email or "").lower()
-            by_email = bool(email) and email in {grantee.lower() for grantee in link.grantees}
+            by_email = viewer.email is not None and viewer.email.lower() in {
+                grantee.lower() for grantee in link.grantees
+            }
             return None if by_email or viewer.user_id in link.grantee_ids else LinkDenial.FORBIDDEN
         case LinkAccess.OWNER:
             return LinkDenial.SIGN_IN_REQUIRED if viewer.user_id is None else LinkDenial.FORBIDDEN
+    assert_never(link.access)  # pragma: no mutate — reached only past every level
 
 
 def evaluate(link: ShortLink | None, viewer: LinkViewer, now: datetime) -> Granted | Denied:

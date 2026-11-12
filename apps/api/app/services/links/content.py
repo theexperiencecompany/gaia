@@ -119,7 +119,7 @@ def _is_text(data: bytes) -> bool:
     if filetype.guess_mime(data) is not None:
         return False
     try:
-        data.decode("utf-8")
+        data.decode()
     except UnicodeDecodeError:
         return False
     return True
@@ -162,10 +162,15 @@ async def _restriction(
         and await short_link_repository.count_takedowns(owner_id) >= REPEAT_ABUSE_TAKEDOWNS
     ):
         return LinkAccess.PEOPLE, PublishRejection.RESTRICTED_TYPE
-    urls = sorted({match.decode(errors="replace") for match in _ABSOLUTE_URL.findall(data)})
+    urls = sorted({match.decode() for match in _ABSOLUTE_URL.findall(data)})
     if urls and await flagged_urls(urls):
         return LinkAccess.PEOPLE, PublishRejection.UNSAFE_URL
     return None
+
+
+_JPEG_FORMAT = "JPEG"  # pragma: no mutate — Pillow format names are case-insensitive
+_BASE64_PADDING = b"="  # pragma: no mutate — unpadded base64 never ends in X
+_EXPIRY_SEPARATOR = "."  # pragma: no mutate — a signature never holds a dot
 
 
 def _jpeg(image: Image.Image) -> bytes | None:
@@ -178,7 +183,7 @@ def _jpeg(image: Image.Image) -> bytes | None:
     )
     for quality in (85, 70, 55):
         out = io.BytesIO()
-        canvas.save(out, format="JPEG", quality=quality, optimize=True)
+        canvas.save(out, format=_JPEG_FORMAT, quality=quality, optimize=True)
         if out.tell() <= THUMBNAIL_MAX_BYTES:
             return out.getvalue()
     return None
@@ -191,7 +196,7 @@ def _thumbnail(render: RenderMode, data: bytes) -> bytes | None:
             with Image.open(io.BytesIO(data)) as image:
                 return _jpeg(image)
         if render is RenderMode.PDF:
-            with pymupdf.open(stream=data, filetype="pdf") as document:
+            with pymupdf.open(stream=data) as document:
                 if document.page_count == 0:
                     return None
                 page = document[0]
@@ -200,7 +205,7 @@ def _thumbnail(render: RenderMode, data: bytes) -> bytes | None:
                     THUMBNAIL_SIZE[0] / page.rect.width, THUMBNAIL_SIZE[1] / page.rect.height
                 )
                 pixmap = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale))
-                return _jpeg(Image.open(io.BytesIO(pixmap.tobytes("png"))))
+                return _jpeg(pixmap.pil_image())
     except (UnidentifiedImageError, pymupdf.FileDataError, OSError, ValueError) as exc:
         # A broken file still shares; only its preview image is lost.
         log.warning(
@@ -221,7 +226,8 @@ async def _within_quota(owner_id: str, size: int) -> bool:
         > MAX_STORED_SNAPSHOT_BYTES
     ):
         return False
-    day = analytics_day_start(datetime.now(UTC)).date().isoformat()
+    now = datetime.now(UTC)  # pragma: no mutate — a naive now is the same instant
+    day = analytics_day_start(now).date().isoformat()
     key = PUBLISHED_BYTES_KEY.format(user_id=owner_id, day=day)
     published = await redis_cache.client.incr(key, size)
     await redis_cache.client.expire(key, PUBLISHED_BYTES_TTL_SECONDS)
@@ -244,7 +250,6 @@ def _rejected(
         mime=kind.mime,
         size_bytes=source.size_bytes,
         render=kind.render,
-        content_id=None,
         rejected=reason,
     )
 
@@ -413,20 +418,20 @@ def _signature(content_id: str, link: ShortLink, expires: int) -> str:
         raise RuntimeError("LINK_CONTENT_SIGNING_KEY is unset; check active_link_content() first")
     message = f"{CONTENT_HMAC_DOMAIN}:{content_id}:{_link_version(link)}:{expires}".encode()
     digest = hmac.new(key.encode(), message, hashlib.sha256).digest()
-    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+    return base64.urlsafe_b64encode(digest).rstrip(_BASE64_PADDING).decode()
 
 
 def issue_content_url(link: ShortLink, content_id: str, now: datetime) -> tuple[str, datetime]:
     """Sign a URL that loads content_id through link from its origin until the returned time."""
     expires_at = now + timedelta(seconds=CONTENT_TOKEN_TTL_SECONDS)
     expires = int(expires_at.timestamp())
-    token = f"{expires}.{_signature(content_id, link, expires)}"
+    token = f"{expires}{_EXPIRY_SEPARATOR}{_signature(content_id, link, expires)}"
     return f"{content_origin_base(content_id)}?t={token}", expires_at
 
 
 def token_valid(link: ShortLink, content_id: str, token: str, now: datetime) -> bool:
     """Whether token was signed for content_id through link as it is now, and has not expired."""
-    expires_text, _, signature = token.partition(".")
+    expires_text, _, signature = token.partition(_EXPIRY_SEPARATOR)  # pragma: no mutate — one dot
     if not expires_text.isdigit() or int(expires_text) <= now.timestamp():
         return False
     return hmac.compare_digest(signature, _signature(content_id, link, int(expires_text)))

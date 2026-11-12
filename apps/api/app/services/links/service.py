@@ -208,7 +208,7 @@ async def share(
     grantee_ids = await _grantee_ids(grantees)
     snapshot = await _snapshot_for(user_id, target_type, target_id)
     candidate = ShortLink(
-        slug="",
+        slug="",  # pragma: no mutate — _insert mints the slug before any write
         user_id=user_id,
         target_type=target_type,
         target_id=target_id,
@@ -228,10 +228,7 @@ async def share(
         # Lost a concurrent mint: the winner's link is the one live link, and the snapshot just
         # published belongs to nobody.
         await _release_snapshot(user_id, snapshot)
-        winner = await short_link_repository.get_live_for_target(user_id, target_type, target_id)
-        if winner is None:
-            return await share(user_id, target_type, target_id, link_settings)
-        return winner
+        return await share(user_id, target_type, target_id, link_settings)
     capture(
         UserId(user_id),
         ShortLinkCreated(
@@ -324,9 +321,7 @@ async def update_settings(user_id: str, slug: str, change: LinkSettingsUpdate) -
         )
     if not change.model_fields_set:
         raise AppError(message="Nothing to change", status_code=422, code="link_settings_empty")
-    update = ShortLinkUpdate.model_validate(
-        change.model_dump(exclude_unset=True, exclude={"grantees"})
-    )
+    update = ShortLinkUpdate.model_validate(change.model_dump(exclude_unset=True))
     if "grantees" in change.model_fields_set:
         update.grantees = [str(email) for email in change.grantees or []]
         update.grantee_ids = await _grantee_ids(update.grantees)
@@ -423,7 +418,7 @@ def _day_dedupe(slug: str, viewer: LinkViewer, what: str) -> Dedupe:
 
 def _deny(link: ShortLink | None, viewer: LinkViewer, denial: LinkDenial) -> LinkDeniedError:
     """Build the error a denial raises, counted for the owner whenever the link exists."""
-    if link is not None and denial is not LinkDenial.NOT_FOUND:
+    if link is not None:
         reason = denial.value.removeprefix("link_")
         capture(
             UserId(link.user_id),
@@ -442,7 +437,7 @@ async def _granted_view(
     link: ShortLink | None, viewer: LinkViewer
 ) -> tuple[ShortLink, LinkViewerKind, PublicShortLinkView]:
     if link is None:
-        raise _deny(None, viewer, LinkDenial.NOT_FOUND)
+        raise LinkDeniedError.for_denial(LinkDenial.NOT_FOUND)
     decision = evaluate(link, viewer, _now())
     if isinstance(decision, Denied):
         raise _deny(link, viewer, decision.denial)

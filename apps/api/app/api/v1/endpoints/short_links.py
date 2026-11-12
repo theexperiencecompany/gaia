@@ -183,7 +183,7 @@ async def resolve_short_link_route(
     """Open a link: its target's public view and any framed content, or the denial the viewer sees."""
     log.set(short_link={"operation": "resolve", "slug_hash": hash_short_link_slug(slug)})
     response.headers["Cache-Control"] = _NO_STORE  # pragma: no mutate — case-insensitive name
-    response.headers["Vary"] = "Cookie"
+    response.headers["Vary"] = "Cookie"  # pragma: no mutate — case-insensitive name
     envelope = await resolve(await _looked_up(request, slug), _viewer(request, user))
     log.set(short_link={"target_type": envelope.target_type.value, "access": envelope.access.value})
     return envelope

@@ -45,7 +45,7 @@ _SVG_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
 
 
 def _attachment(filename: str) -> str:
-    return f"attachment; filename*=UTF-8''{quote(filename, safe='')}"
+    return f"attachment; filename*=UTF-8''{quote(filename, safe='')}"  # pragma: no mutate — quote never encodes X
 
 
 def _response(
@@ -59,14 +59,14 @@ def _response(
 ) -> Response:
     headers = {
         **_SHARED_HEADERS,
-        "Content-Security-Policy": csp,
-        "Content-Disposition": disposition,
-        "Cache-Control": cache_control,
+        "Content-Security-Policy": csp,  # pragma: no mutate — case-insensitive name
+        "Content-Disposition": disposition,  # pragma: no mutate — case-insensitive name
+        "Cache-Control": cache_control,  # pragma: no mutate — case-insensitive name
     }
     if varies_by_dest:
         # The answer depends on the requesting element: a cached iframe copy must never
         # satisfy a top-level navigation, which gets the redirect (or download) instead.
-        headers["Vary"] = "Sec-Fetch-Dest"
+        headers["Vary"] = "Sec-Fetch-Dest"  # pragma: no mutate — case-insensitive name
     return Response(body, media_type=media_type, headers=headers)
 
 

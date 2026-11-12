@@ -28,6 +28,7 @@ from app.models.short_link_models import (
     LinkSnapshot,
     LinkViewer,
     PublicTodoDeliverable,
+    PublishRejection,
     RenderMode,
     RevokeReason,
     ShortLink,
@@ -41,6 +42,7 @@ from app.services.links.registry import REGISTRY
 from app.services.links.service import (
     MAX_SLUG_ATTEMPTS,
     ShortLinkExhaustedError,
+    link_response,
     live_share_link,
     optional_short_link,
     resolve,
@@ -959,3 +961,34 @@ class TestResolve:
             OWNER, FILE_ID, capped.model_copy(update={"content_id": None})
         )
         assert (envelope.content, envelope.downloadable) == (None, False)
+
+
+class TestLinkResponse:
+    def test_a_restricted_file_names_the_widest_level_it_may_be_served_at(self) -> None:
+        expires = NOW + timedelta(days=1)
+        link = _link(
+            "abcdefghijk",
+            access=LinkAccess.PEOPLE,
+            grantees=["a@example.com"],
+            expires_at=expires,
+            snapshot=_snap(
+                "c" * 26, max_access=LinkAccess.PEOPLE, restricted_by=PublishRejection.UNSAFE_URL
+            ),
+        )
+
+        assert link_response(link).model_dump() == {
+            "url": f"{settings.SHORTLINK_BASE_URL}/abcdefghijk",
+            "slug": "abcdefghijk",
+            "access": LinkAccess.PEOPLE,
+            "grantees": ["a@example.com"],
+            "expires_at": expires,
+            "content_max_access": LinkAccess.PEOPLE,
+        }
+
+    @pytest.mark.parametrize(
+        "snapshot", [None, _snap("c" * 26, max_access=LinkAccess.PEOPLE)], ids=["none", "open"]
+    )
+    def test_a_link_whose_file_nothing_narrowed_names_no_level(
+        self, snapshot: LinkSnapshot | None
+    ) -> None:
+        assert link_response(_link("abcdefghijk", snapshot=snapshot)).content_max_access is None

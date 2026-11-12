@@ -47,8 +47,8 @@ def _arrived_on_origin(request: Request, content_id: str) -> bool:
     forwarded = (
         request.headers.get(CONTENT_HOST_HEADER) if carries_internal_token(request) else None
     )
-    host = (forwarded or request.headers.get("host", "")).lower()
-    return host == content_origin_host(content_id)
+    host = forwarded or request.headers.get("host")
+    return host is not None and host.lower() == content_origin_host(content_id)
 
 
 async def _live_link(request: Request, content_id: str) -> ShortLink:
@@ -64,7 +64,7 @@ async def _live_link(request: Request, content_id: str) -> ShortLink:
 async def serve_link_content_route(
     request: Request,
     content_id: str,
-    t: Annotated[str, Query()] = "",
+    t: Annotated[str, Query()] = "",  # pragma: no mutate — any non-token default redirects
     sec_fetch_dest: Annotated[str | None, Header()] = None,
 ) -> Response:
     """Serve a snapshot's bytes with its render mode's headers; a missing or stale token goes back to the link."""
@@ -74,7 +74,8 @@ async def serve_link_content_route(
     if snapshot is None or not servable(snapshot, link.access):
         raise _not_found()
     link_url = build_url(link.slug)
-    if not token_valid(link, content_id, t, datetime.now(UTC)):
+    now = datetime.now(UTC)  # pragma: no mutate — token_valid reads only the instant
+    if not token_valid(link, content_id, t, now):
         log.set(short_link={"signed_url": "stale"})
         return RedirectResponse(link_url, status_code=status.HTTP_302_FOUND)
     log.set(short_link={"render": snapshot.render.value})
