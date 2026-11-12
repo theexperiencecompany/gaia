@@ -14,9 +14,11 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from pydantic import BaseModel
+from pymongo.errors import AutoReconnect, DuplicateKeyError
 import pytest
 
 from app.db.repositories.base import MongoDocument, _BaseRepository
+from app.db.repositories.errors import AlreadyExistsError, RepositoryError
 from app.utils.errors import RepositoryMisconfiguredError
 
 
@@ -157,3 +159,55 @@ async def test_find_one_asks_its_own_collection_with_the_filter_and_order() -> N
     assert found is None
     get_collection.assert_called_once_with("things")
     collection.find_one.assert_awaited_once_with({"name": "x"}, sort=[("name", -1)])
+
+
+class _NestingRepository(_BaseRepository[_Doc, _Update]):
+    collection_name = "things"
+    document_model = _Doc
+    update_model = _Update
+    uses_object_id = False
+
+    async def get_twice(self, doc_id: str) -> _Doc | None:
+        return await self.get_by_name(doc_id) or await self.get_by_name(doc_id)
+
+    async def get_by_name(self, name: str) -> _Doc | None:
+        return await self._find_one({"name": name})
+
+    async def create_or_false(self, doc: _Doc) -> bool:
+        try:
+            await self.create(doc)
+        except DuplicateKeyError:
+            return False
+        return True
+
+
+async def test_a_driver_failure_leaves_a_public_call_as_a_repository_error() -> None:
+    collection = MagicMock()
+    outage = AutoReconnect("primary stepped down")
+    collection.find_one = AsyncMock(side_effect=outage)
+    with (
+        patch("app.db.repositories.base.get_async_collection", return_value=collection),
+        pytest.raises(RepositoryError) as raised,
+    ):
+        await _NestingRepository().get_twice("x")
+
+    assert not isinstance(raised.value, AlreadyExistsError)
+    assert raised.value.__cause__ is outage
+    assert "AutoReconnect" in str(raised.value)
+
+
+async def test_a_duplicate_key_leaves_a_public_call_as_already_exists() -> None:
+    collection = MagicMock()
+    collection.insert_one = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+    with (
+        patch("app.db.repositories.base.get_async_collection", return_value=collection),
+        pytest.raises(AlreadyExistsError),
+    ):
+        await _NestingRepository().create(_Doc(id="a", name="a"))
+
+
+async def test_a_repository_body_still_catches_the_driver_error_of_its_own_nested_call() -> None:
+    collection = MagicMock()
+    collection.insert_one = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+    with patch("app.db.repositories.base.get_async_collection", return_value=collection):
+        assert await _NestingRepository().create_or_false(_Doc(id="a", name="a")) is False

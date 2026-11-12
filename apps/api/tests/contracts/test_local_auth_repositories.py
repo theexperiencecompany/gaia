@@ -15,11 +15,11 @@ import uuid
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
-from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.auth import InstanceRole
 from app.db.mongodb.indexes import create_local_credential_indexes, create_local_invite_indexes
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.local_credentials import LocalCredentialsRepository
 from app.db.repositories.local_invites import LocalInvitesRepository
 from app.models.auth_models import (
@@ -223,5 +223,5 @@ class TestInvites:
 
     async def test_two_invites_never_share_a_digest(self, repo):
         await repo.create(self._invite("same", expires_in=timedelta(days=1)))
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await repo.create(self._invite("same", expires_in=timedelta(days=1)))

@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.playbooks import PlaybooksRepository
 from app.models.playbook_models import (
     AskSlot,
@@ -347,7 +347,7 @@ class TestPlaybooksRepository:
 
 
 class TestPlaybooksUniqueIndexSurface:
-    """Recreate the real one-per-workflow index to prove the DuplicateKeyError surface the upsert retry depends on."""
+    """Recreate the real one-per-workflow index to prove a second document for a workflow raises AlreadyExistsError."""
 
     async def _create_indexes(self, raw_collection) -> None:
         # Mirrors app/db/mongodb/indexes.py::create_playbook_indexes.
@@ -356,7 +356,7 @@ class TestPlaybooksUniqueIndexSurface:
     async def test_a_second_document_for_the_workflow_raises(self, repo, raw_collection) -> None:
         await self._create_indexes(raw_collection)
         await repo.create(make_doc())
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await repo.create(make_doc(description="duplicate"))
 
     async def test_upsert_over_an_existing_playbook_keeps_one_document(

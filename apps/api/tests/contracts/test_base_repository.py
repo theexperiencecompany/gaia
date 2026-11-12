@@ -14,7 +14,7 @@ from datetime import datetime
 
 from bson import ObjectId
 from pydantic import BaseModel, ConfigDict
-from pymongo.errors import BulkWriteError
+from pymongo.errors import BulkWriteError, DuplicateKeyError
 import pytest
 
 from app.constants.cache import REPO_ENTITY_TTL, REPO_QUERY_TTL
@@ -26,6 +26,7 @@ from app.db.repositories.base import (
     cached_query,
 )
 from app.db.repositories.cache import CachePolicy
+from app.db.repositories.errors import AlreadyExistsError, RepositoryError
 from tests.contracts.base_contract import UserScopedRepositoryContract
 
 
@@ -62,6 +63,19 @@ class _FixtureRepository(UserScopedRepository[_FixtureDocument, _FixtureUpdate])
     async def list_titles(self, *, user_id: str) -> list[str]:
         docs = await self._find({"user_id": user_id})
         return [doc.title for doc in docs]
+
+    async def retitle_all(self, user_id: str, titles: dict[str, str]) -> int:
+        return await self._bulk_set(
+            [(doc_id, _FixtureUpdate(title=title)) for doc_id, title in titles.items()],
+            scope=user_id,
+        )
+
+    async def try_create(self, doc: _FixtureDocument) -> bool:
+        try:
+            await self.create(doc)
+        except DuplicateKeyError:
+            return False
+        return True
 
 
 @pytest.fixture
@@ -238,6 +252,55 @@ class TestBasePrimitives:
 
 
 _DOUBLE_COUNT = [{"$set": {"count": {"$multiply": ["$count", 2]}}}]
+
+
+class TestDriverErrorTranslation:
+    """A public call surfaces the driver's failures as the repository's own error types."""
+
+    async def test_a_unique_index_refusing_a_create_raises_already_exists(
+        self, repo, make_doc, raw_collection
+    ):
+        await raw_collection.create_index("title", unique=True)
+        await repo.create(make_doc(title="taken"))
+
+        with pytest.raises(AlreadyExistsError) as raised:
+            await repo.create(make_doc(title="taken"))
+
+        assert isinstance(raised.value.__cause__, DuplicateKeyError)
+
+    async def test_a_bulk_write_refused_by_a_unique_index_raises_already_exists(
+        self, repo, make_doc, raw_collection
+    ):
+        await raw_collection.create_index("title", unique=True)
+        a = await repo.create(make_doc(user_id="u", title="a"))
+        b = await repo.create(make_doc(user_id="u", title="b"))
+
+        with pytest.raises(AlreadyExistsError):
+            await repo.retitle_all("u", {a.id: "A", b.id: "A"})
+
+    async def test_a_write_the_store_rejects_for_another_reason_raises_a_repository_error(
+        self, repo, make_doc, raw_collection
+    ):
+        await raw_collection.insert_one({"seed": True})
+        await raw_collection.database.command(
+            "collMod",
+            raw_collection.name,
+            validator={"$jsonSchema": {"properties": {"title": {"maxLength": 3}}}},
+        )
+
+        with pytest.raises(RepositoryError) as raised:
+            await repo.create(make_doc(title="far too long"))
+
+        assert not isinstance(raised.value, AlreadyExistsError)
+        assert "WriteError" in str(raised.value)
+
+    async def test_a_repository_body_catches_the_driver_error_of_its_own_nested_create(
+        self, repo, make_doc, raw_collection
+    ):
+        await raw_collection.create_index("title", unique=True)
+
+        assert await repo.try_create(make_doc(title="once")) is True
+        assert await repo.try_create(make_doc(title="once")) is False
 
 
 class TestPipelineUpdate:
