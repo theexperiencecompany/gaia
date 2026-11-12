@@ -13,6 +13,7 @@ import FileViewerPanel from "@/features/chat/components/artifacts/FileViewerPane
 import { FileCard } from "@/features/chat/components/files/FileCard";
 import { useSidebarPreview } from "@/features/chat/hooks/useSidebarPreview";
 import { getExtension } from "@/features/chat/utils/fileExtension";
+import { ShareLinkSettingsModal } from "@/features/short-links/components/ShareLinkSettingsModal";
 import { shareLinkMenuItems } from "@/features/short-links/components/shareLinkMenuItems";
 import { useShareLink } from "@/features/short-links/hooks/useShareLink";
 import { sessionArtifactTargetId } from "@/features/short-links/utils/sessionArtifactTargetId";
@@ -107,6 +108,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
   return (
     <>
       {preview.panel}
+      <ShareLinkSettingsModal share={share} />
       <FileCard
         name={filename}
         mimeType={contentType}
