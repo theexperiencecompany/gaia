@@ -26,8 +26,13 @@ export const dynamicParams = false;
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
-  const { locale } = await params;
-  return comparisonsHubMetadata(locale);
+  const { locale, page } = await params;
+  const comparisons = await getAllComparisons();
+  return comparisonsHubMetadata(
+    locale,
+    Number(page),
+    hubPageCount(comparisons.length),
+  );
 }
 
 export default async function ComparisonsHubPage({ params }: PageProps) {
