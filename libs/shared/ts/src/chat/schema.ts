@@ -18,7 +18,7 @@ import type { ToolDataEntry } from "../api/generated";
 // The one payload here that is a documented API model, so the satisfies-check
 // makes the generated type the arbiter. It stays looser than the model on
 // purpose: a parse boundary may accept more than the model promises, never less.
-const ToolDataEntrySchema = z
+export const ToolDataEntrySchema = z
   .object({
     tool_name: z.string(),
     data: z.unknown(),
