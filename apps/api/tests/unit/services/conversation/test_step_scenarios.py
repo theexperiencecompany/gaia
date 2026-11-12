@@ -2,6 +2,7 @@
 
 import asyncio
 
+from langgraph.errors import GraphRecursionError
 import pytest
 
 from app.constants.chat import EMPTY_RESPONSE_FALLBACK, ConversationSource
@@ -12,6 +13,7 @@ from app.models.conversation_log_models import (
     ApprovalDecided,
     CommsPhase,
     Entry,
+    FailureReason,
     Reaction,
     Reply,
     ReplyOutcome,
@@ -484,7 +486,14 @@ class StepScenarios:
         await run(rt)
         assert (await replies(rt))[0].text == "half"
         assert await answered(rt) == [(ReplyOutcome.FAILED, ("u1",))]
+        assert [s.failure for s in await settles(rt)] == [FailureReason.MODEL_ERROR]
         await assert_quiet(rt)
+
+    async def test_a_run_that_hits_the_step_limit_says_so_on_its_settle(self, rt: Runtime) -> None:
+        rt.runner.script([text("half"), Fail(GraphRecursionError("limit"))])
+        await send(rt, user("u1"))
+        await run(rt)
+        assert [s.failure for s in await settles(rt)] == [FailureReason.STEP_LIMIT]
 
     async def test_a_silent_run_for_a_user_still_answers_with_the_fallback(
         self, rt: Runtime
@@ -546,6 +555,7 @@ class StepScenarios:
         ]
         assert rt.runner.calls[-1] == Started(batch=(1,), context=(2, 3))
         assert await answered(rt) == [(ReplyOutcome.FAILED, ()), (ReplyOutcome.ANSWERED, ("u1",))]
+        assert [s.failure for s in await settles(rt)] == [FailureReason.SERVER_RESTART, None]
         await assert_quiet(rt)
 
     async def test_a_swallowed_first_cancel_starts_no_second_run_until_the_first_is_dead(

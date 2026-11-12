@@ -65,6 +65,17 @@ class ReplyOutcome(StrEnum):
     SILENT = "silent"
 
 
+class FailureReason(StrEnum):
+    """Why a reply failed; a client words the line it shows under the reply from it."""
+
+    # The model call failed (a provider error, a dropped stream).
+    MODEL_ERROR = "model_error"
+    # The turn ran out of steps before it answered.
+    STEP_LIMIT = "step_limit"
+    # The process answering died; a later reply answers again.
+    SERVER_RESTART = "server_restart"
+
+
 _MAY_ANSWER_NOTHING = frozenset({ReplyOutcome.STOPPED, ReplyOutcome.FAILED})
 
 
@@ -233,9 +244,13 @@ class ReplySettled(_Entry):
     through: int = Field(ge=0)
     # The user message this reply visibly points at; None when it sits directly under what it answers.
     quote_target: str | None
+    # Set exactly when outcome is FAILED.
+    failure: FailureReason | None = None
 
     @model_validator(mode="after")
     def _answers_unless_cut_short(self) -> "ReplySettled":
+        if (self.failure is None) is (self.outcome is ReplyOutcome.FAILED):
+            raise ValueError("a failed reply names its failure, and only a failed one does")
         if not self.answers and self.outcome not in _MAY_ANSWER_NOTHING:
             raise ValueError(f"a {self.outcome} reply answers at least one entry")
         return self

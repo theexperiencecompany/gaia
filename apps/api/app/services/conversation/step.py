@@ -6,6 +6,8 @@ import contextlib
 from dataclasses import dataclass, replace
 import itertools
 
+from langgraph.errors import GraphRecursionError
+
 from app.constants.chat import BOT_CONVERSATION_SOURCES, EMPTY_RESPONSE_FALLBACK
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED
 from app.models.chat_models import ReactionBy
@@ -27,6 +29,7 @@ from app.models.conversation_log_models import (
     CommsPhase,
     ConversationState,
     Entry,
+    FailureReason,
     IntegrationConnected,
     LoggedEntry,
     MergeGroup,
@@ -180,6 +183,7 @@ async def _recover(ports: RuntimePorts, claim: StepClaim) -> None:
             answers=(),
             through=state.settled_through,
             quote_target=None,
+            failure=FailureReason.SERVER_RESTART,
         )
         await _append(ports, claim, recovered)
     elif state.comms is not CommsPhase.IDLE:
@@ -574,11 +578,20 @@ async def _fail(ports: RuntimePorts, attempt: _Attempt, error: Exception) -> Non
         conversation_id=attempt.claim.conversation_id,
         attempt_id=attempt.attempt_id,
     )
-    await _conclude(ports, attempt, _base_reply(attempt), ReplyOutcome.FAILED)
+    failure = (
+        FailureReason.STEP_LIMIT
+        if isinstance(error, GraphRecursionError)
+        else FailureReason.MODEL_ERROR
+    )
+    await _conclude(ports, attempt, _base_reply(attempt), ReplyOutcome.FAILED, failure)
 
 
 async def _conclude(
-    ports: RuntimePorts, attempt: _Attempt, reply: Reply, settled_as: ReplyOutcome
+    ports: RuntimePorts,
+    attempt: _Attempt,
+    reply: Reply,
+    settled_as: ReplyOutcome,
+    failure: FailureReason | None = None,
 ) -> None:
     """Save the reply's final content and settle it as answering everything the attempt covered."""
     stored = await _put_reply(ports, attempt, reply)
@@ -586,7 +599,9 @@ async def _conclude(
     if settled_as is ReplyOutcome.SILENT:
         quote = None
     await _append(
-        ports, attempt.claim, _settled(attempt, settled_as, answers, attempt.through, quote)
+        ports,
+        attempt.claim,
+        _settled(attempt, settled_as, answers, attempt.through, quote, failure),
     )
 
 
@@ -596,6 +611,7 @@ def _settled(
     answers: tuple[str, ...],
     through: int,
     quote: str | None,
+    failure: FailureReason | None = None,
 ) -> ReplySettled:
     return ReplySettled(
         id=f"{attempt.attempt_id}:settled",
@@ -604,6 +620,7 @@ def _settled(
         answers=answers,
         through=through,
         quote_target=quote,
+        failure=failure,
     )
 
 

@@ -13,6 +13,7 @@ from app.models.conversation_log_models import (
     ConversationState,
     Effect,
     Entry,
+    FailureReason,
     LoggedEntry,
     Notice,
     Rejected,
@@ -115,6 +116,7 @@ def settled(
         answers=tuple(answers),
         through=through,
         quote_target=None,
+        failure=FailureReason.SERVER_RESTART if outcome is ReplyOutcome.FAILED else None,
     )
 
 

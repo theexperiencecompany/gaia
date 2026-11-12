@@ -7118,6 +7118,16 @@
         "title": "EventUpdateRequest",
         "type": "object"
       },
+      "FailureReason": {
+        "description": "Why a reply failed; a client words the line it shows under the reply from it.",
+        "enum": [
+          "model_error",
+          "step_limit",
+          "server_restart"
+        ],
+        "title": "FailureReason",
+        "type": "string"
+      },
       "FeaturePeriodUsage": {
         "description": "One feature's usage within one window (day or month).",
         "properties": {
@@ -16535,6 +16545,16 @@
             },
             "title": "Answers",
             "type": "array"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FailureReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "id": {
             "description": "Producer-minted idempotency key",

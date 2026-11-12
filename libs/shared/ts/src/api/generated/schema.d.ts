@@ -9050,6 +9050,12 @@ export interface components {
             timezone_offset?: string | null;
         };
         /**
+         * FailureReason
+         * @description Why a reply failed; a client words the line it shows under the reply from it.
+         * @enum {string}
+         */
+        FailureReason: "model_error" | "step_limit" | "server_restart";
+        /**
          * FeaturePeriodUsage
          * @description One feature's usage within one window (day or month).
          */
@@ -13648,6 +13654,7 @@ export interface components {
         ReplySettled: {
             /** Answers */
             answers: string[];
+            failure?: components["schemas"]["FailureReason"] | null;
             /**
              * Id
              * @description Producer-minted idempotency key
@@ -17534,6 +17541,7 @@ export type EventCreateRequest = components['schemas']['EventCreateRequest'];
 export type EventDeleteRequest = components['schemas']['EventDeleteRequest'];
 export type EventDeleteResponse = components['schemas']['EventDeleteResponse'];
 export type EventUpdateRequest = components['schemas']['EventUpdateRequest'];
+export type FailureReason = components['schemas']['FailureReason'];
 export type FeaturePeriodUsage = components['schemas']['FeaturePeriodUsage'];
 export type FeatureSpec = components['schemas']['FeatureSpec'];
 export type FeatureStage = components['schemas']['FeatureStage'];
