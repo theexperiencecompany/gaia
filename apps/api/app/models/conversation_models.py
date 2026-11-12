@@ -2,10 +2,10 @@
 conversation endpoints' response shapes.
 
 The persistence models describe the document as it is actually stored and read
-back — distinct from the API *request* models, which live in ``chat_models``. The
-embedded ``messages`` array reuses ``MessageModel``; a before-validator runs the
-legacy tool-data normalization at the read boundary so the rest of the app never
-sees an un-normalized message.
+back — distinct from the API *request* models, which live in ``chat_models``.
+Messages are ``MessageModel`` entries read from conversation_entries; a
+before-validator runs the legacy tool-data normalization at the read boundary so
+the rest of the app never sees an un-normalized message.
 
 The response models at the bottom of this file live here rather than alongside
 the requests in ``chat_models`` because they are built from the persistence
@@ -63,7 +63,7 @@ class FoldedCards(BaseModel):
 
 
 class ConversationDocument(UserScopedDocument):
-    """A conversation and its embedded message history as stored in MongoDB.
+    """A conversation as the repository returns it: its head fields and, where read, its entries.
 
     ``extra="allow"`` preserves stray/legacy top-level fields (e.g. ``artifacts``,
     ``metadata``) so a full-document read returns them verbatim, matching the
@@ -86,6 +86,7 @@ class ConversationDocument(UserScopedDocument):
     # The tracked todo whose chat this is: its runs execute here. Such a chat is
     # reached only from its todo, never listed (see _listed). Set once at creation.
     todo_id: str | None = None
+    # Assembled from conversation_entries by the reads that need history; never stored on the head.
     messages: list[MessageModel] = Field(default_factory=list)
     # Conversation-level artifact registry: one entry per agent-written file,
     # deduped by path; services/chat/artifacts_registry.py owns every write.
@@ -199,12 +200,16 @@ class _ConversationOwnerRow(_ConversationIdRow):
     user_id: str
 
 
-class _MessageProjectionRow(BaseModel):
-    """Positional ``messages.$`` projection — a one-element messages slice."""
+class ConversationEntry(BaseModel):
+    """One message of a conversation's log, at the seq its append committed it under."""
 
-    model_config = ConfigDict(extra="ignore")
+    seq: int
+    message: MessageModel
 
-    messages: list[MessageModel] = Field(default_factory=list)
+    @field_validator("message", mode="before")
+    @classmethod
+    def _normalize_message(cls, value: object) -> object:
+        return convert_legacy_tool_data(value) if isinstance(value, dict) else value
 
 
 # ---------------------------------------------------------------------------

@@ -27,19 +27,16 @@ from app.utils.agent_utils import format_tool_call_entry
 from app.utils.stream_utils import apply_outputs_to_tool_data
 from shared.py.wide_events import log
 
-# A workflow reuses one conversation across all runs; cap it so the doc can't grow
-# past MongoDB's 16MB limit (and fail every run with WriteError 17419).
-WORKFLOW_CONVERSATION_MAX_MESSAGES = 50
-
 
 async def get_or_create_workflow_conversation(
     workflow_id: str, user_id: str, workflow_title: str
 ) -> str:
     """Get the workflow's existing conversation id, or create one bound to it."""
     # Reuse the existing workflow conversation if one already exists.
-    existing = await conversation_repository.find_workflow_conversation(user_id, workflow_id)
-    if existing is not None:
-        return existing.conversation_id
+    if existing := await conversation_repository.find_workflow_conversation_id(
+        user_id, workflow_id
+    ):
+        return existing
 
     conversation = await create_system_conversation(
         user_id=user_id,
@@ -73,7 +70,6 @@ async def add_workflow_execution_messages(
         await update_messages(
             messages_request,
             AuthenticatedUser(user_id=user_id),
-            max_messages=WORKFLOW_CONVERSATION_MAX_MESSAGES,
         )
 
     except Exception as e:

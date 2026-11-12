@@ -343,6 +343,13 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         """
         return get_async_collection(self.collection_name)
 
+    def _sibling_collection(self, name: str) -> AsyncIOMotorCollection[dict[str, Any]]:
+        """Return the Motor handle of a collection this repository owns beside its own (an entry log).
+
+        Resolves through the same binding as _raw_collection, so the fixtures that patch it cover both.
+        """
+        return get_async_collection(name)
+
     async def _find_one(
         self, filter_: Mapping[str, object], *, sort: Sequence[tuple[str, int]] | None = None
     ) -> TDoc | None:

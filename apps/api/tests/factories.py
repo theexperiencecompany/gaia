@@ -49,19 +49,6 @@ def make_user(**overrides) -> dict:
     return defaults
 
 
-def make_conversation(user_id: str | None = None, **overrides) -> dict:
-    defaults = {
-        "conversation_id": str(uuid4()),
-        "user_id": user_id or make_user_id(),
-        "description": "Test conversation",
-        "messages": [],
-        "created_at": datetime.now(UTC).isoformat(),
-        "updated_at": datetime.now(UTC).isoformat(),
-    }
-    defaults.update(overrides)
-    return defaults
-
-
 def make_state(**overrides) -> dict:
     """Build a dict-shaped agent state for tests.
 
