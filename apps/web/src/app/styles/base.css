@@ -4,7 +4,9 @@
    The react-ui styles load with the OpenUI library: config/openui/openui.css. */
 @layer theme, base, openui, components, gaia, utilities;
 @import "tailwindcss" source(none);
-@import "@heroui/styles/themes/default" layer(theme);
+/* static: the area sheets only @reference this theme, so base.css must emit every
+   token their component CSS reads (--ease-smooth, --color-field, --radius-xl...). */
+@import "@heroui/styles/themes/default" layer(theme) theme(static);
 @import "@heroui/styles/base" layer(base);
 @import "./theme.css";
 @import "@heroui/styles/utilities";
@@ -168,18 +170,6 @@
   }
   to {
     height: 0;
-  }
-}
-
-@keyframes shiny-text {
-  0%,
-  90%,
-  100% {
-    background-position: calc(-100% - var(--shiny-width)) 0;
-  }
-  30%,
-  60% {
-    background-position: calc(100% + var(--shiny-width)) 0;
   }
 }
 
@@ -1280,6 +1270,8 @@
   --danger-soft: color-mix(in oklab, var(--danger) 20%, transparent);
   --danger-soft-foreground: var(--danger);
   --danger-soft-hover: color-mix(in oklab, var(--danger) 30%, transparent);
+  /* HeroUI 3.2.7's field sheets read this for an invalid field; its theme never defines it */
+  --color-field-border-invalid: var(--danger);
 }
 
 :root,
@@ -1446,11 +1438,12 @@ html {
   }
 
   /* labelPlacement="inside" (components/shared/fieldVariants.ts): v2's default
-     field, the label small at the top-left inside a 56px field, the value below. */
-  .gaia-field-inside {
+     field, the label small at the top-left inside a 56px field, the value below.
+     Only when a visible Label renders: v2 fell back to outside (40px) without one. */
+  .gaia-field-inside:has(> .label:not(.sr-only)) {
     position: relative;
   }
-  .gaia-field-inside > .label {
+  .gaia-field-inside:has(> .label:not(.sr-only)) > .label {
     position: absolute;
     z-index: 1;
     top: var(--gaia-field-inside-label-top);
@@ -1460,17 +1453,17 @@ html {
     color: var(--gaia-field-label-inside-color);
     pointer-events: none;
   }
-  .gaia-field-inside .input,
-  .gaia-field-inside .input-group,
-  .gaia-field-inside .select__trigger,
-  .gaia-field-inside .combo-box__input-group {
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .select__trigger,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .combo-box__input-group {
     min-height: var(--gaia-field-inside-height);
   }
-  .gaia-field-inside .input,
-  .gaia-field-inside .input-group__input,
-  .gaia-field-inside .textarea,
-  .gaia-field-inside .select__trigger,
-  .gaia-field-inside .combo-box__input-group .input {
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group__input,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .textarea,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .select__trigger,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .combo-box__input-group .input {
     padding-top: var(--gaia-field-inside-padding-top);
     padding-bottom: var(--gaia-field-inside-padding-bottom);
     padding-inline: var(--gaia-field-inside-padding-x);

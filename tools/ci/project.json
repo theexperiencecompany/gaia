@@ -140,6 +140,29 @@
         }
       }
     },
+    "heroui-style-overrides": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs heroui-style-overrides"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/apps/web/src/**/*.tsx",
+        "{workspaceRoot}/apps/desktop/src/**/*.tsx",
+        "{workspaceRoot}/libs/shared/ts/src/**/*.tsx",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "heroui-style-overrides",
+          "area": "node"
+        }
+      }
+    },
     "components-per-file": {
       "executor": "nx:run-commands",
       "options": {

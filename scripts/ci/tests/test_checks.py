@@ -867,3 +867,122 @@ def test_a_missing_canonical_handle_fails_loudly(tmp_path: Path) -> None:
 
     assert process.returncode == 1
     assert BOT_HANDLES_SOURCE in process.stderr
+
+
+# ---------------------------------------------------------------------------
+# heroui-style-overrides: the design system owns a HeroUI component's look
+# ---------------------------------------------------------------------------
+
+HERO_FILE = "apps/web/src/features/demo/Card.tsx"
+
+
+def _hero_component(jsx: str, imports: str = "Button, Chip, Modal") -> str:
+    return f'import {{ {imports} }} from "@heroui/react";\n\nexport function Demo() {{\n  return {jsx};\n}}\n'
+
+
+@pytest.mark.parametrize(
+    ("jsx", "entry"),
+    [
+        ('<Button className="bg-zinc-800">x</Button>', "Button:bg-zinc-800"),
+        ('<Button className="hover:text-zinc-400">x</Button>', "Button:hover:text-zinc-400"),
+        ('<Chip className="border-zinc-700">x</Chip>', "Chip:border-zinc-700"),
+        ('<Chip className="border-t-red-500">x</Chip>', "Chip:border-t-red-500"),
+        ('<Chip className="rounded-full">x</Chip>', "Chip:rounded-full"),
+        ('<Chip className="!px-2">x</Chip>', "Chip:!px-2"),
+        ('<Modal.Body className="p-0">x</Modal.Body>', "Modal.Body:p-0"),
+        (
+            '<Button className={cn("w-full", open && "bg-[#00bbff]")}>x</Button>',
+            "Button:bg-[#00bbff]",
+        ),
+        ('<Button className={`w-full ${a ? "rounded-xl" : ""}`}>x</Button>', "Button:rounded-xl"),
+        ("<Button style={{ borderRadius: 8 }}>x</Button>", "Button:style.borderRadius"),
+        ("<Button style={{ color: 'red' }}>x</Button>", "Button:style.color"),
+    ],
+)
+def test_a_heroui_style_override_fails(tmp_path: Path, jsx: str, entry: str) -> None:
+    repo = _repo(tmp_path)
+    _add_text(repo, HERO_FILE, _hero_component(jsx))
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 1, f"{jsx} passed\n{process.stdout}"
+    assert f"{HERO_FILE}:{entry}" in process.stdout
+
+
+def test_an_aliased_heroui_import_is_still_checked(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _add_text(
+        repo,
+        HERO_FILE,
+        _hero_component(
+            '<HeroButton className="rounded-lg">x</HeroButton>', "Button as HeroButton"
+        ),
+    )
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 1, process.stdout
+    assert f"{HERO_FILE}:Button:rounded-lg" in process.stdout
+
+
+@pytest.mark.parametrize(
+    "jsx",
+    [
+        '<Button className="w-full h-10 min-w-0 max-w-sm mt-2 flex grid gap-2 order-1 self-end justify-between items-center">x</Button>',
+        '<Chip className="text-sm border border-2 border-dashed">x</Chip>',
+        "<Button style={{ width: 20, marginTop: 4 }}>x</Button>",
+        '<div className="bg-zinc-800 rounded-xl p-4">x</div>',
+    ],
+)
+def test_layout_and_non_heroui_elements_pass(tmp_path: Path, jsx: str) -> None:
+    repo = _repo(tmp_path)
+    _add_text(repo, HERO_FILE, _hero_component(jsx))
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 0, process.stdout
+
+
+def test_a_component_not_from_heroui_is_not_checked(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _add_text(
+        repo,
+        HERO_FILE,
+        'import { Button } from "@/components/ui/button";\n\n'
+        'export const Demo = () => <Button className="bg-zinc-800 rounded-xl">x</Button>;\n',
+    )
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 0, process.stdout
+
+
+def test_the_sanctioned_variant_files_may_style_heroui(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _add_text(
+        repo,
+        "apps/web/src/components/shared/GaiaButton.tsx",
+        _hero_component('<Button className="bg-zinc-700 rounded-full">x</Button>'),
+    )
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 0, process.stdout
+
+
+def test_a_baselined_heroui_override_passes_and_a_stale_line_is_only_reported(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    _add_text(repo, HERO_FILE, _hero_component('<Chip className="bg-[#00bbff]/15">x</Chip>'))
+    stale = "apps/web/src/features/gone/Old.tsx:Button:rounded-xl"
+    _add_text(
+        repo,
+        "scripts/ci/baselines/heroui-style-overrides.txt",
+        f"# header\n{HERO_FILE}:Chip:bg-[#00bbff]/15\n{stale}\n",
+    )
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 0, process.stdout
+    assert stale in process.stdout
