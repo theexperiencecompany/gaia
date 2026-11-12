@@ -14,7 +14,8 @@ from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
 from app.models.bot_models import BotChatRequest
 from app.models.chat_models import MessageModel
-from app.models.conversation_log_models import UserMessage
+from app.models.conversation_frame_models import StateFrame
+from app.models.conversation_log_models import DisplayState, UserMessage
 from app.models.user_models import AuthenticatedUser
 from app.services.bot_service import BotService
 from app.services.conversation.mongo_log import MongoConversationLog
@@ -43,6 +44,7 @@ class Sends:
     """The route's recorded effects, and its analytics capture."""
 
     effects: RecordingEffects
+    frames: RecordingFrames
     captured: MagicMock
 
 
@@ -50,12 +52,13 @@ class Sends:
 def sends(conversations_collection: object, real_redis: Redis) -> Iterator[Sends]:
     """Install the real Mongo log behind recording effects, and clear the gates the route charges."""
     recorded = RecordingEffects()
+    frames = RecordingFrames()
     ticks = TickGate()
     install_runtime_ports(
         RuntimePorts(
             log=MongoConversationLog(conversation_log_repository, lambda: datetime.now(UTC)),
             runner=ScriptedRunner(ticks),
-            frames=RecordingFrames(),
+            frames=frames,
             effects=recorded,
             approvals=ScriptedApprovals(),
             clock=lambda: datetime.now(UTC),
@@ -72,7 +75,7 @@ def sends(conversations_collection: object, real_redis: Redis) -> Iterator[Sends
         patch("app.services.conversation.send.capture") as captured,
         patch("app.services.conversation_service.capture"),
     ):
-        yield Sends(effects=recorded, captured=captured)
+        yield Sends(effects=recorded, frames=frames, captured=captured)
 
 
 _HISTORY = [
@@ -98,6 +101,8 @@ async def test_a_send_returns_202_with_its_seq_and_kicks_the_step(
         conversation_id, user_id=FAKE_USER.user_id
     )
     assert EffectCall("kick") in sends.effects.calls
+    states = [f.display for f in sends.frames.published if isinstance(f, StateFrame)]
+    assert states == [DisplayState.THINKING]
 
 
 async def test_a_resent_message_keeps_its_first_seq_and_is_stored_once(

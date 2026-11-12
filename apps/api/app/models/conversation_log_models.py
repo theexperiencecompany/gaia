@@ -316,8 +316,11 @@ class ConversationState(BaseModel):
 
     @property
     def display(self) -> DisplayState:
-        """Return the status to show: comms first, then approvals, then work."""
-        if self.comms is not CommsPhase.IDLE:
+        """Return the status to show: comms first, then approvals, then work.
+
+        An input waiting for its step is already GAIA's to answer, so it shows as thinking.
+        """
+        if self.comms is not CommsPhase.IDLE or self.unsettled_waking:
             return DisplayState.THINKING
         if any(item.pending_approvals for item in self.work):
             return DisplayState.AWAITING_APPROVAL

@@ -456,7 +456,12 @@ def test_side_question_is_answered_while_work_stays_live() -> None:
 
 
 def test_approval_requested_then_decided() -> None:
-    log: list[Entry] = [user("u1"), started("w", "t1", 1), asked("a", "t1", "ap1")]
+    log: list[Entry] = [
+        user("u1"),
+        started("w", "t1", 1),
+        *replied("r", ["u1"], 1),
+        asked("a", "t1", "ap1"),
+    ]
     waiting, _ = fold(log)
     assert waiting.display is DisplayState.AWAITING_APPROVAL
     state, effects = fold([*log, decided("d", "ap1")])
@@ -637,3 +642,14 @@ def test_a_recovered_reply_fails_without_settling_its_inputs() -> None:
     recovered = settled("s", [], 0, outcome=ReplyOutcome.FAILED)
     state, _ = fold([user("u1"), opened("o"), recovered])
     assert (state.open_reply, state.settled_through, state.unsettled_waking) == (None, 0, (1,))
+
+
+def test_an_accepted_message_shows_gaia_thinking_before_a_step_picks_it_up() -> None:
+    state, _ = fold([user("u1")])
+    assert state.comms is CommsPhase.IDLE
+    assert state.display is DisplayState.THINKING
+
+
+def test_a_conversation_with_nothing_unsettled_and_no_work_is_idle() -> None:
+    state, _ = fold([user("u1"), stop("s")])
+    assert state.display is DisplayState.IDLE

@@ -147,6 +147,7 @@ class StepScenarios:
         assert rt.runner.calls == [Started(batch=(1,), context=())]
         assert frame_kinds(rt) == [
             "entry",
+            "state",
             "entry",
             "state",
             "entry",
@@ -590,8 +591,9 @@ class StepScenarios:
         assert await answered(rt) == [(ReplyOutcome.FAILED, ()), (ReplyOutcome.ANSWERED, ("u1",))]
         assert (await replies(rt))[0].text == "par"
         # The reply a dead holder appended is republished, since its frame may never have gone out.
-        assert [frame.kind.value for frame in rt.frames.published[:3]] == [
+        assert [frame.kind.value for frame in rt.frames.published[:4]] == [
             "entry",
+            "state",
             "entry",
             "entry",
         ]
