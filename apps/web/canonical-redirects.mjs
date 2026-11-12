@@ -114,5 +114,16 @@ export function expandCanonicalRedirects(pairs = CANONICAL_REDIRECT_PAIRS) {
   ]);
 }
 
+/**
+ * Pages that were removed: old emails, bookmarks and history still point at
+ * them, so each forwards to what replaced it instead of a 404. /notifications
+ * became the notification panel in the app's sidebar; /blog/create the blog
+ * repository's content files.
+ */
+const RETIRED_PAGE_PAIRS = [
+  ["/notifications", "/c"],
+  ["/blog/create", "/blog"],
+];
+
 /** The root-relative pairs, for the link resolver and the contract test. */
-export { CANONICAL_REDIRECT_PAIRS };
+export { CANONICAL_REDIRECT_PAIRS, RETIRED_PAGE_PAIRS };

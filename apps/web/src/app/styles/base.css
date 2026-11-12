@@ -2,7 +2,7 @@
    base preflight (else preflight's `*{padding:0}` zeroes react-ui card padding)
    but BELOW GAIA's components/utilities (so GAIA still wins real conflicts).
    The react-ui styles load with the OpenUI library: config/openui/openui.css. */
-@layer theme, base, openui, components, utilities;
+@layer theme, base, openui, components, gaia, utilities;
 @import "tailwindcss" source(none);
 @import "@heroui/styles/themes/default" layer(theme);
 @import "@heroui/styles/base" layer(base);
@@ -1291,30 +1291,87 @@ html {
   background-color: var(--background);
 }
 
-/* GAIA design language: deliberately tighter than v3's defaults, which ship
-   pill controls (`rounded-3xl` buttons, `rounded-2xl` chips) and content-width
-   buttons. This is a brand decision, not v2 parity — state it here once instead
-   of scattering per-component patches. Sizes come from v3's own scale; only the
-   two things the brand overrides are listed. */
-@layer components {
+/* GAIA design language: v2's control dimensions on v3's components, which ship
+   pill radii, a 36px desktop button and font-weight 500. Each value is defined
+   once here (DESIGN.md lists them). The `gaia` layer sits above `components`, so
+   these win over HeroUI's sheets whichever area bundle loads them. */
+:root {
+  --gaia-radius-sm: 0.5rem;
+  --gaia-radius-md: 0.75rem;
+  --gaia-radius-lg: 0.875rem;
+  --gaia-radius-pill: 9999px;
+  --gaia-button-weight: 400;
+  --gaia-button-sm-height: 2rem;
+  --gaia-button-sm-min-width: 4rem;
+  --gaia-button-sm-padding: 0.75rem;
+  --gaia-button-sm-font-size: 0.75rem;
+  --gaia-button-md-height: 2.5rem;
+  --gaia-button-md-min-width: 5rem;
+  --gaia-button-md-padding: 1rem;
+  --gaia-button-md-font-size: 0.875rem;
+  --gaia-button-lg-height: 3rem;
+  --gaia-button-lg-min-width: 6rem;
+  --gaia-button-lg-padding: 1.5rem;
+  --gaia-button-lg-font-size: 1rem;
+  --gaia-chip-sm-height: 1.5rem;
+  --gaia-chip-md-height: 1.75rem;
+  --gaia-chip-lg-height: 2rem;
+  --gaia-checkbox-size: 1.25rem;
+  --gaia-checkbox-gap: 0.5rem;
+}
+
+@layer gaia {
   .button {
-    border-radius: 0.75rem;
+    font-weight: var(--gaia-button-weight);
+    height: var(--gaia-button-md-height);
+    min-width: var(--gaia-button-md-min-width);
+    padding-inline: var(--gaia-button-md-padding);
+    font-size: var(--gaia-button-md-font-size);
+    border-radius: var(--gaia-radius-md);
+  }
+  .button--sm {
+    height: var(--gaia-button-sm-height);
+    min-width: var(--gaia-button-sm-min-width);
+    padding-inline: var(--gaia-button-sm-padding);
+    font-size: var(--gaia-button-sm-font-size);
+    border-radius: var(--gaia-radius-sm);
+  }
+  .button--lg {
+    height: var(--gaia-button-lg-height);
+    min-width: var(--gaia-button-lg-min-width);
+    padding-inline: var(--gaia-button-lg-padding);
+    font-size: var(--gaia-button-lg-font-size);
+    border-radius: var(--gaia-radius-lg);
   }
   .button--icon-only {
-    border-radius: 0.5rem;
+    min-width: var(--gaia-button-md-height);
+    width: var(--gaia-button-md-height);
+    padding-inline: 0;
+    border-radius: var(--gaia-radius-sm);
+  }
+  .button--icon-only.button--sm {
+    min-width: var(--gaia-button-sm-height);
+    width: var(--gaia-button-sm-height);
+  }
+  .button--icon-only.button--lg {
+    min-width: var(--gaia-button-lg-height);
+    width: var(--gaia-button-lg-height);
   }
   .chip {
-    border-radius: 0.5rem;
+    border-radius: var(--gaia-radius-sm);
   }
-  /* v3 sizes are padding-only; v2 shipped fixed heights, and the tighter
-     control height is part of the brand's density. */
   .chip--sm {
-    min-height: 1.5rem;
+    min-height: var(--gaia-chip-sm-height);
   }
   .chip--md {
-    min-height: 1.75rem;
+    min-height: var(--gaia-chip-md-height);
   }
   .chip--lg {
-    min-height: 2rem;
+    min-height: var(--gaia-chip-lg-height);
+  }
+  .checkbox__control {
+    width: var(--gaia-checkbox-size);
+    height: var(--gaia-checkbox-size);
+    margin-inline-end: var(--gaia-checkbox-gap);
   }
 }
