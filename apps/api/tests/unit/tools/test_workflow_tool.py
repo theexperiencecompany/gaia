@@ -163,7 +163,11 @@ class TestCreateWorkflow:
 
         assert result["success"] is False
         assert result["error"] == BRIEFS_OFF
-        assert "Tell me now" in result["message"]
+        assert result["message"] == (
+            "The user has briefs turned off, so this workflow's results cannot go to their "
+            "brief. Ask them to pick instead: Choose Tell me now or Don't notify me, or turn "
+            "briefs back on in Settings."
+        )
         mock_runner.execute.assert_not_awaited()
 
     async def test_new_mode_clarifying(self) -> None:
