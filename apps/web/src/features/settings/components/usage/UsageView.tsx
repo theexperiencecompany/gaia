@@ -6,6 +6,7 @@ import { USAGE_WARN_THRESHOLD } from "@shared/constants/usage";
 import type { FeatureUsage, UsageActivity, UsageSummary } from "@shared/types";
 import { formatCompactNumber, formatDateUTC } from "@shared/utils";
 import { useMemo, useState } from "react";
+import { shapeVariants } from "@/components/shared/shape";
 import BlurStack from "@/components/ui/blur-stack";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { useRecharts } from "@/components/ui/chart-loader";
@@ -216,7 +217,10 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
         <Tabs
           selectedKey={win}
           onSelectionChange={(k) => setWin(k as Period)}
-          className="absolute right-4 top-4"
+          className={shapeVariants({
+            shape: "pill",
+            className: "absolute right-4 top-4",
+          })}
         >
           <Tabs.List className={USAGE_TAB_CLASSES.list}>
             <Tabs.Tab id="month" className={cn(USAGE_TAB_CLASSES.tab, "px-3")}>
@@ -228,8 +232,6 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
               <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
           </Tabs.List>
-          <Tabs.Panel id="month">{null}</Tabs.Panel>
-          <Tabs.Panel id="day">{null}</Tabs.Panel>
         </Tabs>
       )}
       <HeroGauge percent={percent} gauge={heroGauge(percent, resetIso, win)} />
@@ -728,6 +730,7 @@ function Tools({
       <div className="mb-1 flex items-center justify-between">
         <h3 className="text-base font-semibold text-white">Tools</h3>
         <Tabs
+          className={shapeVariants({ shape: "pill" })}
           selectedKey={period}
           onSelectionChange={(k) => onPeriod(k as Period)}
         >
@@ -741,8 +744,6 @@ function Tools({
               <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
             </Tabs.Tab>
           </Tabs.List>
-          <Tabs.Panel id="month">{null}</Tabs.Panel>
-          <Tabs.Panel id="day">{null}</Tabs.Panel>
         </Tabs>
       </div>
       {rows.length === 0 ? (

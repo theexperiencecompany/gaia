@@ -10,6 +10,7 @@ import {
 import type { ComponentType } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { shapeVariants } from "@/components/shared/shape";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { track } from "@/lib/analytics";
 import type { Skill } from "../api/types";
@@ -90,20 +91,24 @@ export default function SkillsManagement() {
       {/* Tabs, search, and New skill share one row. */}
       <div className="flex items-center gap-3">
         <Tabs
+          className={shapeVariants({ shape: "pill" })}
           variant="primary"
           selectedKey={tab}
           onSelectionChange={(key) => setTab(key as string)}
+          className="shrink-0"
         >
-          <Tabs.List>
-            <Tabs.Tab id="yours">
-              <TabTitle icon={PuzzleIcon} label="Your Skills" />
-            </Tabs.Tab>
-            <Tabs.Tab id="builtin">
-              <TabTitle icon={FolderLibraryIcon} label="Built-in" />
-            </Tabs.Tab>
-          </Tabs.List>
-          <Tabs.Panel id="yours">{null}</Tabs.Panel>
-          <Tabs.Panel id="builtin">{null}</Tabs.Panel>
+          <Tabs.ListContainer>
+            <Tabs.List aria-label="Skills">
+              <Tabs.Tab id="yours">
+                <TabTitle icon={PuzzleIcon} label="Your Skills" />
+                <Tabs.Indicator />
+              </Tabs.Tab>
+              <Tabs.Tab id="builtin">
+                <TabTitle icon={FolderLibraryIcon} label="Built-in" />
+                <Tabs.Indicator />
+              </Tabs.Tab>
+            </Tabs.List>
+          </Tabs.ListContainer>
         </Tabs>
         <div className="flex-1" />
         <SearchField

@@ -1,14 +1,9 @@
 "use client";
 
-import {
-  Button,
-  Description,
-  InputGroup,
-  Label,
-  TextField,
-} from "@heroui/react";
+import { Description, InputGroup, Label, TextField } from "@heroui/react";
 import { ViewIcon, ViewOffSlashIcon } from "@icons";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 interface SecretInputProps {
   /** What the toggle reveals, for its aria-label ("password", "API key"). */
@@ -70,11 +65,12 @@ export function SecretInput({
           autoComplete={autoComplete}
         />
         <InputGroup.Suffix>
-          <Button
+          <GaiaButton
+            shape="pill"
             isIconOnly
             size="sm"
             variant="ghost"
-            className="rounded-full text-zinc-500"
+            className="text-zinc-500"
             aria-label={`${isRevealed ? "Hide" : "Show"} ${subject}`}
             onPress={toggle}
           >
@@ -83,7 +79,7 @@ export function SecretInput({
             ) : (
               <ViewIcon size={16} />
             )}
-          </Button>
+          </GaiaButton>
         </InputGroup.Suffix>
       </InputGroup>
       {description && <Description>{description}</Description>}

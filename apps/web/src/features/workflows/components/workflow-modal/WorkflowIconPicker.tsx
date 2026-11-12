@@ -143,6 +143,7 @@ export default function WorkflowIconPicker({
           <div className="flex items-center justify-between gap-1">
             {WORKFLOW_ICON_COLORS.map((swatch) => (
               <GaiaButton
+                shape="pill"
                 variant="default-solid"
                 key={swatch}
                 isIconOnly

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Chip, Tooltip } from "@heroui/react";
+import { Chip, Tooltip } from "@heroui/react";
 import {
   Copy01Icon,
   LinkBackwardIcon,
@@ -25,6 +25,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight } from "@/components/shared/icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { RaisedButton } from "@/components/ui/raised-button";
@@ -814,7 +815,8 @@ function ChatDemoWindow() {
           </div>
 
           <Tooltip>
-            <Button
+            <GaiaButton
+              shape="pill"
               type="button"
               aria-label="Retry"
               onPress={handleRetry}
@@ -822,7 +824,7 @@ function ChatDemoWindow() {
               variant="tertiary"
             >
               <RedoIcon width={20} height={20} />
-            </Button>
+            </GaiaButton>
             <Tooltip.Content>Replay demo</Tooltip.Content>
           </Tooltip>
         </div>

@@ -12,9 +12,10 @@ export function ComboMoreLink({ t }: Pick<ComboSectionProps, "t">) {
           {t("automate.gaia_supports_combos")}
         </p>
         <LinkButton
+          shape="pill"
           href="/marketplace"
           variant="primary"
-          className="rounded-full"
+          className=""
         >
           {t("common.browse_marketplace")}
         </LinkButton>

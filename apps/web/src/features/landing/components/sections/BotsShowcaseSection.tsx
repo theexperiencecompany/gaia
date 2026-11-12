@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import {
   ArrowLeft02Icon,
   ArrowRight02Icon,
@@ -11,10 +11,10 @@ import * as m from "motion/react-m";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SiteLink } from "@/components/seo/SiteLink";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { BOT_LINKS } from "@/features/bots/constants";
 import { useBotLinks } from "@/features/bots/hooks/useBotLinks";
-
 import {
   ChatDemo,
   type ChatMessageItem,
@@ -438,7 +438,8 @@ function CTAGroup({
   return (
     <div className="relative flex w-[390px] max-w-full items-center justify-center sm:w-[429px]">
       <div className="-left-24 -translate-y-1/2 absolute top-1/2 flex items-center gap-2">
-        <Button
+        <GaiaButton
+          shape="pill"
           isIconOnly
           variant="tertiary"
           aria-label="Previous platform"
@@ -446,8 +447,9 @@ function CTAGroup({
           className="min-w-10 h-10 w-10 p-0 text-zinc-500 transition-colors hover:text-zinc-200"
         >
           <ArrowLeft02Icon size={24} />
-        </Button>
-        <Button
+        </GaiaButton>
+        <GaiaButton
+          shape="pill"
           isIconOnly
           variant="tertiary"
           aria-label="Next platform"
@@ -455,7 +457,7 @@ function CTAGroup({
           className="min-w-10 h-10 w-10 p-0 text-zinc-500 transition-colors hover:text-zinc-200"
         >
           <ArrowRight02Icon size={24} />
-        </Button>
+        </GaiaButton>
       </div>
       <PlatformCTASwitcher
         actionKey={actionKey}
