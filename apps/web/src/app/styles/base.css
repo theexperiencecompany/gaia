@@ -1721,6 +1721,13 @@ html {
     border-radius: var(--gaia-radius-pill);
     background-color: var(--background);
   }
+  .slider.gaia-slider-indigo .slider__fill {
+    background-color: var(--gaia-slider-indigo-fill);
+  }
+  .slider.gaia-slider-indigo .slider__thumb,
+  .slider.gaia-slider-indigo .slider__thumb::after {
+    background-color: var(--gaia-slider-indigo-thumb);
+  }
   .slider.gaia-slider-sm[data-orientation="horizontal"] .slider__track {
     height: var(--gaia-slider-sm-track);
     border-inline-width: calc(var(--gaia-slider-sm-thumb) / 2);
@@ -1732,13 +1739,6 @@ html {
   .slider.gaia-slider-sm .slider__thumb::after {
     width: var(--gaia-slider-sm-thumb-inner);
     height: var(--gaia-slider-sm-thumb-inner);
-  }
-  .slider.gaia-slider-indigo .slider__fill {
-    background-color: var(--gaia-slider-indigo-fill);
-  }
-  .slider.gaia-slider-indigo .slider__thumb,
-  .slider.gaia-slider-indigo .slider__thumb::after {
-    background-color: var(--gaia-slider-indigo-thumb);
   }
 
   /* Modal: v2's section rhythm. The dialog has no padding of its own; the
