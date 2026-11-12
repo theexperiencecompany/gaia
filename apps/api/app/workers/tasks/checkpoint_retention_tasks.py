@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 import re
-from typing import Any
+from typing import TypedDict
 from uuid import UUID
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -40,6 +40,7 @@ from app.constants.general import (
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.conversations import conversation_repository
+from app.workers.task_envelope import ArqJobContext
 from shared.py.wide_events import log
 
 # A conversation_id is normally a uuid; derived thread ids embed it verbatim
@@ -51,6 +52,42 @@ _UUID_RE = re.compile(
 
 # uuid6 counts 100ns ticks from the Gregorian calendar epoch, not the Unix one.
 _GREGORIAN_EPOCH = datetime(1582, 10, 15, tzinfo=UTC)
+
+
+class PrunedRows(TypedDict):
+    """Rows one thread's version prune deleted, and the blob bytes it freed."""
+
+    checkpoints: int
+    writes: int
+    blobs: int
+    bytes: int
+
+
+class OrphanSweep(TypedDict):
+    """Counts from the orphan-thread sweep."""
+
+    threads_total: int
+    orphan_threads_deleted: int
+    orphan_checkpoints_deleted: int
+
+
+class SpawnSweep(TypedDict):
+    """Counts from the stale spawned-subagent sweep."""
+
+    spawn_threads_total: int
+    spawn_threads_deleted: int
+
+
+class VersionPrune(TypedDict):
+    """Totals from the version prune across the busiest threads."""
+
+    threads_scanned: int
+    threads_pruned: int
+    threads_skipped_inflight: int
+    checkpoints_deleted: int
+    writes_deleted: int
+    blobs_deleted: int
+    bytes_estimate: int
 
 
 def _thread_is_orphan(
@@ -111,7 +148,7 @@ def _prune_ids_for_chain(
 
 async def _prune_thread_versions(
     cur: AsyncCursor[TupleRow], thread_id: str, ns: str, prune_ids: list[str]
-) -> dict[str, int]:
+) -> PrunedRows:
     """Delete superseded ancestor checkpoints + their writes + orphaned blobs."""
     await cur.execute(
         "DELETE FROM checkpoint_writes WHERE thread_id = %s AND checkpoint_ns = %s "
@@ -150,7 +187,7 @@ async def _prune_thread_versions(
 
 async def sweep_orphan_threads(
     pool: AsyncConnectionPool, checkpointer: AsyncPostgresSaver
-) -> dict[str, int]:
+) -> OrphanSweep:
     """Delete every checkpoint thread whose conversation is gone from Mongo."""
     live_ids = await conversation_repository.all_conversation_ids()
     live_all = {str(c) for c in live_ids if c}
@@ -203,7 +240,7 @@ def _checkpoint_written_at(checkpoint_id: str) -> datetime | None:
 
 async def sweep_stale_spawn_threads(
     pool: AsyncConnectionPool, checkpointer: AsyncPostgresSaver
-) -> dict[str, int]:
+) -> SpawnSweep:
     """Delete spawned-subagent threads whose newest checkpoint has gone stale.
 
     Outlives its run for post-hoc inspection; pending writes are NOT spared
@@ -235,7 +272,7 @@ async def sweep_stale_spawn_threads(
     }
 
 
-async def prune_thread_versions(pool: AsyncConnectionPool) -> dict[str, int]:
+async def prune_thread_versions(pool: AsyncConnectionPool) -> VersionPrune:
     """Prune superseded checkpoint versions across the busiest threads."""
     async with pool.connection() as conn, conn.cursor() as cur:
         await cur.execute(
@@ -247,7 +284,7 @@ async def prune_thread_versions(pool: AsyncConnectionPool) -> dict[str, int]:
         candidates = [(row[0], row[1]) for row in await cur.fetchall()]
         candidate_tids = [tid for tid, _ in candidates]
 
-        totals = {
+        totals: VersionPrune = {
             "threads_scanned": len(candidates),
             "threads_pruned": 0,
             "threads_skipped_inflight": 0,
@@ -297,7 +334,7 @@ async def prune_thread_versions(pool: AsyncConnectionPool) -> dict[str, int]:
                 if head_inflight:
                     totals["threads_skipped_inflight"] += 1
                 continue
-            result = await _prune_thread_versions(cur, tid, ns, prune_ids)
+            result: PrunedRows = await _prune_thread_versions(cur, tid, ns, prune_ids)
             totals["threads_pruned"] += 1
             totals["checkpoints_deleted"] += result["checkpoints"]
             totals["writes_deleted"] += result["writes"]
@@ -311,16 +348,16 @@ async def prune_thread_versions(pool: AsyncConnectionPool) -> dict[str, int]:
         return totals
 
 
-async def prune_checkpoint_versions(_ctx: dict[str, Any]) -> str:
+async def prune_checkpoint_versions(_ctx: ArqJobContext) -> str:
     """Nightly: sweep orphaned and stale-spawn threads, then prune checkpoint versions."""
 
     manager = await get_checkpointer_manager()
     pool = manager.pool
     checkpointer = manager.get_checkpointer()
 
-    orphan = await sweep_orphan_threads(pool, checkpointer)
-    spawn = await sweep_stale_spawn_threads(pool, checkpointer)
-    prune = await prune_thread_versions(pool)
+    orphan: OrphanSweep = await sweep_orphan_threads(pool, checkpointer)
+    spawn: SpawnSweep = await sweep_stale_spawn_threads(pool, checkpointer)
+    prune: VersionPrune = await prune_thread_versions(pool)
 
     summary = {**orphan, **spawn, **prune}
     log.set(checkpoint_retention=summary)
