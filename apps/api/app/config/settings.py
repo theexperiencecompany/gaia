@@ -613,9 +613,11 @@ class Settings(BrowserHostSettings):
     # Bot Configuration
     # ----------------------------------------------
     GAIA_BOT_API_KEY: str | None = None
-    # Shared with the web app's server: proves a request's viewer-IP header was set
-    # by GAIA's own SSR, so rate limits key on the viewer. Unset trusts no such header.
-    INTERNAL_RESOLVER_TOKEN: str | None = None
+    # Shared with the web app's server. Only rate limiting reads it: its requests count
+    # against the token's ceiling and the viewer they name. Never grants auth.
+    INTERNAL_API_TOKEN: str | None = None
+    # The value being rotated out, still accepted until every web server sends the new one.
+    INTERNAL_API_TOKEN_PREVIOUS: str | None = None
     DISCORD_BOT_TOKEN: str | None = None
     DISCORD_CLIENT_ID: str | None = None
     SLACK_BOT_TOKEN: str | None = None

@@ -12,7 +12,7 @@ RETRY_AFTER_HEADER = "Retry-After"  # pragma: no mutate -- header names are case
 #: nginx's "client closed request": the client hung up before the response, so nobody reads it.
 CLIENT_CLOSED_REQUEST_STATUS = 499
 
-#: The viewer's address on a request the web app makes on a viewer's behalf (SSR),
-#: trusted only alongside INTERNAL_RESOLVER_HEADER carrying INTERNAL_RESOLVER_TOKEN.
+#: Carries INTERNAL_API_TOKEN on the web app's server requests. Only rate limiting reads it.
+INTERNAL_CALLER_HEADER = "X-Gaia-Internal"
+#: The viewer a server request is made for, trusted only alongside a valid INTERNAL_CALLER_HEADER.
 VIEWER_IP_HEADER = "X-Gaia-Viewer-IP"
-INTERNAL_RESOLVER_HEADER = "X-Gaia-Internal"

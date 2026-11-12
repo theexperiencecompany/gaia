@@ -13,6 +13,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import UJSONResponse
 from limits import RateLimitItem
 from limits.errors import StorageError
+from redis.exceptions import RedisError
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 
@@ -52,7 +53,7 @@ def _retry_after_seconds(request: Request) -> int | None:
     window, identifiers = current_limit
     try:
         reset_time, _remaining = request_limiter.limiter.get_window_stats(window, *identifiers)
-    except StorageError:
+    except (StorageError, RedisError):
         return window.get_expiry()
     return max(1, math.ceil(reset_time - time.time()))
 

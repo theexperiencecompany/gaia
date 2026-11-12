@@ -15,12 +15,11 @@ from unittest.mock import AsyncMock, patch
 import anyio
 from fastapi import APIRouter, FastAPI, Form
 from httpx import ASGITransport, AsyncClient
+from limits import RateLimitItemPerMinute
 from pydantic import BaseModel
 import pytest
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
-from app.api.v1.middleware import timeout as timeout_middleware
+from app.api.v1.middleware import rate_limiter, timeout as timeout_middleware
 from app.core.app_factory import create_app
 from app.models.payment_models import PlanType, UserSubscriptionStatus
 from app.schemas.errors import ERROR_RESPONSES, ErrorEnvelope
@@ -85,18 +84,16 @@ def _probe_router() -> APIRouter:
     return router
 
 
-def _build_app(*, limit: str = "120/minute", timeout: float = 300.0) -> FastAPI:
+def _build_app(*, timeout: float = 300.0) -> FastAPI:
     """Build the production app, with only the two knobs a test must turn.
 
-    The limiter and the timeout budget are replaced with tiny values; every
+    The limiter counts in memory and the timeout budget is a knob; every
     middleware, exception handler and serializer is the real one.
     """
     timeout_middleware.DEFAULT_TIMEOUT_SECONDS = timeout
     app = create_app()
     app.include_router(_probe_router(), responses=ERROR_RESPONSES)
-    app.state.limiter = Limiter(
-        key_func=get_remote_address, default_limits=[limit], storage_uri="memory://"
-    )
+    app.state.limiter = rate_limiter.build_limiter("memory://")
     return app
 
 
@@ -205,8 +202,12 @@ class TestEveryErrorIsTheEnvelope:
         assert body["code"] == "validation_error"
         assert body["errors"][0]["loc"] == ["body", "count"]
 
-    async def test_default_rate_limit_429_through_slowapi(self, restore_timeout_default) -> None:
-        async with _client(_build_app(limit="1/minute")) as client:
+    async def test_app_wide_rate_limit_429(
+        self, restore_timeout_default, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for bucket in rate_limiter.RequestBucket:
+            monkeypatch.setitem(rate_limiter.BUCKET_LIMITS, bucket, RateLimitItemPerMinute(1))
+        async with _client(_build_app()) as client:
             first = await client.get(f"{PROBE_PREFIX}/ok", headers=ORIGIN_HEADER)
             assert first.status_code == 200
             response = await client.get(f"{PROBE_PREFIX}/ok", headers=ORIGIN_HEADER)
