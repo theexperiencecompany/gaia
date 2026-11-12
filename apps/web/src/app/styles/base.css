@@ -4,7 +4,9 @@
    The react-ui styles load with the OpenUI library: config/openui/openui.css. */
 @layer theme, base, openui, components, gaia, utilities;
 @import "tailwindcss" source(none);
-@import "@heroui/styles/themes/default" layer(theme);
+/* static: the area sheets only @reference this theme, so base.css must emit every
+   token their component CSS reads (--ease-smooth, --color-field, --radius-xl...). */
+@import "@heroui/styles/themes/default" layer(theme) theme(static);
 @import "@heroui/styles/base" layer(base);
 @import "./theme.css";
 @import "@heroui/styles/utilities";
@@ -168,18 +170,6 @@
   }
   to {
     height: 0;
-  }
-}
-
-@keyframes shiny-text {
-  0%,
-  90%,
-  100% {
-    background-position: calc(-100% - var(--shiny-width)) 0;
-  }
-  30%,
-  60% {
-    background-position: calc(100% + var(--shiny-width)) 0;
   }
 }
 
@@ -1280,6 +1270,8 @@
   --danger-soft: color-mix(in oklab, var(--danger) 20%, transparent);
   --danger-soft-foreground: var(--danger);
   --danger-soft-hover: color-mix(in oklab, var(--danger) 30%, transparent);
+  /* HeroUI 3.2.7's field sheets read this for an invalid field; its theme never defines it */
+  --color-field-border-invalid: var(--danger);
 }
 
 :root,
