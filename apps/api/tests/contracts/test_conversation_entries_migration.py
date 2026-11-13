@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta, timezone
@@ -17,12 +18,14 @@ from app.db.repositories.conversation_entries_migration import (
     MigrationAction,
     MigrationOutcome,
     VerifyReport,
+    _changed_fields,
     conversation_entries_migration,
     entry_at,
     field_hashes,
 )
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import MessageModel
+from app.models.conversation_models import StoredEntry
 from app.scripts import migrate_conversation_entries as script
 from app.utils.errors import UnmigratedConversationError
 
@@ -798,6 +801,7 @@ async def test_drop_drops_nothing_unless_every_conversation_verifies(
     assert code == 1
     assert "messages" in await raw_collection.find_one(_head(good))
     assert any("not migrated" in line for line in out)
+    assert "Nothing dropped: every conversation must verify first. Run --apply, then retry." in out
 
 
 async def test_drop_refuses_an_in_place_edit_made_after_its_verify(
@@ -824,3 +828,189 @@ async def test_drop_refuses_an_in_place_edit_made_after_its_verify(
 def test_there_is_no_rebuild_into_the_embedded_array() -> None:
     with pytest.raises(SystemExit):
         script._parser().parse_args(["--rebuild-embedded"])
+
+
+def test_changed_fields_takes_only_the_fields_the_old_build_changed() -> None:
+    at = datetime(2026, 1, 1, tzinfo=UTC).isoformat()
+    entry = StoredEntry(
+        conversation_id="c",
+        user_id="u",
+        seq=1,
+        id="m1",
+        migration_fields=field_hashes({"type": "user", "response": "hi", "date": at}),
+    )
+    edited = {"type": "user", "response": "hi!", "date": at}
+
+    assert _changed_fields(entry, edited) == {
+        "$set": {"response": "hi!", "migration_fields": field_hashes(edited)}
+    }
+
+
+def test_changed_fields_unsets_a_removed_field_and_reads_an_absent_log_as_empty() -> None:
+    entry = StoredEntry(
+        conversation_id="c",
+        user_id="u",
+        seq=1,
+        id="m1",
+        migration_fields=field_hashes({"type": "user", "response": "hi", "reaction": "yes"}),
+    )
+    trimmed = {"type": "user", "response": "hi"}
+
+    assert _changed_fields(entry, trimmed) == {
+        "$set": {"migration_fields": field_hashes(trimmed)},
+        "$unset": {"reaction": ""},
+    }
+
+    bare = StoredEntry(conversation_id="c", user_id="u", seq=2, id="m2")
+    assert _changed_fields(bare, trimmed) == {
+        "$set": {**trimmed, "migration_fields": field_hashes(trimmed)}
+    }
+
+
+async def test_a_dry_run_reports_how_many_ids_it_would_mint(
+    migration: ConversationEntriesMigration, raw_collection: Any
+) -> None:
+    ref = await _legacy(raw_collection, [_unnamed("a"), _message(2), _unnamed("c")])
+
+    planned = await migration.migrate(ref, apply=False)
+
+    assert planned == MigrationOutcome(
+        ref.conversation_id, MigrationAction.COPIED, copied=3, identified=2
+    )
+
+
+async def test_a_raced_identify_reports_the_conversation_as_raced(
+    monkeypatch: pytest.MonkeyPatch, migration: ConversationEntriesMigration, raw_collection: Any
+) -> None:
+    ref = await _legacy(raw_collection, [_unnamed("a")])
+
+    async def refuse(*args: object, **kwargs: object) -> bool:
+        return False
+
+    monkeypatch.setattr(migration, "_identify", refuse)
+
+    assert await migration.migrate(ref, apply=True) == MigrationOutcome(
+        ref.conversation_id, MigrationAction.RACED
+    )
+
+
+async def test_a_head_deleted_after_identify_reports_the_conversation_as_raced(
+    monkeypatch: pytest.MonkeyPatch, migration: ConversationEntriesMigration, raw_collection: Any
+) -> None:
+    ref = await _legacy(raw_collection, [_unnamed("a")])
+    real = migration._embedded_head
+    reads = 0
+
+    async def read_then_vanish(r: HeadRef) -> object:
+        nonlocal reads
+        reads += 1
+        return None if reads == 2 else await real(r)
+
+    monkeypatch.setattr(migration, "_embedded_head", read_then_vanish)
+
+    assert await migration.migrate(ref, apply=True) == MigrationOutcome(
+        ref.conversation_id, MigrationAction.RACED
+    )
+
+
+async def test_an_identify_racing_an_old_build_write_is_refused_and_keeps_the_write(
+    monkeypatch: pytest.MonkeyPatch, migration: ConversationEntriesMigration, raw_collection: Any
+) -> None:
+    ref = await _legacy(raw_collection, [_unnamed("a")])
+    _after_the_read(
+        monkeypatch,
+        migration,
+        lambda: raw_collection.update_one(_head(ref), {"$push": {"messages": _message(2)}}),
+    )
+
+    outcome = await migration.migrate(ref, apply=True)
+
+    assert outcome == MigrationOutcome(ref.conversation_id, MigrationAction.RACED)
+    head = await raw_collection.find_one(_head(ref))
+    assert [m.get("message_id") for m in head["messages"]] == [None, "m2"]
+
+
+async def test_a_dry_run_reports_what_a_second_pass_would_copy_and_rewrite(
+    migration: ConversationEntriesMigration, raw_collection: Any
+) -> None:
+    ref = await _legacy(raw_collection, [_message(1), _message(2)])
+    await migration.migrate(ref, apply=True)
+    await raw_collection.update_one(
+        _head(ref),
+        {"$set": {"messages": [_message(1, response="settled"), _message(2), _message(3)]}},
+    )
+
+    planned = await migration.migrate(ref, apply=False)
+
+    assert planned == MigrationOutcome(
+        ref.conversation_id, MigrationAction.MERGED, copied=1, rewritten=1
+    )
+
+
+async def test_the_summary_counts_every_id_it_mints_across_conversations(
+    raw_collection: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    await _legacy(raw_collection, [_unnamed("a")])
+    await _legacy(raw_collection, [_unnamed("b")])
+
+    code, out = await _cli(capsys, "--apply")
+
+    assert code == 0
+    assert "Summary: 2 copied; 2 entries; 2 elements given an id" in out
+
+
+async def test_the_summary_lists_each_action_once_sorted(
+    raw_collection: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    written = await _legacy(raw_collection, [_message(1)])
+    await _cli(capsys, "--apply")
+    await raw_collection.update_one(_head(written), {"$push": {"messages": _message(2)}})
+    await _legacy(raw_collection, [_message(3)])
+
+    code, out = await _cli(capsys, "--apply")
+
+    assert code == 0
+    assert "Summary: 1 copied, 1 merged; 2 entries; 0 elements given an id" in out
+
+
+async def test_verify_counts_every_failing_conversation(
+    raw_collection: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    await _legacy(raw_collection, [_message(1)])
+    await _legacy(raw_collection, [_message(2)])
+
+    code, out = await _cli(capsys, "--verify")
+
+    assert code == 1
+    assert "Verified 2 conversations: 2 with mismatches." in out
+
+
+async def test_drop_counts_every_refused_conversation(
+    monkeypatch: pytest.MonkeyPatch, raw_collection: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    one = await _legacy(raw_collection, [_message(1)])
+    two = await _legacy(raw_collection, [_message(2)])
+    await _cli(capsys, "--apply")
+    real_verify = conversation_entries_migration.verify
+
+    async def verify_then_edit(ref: HeadRef) -> VerifyReport:
+        report = await real_verify(ref)
+        await raw_collection.update_one(_head(ref), {"$set": {"messages.0.response": "late"}})
+        return report
+
+    monkeypatch.setattr(conversation_entries_migration, "verify", verify_then_edit)
+
+    code, out = await _cli(capsys, "--drop-embedded", "--apply")
+
+    assert code == 1
+    assert "0 embedded arrays dropped; 2 refused." in out
+    assert any(
+        f"  [refused] {one.conversation_id}: written since its verify" in line for line in out
+    )
+    assert any(
+        f"  [refused] {two.conversation_id}: written since its verify" in line for line in out
+    )
+
+
+def test_the_parser_keeps_the_raw_description_layout() -> None:
+    assert script._parser().formatter_class is argparse.RawDescriptionHelpFormatter
