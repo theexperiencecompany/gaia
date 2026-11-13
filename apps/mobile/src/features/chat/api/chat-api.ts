@@ -4,6 +4,7 @@ import type {
   MessageAccepted,
   MessageReaction,
   ReplyToMessageData,
+  SelectedWorkflowDataOutput,
   SendMessageRequest,
   TodoRunWake,
 } from "@gaia/shared/api/generated";
@@ -103,6 +104,8 @@ export interface Message {
   sendFailed?: boolean;
   /** What woke a tracked todo's run; set on that run's user message. */
   todoRunWake?: TodoRunWake | null;
+  /** The workflow whose run this user-side row started. */
+  firedWorkflow?: SelectedWorkflowDataOutput | null;
 }
 
 export interface ConversationDetail {

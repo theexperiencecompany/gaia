@@ -128,6 +128,24 @@ function rowFor(bubble: LiveBubble, context: RowContext): Message {
         text: bubble.text,
         isUser: false,
         timestamp: dateOf(context, bubble.seq),
+        toolData: [...bubble.toolData],
+      };
+    // The run's side of the chat: its card alone, as a message with no text.
+    case "workflow_fired":
+      return {
+        id: bubble.key,
+        text: "",
+        isUser: true,
+        timestamp: dateOf(context, bubble.seq),
+        firedWorkflow: bubble.workflow,
+      };
+    case "todo_woke":
+      return {
+        id: bubble.key,
+        text: "",
+        isUser: true,
+        timestamp: dateOf(context, bubble.seq),
+        todoRunWake: bubble.wake,
       };
     default: {
       const unhandled: never = bubble;

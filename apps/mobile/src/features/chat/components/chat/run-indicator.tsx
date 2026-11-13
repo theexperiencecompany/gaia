@@ -1,4 +1,7 @@
-import type { TodoRunWake } from "@gaia/shared/api/generated";
+import type {
+  SelectedWorkflowDataOutput,
+  TodoRunWake,
+} from "@gaia/shared/api/generated";
 import { describeTodoRunWake } from "@gaia/shared/todos";
 import { View } from "react-native";
 import {
@@ -6,6 +9,7 @@ import {
   CheckmarkCircle02Icon,
   Clock01Icon,
   FlashIcon,
+  WorkflowSquare10Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { colors } from "@/lib/design-tokens";
@@ -21,8 +25,14 @@ const WAKE_ICONS = {
   approval: CheckmarkCircle02Icon,
 } satisfies Record<TodoRunWake["kind"], typeof Clock01Icon>;
 
-/** The user's side of a tracked todo's run: what woke it, as a workflow run shows its card. */
-export function TodoRunWakeIndicator({ wake }: { wake: TodoRunWake }) {
+/** The user's side of a run GAIA started on its own: what started it, as a chip. */
+function RunIndicator({
+  icon,
+  label,
+}: {
+  icon: typeof Clock01Icon;
+  label: string;
+}) {
   const { fontSize, moderateScale } = useResponsive();
 
   return (
@@ -39,13 +49,32 @@ export function TodoRunWakeIndicator({ wake }: { wake: TodoRunWake }) {
       }}
     >
       <AppIcon
-        icon={WAKE_ICONS[wake.kind]}
+        icon={icon}
         size={moderateScale(14, 0.5)}
         color={colors.zinc300}
       />
       <Text style={{ fontSize: fontSize.sm, color: colors.zinc200 }}>
-        {describeTodoRunWake(wake)}
+        {label}
       </Text>
     </View>
   );
+}
+
+/** What woke a tracked todo's run. */
+export function TodoRunWakeIndicator({ wake }: { wake: TodoRunWake }) {
+  return (
+    <RunIndicator
+      icon={WAKE_ICONS[wake.kind]}
+      label={describeTodoRunWake(wake)}
+    />
+  );
+}
+
+/** The workflow a run was started for. */
+export function WorkflowRunIndicator({
+  workflow,
+}: {
+  workflow: SelectedWorkflowDataOutput;
+}) {
+  return <RunIndicator icon={WorkflowSquare10Icon} label={workflow.title} />;
 }

@@ -1,10 +1,14 @@
 import { ApiError } from "@gaia/shared";
 import { sendingLoadingRow } from "@gaia/shared/conversation";
 import {
+  notice,
   reply,
   replySettled,
+  todoWoke,
+  toolCallCard,
   userMessage,
   workFinished,
+  workflowFired,
   workStarted,
 } from "@gaia/shared/conversation/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -256,6 +260,48 @@ describe("the mobile chat rendered from the conversation's events", () => {
     expect(rows().at(-1)?.error).toBe(
       "GAIA took too many steps on this and stopped before answering.",
     );
+  });
+  it("shows a workflow run as the user's workflow card, then its reply", async () => {
+    release = openConversation(CONVERSATION);
+    await flush();
+    lastStream().push(entry(1, workflowFired("f1", "Morning brief")));
+    lastStream().push(entry(2, reply("r1", "a1", "Three meetings today.")));
+    lastStream().push(entry(3, replySettled("r1", ["f1"], 1)));
+
+    expect(
+      rows().map((row) => [row.isUser, row.text, row.firedWorkflow?.title]),
+    ).toEqual([
+      [true, "", "Morning brief"],
+      [false, "Three meetings today.", undefined],
+    ]);
+  });
+
+  it("shows a todo run as what woke it, then its write-up", async () => {
+    release = openConversation(CONVERSATION);
+    await flush();
+    lastStream().push(entry(1, todoWoke("w1")));
+    lastStream().push(entry(2, workStarted("t1", 1)));
+    lastStream().push(entry(3, workFinished("t1")));
+    lastStream().push(entry(4, reply("t1", "a1", "The invoice was paid.")));
+    lastStream().push(entry(5, replySettled("t1", ["w1"], 3)));
+
+    expect(
+      rows().map((row) => [row.isUser, row.text, row.todoRunWake?.kind]),
+    ).toEqual([
+      [true, "", "schedule"],
+      [false, "The invoice was paid.", undefined],
+    ]);
+  });
+
+  it("shows a notice as GAIA's message with the cards it was delivered with", async () => {
+    release = openConversation(CONVERSATION);
+    await flush();
+    const card = toolCallCard("c1", "Checked the calendar");
+    lastStream().push(entry(1, notice("n1", "Call the bank", [card])));
+
+    expect(rows()).toMatchObject([
+      { isUser: false, text: "Call the bank", toolData: [card] },
+    ]);
   });
 });
 

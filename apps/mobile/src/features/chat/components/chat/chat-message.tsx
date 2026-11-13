@@ -29,8 +29,8 @@ import { MemoryIndicator } from "./memory-indicator";
 import type { MessageActionConfig } from "./message-action-sheet";
 import { MessageReactions } from "./message-reactions";
 import { MessageReplyQuote } from "./message-reply-quote";
+import { TodoRunWakeIndicator, WorkflowRunIndicator } from "./run-indicator";
 import { ThinkingBubble } from "./thinking-bubble";
-import { TodoRunWakeIndicator } from "./todo-run-wake-indicator";
 
 const EMOJI_ONLY_REGEX = /^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\s]+$/u;
 
@@ -186,6 +186,9 @@ function UserChatMessage({
         >
           {message.todoRunWake && (
             <TodoRunWakeIndicator wake={message.todoRunWake} />
+          )}
+          {message.firedWorkflow && (
+            <WorkflowRunIndicator workflow={message.firedWorkflow} />
           )}
           {message.replyToMessage && (
             <MessageReplyQuote
