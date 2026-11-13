@@ -451,6 +451,15 @@ class TestFetchInputsModelsSend:
         )
         assert thread.fields == ["from", "time"]
 
+    @pytest.mark.regression
+    def test_composio_message_id_spelling_means_the_message_id(self):
+        # Composio's own Gmail tools and trigger payloads key the id as `messageId`;
+        # prod GMAIL_FETCH_THREAD calls were refused for sending it.
+        thread = FetchThreadInput.model_validate(
+            {"thread_ids": ["t1"], "fields": ["messageId", "threadId", "from", "id"]}
+        )
+        assert thread.fields == ["id", "threadId", "from"]
+
     def test_an_unknown_field_is_still_refused(self):
         with pytest.raises(ValueError, match="isImportant"):
             FetchMessagesInput.model_validate({"fields": ["from", "isImportant"]})

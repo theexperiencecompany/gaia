@@ -37,6 +37,16 @@ from app.utils.agent_utils import format_sse_response
 from tests.conftest import FAKE_USER
 
 
+@pytest.fixture(autouse=True)
+def _no_opened_reply() -> Any:
+    """No reply here was opened first, so each save appends (the one DB write these tests stand in for)."""
+    with patch(
+        "app.services.chat.persistence.conversation_repository.fill_message",
+        new=AsyncMock(return_value=False),
+    ):
+        yield
+
+
 async def _dispatch(stream_id: str, chunk: str, state: _StreamState) -> tuple[list[str], bool]:
     """Feed one chunk through the real dispatcher."""
     return await process_data_chunk(
@@ -461,7 +471,7 @@ class TestAReactionTheCatalogCannotCarryIsDeliveredAsText:
             await _persist_turn("s1", _body(), FAKE_USER, CONV, state)
 
         reply = save.await_args.kwargs["reply"]
-        assert (reply.opened, reply.complete_message) == (True, "")
+        assert reply.complete_message == ""
 
     async def test_a_real_emoji_is_a_reaction_and_saves_no_bot_message(self):
         state = _StreamState()
@@ -482,6 +492,25 @@ class TestAReactionTheCatalogCannotCarryIsDeliveredAsText:
         assert react.await_args.args[1] == "👍"
         update.assert_not_awaited()
         assert state.saved
+
+    async def test_an_emoji_with_no_message_to_react_to_is_saved_as_the_reply(self):
+        state = _StreamState()
+        state.complete_message = "<EMOJI>👍</EMOJI>"
+
+        with (
+            patch.object(
+                chat_stream,
+                "recover_stream_state",
+                new=AsyncMock(side_effect=lambda _sid, msg, td: (msg, td)),
+            ),
+            patch.object(chat_stream, "react_as_chat_model", new=AsyncMock(return_value=False)),
+            patch.object(chat_stream, "save_bot_reply", new=AsyncMock(return_value=None)) as save,
+            patch.object(chat_stream, "capture") as capture,
+        ):
+            await _persist_turn("s1", _body(), FAKE_USER, CONV, state)
+
+        assert save.await_args.kwargs["reply"].complete_message == "👍"
+        capture.assert_not_called()
 
 
 class TestUsageMetadata:

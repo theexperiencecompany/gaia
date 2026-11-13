@@ -1297,3 +1297,85 @@ async def test_owners_of_maps_each_existing_conversation_to_its_owner(repo):
     owners = await repo.owners_of([a_conv.conversation_id, b_conv.conversation_id, _cid()])
 
     assert owners == {a_conv.conversation_id: alice, b_conv.conversation_id: bob}
+
+
+def _reply_entry(
+    user_id: str, conversation_id: str, *, at: datetime, in_progress: bool
+) -> dict[str, object]:
+    """Return a reply entry as a died turn leaves it: opened and in progress at the given time."""
+    return {
+        "user_id": user_id,
+        "conversation_id": conversation_id,
+        "seq": 1,
+        "id": f"{conversation_id}-1",
+        "at": at,
+        "type": "bot",
+        "response": "partial",
+        "in_progress": in_progress,
+    }
+
+
+class TestUnfinishedReplySweep:
+    """The maintenance sweep's reads and writes of in-progress reply entries."""
+
+    async def test_list_unfinished_reply_owners_returns_only_stale_in_progress_replies(
+        self, repo, entries_collection
+    ):
+        opened_before = datetime.now(UTC)
+        await entries_collection.insert_many(
+            [
+                _reply_entry("u1", "c1", at=opened_before - timedelta(hours=1), in_progress=True),
+                _reply_entry("u2", "c2", at=opened_before + timedelta(hours=1), in_progress=True),
+                _reply_entry("u3", "c3", at=opened_before - timedelta(hours=1), in_progress=False),
+            ]
+        )
+
+        assert await repo.list_unfinished_reply_owners(opened_before=opened_before) == {
+            ("u1", "c1")
+        }
+
+    async def test_fail_unfinished_replies_returns_zero_when_given_no_owners(self, repo):
+        assert (
+            await repo.fail_unfinished_replies(
+                opened_before=datetime.now(UTC), error="interrupted", owners=set()
+            )
+            == 0
+        )
+
+    async def test_fail_unfinished_replies_settles_only_the_owners_it_is_given(
+        self, repo, entries_collection
+    ):
+        opened_before = datetime.now(UTC)
+        for user_id, conversation_id in (("u1", "c1"), ("u2", "c2"), ("u3", "c3")):
+            await entries_collection.insert_one(
+                _reply_entry(
+                    user_id,
+                    conversation_id,
+                    at=opened_before - timedelta(hours=1),
+                    in_progress=True,
+                )
+            )
+
+        failed = await repo.fail_unfinished_replies(
+            opened_before=opened_before,
+            error="interrupted",
+            owners={("u1", "c1"), ("u2", "c2")},
+        )
+
+        assert failed == 2
+        by_conversation = {
+            entry["conversation_id"]: entry
+            for entry in await entries_collection.find({}).to_list(length=None)
+        }
+        assert (by_conversation["c1"]["error"], by_conversation["c1"].get("in_progress")) == (
+            "interrupted",
+            None,
+        )
+        assert (by_conversation["c2"]["error"], by_conversation["c2"].get("in_progress")) == (
+            "interrupted",
+            None,
+        )
+        assert (by_conversation["c3"].get("error"), by_conversation["c3"]["in_progress"]) == (
+            None,
+            True,
+        )

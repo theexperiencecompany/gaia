@@ -22,12 +22,20 @@ from app.constants.chat import (
     TURN_REPLY_NOT_SAVED,
 )
 from app.core.stream_manager import stream_manager
+from app.db.repositories import conversations as conversations_module
 from app.db.repositories.conversations import conversation_repository
 from app.models.message_models import MessageRequestWithHistory
-from app.services.chat.persistence import open_bot_reply, save_user_message
+from app.services.chat.persistence import (
+    BotReply,
+    open_bot_reply,
+    save_bot_reply,
+    save_user_message,
+)
 from app.services.chat.stream import run_chat_stream_background
+from app.services.conversation.reaction import ReactionTarget, react_as_chat_model
 from app.workers.tasks.reply_sweep_tasks import sweep_unfinished_replies
 from tests.conftest import FAKE_USER
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.service
 
@@ -275,6 +283,83 @@ async def test_a_crashed_turn_leaves_no_reply_in_progress_after_the_sweep(
     assert reply["seq"] == 2
     assert reply["error"] == TURN_INTERRUPTED
     assert reply.get("in_progress") is None
+
+
+async def test_a_turn_killed_before_its_flush_is_swept_from_the_outbox(
+    client: AsyncClient, real_redis, mongo_db, make_conversation, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conversation_id = await make_conversation(FAKE_USER.user_id)
+    # The process dies right after the reply's commit: no flush it spawned ever runs.
+    monkeypatch.setattr(
+        conversations_module, "spawn_logged_task", lambda _name, coro, **_: coro.close()
+    )
+    await save_user_message(_body(conversation_id, "A"), FAKE_USER, conversation_id, "msg-a")
+    await open_bot_reply(_body(conversation_id, "A"), FAKE_USER, conversation_id, "msg-reply")
+    hour_ago = datetime.now(UTC) - timedelta(hours=1)
+    await mongo_db["conversations"].update_one(
+        {"conversation_id": conversation_id},
+        {"$set": {"outbox.1.at": hour_ago, "outbox.2.at": hour_ago}},
+    )
+    assert await _entries(mongo_db, conversation_id) == []
+
+    async with captured_wide_event() as event:
+        assert await sweep_unfinished_replies({}) == "failed=1"
+
+    assert (event["unfinished_reply_conversations"], event["failed_reply_count"]) == (1, 1)
+    [_, reply] = await _read(client, conversation_id)
+    assert (reply["error"], reply.get("in_progress")) == (TURN_INTERRUPTED, None)
+
+
+async def test_a_reply_whose_open_committed_but_raised_is_still_saved_in_full(
+    client: AsyncClient, real_redis, mongo_db, make_conversation
+) -> None:
+    conversation_id = await make_conversation(FAKE_USER.user_id)
+    await save_user_message(_body(conversation_id, "A"), FAKE_USER, conversation_id, "msg-a")
+    # The open's write landed, then the call raised: the turn never learned its entry exists.
+    await open_bot_reply(_body(conversation_id, "A"), FAKE_USER, conversation_id, "msg-reply")
+
+    await save_bot_reply(
+        _body(conversation_id, "A"),
+        FAKE_USER,
+        conversation_id,
+        BotReply(complete_message="the full answer", bot_message_id="msg-reply"),
+    )
+
+    [_, reply] = await _read(client, conversation_id)
+    assert (reply["seq"], reply["response"], reply.get("in_progress")) == (
+        2,
+        "the full answer",
+        None,
+    )
+
+
+async def test_the_chat_models_reaction_is_announced_only_once_it_is_stored(
+    real_redis, mongo_db, make_conversation
+) -> None:
+    conversation_id = await make_conversation(FAKE_USER.user_id)
+    await save_user_message(_body(conversation_id, "A"), FAKE_USER, conversation_id, "msg-a")
+
+    def target(message_id: str) -> ReactionTarget:
+        return ReactionTarget(
+            stream_id="stream-r",
+            conversation_id=conversation_id,
+            user_id=FAKE_USER.user_id,
+            message_id=message_id,
+        )
+
+    published: list[str] = []
+
+    async def spy(_stream_id: str, chunk: str) -> None:
+        published.append(chunk)
+
+    with patch.object(stream_manager, "publish_chunk", new=spy):
+        assert await react_as_chat_model(target("never-saved"), "\U0001f44d") is False
+        assert _frames(published) == []
+        assert await react_as_chat_model(target("msg-a"), "\U0001f44d") is True
+
+    assert _frames(published) == [
+        {"reaction": {"message_id": "msg-a", "emoji": "\U0001f44d", "by": "chat_model"}}
+    ]
 
 
 async def test_a_second_sweep_changes_nothing(real_redis, mongo_db, make_conversation) -> None:

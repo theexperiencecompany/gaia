@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import Mock, call
 import uuid
 
 from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 
 from app.db.repositories import conversations as conversations_module
-from app.db.repositories.conversation_entries import EntryWindow
+from app.db.repositories.conversation_entries import EMBEDDED_FINGERPRINT, EntryWindow
 from app.db.repositories.conversations import ConversationRepository
-from app.models.chat_models import MessageModel, ToolDataEntry
+from app.models.chat_models import ConversationSyncItem, MessageModel, ToolDataEntry
 from app.models.conversation_models import (
     ConversationDescriptionHit,
     ConversationDocument,
@@ -24,6 +25,7 @@ from app.utils.errors import (
     ConversationStoreError,
     UnmigratedConversationError,
 )
+from shared.py.wide_events import log
 from tests.contracts.conftest import HeldFlushes
 
 # Every test here writes entries, so each needs the collection with its unique indexes.
@@ -401,8 +403,11 @@ async def test_cross_conversation_reads_see_flushed_and_outbox_entries(
     }
 
 
-async def test_search_skips_a_todos_chat_and_cross_reads_refuse_unmigrated_data(
-    repo: ConversationRepository, held: HeldFlushes, raw_collection: Any
+async def test_search_skips_a_todos_chat_and_an_unmigrated_chat_never_blocks_the_others(
+    repo: ConversationRepository,
+    held: HeldFlushes,
+    raw_collection: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     uid = f"u-{uuid.uuid4().hex}"
     todo_chat = await _chat(repo, uid, todo_id="todo-1", description="needle todo")
@@ -416,16 +421,40 @@ async def test_search_skips_a_todos_chat_and_cross_reads_refuse_unmigrated_data(
     ]
 
     await raw_collection.insert_one(
-        {"conversation_id": "old", "user_id": uid, "messages": [{"type": "user", "response": "x"}]}
+        {
+            "conversation_id": "old",
+            "user_id": uid,
+            "messages": [{"type": "user", "response": "needle", "message_id": "o1"}],
+        }
     )
-    with pytest.raises(UnmigratedConversationError) as refused:
-        await repo.has_sent_message(uid)
-    assert refused.value.message == f"user {uid} {_REFUSAL}"
+    await raw_collection.insert_one(
+        {
+            "conversation_id": "elsewhere",
+            "user_id": f"other-{uid}",
+            "messages": [{"type": "user", "response": "needle", "message_id": "e1"}],
+        }
+    )
+    await repo.append(described, user_id=uid, entries=[_message("d1", "needle")])
+    await held.run_all()
+    warned = Mock()
+    monkeypatch.setattr(log, "warning", warned)
+    found = await repo.search(uid, pattern="needle")
+    assert warned.call_args_list == [
+        call(
+            "[conversations] cross-conversation read left out unmigrated conversations",
+            user_id=uid,
+            conversation_ids=["old"],
+        )
+    ]
+    assert [(h.conversation_id, h.message.message_id) for h in found.messages] == [
+        (described, "d1")
+    ]
+    assert await repo.has_sent_message(uid) is True
 
 
 _REFUSAL = (
     "has messages the entries migration has not copied: run python -m "
-    "app.scripts.migrate_conversation_entries --apply (or --since for a second pass)"
+    "app.scripts.migrate_conversation_entries --apply"
 )
 
 
@@ -440,8 +469,11 @@ async def test_a_migrated_head_reads_until_the_old_build_writes_its_array_again(
             "createdAt": datetime.now(UTC).isoformat(),
             "messages": [old],
             "log_head": 1,
-            "migrated_last_id": "o1",
         }
+    )
+    # Marked the way the migration marks a head it copied: the array's fingerprint at copy time.
+    await raw_collection.update_one(
+        {"conversation_id": "migrated"}, [{"$set": {"migrated_fingerprint": EMBEDDED_FINGERPRINT}}]
     )
     await entries_collection.insert_one(
         {
@@ -757,3 +789,127 @@ async def test_recent_conversations_are_the_newest_limit_with_their_messages(
 
     assert [doc.conversation_id for doc in recent] == [newest, middle]
     assert [m.message_id for m in recent[0].messages] == ["m1"]
+
+
+async def _orphaned(
+    repo: ConversationRepository, held: HeldFlushes, raw_collection: Any, uid: str
+) -> str:
+    """Leave the state a delete that died between its two writes leaves: entries with no head."""
+    cid = await _chat(repo, uid)
+    old = MessageModel(type="bot", response="deleted secret", message_id="old-1", pinned=True)
+    await repo.append(cid, user_id=uid, entries=[_message("old-0", "deleted secret"), old])
+    await held.run_all()
+    await raw_collection.delete_one({"conversation_id": cid, "user_id": uid})
+    return cid
+
+
+async def test_a_bot_chat_recreated_after_a_half_finished_delete_starts_clean_and_keeps_saving(
+    repo: ConversationRepository, held: HeldFlushes, raw_collection: Any
+) -> None:
+    uid = f"u-{uuid.uuid4().hex}"
+    cid = await _orphaned(repo, held, raw_collection, uid)
+    doc = ConversationDocument.model_validate(
+        {"user_id": uid, "conversation_id": cid, "createdAt": datetime.now(UTC).isoformat()}
+    )
+
+    await repo.create(doc)
+    await repo.append(cid, user_id=uid, entries=[_message("new-1", "fresh")])
+    await repo.append(cid, user_id=uid, entries=[_message("new-2", "fresher")])
+    await held.run_all()
+
+    assert await _ids(repo, doc) == [(1, "new-1"), (2, "new-2")]
+    assert await _outbox(raw_collection, doc) == {}
+
+
+async def test_a_deleted_conversations_leftover_entries_never_reach_search_or_pins(
+    repo: ConversationRepository, held: HeldFlushes, raw_collection: Any
+) -> None:
+    uid = f"u-{uuid.uuid4().hex}"
+    await _orphaned(repo, held, raw_collection, uid)
+    live = await _chat(repo, uid)
+    await repo.append(live, user_id=uid, entries=[_message("live-1", "kept secret")])
+    await held.run_all()
+
+    found = await repo.search(uid, pattern="secret")
+    assert [(h.conversation_id, h.message.message_id) for h in found.messages] == [(live, "live-1")]
+    assert await repo.list_pinned_messages(uid) == []
+    assert await repo.find_owner_of_message(uid, "old-1") is None
+
+
+async def test_whole_conversation_reads_return_only_the_newest_window(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    held: HeldFlushes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(conversations_module, "CONVERSATION_READ_LIMIT", 3)
+    cid, uid = conversation.conversation_id, conversation.user_id
+    other = await _chat(repo, uid)
+    await repo.append(cid, user_id=uid, entries=[_message(f"m{n}") for n in range(1, 5)])
+    await held.run_all()
+    await repo.append(cid, user_id=uid, entries=[_message("m5")])
+    await repo.append(other, user_id=uid, entries=[_message("o1")])
+    held.drop_all()
+
+    doc = await repo.get(cid, user_id=uid)
+    assert doc is not None
+    assert [m.message_id for m in doc.messages] == ["m3", "m4", "m5"]
+    synced = await repo.find_updated_since(
+        uid,
+        [
+            ConversationSyncItem(conversation_id=cid, last_updated=None),
+            ConversationSyncItem(conversation_id=other, last_updated=None),
+        ],
+    )
+    windows = {d.conversation_id: [m.message_id for m in d.messages] for d in synced}
+    assert windows == {cid: ["m3", "m4", "m5"], other: ["o1"]}
+    recent = await repo.recent_for_user(uid, limit=2)
+    assert {d.conversation_id: [m.message_id for m in d.messages] for d in recent} == windows
+
+
+@pytest.mark.parametrize("flushed", [False, True])
+async def test_a_retried_append_of_a_known_id_with_other_content_fails_instead_of_reporting_it_saved(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    held: HeldFlushes,
+    flushed: bool,
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    await repo.append(cid, user_id=uid, entries=[_message("r1", "")])
+    if flushed:
+        await held.run_all()
+
+    assert await repo.append(cid, user_id=uid, entries=[_message("r1", "")]) == [1]
+    with pytest.raises(ConversationStoreError) as refused:
+        await repo.append(cid, user_id=uid, entries=[_message("r1", "the full reply")])
+
+    assert (refused.value.message, refused.value.why, refused.value.meta) == (
+        "entry r1 is already committed with other content",
+        "an append is idempotent only for the same message; fill or edit the entry instead",
+        {"conversation_id": cid, "entry_id": "r1"},
+    )
+
+    kept = await repo.get_message(cid, "r1", user_id=uid)
+    assert kept is not None and kept.response == ""
+
+
+async def test_the_reply_sweep_settles_a_reply_whose_process_died_before_its_flush(
+    repo: ConversationRepository, conversation: ConversationDocument, held: HeldFlushes
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    opened = MessageModel(type="bot", response="", message_id="r1", in_progress=True)
+    await repo.append(cid, user_id=uid, entries=[opened])
+    # The process dies here: the flush append spawned never runs.
+    held.drop_all()
+    cutoff = datetime.now(UTC) + timedelta(seconds=1)
+
+    owners = await repo.list_unfinished_reply_owners(opened_before=cutoff)
+    assert owners == {(uid, cid)}
+    assert (
+        await repo.fail_unfinished_replies(opened_before=cutoff, error="interrupted", owners=owners)
+        == 1
+    )
+
+    settled = await repo.get_message(cid, "r1", user_id=uid)
+    assert settled is not None
+    assert (settled.in_progress, settled.error) == (None, "interrupted")

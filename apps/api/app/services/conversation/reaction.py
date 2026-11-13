@@ -65,16 +65,21 @@ async def react_instantly(target: ReactionTarget, said: InstantReactionInput) ->
     return decision.emoji
 
 
-async def react_as_chat_model(target: ReactionTarget, emoji: str) -> None:
-    """Store the chat model's emoji on the user's message, replacing any reaction there, and publish it."""
+async def react_as_chat_model(target: ReactionTarget, emoji: str) -> bool:
+    """Store the chat model's emoji on the user's message, replacing any reaction there; publish it once stored.
+
+    Returns whether it was stored: False when the message is not there to react to.
+    """
     reaction = MessageReaction(emoji=emoji, by=ReactionBy.CHAT_MODEL)
-    await conversation_repository.set_message_reaction(
+    if not await conversation_repository.set_message_reaction(
         target.conversation_id,
         user_id=target.user_id,
         message_id=target.message_id,
         reaction=reaction,
-    )
+    ):
+        return False
     await _publish(target, reaction)
+    return True
 
 
 async def _publish(target: ReactionTarget, reaction: MessageReaction) -> None:
