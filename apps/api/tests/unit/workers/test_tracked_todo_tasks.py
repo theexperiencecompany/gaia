@@ -1690,7 +1690,7 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
                 LOAD_USER,
                 AsyncMock(side_effect=_user_context(timezone=timezone)),
             ),
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             patch(f"{MODULE}.teardown_subscriptions", teardown),
             patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             _serving(pool),
@@ -3752,7 +3752,7 @@ class TestMarkTodoFailed:
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             patch(f"{MODULE}.teardown_subscriptions", teardown),
         ):
             await _mark_todo_failed("todo-1", OWNER_ID, _doc(title="Nightly backup"))
@@ -3776,7 +3776,7 @@ class TestMarkTodoFailed:
                 "app.workers.tasks.todo_run_context.todo_repository",
                 MagicMock(add_labels=AsyncMock()),
             ),
-            patch(f"{MODULE}.notification_service.create_notification", AsyncMock()),
+            patch(f"{MODULE}.notification_service.notify", AsyncMock()),
             patch(f"{MODULE}.teardown_subscriptions", AsyncMock(return_value=0)),
         ):
             await _mark_todo_failed("todo-1", OWNER_ID, _doc())
@@ -3795,7 +3795,7 @@ class TestMarkTodoFailed:
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(
-                f"{MODULE}.notification_service.create_notification",
+                f"{MODULE}.notification_service.notify",
                 AsyncMock(side_effect=RuntimeError("notification bus down")),
             ),
             patch(f"{MODULE}.teardown_subscriptions", AsyncMock(return_value=0)),

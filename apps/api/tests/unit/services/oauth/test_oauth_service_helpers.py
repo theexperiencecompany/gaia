@@ -190,53 +190,12 @@ class TestRefreshBioStatusForReconnect:
     def _no_gmail_user() -> UserDocument:
         return UserDocument(onboarding={"completed": True, "bio_status": BioStatus.NO_GMAIL})
 
-    async def test_broadcasts_the_processing_status_to_that_user(
-        self, mock_user_repo, mock_websocket_manager
-    ):
-        """A renamed key or field here leaves the frontend card stuck on the no-Gmail placeholder."""
+    async def test_a_no_gmail_bio_goes_back_to_processing(self, mock_user_repo):
         await _refresh_bio_status_for_reconnect(self.USER_ID, self._no_gmail_user())
 
         mock_user_repo.set_bio_status.assert_awaited_once_with(self.USER_ID, BioStatus.PROCESSING)
-        mock_websocket_manager.broadcast_to_user.assert_awaited_once_with(
-            user_id=self.USER_ID,
-            message={
-                "type": "bio_status_update",
-                "data": {"bio_status": BioStatus.PROCESSING},
-            },
-        )
 
-    async def test_an_empty_user_id_is_never_broadcast(
-        self, mock_user_repo, mock_websocket_manager
-    ):
-        """Without the guard, broadcasting to "" would still reach the socket layer."""
-        await _refresh_bio_status_for_reconnect("", self._no_gmail_user())
-
-        mock_websocket_manager.broadcast_to_user.assert_not_awaited()
-
-    async def test_a_websocket_failure_is_a_warning_carrying_the_cause(
-        self, mock_user_repo, mock_websocket_manager
-    ):
-        mock_websocket_manager.broadcast_to_user.side_effect = RuntimeError("WS connection lost")
-
-        async with captured_wide_event() as event:
-            await _refresh_bio_status_for_reconnect(self.USER_ID, self._no_gmail_user())
-
-        # The status write landed; only the live notification was lost, so this
-        # is a warning and never an error.
-        mock_user_repo.set_bio_status.assert_awaited_once_with(self.USER_ID, BioStatus.PROCESSING)
-        assert event["warnings"] == [
-            {
-                "msg": f"{LogTag.OAUTH} Failed to send WebSocket update",
-                "error": "WS connection lost",
-                "error_type": "RuntimeError",
-                "user_id": self.USER_ID,
-            }
-        ]
-        assert "errors" not in event
-
-    async def test_a_failed_status_write_is_an_error_with_its_traceback(
-        self, mock_user_repo, mock_websocket_manager
-    ):
+    async def test_a_failed_status_write_is_an_error_with_its_traceback(self, mock_user_repo):
         mock_user_repo.set_bio_status.side_effect = RuntimeError("mongo down")
         spy = LoguruErrorSpy()
 
@@ -254,7 +213,6 @@ class TestRefreshBioStatusForReconnect:
             }
         ]
         assert spy.errors == [(message, True)]
-        mock_websocket_manager.broadcast_to_user.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

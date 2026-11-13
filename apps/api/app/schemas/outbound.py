@@ -71,6 +71,8 @@ class OutboundMessageEnvelope(BaseModel):
     text: str | None = Field(default=None, min_length=1)
     text_parts: list[str] | None = None
     attachment: OutboundAttachment | None = None
+    # The notification this message delivers; the consumer sends one message per id.
+    notification_id: str | None = None
     enqueued_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")

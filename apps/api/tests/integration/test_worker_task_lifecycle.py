@@ -498,7 +498,7 @@ class TestWorkflowTaskExecution:
             ),
         ):
             mock_wf_service.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock()
+            mock_notif.notify = AsyncMock()
 
             result = await execute_workflow_by_id(ARQ_CTX, "wf-fail")
 
@@ -514,7 +514,7 @@ class TestWorkflowTaskExecution:
             )
 
             # Verify failure notification sent
-            mock_notif.create_notification.assert_awaited_once()
+            mock_notif.notify.assert_awaited_once()
 
             assert "Error" in result
 

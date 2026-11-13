@@ -24,6 +24,7 @@ def _record(**overrides: object) -> NotificationRecord:
         "user_id": "u1",
         "created_at": datetime.now(UTC),
         "original_request": NotificationRequest(
+            id="n1",
             user_id="u1",
             source=NotificationSourceEnum.AI_AGENT,
             content=NotificationContent(title="t", body="b"),
@@ -49,6 +50,30 @@ class TestNotificationRepository:
         assert fetched is not None and fetched.id == "uuid-1"
         assert await repo.get_for_user("uuid-1", "attacker") is None  # user isolation
         assert (await repo.get_for_user("uuid-1", None)).id == "uuid-1"
+
+    async def test_insert_if_absent_stores_a_notification_once(self, repo, raw_collection):
+        assert await repo.insert_if_absent(_record(id="once")) is True
+        assert (
+            await repo.insert_if_absent(_record(id="once", status=NotificationStatus.READ)) is False
+        )
+        (stored,) = await raw_collection.find({"id": "once"}).to_list(None)
+        assert stored["status"] == NotificationStatus.PENDING.value
+
+    async def test_a_channel_is_claimed_once_and_its_outcome_replaces_the_claim(self, repo):
+        await repo.insert_if_absent(_record(id="claimed"))
+        assert await repo.claim_channel("claimed", "telegram") is True
+        assert await repo.claim_channel("claimed", "telegram") is False
+        assert await repo.claim_channel("claimed", "push") is True
+        await repo.record_channel(
+            "claimed",
+            ChannelDeliveryStatus(channel_type="telegram", status=NotificationStatus.DELIVERED),
+        )
+        stored = await repo.get_for_user("claimed", "u1")
+        assert stored is not None
+        assert [(c.channel_type, c.status) for c in stored.channels] == [
+            ("telegram", NotificationStatus.DELIVERED),
+            ("push", NotificationStatus.PENDING),
+        ]
 
     async def test_update_fields_applies_free_form_patch(self, repo):
         await repo.create(_record(id="uuid-2"))

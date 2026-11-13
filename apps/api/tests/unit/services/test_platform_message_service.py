@@ -47,7 +47,12 @@ class TestDeliverMessageToPlatform:
         assert ok is True
         # No conversation_id → DM: no destination override, not a channel send.
         pub.assert_awaited_once_with(
-            source, "user-1", ["hello"], destination_override=None, is_channel=False
+            source,
+            "user-1",
+            ["hello"],
+            destination_override=None,
+            is_channel=False,
+            notification_id=None,
         )
 
     async def test_group_conversation_delivers_to_its_channel(self) -> None:
@@ -79,6 +84,7 @@ class TestDeliverMessageToPlatform:
             ["hi"],
             destination_override="C-group-1",
             is_channel=True,
+            notification_id=None,
         )
 
     async def test_no_conversation_id_never_looks_up_a_session(self) -> None:
@@ -102,6 +108,7 @@ class TestDeliverMessageToPlatform:
             ["hi"],
             destination_override=None,
             is_channel=False,
+            notification_id=None,
         )
 
     @pytest.mark.parametrize("session", [SimpleNamespace(channel_id=None), None])
@@ -130,6 +137,7 @@ class TestDeliverMessageToPlatform:
             ["hi"],
             destination_override=None,
             is_channel=False,
+            notification_id=None,
         )
 
     @pytest.mark.parametrize("result", [OutboundResult.SKIPPED, OutboundResult.FAILED])
@@ -170,6 +178,7 @@ class TestDeliverMessageToPlatform:
             ["first bubble", "second bubble"],
             destination_override=None,
             is_channel=False,
+            notification_id=None,
         )
 
     async def test_breaker_only_whitespace_parts_are_not_published(self) -> None:
@@ -197,6 +206,7 @@ class TestDeliverMessageToPlatform:
             ["real bubble"],
             destination_override=None,
             is_channel=False,
+            notification_id=None,
         )
 
 

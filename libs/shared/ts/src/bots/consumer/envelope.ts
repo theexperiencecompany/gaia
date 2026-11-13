@@ -104,6 +104,8 @@ export function outboundMessageEnvelopeSchemaFor(
       text_parts: z.array(z.string()).nullish(),
       /** A file to deliver (PDF/docx/etc.) — optional. */
       attachment: outboundAttachmentSchemaFor(ownApiOrigin).nullish(),
+      /** The notification this message delivers; the backend sends each one once per channel. */
+      notification_id: z.string().nullish(),
       /** ISO-8601 enqueue timestamp. */
       enqueued_at: z.string(),
     })

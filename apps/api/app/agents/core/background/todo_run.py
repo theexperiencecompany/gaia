@@ -170,7 +170,7 @@ async def run_todo_on_executor(request: TodoRunRequest) -> None:
         log_port, conversation_id, user_id, woke, BACKGROUND_EXECUTOR_WAIT_TIMEOUT
     )
     finished = _finished_run(request, task_id, outcome)
-    if (undone := await finish_todo_run(finished, request.user)) is not None:
+    if (undone := await finish_todo_run(finished)) is not None:
         await hand_unfinished_run_to_job(undone)
 
 

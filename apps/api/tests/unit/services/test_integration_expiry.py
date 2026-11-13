@@ -225,7 +225,7 @@ def announce_seams() -> Iterator[dict[str, MagicMock]]:
         patch(f"{MODULE}.notification_service") as notifications,
     ):
         ws.broadcast_to_user = AsyncMock()
-        notifications.create_notification = AsyncMock()
+        notifications.notify = AsyncMock()
         yield {"ws": ws, "notify": notifications}
 
 
@@ -272,7 +272,7 @@ class TestTheAnnouncement:
     ) -> None:
         await announce_account_expiry(USER_ID, INTEGRATION_ID, _expired(), [], None)
 
-        request = announce_seams["notify"].create_notification.await_args.args[0]
+        request = announce_seams["notify"].notify.await_args.args[0]
         assert request.content.title == "Notion disconnected"
 
     async def test_one_of_several_accounts_is_named_so_the_user_knows_which_to_reconnect(
@@ -282,7 +282,7 @@ class TestTheAnnouncement:
             USER_ID, INTEGRATION_ID, _expired(count=2, integration_expired=False), [], None
         )
 
-        request = announce_seams["notify"].create_notification.await_args.args[0]
+        request = announce_seams["notify"].notify.await_args.args[0]
         assert request.content.title == "Notion (ca_1@acme.com) disconnected"
 
     async def test_it_is_an_in_app_warning_whose_button_signs_that_account_back_in(
@@ -290,7 +290,7 @@ class TestTheAnnouncement:
     ) -> None:
         await announce_account_expiry(USER_ID, INTEGRATION_ID, _expired(), ["Digest"], None)
 
-        request = announce_seams["notify"].create_notification.await_args.args[0]
+        request = announce_seams["notify"].notify.await_args.args[0]
         assert request.user_id == USER_ID
         assert request.type == NotificationType.WARNING
         assert [c.channel_type for c in request.channels] == [CHANNEL_TYPE_INAPP]
@@ -310,7 +310,7 @@ class TestTheAnnouncement:
             USER_ID, INTEGRATION_ID, _expired(), [], "refresh_token_revoked"
         )
 
-        body = announce_seams["notify"].create_notification.await_args.args[0].content.body
+        body = announce_seams["notify"].notify.await_args.args[0].content.body
         assert body.startswith("Your Notion account revoked GAIA's access.")
 
 

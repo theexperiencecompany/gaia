@@ -576,7 +576,7 @@ def announce_stack() -> Any:
         patch(f"{MODULE}.notification_service") as notifications,
         patch(f"{MODULE}.seed_holo_card_conversation", AsyncMock(return_value="conv-1")) as seed,
     ):
-        notifications.create_notification = AsyncMock()
+        notifications.notify = AsyncMock()
         yield notifications, seed
 
 
@@ -623,8 +623,8 @@ class TestAnnouncePersonalization:
 
         await _announce_personalization(USER, card_ready=card_ready)
 
-        assert notifications.create_notification.await_count == 1
-        request = notifications.create_notification.await_args.args[0]
+        assert notifications.notify.await_count == 1
+        request = notifications.notify.await_args.args[0]
         assert request.user_id == USER
         assert request.source is NotificationSourceEnum.BACKGROUND_JOB
         assert request.content.title == "Check your memories — I just added a lot"
@@ -636,7 +636,7 @@ class TestAnnouncePersonalization:
 
         await _announce_personalization(USER, card_ready=True)
 
-        content = notifications.create_notification.await_args.args[0].content
+        content = notifications.notify.await_args.args[0].content
         assert [a.type for a in content.actions] == [ActionType.REDIRECT, ActionType.REDIRECT]
         assert [a.config.redirect.url for a in content.actions] == [MEMORY_SETTINGS_URL, CARD_URL]
         assert content.body.endswith("Your holo card is ready too.")
@@ -647,7 +647,7 @@ class TestAnnouncePersonalization:
 
         assert await _announce_personalization(USER, card_ready=False) is None
 
-        content = notifications.create_notification.await_args.args[0].content
+        content = notifications.notify.await_args.args[0].content
         assert [a.config.redirect.url for a in content.actions] == [MEMORY_SETTINGS_URL]
         assert CARD_URL not in content.body
         assert "holo card" not in content.body
@@ -668,7 +668,7 @@ class TestAnnouncePersonalization:
         # Delivery is fail-soft: the user must not lose the card link because a
         # notification channel was down.
         notifications, seed = announce_stack
-        notifications.create_notification = AsyncMock(side_effect=RuntimeError("channel down"))
+        notifications.notify = AsyncMock(side_effect=RuntimeError("channel down"))
 
         assert await _announce_personalization(USER, card_ready=True) == "conv-1"
 
@@ -684,7 +684,7 @@ class TestAnnouncePersonalization:
 
         await _announce_personalization(USER, card_ready=True)
 
-        request = notifications.create_notification.await_args.args[0]
+        request = notifications.notify.await_args.args[0]
         assert request.type is NotificationType.SUCCESS
         assert request.priority == 2
         assert request.metadata == {"source": "gmail_personalization"}
@@ -707,7 +707,7 @@ class TestAnnouncePersonalization:
         # Long on purpose: a provider stack trace is what actually lands here,
         # and the 200-char cap is what keeps one failure from flooding the event.
         blurb = "channel down: " + "x" * 500
-        notifications.create_notification = AsyncMock(side_effect=RuntimeError(blurb))
+        notifications.notify = AsyncMock(side_effect=RuntimeError(blurb))
 
         await _announce_personalization(USER, card_ready=True)
 

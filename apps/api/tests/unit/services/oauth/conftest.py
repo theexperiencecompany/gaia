@@ -65,13 +65,6 @@ def mock_record_account():
 
 
 @pytest.fixture
-def mock_websocket_manager():
-    with patch("app.services.oauth.oauth_service.websocket_manager") as mock_ws:
-        mock_ws.broadcast_to_user = AsyncMock()
-        yield mock_ws
-
-
-@pytest.fixture
 def mock_redis_pool_manager(route_enqueue_via_pool):
     mock_pool = AsyncMock()
     mock_pool.enqueue_job = AsyncMock()

@@ -10,7 +10,6 @@ from app.constants.integrations import (
     GOOGLE_CALENDAR_INTEGRATION_ID,
 )
 from app.constants.log_tags import LogTag
-from app.core.websocket_manager import websocket_manager
 from app.db.repositories.users import user_repository
 from app.models.oauth_models import OAuthIntegration
 from app.models.user_models import BioStatus, UserDocument, UserUpdate
@@ -261,22 +260,6 @@ async def _refresh_bio_status_for_reconnect(user_id: str, user_doc: UserDocument
                 user_id=user_id,
                 current_bio_status=current_bio_status,
             )
-            try:
-                if isinstance(user_id, str) and user_id:
-                    await websocket_manager.broadcast_to_user(
-                        user_id=user_id,
-                        message={
-                            "type": "bio_status_update",
-                            "data": {"bio_status": BioStatus.PROCESSING},
-                        },
-                    )
-            except Exception as ws_error:
-                log.warning(
-                    f"{LogTag.OAUTH} Failed to send WebSocket update",
-                    error=str(ws_error),
-                    error_type=type(ws_error).__name__,
-                    user_id=user_id,
-                )
     except Exception as e:
         log.error(
             f"{LogTag.OAUTH} Error updating bio_status for user",

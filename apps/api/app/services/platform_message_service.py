@@ -55,6 +55,7 @@ async def deliver_message_to_platform(
     text: str,
     *,
     conversation_id: str | None = None,
+    notification_id: str | None = None,
 ) -> bool:
     """Deliver text to user_id on source via the platform's outbound queue.
 
@@ -80,5 +81,6 @@ async def deliver_message_to_platform(
         parts,
         destination_override=target.destination_id if target else None,
         is_channel=target.is_channel if target else False,
+        notification_id=notification_id,
     )
     return result is OutboundResult.PUBLISHED

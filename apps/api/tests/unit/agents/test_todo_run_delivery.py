@@ -26,14 +26,21 @@ from app.constants.log_tags import LogTag
 from app.models import todo_models
 from app.models.chat_models import ConversationSource
 from app.models.conversation_log_models import ReplyOutcome, TodoRun
-from app.models.notification.notification_models import NotificationType
+from app.models.notification.notification_models import (
+    ChannelDeliveryStatus,
+    NotificationRecord,
+    NotificationRequest,
+    NotificationStatus,
+    NotificationType,
+)
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
-from app.services.delivery.chat_channel import ChatChannel, InApp
+from app.services.delivery.chat_channel import ChatChannel, InApp, ProactiveTarget
 from app.services.notification_service import notification_service
 from app.services.tracked_todo_service import CANVAS_TEMPLATE
 from app.utils import auth_utils
+from app.utils.notification.orchestrator import Notified
 from app.workers.tasks import tracked_todo_tasks
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
@@ -63,11 +70,13 @@ WATCHING = SCHEDULED.model_copy(
 class _Seams:
     todo: TodoDocument | None
     write_up: str
+    #: notification_service.notify; send and in_app name the same one call.
     send: AsyncMock
     activity: AsyncMock
     capture: MagicMock
     in_app: AsyncMock
-    target: AsyncMock
+    #: Where the pipeline routed the result.
+    target: MagicMock
     read_todo: AsyncMock
     #: The note the run's write-up was written under, as the turn builder reads it.
     note: str = ""
@@ -83,27 +92,45 @@ class _Seams:
 def _seams(
     *, todo: TodoDocument | None, write_up: str = "Deploy failed.", sent_on: object = None
 ) -> Iterator[_Seams]:
+    target = MagicMock(return_value=InApp(reason="no_chat_app"))
+    notify = AsyncMock(side_effect=lambda request: _notified(request, sent_on, target()))
     seams = _Seams(
         todo=todo,
         write_up=write_up,
-        send=AsyncMock(return_value=sent_on),
+        send=notify,
         activity=AsyncMock(return_value=True),
         capture=MagicMock(),
-        in_app=AsyncMock(),
-        target=AsyncMock(return_value=InApp(reason="no_chat_app")),
+        in_app=notify,
+        target=target,
         read_todo=AsyncMock(return_value=todo),
     )
     repo = MagicMock()
     repo.get_by_id = seams.read_todo
     with (
-        patch.object(trd, "deliver_result_to_platforms", seams.send),
-        patch.object(trd, "resolve_proactive_target", seams.target),
         patch.object(trd, "todo_repository", repo),
         patch.object(trd, "record_run_finished", seams.activity),
         patch.object(trd, "capture", seams.capture),
-        patch.object(notification_service, "create_notification", seams.in_app),
+        patch.object(notification_service, "notify", seams.in_app),
     ):
         yield seams
+
+
+def _notified(request: NotificationRequest, sent_on: object, target: ProactiveTarget) -> Notified:
+    """Answer as the pipeline does: the inbox always took it, a chat app when sent_on names one."""
+    channels = [ChannelDeliveryStatus(channel_type="inapp", status=NotificationStatus.DELIVERED)]
+    if isinstance(sent_on, ConversationSource):
+        channels.append(
+            ChannelDeliveryStatus(channel_type=sent_on.value, status=NotificationStatus.DELIVERED)
+        )
+    record = NotificationRecord(
+        id=request.id,
+        user_id=request.user_id,
+        status=NotificationStatus.DELIVERED,
+        created_at=request.created_at,
+        channels=channels,
+        original_request=request,
+    )
+    return Notified(record=record, target=target)
 
 
 async def deliver(
@@ -130,7 +157,7 @@ async def deliver(
         reply=reply,
         nothing_for_user=nothing_for_user,
     )
-    if (undone := await finish_todo_run(finished, USER)) is not None:
+    if (undone := await finish_todo_run(finished)) is not None:
         await hand_unfinished_run_to_job(undone)
 
 
@@ -187,45 +214,15 @@ class TestResultsThatReachNobody:
     async def test_a_result_neither_a_chat_app_nor_the_app_took_is_undelivered(self) -> None:
         """Counting a delivery that reached nobody as sent hides the failure."""
         with _seams(todo=_todo(), sent_on=None) as seams:
-            seams.in_app.side_effect = ConnectionError("mongo down")
-            async with captured_wide_event() as event:
-                await deliver(seams, SCHEDULED, "report")
+            seams.in_app.side_effect = None
+            seams.in_app.return_value = Notified(
+                record=MagicMock(status=NotificationStatus.FAILED, channels=[]),
+                target=InApp(reason="no_chat_app"),
+            )
+            await deliver(seams, SCHEDULED, "report")
 
         assert seams.event().outcome == "undelivered"
         assert seams.event().delivered is False
-        assert event["errors"] == [
-            {
-                "msg": f"{LogTag.AGENT} todo run result could not be sent in the app",
-                "todo_id": "todo-1",
-                "error": "mongo down",
-                "error_type": "ConnectionError",
-            }
-        ]
-
-    async def test_a_failed_target_lookup_still_reaches_the_user_in_the_app(self) -> None:
-        """Regression: the lookup raised out of the send, so the result went to the retry instead of the app."""
-        with _seams(todo=_todo()) as seams:
-            seams.target.side_effect = ConnectionError("mongo down")
-            async with captured_wide_event() as event:
-                await deliver(seams, SCHEDULED, "report")
-
-        seams.send.assert_not_awaited()
-        assert seams.in_app.await_args.args[0].content.body == "Deploy failed."
-        assert seams.event().outcome == "delivered"
-        assert event["errors"] == [
-            {
-                "msg": f"{LogTag.AGENT} todo run target lookup failed, falling back to in-app",
-                "todo_id": "todo-1",
-                "error": "mongo down",
-                "error_type": "ConnectionError",
-            }
-        ]
-
-    async def test_a_todo_deleted_mid_run_gets_nothing(self) -> None:
-        with _seams(todo=None) as seams:
-            await deliver(seams, SCHEDULED, "report")
-        seams.activity.assert_not_awaited()
-        seams.capture.assert_not_called()
 
 
 class TestABriefingThatOwnsItsForm:
@@ -256,7 +253,7 @@ class TestABriefingThatOwnsItsForm:
         ) as seams:
             await deliver(seams, SCHEDULED, self.BRIEFING)
 
-        assert seams.send.await_args.kwargs["notification_text"] == self.BRIEFING
+        assert seams.send.await_args.args[0].message == self.BRIEFING
 
     async def test_its_write_up_can_still_keep_a_desk_briefing_quiet(self) -> None:
         with _seams(todo=self._desk()) as seams:
@@ -294,7 +291,7 @@ class TestARunThatFoundNothingForTheUser:
             todo=todo, write_up="Nothing new.", sent_on=ConversationSource.TELEGRAM
         ) as seams:
             await deliver(seams, WATCHING, self.NOTE, nothing_for_user=True)
-        seams.target.assert_not_awaited()
+        seams.target.assert_not_called()
         seams.send.assert_not_awaited()
         seams.in_app.assert_not_awaited()
         assert seams.entry() == (
@@ -442,21 +439,6 @@ class TestTheEventSaysWhereTheResultWasRouted:
                 recurring=False,
                 destination="in_app",
                 destination_basis="active_in_app",
-            ),
-        )
-
-    async def test_a_failed_lookup_names_no_destination(self) -> None:
-        with _seams(todo=_todo()) as seams:
-            seams.target.side_effect = ConnectionError("mongo down")
-            await deliver(seams, SCHEDULED, "report")
-
-        seams.capture.assert_called_once_with(
-            UserId(USER_ID),
-            TodosRunResultDelivered(
-                outcome="delivered",
-                delivered=True,
-                trigger_type=TriggerType.SCHEDULED_TODO.value,
-                recurring=False,
             ),
         )
 
@@ -653,7 +635,7 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
         ):
             repo_read = seams.read_todo
             repo_read.side_effect = PyMongoError("primary stepped down")
-            undone = await finish_todo_run(_finished(), USER)
+            undone = await finish_todo_run(_finished())
             assert undone is not None
             await hand_unfinished_run_to_job(undone)
             seams.send.assert_not_awaited()
@@ -663,7 +645,7 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
             await tracked_todo_tasks.finish_tracked_todo_run({"job_try": 2}, payload)
 
         seams.send.assert_awaited_once()
-        assert seams.send.await_args.kwargs["notification_text"] == "Deploy failed."
+        assert seams.send.await_args.args[0].message == "Deploy failed."
         assert "result sent on telegram (summary='report')" in seams.entry()
 
     async def test_an_entry_that_keeps_failing_is_written_by_its_job_without_a_second_send(
@@ -674,7 +656,7 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
             _job_seams() as enqueue,
         ):
             seams.activity.side_effect = PyMongoError("primary stepped down")
-            undone = await finish_todo_run(_finished(), USER)
+            undone = await finish_todo_run(_finished())
             assert undone is not None
             await hand_unfinished_run_to_job(undone)
             payload = _queued(enqueue, "todo_run_result_not_recorded")
@@ -689,7 +671,7 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
         """A retried job must not send a write-up its run's reply settled silent."""
         with _seams(todo=_todo()) as seams, _job_seams() as enqueue:
             seams.activity.side_effect = PyMongoError("primary stepped down")
-            undone = await finish_todo_run(_finished(reply=ReplyOutcome.SILENT, write_up=""), USER)
+            undone = await finish_todo_run(_finished(reply=ReplyOutcome.SILENT, write_up=""))
             assert undone is not None
             await hand_unfinished_run_to_job(undone)
 

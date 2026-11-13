@@ -536,6 +536,7 @@ def _notif_record() -> NotificationRecord:
         status=NotificationStatus.READ,
         created_at=_dt(2026, 1, 1, tzinfo=_UTC),
         original_request=NotificationRequest(
+            id="n-read",
             user_id=UID,
             source=NotificationSourceEnum.AI_AGENT,
             type=NotificationType.INFO,

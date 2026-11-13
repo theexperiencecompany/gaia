@@ -591,6 +591,8 @@ async def create_notification_indexes() -> None:
     try:
         # Create all notification indexes concurrently
         await asyncio.gather(
+            # One document per notification id: a retried producer upserts onto it.
+            notifications_collection.create_index("id", unique=True),
             # For user-specific notifications
             notifications_collection.create_index([("user_id", 1), ("created_at", -1)]),
             # For unread notifications

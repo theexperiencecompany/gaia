@@ -11805,13 +11805,17 @@ export interface components {
             /** Channels */
             channels?: components["schemas"]["ChannelConfig"][];
             content: components["schemas"]["NotificationContent"];
+            /** Conversation Id */
+            conversation_id?: string | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at?: string;
             /** Id */
-            id?: string;
+            id: string;
+            /** Message */
+            message?: string | null;
             /** Metadata */
             metadata?: {
                 [key: string]: unknown;
@@ -11866,7 +11870,7 @@ export interface components {
          * @description Originating system or feature that produced the notification.
          * @enum {string}
          */
-        NotificationSourceEnum: "ai_email_draft" | "ai_calendar_event" | "ai_todo_suggestion" | "ai_reminder" | "ai_todo_added" | "ai_agent" | "email_trigger" | "background_job" | "workflow_completed" | "workflow_failed" | "system_workflows_provisioned" | "usage_limit" | "integration_expired" | "todo_trigger";
+        NotificationSourceEnum: "ai_email_draft" | "ai_calendar_event" | "ai_todo_suggestion" | "ai_reminder" | "ai_todo_added" | "ai_agent" | "email_trigger" | "background_job" | "workflow_completed" | "workflow_failed" | "system_workflows_provisioned" | "usage_limit" | "integration_expired" | "todo_trigger" | "approval";
         /**
          * NotificationStatus
          * @description Lifecycle state of a notification record.
@@ -15767,9 +15771,8 @@ export interface components {
          * TriageEmailSummary
          * @description The fields of an important email that actually reach the client.
          *
-         *     Deliberately not :class:`EmailSummary`: both the persisted triage subdoc and
-         *     the ``triage_ready`` WebSocket payload drop ``snippet``, and the frontend
-         *     types exactly these three.
+         *     Deliberately not :class:`EmailSummary`: the persisted triage subdoc drops
+         *     ``snippet``, and the frontend types exactly these three.
          *
          *     Defaulted for the same reason as :class:`PersistedTriageSummary` — these
          *     entries are read back out of a persisted subdoc, and the write path always

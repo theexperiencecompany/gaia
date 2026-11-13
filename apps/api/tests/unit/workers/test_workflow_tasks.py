@@ -15,7 +15,6 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 )
 from app.config.rate_limits import RateLimitPeriod
 from app.constants.log_tags import LogTag
-from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
@@ -30,6 +29,7 @@ from app.models.conversation_log_models import (
 from app.models.notification.notification_models import (
     ActionType,
     NotificationSourceEnum,
+    notification_id,
 )
 from app.models.playbook_models import PlaybookRunStatus
 from app.models.scheduler_models import DeactivationReason
@@ -39,12 +39,13 @@ from app.models.workflow_models import TriggerType, WorkflowExecutionRequest, Wo
 from app.services.conversation.outcome import EntryOutcome
 from app.services.workflow.conversation_service import build_selected_workflow_data
 from app.services.workflow.execution_service import WorkflowFireTimedOut, WorkflowTurnFailed
-from app.services.workflow.notifications import send_workflow_completion_notification
+from app.services.workflow.notifications import notify_workflow_result
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.validators import WorkflowValidator
 from app.utils import auth_utils
 from app.utils.errors import AppError
+from app.utils.notification.orchestrator import Notified
 from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
 from app.workers.tasks.workflow_tasks import (
     AGENT_RUN_SUMMARY,
@@ -1096,7 +1097,7 @@ class TestExecuteWorkflowAsChat:
         assert (conversation_id, trace) == ("conv_wf", [RecordedCall(tool_name="GMAIL_FETCH")])
         boundaries["read_run_record"].assert_awaited_once_with("exec_1")
         delivered = boundaries["_notify_run_finished"].await_args
-        assert delivered.args[2:] == ("conv_wf", "Your brief")
+        assert delivered.args[1:] == ("exec_1", "conv_wf", "Your brief")
         assert delivered.kwargs == {"notify_on_completion": True}
 
     async def test_a_silent_run_delivers_nothing(self, boundaries) -> None:
@@ -1154,31 +1155,34 @@ def _shown(text: str) -> Reply:
 class TestWorkflowNotificationSenders:
     """Tests for the workflow completion/failure notification senders."""
 
-    async def test_completion_notification_is_inapp_with_view_results_link(
-        self,
-    ) -> None:
-        """Send_workflow_completion_notification fires a human, in-app-only badge."""
-        with patch(
-            "app.services.workflow.notifications.notification_service",
-        ) as mock_notif:
-            mock_notif.create_notification = AsyncMock()
-            await send_workflow_completion_notification(
+    async def test_a_run_result_is_one_notification_keyed_by_its_execution(self) -> None:
+        """The inbox gets a short heads-up with a link; a chat app gets the result itself."""
+        with (
+            patch(
+                "app.services.workflow.notifications.notification_service",
+            ) as mock_notif,
+            patch("app.services.workflow.notifications.capture"),
+        ):
+            mock_notif.notify = AsyncMock(
+                return_value=Notified(record=MagicMock(channels=[]), target=None)
+            )
+            await notify_workflow_result(
                 workflow_id="wf_1",
                 workflow_title="Morning Briefing",
+                execution_id="exec_9",
                 conversation_id="conv_xyz",
                 user_id=USER_ID,
+                result_text="Three meetings today.",
             )
 
-        mock_notif.create_notification.assert_awaited_once()
-        notif_req = mock_notif.create_notification.call_args[0][0]
-        # Human copy: phrasing rotates, but the workflow name is woven into the
-        # title and there is a casual body.
+        (notif_req,) = mock_notif.notify.call_args.args
+        assert notif_req.id == notification_id(USER_ID, "workflow_result", "exec_9")
+        # Human copy: phrasing rotates, but the workflow name is woven into the title.
         assert "Morning Briefing" in notif_req.content.title
         assert notif_req.content.body
-        # Scoped to in-app only (no external chrome push) and no result payload.
-        assert [c.channel_type for c in notif_req.channels] == [CHANNEL_TYPE_INAPP]
-        assert notif_req.content.rich_content is None
-        # Exactly one "View Results" redirect to the run's conversation.
+        assert notif_req.message == "Three meetings today."
+        # Routed by the pipeline, not pinned to the inbox.
+        assert notif_req.channels == []
         actions = notif_req.content.actions
         assert len(actions) == 1
         assert actions[0].type == ActionType.REDIRECT
@@ -1249,12 +1253,12 @@ class TestExecuteWorkflowByIdNotifications:
             ) as mock_notif,
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock()
+            mock_notif.notify = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
         assert "Error executing workflow" in result
-        mock_notif.create_notification.assert_awaited_once()
-        notif_req = mock_notif.create_notification.call_args[0][0]
+        mock_notif.notify.assert_awaited_once()
+        notif_req = mock_notif.notify.call_args[0][0]
         assert "Resets" in notif_req.content.body
         assert "Upgrade to Pro" in notif_req.content.body
         # Should include an upgrade action
@@ -1283,11 +1287,11 @@ class TestExecuteWorkflowByIdNotifications:
             ) as mock_notif,
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock()
+            mock_notif.notify = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
         assert "Error executing workflow" in result
-        notif_req = mock_notif.create_notification.call_args[0][0]
+        notif_req = mock_notif.notify.call_args[0][0]
         assert "not available on your current plan" in notif_req.content.body
         assert "Upgrade to Pro" in notif_req.content.body
 
@@ -1315,11 +1319,11 @@ class TestExecuteWorkflowByIdNotifications:
             ) as mock_notif,
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock()
+            mock_notif.notify = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
         assert "Error executing workflow" in result
-        notif_req = mock_notif.create_notification.call_args[0][0]
+        notif_req = mock_notif.notify.call_args[0][0]
         # Falls back to the version without the reset time formatting
         assert "You've used all your workflow executions" in notif_req.content.body
 
@@ -1341,11 +1345,11 @@ class TestExecuteWorkflowByIdNotifications:
             ) as mock_notif,
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock()
+            mock_notif.notify = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
         assert "Error executing workflow" in result
-        notif_req = mock_notif.create_notification.call_args[0][0]
+        notif_req = mock_notif.notify.call_args[0][0]
         assert "encountered an error" in notif_req.content.body
         # No upgrade action for generic errors
         assert notif_req.content.actions is None
@@ -1363,12 +1367,10 @@ class TestExecuteWorkflowByIdNotifications:
             patch("app.workers.tasks.workflow_tasks.notification_service") as mock_notif,
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock()
+            mock_notif.notify = AsyncMock()
             await execute_workflow_by_id(ctx, workflow.id)
-        mock_notif.create_notification.assert_awaited_once()
-        assert mock_notif.create_notification.call_args[0][0].source == (
-            NotificationSourceEnum.WORKFLOW_FAILED
-        )
+        mock_notif.notify.assert_awaited_once()
+        assert mock_notif.notify.call_args[0][0].source == (NotificationSourceEnum.WORKFLOW_FAILED)
         assert complete.await_args.kwargs["status"] == "failed"
         assert complete.await_args.kwargs["conversation_id"] == "conv_wf"
         mock_wf_svc.increment_execution_count.assert_awaited_once_with(
@@ -1376,7 +1378,7 @@ class TestExecuteWorkflowByIdNotifications:
         )
 
     async def test_notification_failure_during_error_is_swallowed(self, ctx):
-        """If notification_service.create_notification fails during error handling, the exception is swallowed and the error result is still returned."""
+        """If notification_service.notify fails during error handling, the exception is swallowed and the error result is still returned."""
         workflow = _make_workflow()
         error = ValueError("Original error")
 
@@ -1393,9 +1395,7 @@ class TestExecuteWorkflowByIdNotifications:
             ) as mock_notif,
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock(
-                side_effect=RuntimeError("Notification service down")
-            )
+            mock_notif.notify = AsyncMock(side_effect=RuntimeError("Notification service down"))
             result = await execute_workflow_by_id(ctx, workflow.id)
 
         assert "Error executing workflow" in result
@@ -1427,7 +1427,7 @@ class TestExecuteWorkflowByIdNotifications:
             patch("app.workers.tasks.workflow_tasks.notification_service") as mock_notif,
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock()
+            mock_notif.notify = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
         assert "Error executing workflow" in result
@@ -1461,7 +1461,7 @@ class TestExecuteWorkflowByIdNotifications:
             mock_wf_svc.increment_execution_count = AsyncMock(
                 side_effect=RuntimeError("Stats DB down")
             )
-            mock_notif.create_notification = AsyncMock()
+            mock_notif.notify = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
         assert "Error executing workflow" in result
@@ -1488,7 +1488,7 @@ class TestExecuteWorkflowByIdNotifications:
             patch("app.workers.tasks.workflow_tasks.notification_service") as mock_notif,
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock()
+            mock_notif.notify = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
         assert "Error executing workflow" in result
@@ -1915,7 +1915,7 @@ class _FirePatches:
             patch(f"{MODULE}.coalesce_window_seconds", self.coalesce),
             patch(f"{MODULE}.distrust_fresh_playbook", self.distrust),
             patch(f"{MODULE}.playbook_repository.record_run_outcome", self.record_run_outcome),
-            patch(f"{MODULE}.notification_service.create_notification", self.notify),
+            patch(f"{MODULE}.notification_service.notify", self.notify),
             patch(f"{MODULE}.log", self.log),
         ):
             stack.enter_context(patcher)

@@ -531,9 +531,7 @@ class TestWorkflowExecutionFailurePropagation:
         async def _create_notification(request):
             notifications.append(request)
 
-        monkeypatch.setattr(
-            workflow_tasks.notification_service, "create_notification", _create_notification
-        )
+        monkeypatch.setattr(workflow_tasks.notification_service, "notify", _create_notification)
 
         monkeypatch.setattr(WorkflowScheduler, "initialize", AsyncMock())
         monkeypatch.setattr(WorkflowScheduler, "close", AsyncMock())
@@ -720,7 +718,7 @@ class TestWorkflowExecutionFailurePropagation:
         monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
         monkeypatch.setattr(
             workflow_tasks.notification_service,
-            "create_notification",
+            "notify",
             AsyncMock(side_effect=RuntimeError("notification backend unreachable")),
         )
 

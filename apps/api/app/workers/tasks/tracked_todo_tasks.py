@@ -64,6 +64,7 @@ from app.models.notification.notification_models import (
     NotificationRequest,
     NotificationSourceEnum,
     NotificationType,
+    notification_id,
 )
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import ExternalRefSource, TodoDocument, TodoUpdate
@@ -999,8 +1000,7 @@ async def finish_tracked_todo_run(ctx: ArqJobContext, undone: FinishedTodoRun) -
     """
     # The envelope already puts the job id (the run's) and job_try on the event.
     log.set(todo_id=undone.todo_id)
-    user, _ = await _load_user_with_tz(undone.user_id)
-    left = await finish_todo_run(undone, user)
+    left = await finish_todo_run(undone)
     if left is None:
         return f"finished:{undone.todo_id}"
     if left.finish_entry != undone.finish_entry:
@@ -1038,8 +1038,11 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> No
 async def _notify_run_failed(doc: TodoDocument, body: str) -> None:
     """Tell the user in-app that a run used up its attempts; a failed send is only logged."""
     try:
-        await notification_service.create_notification(
+        await notification_service.notify(
             NotificationRequest(
+                id=notification_id(
+                    doc.user_id, "todo_run_failed", doc.id or "", str(doc.scheduled_at)
+                ),
                 user_id=doc.user_id,
                 source=NotificationSourceEnum.BACKGROUND_JOB,
                 type=NotificationType.ERROR,

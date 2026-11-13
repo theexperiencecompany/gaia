@@ -15,7 +15,6 @@ from pydantic import BaseModel, ConfigDict
 from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
 
-from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants.log_tags import LogTag
 from app.constants.todos import (
@@ -39,17 +38,14 @@ from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
+    NotificationStatus,
+    notification_id,
 )
 from app.models.todo_models import TodoDocument
-from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import capture
 from app.services.canvas_markdown import section_body
-from app.services.delivery.chat_channel import (
-    ProactiveTarget,
-    proactive_destination,
-    resolve_proactive_target,
-)
+from app.services.delivery.chat_channel import ProactiveTarget, proactive_destination
 from app.services.notification_service import notification_service
 from app.services.todo_activity import (
     recent_run_outcomes,
@@ -135,9 +131,7 @@ async def write_up_note(run: TodoRun) -> str:
     )
 
 
-async def finish_todo_run(
-    finished: FinishedTodoRun, user: AuthenticatedUser
-) -> FinishedTodoRun | None:
+async def finish_todo_run(finished: FinishedTodoRun) -> FinishedTodoRun | None:
     """Send the run's message once, then write its finish entry; return what is left undone.
 
     The message goes first because the entry records what became of it. None
@@ -147,7 +141,7 @@ async def finish_todo_run(
     entry = finished.finish_entry
     try:
         if entry is None:
-            if (sent := await _send_once(finished, user)) is None:
+            if (sent := await _send_once(finished)) is None:
                 return None
             entry, owner_id = sent
             finished = finished.model_copy(update={"finish_entry": entry, "user_id": owner_id})
@@ -201,7 +195,7 @@ async def hand_unfinished_run_to_job(undone: FinishedTodoRun) -> None:
         report_unfinished_run(undone, f"{type(e).__name__}: {e}")
 
 
-async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tuple[str, str] | None:
+async def _send_once(finished: FinishedTodoRun) -> tuple[str, str] | None:
     """Decide on and send the run's message; return its finish entry and the todo's owner.
 
     None when there is no entry to write: the todo is gone, or this run already finished.
@@ -218,7 +212,7 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
         return None
 
     held_back = _held_back(finished, todo)
-    resolution = await _send(finished, user, todo) if held_back is None else _not_sent(held_back)
+    resolution = await _send(finished, todo) if held_back is None else _not_sent(held_back)
     log.set_ns("todo_delivery", outcome=resolution.outcome.value)
     # A worker has no request context: the explicit user id keeps the event off
     # an anonymous profile.
@@ -260,65 +254,30 @@ def _canvas_section(todo: TodoDocument | None, heading: str, max_chars: int) -> 
     return body[:max_chars] if body else None
 
 
-async def _send_in_app(todo: TodoDocument, text: str) -> _Resolution:
-    """Deliver a result as an in-app notification: the fallback, or the target for an in-app user."""
-    try:
-        await notification_service.create_notification(
-            NotificationRequest(
-                user_id=todo.user_id,
-                source=NotificationSourceEnum.BACKGROUND_JOB,
-                content=NotificationContent(
-                    title=todo.title, body="\n\n".join(split_message_bubbles(text))
-                ),
-                metadata={"todo_id": todo.id},
-            )
-        )
-    except Exception as e:
-        log.error(
-            f"{LogTag.AGENT} todo run result could not be sent in the app",
-            todo_id=todo.id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return _not_sent(TodoRunDeliveryOutcome.UNDELIVERED)
-    return _Resolution(TodoRunDeliveryOutcome.DELIVERED, "result sent as an in-app notification")
+async def _send(finished: FinishedTodoRun, todo: TodoDocument) -> _Resolution:
+    """Send the write-up, or the report itself when the todo's guidance forms it, through the one notify pipeline.
 
-
-async def _lookup_target(todo: TodoDocument) -> ProactiveTarget | None:
-    """Resolve where the result goes; None (logged) when the lookup fails, so it falls back in-app."""
-    try:
-        return await resolve_proactive_target(todo.user_id)
-    except Exception as e:
-        log.error(
-            f"{LogTag.AGENT} todo run target lookup failed, falling back to in-app",
-            todo_id=todo.id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return None
-
-
-async def _send(
-    finished: FinishedTodoRun, user: AuthenticatedUser, todo: TodoDocument
-) -> _Resolution:
-    """Send the write-up to the chat app, or the report itself when the todo's guidance forms it."""
-    target = await _lookup_target(todo)
+    Keyed by the run, so the durable job that retries a finish sends nothing twice.
+    """
     # A retelling drops the headings an as-written todo's guidance requires.
     as_written = finished.report_form is TodoReportForm.AS_WRITTEN
     message = finished.result_text if as_written else finished.write_up
-    platform = (
-        await deliver_result_to_platforms(
-            user=user,
+    notified = await notification_service.notify(
+        NotificationRequest(
+            id=notification_id(todo.user_id, "todo_run", finished.run_id),
             user_id=todo.user_id,
-            notification_text=message,
-            origin=f'tracked todo "{todo.title}" (id {todo.id})',
-            target=target,
+            source=NotificationSourceEnum.BACKGROUND_JOB,
+            content=NotificationContent(
+                title=todo.title, body="\n\n".join(split_message_bubbles(message))
+            ),
+            metadata={"todo_id": todo.id},
+            message=message,
         )
-        if target is not None
-        else None
     )
-    if platform is None:
-        return (await _send_in_app(todo, message))._replace(target=target)
-    return _Resolution(
-        TodoRunDeliveryOutcome.DELIVERED, f"result sent on {platform.value}", platform, target
+    if notified.record.status is not NotificationStatus.DELIVERED:
+        return _not_sent(TodoRunDeliveryOutcome.UNDELIVERED)._replace(target=notified.target)
+    platform = notified.chat_app
+    note = (
+        f"result sent on {platform.value}" if platform else "result sent as an in-app notification"
     )
+    return _Resolution(TodoRunDeliveryOutcome.DELIVERED, note, platform, notified.target)

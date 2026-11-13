@@ -94,7 +94,7 @@ def deps():
         patch(f"{_MOD}.redis_cache") as redis,
         patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue,
         patch(f"{_MOD}.RedisPoolManager.get_pool", new_callable=AsyncMock) as get_pool,
-        patch(f"{_MOD}.notification_service.create_notification", new_callable=AsyncMock) as notify,
+        patch(f"{_MOD}.notification_service.notify", new_callable=AsyncMock) as notify,
         patch(f"{_MOD}.tracked_todo_service.complete_tracked_todo", new_callable=AsyncMock) as done,
         patch(f"{_MOD}.capture") as capture,
         patch(f"{_MOD}.record_activity", new_callable=AsyncMock) as activity,

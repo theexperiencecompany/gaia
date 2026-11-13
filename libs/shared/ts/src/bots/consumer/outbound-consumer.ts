@@ -264,9 +264,8 @@ export class OutboundConsumer {
     const channel = this.channel;
     if (!msg || !channel) return;
 
-    // IDEMPOTENCY: none in Phase 1. RabbitMQ is at-least-once and doesn't dedupe, but a
-    // redelivery is negligible with a SINGLE consumer per platform. Before running multiple
-    // workers, add a dedupe on `env.id` backed by SHARED state (e.g. Redis SETNX+TTL).
+    // A notification is published once per channel: the backend claims the send on the
+    // notification before publishing. A broker redelivery is still possible (at-least-once).
     await withWideEvent(
       "outbound_message",
       {
@@ -280,6 +279,7 @@ export class OutboundConsumer {
 
         wideLog.set({
           envelope_id: env.id,
+          notification_id: env.notification_id ?? null,
           destination_hash: hashLogIdentifier(env.destination_id),
           has_attachment: Boolean(env.attachment),
         });

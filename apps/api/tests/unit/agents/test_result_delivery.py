@@ -12,11 +12,10 @@ import pytest
 from app.agents.core.background.result_delivery import deliver_message_to_conversation
 from app.models.chat_models import ConversationSource, ToolDataEntry
 from app.models.conversation_log_models import Notice
-from app.models.user_models import AuthenticatedUser
 from app.utils.errors import ConversationNotFoundError
 
 MODULE = "app.agents.core.background.result_delivery"
-USER = AuthenticatedUser(user_id="507f1f77bcf86cd799439011")
+USER_ID = "507f1f77bcf86cd799439011"
 CARD: ToolDataEntry = {"tool_name": "reminder", "data": {"id": "r1"}}
 
 
@@ -34,14 +33,19 @@ def _source(source: ConversationSource) -> MagicMock:
 
 async def _deliver(
     source: ConversationSource, *, sent: bool = True, text: str = "stretch"
-) -> tuple[ConversationSource | None, AsyncMock, AsyncMock]:
+) -> tuple[bool, AsyncMock, AsyncMock]:
     with (
         patch(f"{MODULE}.conversation_repository", _source(source)),
         patch(f"{MODULE}.deliver_message_to_platform", AsyncMock(return_value=sent)) as platform,
         patch(f"{MODULE}.accept", new_callable=AsyncMock) as logged,
     ):
         result = await deliver_message_to_conversation(
-            conversation_id="conv-1", user=USER, text=text, origin="reminder", tool_data=[CARD]
+            conversation_id="conv-1",
+            user_id=USER_ID,
+            notification_id="n-1",
+            text=text,
+            origin="reminder",
+            tool_data=[CARD],
         )
     return result, platform, logged
 
@@ -56,16 +60,21 @@ def _notice(logged: AsyncMock) -> Notice:
 async def test_a_web_conversation_gets_one_notice_with_its_cards() -> None:
     result, platform, logged = await _deliver(ConversationSource.WEB)
 
-    assert result is ConversationSource.WEB
+    assert result is True
     platform.assert_not_awaited()
     notice = _notice(logged)
-    assert (notice.text, notice.origin, notice.tool_data) == ("stretch", "reminder", (CARD,))
+    assert (notice.id, notice.text, notice.origin, notice.tool_data) == (
+        "notice:n-1",
+        "stretch",
+        "reminder",
+        (CARD,),
+    )
 
 
 async def test_a_bot_conversation_is_sent_on_its_platform_then_logged() -> None:
     result, platform, logged = await _deliver(ConversationSource.TELEGRAM)
 
-    assert result is ConversationSource.TELEGRAM
+    assert result is True
     platform.assert_awaited_once()
     assert _notice(logged).text == "stretch"
 
@@ -73,14 +82,14 @@ async def test_a_bot_conversation_is_sent_on_its_platform_then_logged() -> None:
 async def test_a_failed_platform_send_logs_nothing() -> None:
     result, _, logged = await _deliver(ConversationSource.TELEGRAM, sent=False)
 
-    assert result is None
+    assert result is False
     logged.assert_not_awaited()
 
 
 async def test_blank_text_delivers_nothing() -> None:
     result, platform, logged = await _deliver(ConversationSource.WEB, text="  ")
 
-    assert result is None
+    assert result is False
     platform.assert_not_awaited()
     logged.assert_not_awaited()
 
@@ -94,7 +103,11 @@ async def test_a_deleted_conversation_delivers_nothing() -> None:
         ),
     ):
         result = await deliver_message_to_conversation(
-            conversation_id="conv-1", user=USER, text="stretch", origin="reminder"
+            conversation_id="conv-1",
+            user_id=USER_ID,
+            notification_id="n-1",
+            text="stretch",
+            origin="reminder",
         )
 
-    assert result is None
+    assert result is False

@@ -12630,6 +12630,17 @@
           "content": {
             "$ref": "#/components/schemas/NotificationContent"
           },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -12638,6 +12649,17 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
           },
           "metadata": {
             "additionalProperties": true,
@@ -12676,6 +12698,7 @@
           }
         },
         "required": [
+          "id",
           "user_id",
           "source",
           "content"
@@ -12811,7 +12834,8 @@
           "system_workflows_provisioned",
           "usage_limit",
           "integration_expired",
-          "todo_trigger"
+          "todo_trigger",
+          "approval"
         ],
         "title": "NotificationSourceEnum",
         "type": "string"
@@ -20646,7 +20670,7 @@
         "type": "object"
       },
       "TriageEmailSummary": {
-        "description": "The fields of an important email that actually reach the client.\n\nDeliberately not :class:`EmailSummary`: both the persisted triage subdoc and\nthe ``triage_ready`` WebSocket payload drop ``snippet``, and the frontend\ntypes exactly these three.\n\nDefaulted for the same reason as :class:`PersistedTriageSummary` \u2014 these\nentries are read back out of a persisted subdoc, and the write path always\nsupplies all three, so the defaults only ever apply on read.",
+        "description": "The fields of an important email that actually reach the client.\n\nDeliberately not :class:`EmailSummary`: the persisted triage subdoc drops\n``snippet``, and the frontend types exactly these three.\n\nDefaulted for the same reason as :class:`PersistedTriageSummary` \u2014 these\nentries are read back out of a persisted subdoc, and the write path always\nsupplies all three, so the defaults only ever apply on read.",
         "properties": {
           "sender": {
             "default": "",

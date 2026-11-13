@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -6,9 +7,15 @@ from fastapi import Request
 
 from app.constants.log_tags import LogTag
 from app.constants.notifications import (
+    CHANNEL_TYPE_CONVERSATION,
     CHANNEL_TYPE_INAPP,
+    CHANNEL_TYPE_PUSH,
+    EXTERNAL_NOTIFICATION_CHANNELS,
 )
 from app.core.websocket_manager import websocket_manager
+from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.notifications import notification_repository
+from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
     ActionResult,
     BulkActions,
@@ -22,7 +29,14 @@ from app.models.notification.notification_models import (
     NotificationStatus,
     NotificationView,
 )
-from app.services.delivery.chat_channel import InApp, resolve_proactive_target
+from app.services.delivery.chat_channel import (
+    ChatChannel,
+    InApp,
+    ProactiveTarget,
+    is_active_place,
+    resolve_proactive_target,
+)
+from app.services.platform_message_service import is_bot_platform
 from app.utils.notification.actions import (
     ActionHandler,
     ApiCallActionHandler,
@@ -31,9 +45,10 @@ from app.utils.notification.actions import (
 )
 from app.utils.notification.channels import (
     ChannelAdapter,
+    ConversationChannelAdapter,
     DiscordChannelAdapter,
     ImessageChannelAdapter,
-    InAppChannelAdapter,
+    PushChannelAdapter,
     SlackChannelAdapter,
     TContent,
     TelegramChannelAdapter,
@@ -43,6 +58,40 @@ from app.utils.notification.storage import (
     MongoDBNotificationStorage,
 )
 from shared.py.wide_events import NotificationContext, log
+
+
+class NotificationNotFoundError(LookupError):
+    """The notification just stored could not be read back."""
+
+
+@dataclass(frozen=True, slots=True)
+class Notified:
+    """A notification as stored after sending, and where routing found the user (None when it named its channels)."""
+
+    record: NotificationRecord
+    target: ProactiveTarget | None
+
+    @property
+    def chat_app(self) -> ConversationSource | None:
+        """The chat app that delivered it, on this call or an earlier attempt; None when none did."""
+        for channel in self.record.channels:
+            if (
+                channel.channel_type in EXTERNAL_NOTIFICATION_CHANNELS
+                and channel.status == NotificationStatus.DELIVERED
+                and not channel.skipped
+            ):
+                return ConversationSource(channel.channel_type)
+        return None
+
+
+def _lands_in_conversation(target: ProactiveTarget, source: ConversationSource | None) -> bool:
+    """Whether a fact goes back into its conversation: yes, unless the user is active somewhere else."""
+    if not is_active_place(target):
+        return True
+    if isinstance(target, ChatChannel):
+        return source is target.source
+    # Web chats are stored without a source; anything not a chat app's conversation is an app chat.
+    return not is_bot_platform(source)
 
 
 class NotificationOrchestrator:
@@ -61,7 +110,8 @@ class NotificationOrchestrator:
     # INITIALIZATION & REGISTRATION METHODS
     def _register_default_components(self) -> None:
         """Register default adapters, handlers, and sources."""
-        self.register_channel_adapter(InAppChannelAdapter())
+        self.register_channel_adapter(ConversationChannelAdapter())
+        self.register_channel_adapter(PushChannelAdapter())
         self.register_channel_adapter(TelegramChannelAdapter())
         self.register_channel_adapter(DiscordChannelAdapter())
         self.register_channel_adapter(WhatsAppChannelAdapter())
@@ -85,122 +135,130 @@ class NotificationOrchestrator:
             f"{LogTag.NOTIFICATION} Registered action handler", action_type=handler.action_type
         )
 
-    # NOTIFICATION CREATION & MANAGEMENT
-    async def create_notification(self, request: NotificationRequest) -> NotificationRecord | None:
-        """Create, store, and deliver a new notification."""
+    # NOTIFICATION CREATION & DELIVERY
+    async def notify(self, request: NotificationRequest) -> Notified:
+        """Store the notification once and send it once per channel; a retry with the same id sends nothing new.
+
+        The record is inserted only if absent and each channel is claimed on it
+        before its send, so a retried producer resumes only the channels never started.
+        """
         log.set(notification=NotificationContext(operation="send", notification_id=request.id))
-        log.info(
-            f"{LogTag.NOTIFICATION} Creating notification for user",
-            id=request.id,
-            user_id=request.user_id,
+        await notification_repository.insert_if_absent(
+            NotificationRecord(
+                id=request.id,
+                user_id=request.user_id,
+                status=NotificationStatus.PENDING,
+                created_at=request.created_at,
+                original_request=request,
+            )
         )
-
-        # Create notification record
-        notification_record = NotificationRecord(
-            id=request.id,
-            user_id=request.user_id,
-            status=NotificationStatus.PENDING,
-            created_at=request.created_at,
-            original_request=request,
+        channels, target = await self._route(request)
+        claimed = [
+            channel
+            for channel in channels
+            if await notification_repository.claim_channel(request.id, channel)
+        ]
+        outcomes = await asyncio.gather(
+            *(
+                self._deliver_via_channel(request, self.channel_adapters[channel])
+                for channel in claimed
+                if channel != CHANNEL_TYPE_INAPP
+            )
         )
-
-        await self.storage.save_notification(notification_record)
-
-        await self._deliver_notification(notification_record)
-
-        return notification_record
-
-    # NOTIFICATION DELIVERY SYSTEM
-    async def _deliver_notification(self, notification: NotificationRecord) -> None:
-        """Deliver a notification through all configured channels."""
-        log.info(f"{LogTag.NOTIFICATION} Delivering notification", id=notification.id)
-
-        delivery_tasks = []
-        explicitly_requested = {ch.channel_type for ch in notification.original_request.channels}
-        for channel_config in notification.original_request.channels:
-            adapter = self.channel_adapters.get(channel_config.channel_type)
-            if adapter and adapter.can_handle(notification.original_request):
-                task = self._deliver_via_channel(notification, adapter)
-                delivery_tasks.append(task)
-
-        # A notification that names no channel goes to the app and to the
-        # user's ONE preferred chat platform (their order, linked, enabled).
-        if not explicitly_requested:
-            for platform in await self._default_channels(notification.user_id):
-                adapter = self.channel_adapters.get(platform)
-                if adapter and adapter.can_handle(notification.original_request):
-                    delivery_tasks.append(self._deliver_via_channel(notification, adapter))
-
-        # Execute all deliveries concurrently
-        if delivery_tasks:
-            delivery_results = await asyncio.gather(*delivery_tasks, return_exceptions=True)
-
-            # Process delivery results
-            channel_statuses = []
-            for result in delivery_results:
-                if isinstance(result, ChannelDeliveryStatus):
-                    channel_statuses.append(result)
-                elif isinstance(result, Exception):
-                    log.error(f"{LogTag.NOTIFICATION} Delivery failed", result=result)
-
-            # Compute overall status: DELIVERED only if at least one channel
-            # actually succeeded (i.e. not failed and not skipped).
-            delivered_channels = [
-                s
-                for s in channel_statuses
-                if s.status == NotificationStatus.DELIVERED and not s.skipped
-            ]
-            overall_status = (
-                NotificationStatus.DELIVERED if delivered_channels else NotificationStatus.FAILED
+        for outcome in outcomes:
+            await notification_repository.record_channel(request.id, outcome)
+        announce = CHANNEL_TYPE_INAPP in claimed
+        if announce:
+            # The stored record is the in-app delivery; the one event below announces it.
+            await notification_repository.record_channel(
+                request.id,
+                ChannelDeliveryStatus(
+                    channel_type=CHANNEL_TYPE_INAPP,
+                    status=NotificationStatus.DELIVERED,
+                    delivered_at=datetime.now(UTC),
+                ),
             )
-            log.set_ns(
-                "notification",
-                operation="dispatch",
-                notification_id=notification.id,
-                result_count=len(delivered_channels),
-                success=overall_status == NotificationStatus.DELIVERED,
-            )
-            now = datetime.now(UTC)
-
-            # Update the notification record with delivery results
-            await self.storage.update_notification(
-                notification.id,
-                {
-                    "channels": [status.model_dump() for status in channel_statuses],
-                    "status": overall_status.value,
-                    "delivered_at": now if overall_status == NotificationStatus.DELIVERED else None,
-                },
-            )
-
-            # Update the local notification object for broadcasting
-            notification.channels = channel_statuses
-            notification.status = overall_status
-            notification.delivered_at = (
-                now if overall_status == NotificationStatus.DELIVERED else None
-            )
-
-            # Broadcast real-time update to user
+        record = await self._settle(request)
+        if announce:
             await websocket_manager.broadcast_to_user(
-                notification.user_id,
+                request.user_id,
                 {
                     "type": "notification.delivered",
-                    # The socket frame is JSON, so the view is dumped in json mode —
-                    # enums as their values, matching what REST clients receive.
-                    "notification": self._serialize_notification(notification).model_dump(
-                        mode="json"
-                    ),
+                    # JSON mode: enums as their values, matching what REST clients receive.
+                    "notification": self._serialize_notification(record).model_dump(mode="json"),
                 },
             )
+        return Notified(record=record, target=target)
 
-    async def _default_channels(self, user_id: str) -> list[str]:
-        """In-app always; plus the chat app, when that is the one place the user is reached.
+    async def _settle(self, request: NotificationRequest) -> NotificationRecord:
+        """Set the overall status from every channel's outcome so far and return the stored record."""
+        record = await self.storage.get_notification(request.id, request.user_id)
+        if record is None:
+            raise NotificationNotFoundError(request.id)
+        delivered = [
+            c for c in record.channels if c.status == NotificationStatus.DELIVERED and not c.skipped
+        ]
+        status = NotificationStatus.DELIVERED if delivered else NotificationStatus.FAILED
+        delivered_at = min((c.delivered_at for c in delivered if c.delivered_at), default=None)
+        log.set_ns(
+            "notification",
+            operation="dispatch",
+            notification_id=request.id,
+            result_count=len(delivered),
+            success=status == NotificationStatus.DELIVERED,
+        )
+        await self.storage.update_notification(
+            request.id, {"status": status.value, "delivered_at": delivered_at}
+        )
+        return record.model_copy(update={"status": status, "delivered_at": delivered_at})
 
-        On a failed lookup the notification still lands in the app and the
-        failure is on the wide event: a stray platform message is not worth
-        guessing a platform the user may have switched off.
+    async def _route(
+        self, request: NotificationRequest
+    ) -> tuple[list[str], ProactiveTarget | None]:
+        """Choose the channels once: the ones the request names, else by where the user is reached.
+
+        By default: the inbox; the conversation the fact belongs to, unless the
+        user is active somewhere else; the chat app the user is reached on, unless
+        that conversation already is its chat; and push to the user's phones.
+        """
+        if request.channels:
+            named = [
+                c.channel_type
+                for c in request.channels
+                if c.enabled and self._can_send(c.channel_type, request)
+            ]
+            return list(dict.fromkeys(named)), None
+        target = await self._proactive_target(request.user_id)
+        channels = [CHANNEL_TYPE_INAPP]
+        chat_app = target.source if isinstance(target, ChatChannel) else None
+        if request.conversation_id is not None:
+            source = await conversation_repository.get_source(
+                request.conversation_id, user_id=request.user_id
+            )
+            if _lands_in_conversation(target, source):
+                channels.append(CHANNEL_TYPE_CONVERSATION)
+                if source is chat_app:
+                    chat_app = None
+        if chat_app is not None:
+            channels.append(chat_app.value)
+        channels.append(CHANNEL_TYPE_PUSH)
+        return channels, target
+
+    def _can_send(self, channel_type: str, request: NotificationRequest) -> bool:
+        """Whether a channel the request names exists and takes this request; the inbox always does."""
+        if channel_type == CHANNEL_TYPE_INAPP:
+            return True
+        adapter = self.channel_adapters.get(channel_type)
+        return adapter is not None and adapter.can_handle(request)
+
+    async def _proactive_target(self, user_id: str) -> ProactiveTarget:
+        """Return where the user is reached; the inbox alone when that cannot be read.
+
+        A stray chat-app message is not worth guessing a platform the user may
+        have switched off, so a failed lookup degrades to the inbox, on the wide event.
         """
         try:
-            target = await resolve_proactive_target(user_id)
+            return await resolve_proactive_target(user_id)
         except Exception as e:
             log.warning(
                 f"{LogTag.NOTIFICATION} Chat channel lookup failed, delivering in-app only",
@@ -208,32 +266,30 @@ class NotificationOrchestrator:
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            return [CHANNEL_TYPE_INAPP]
-        if isinstance(target, InApp):
-            return [CHANNEL_TYPE_INAPP]
-        return [CHANNEL_TYPE_INAPP, target.source.value]
+            return InApp(reason="no_chat_app")
 
     async def _deliver_via_channel(
-        self, notification: NotificationRecord, adapter: ChannelAdapter[TContent]
+        self, request: NotificationRequest, adapter: ChannelAdapter[TContent]
     ) -> ChannelDeliveryStatus:
-        """Deliver a notification via a specific channel adapter.
+        """Send on one adapter; a raised error is that channel's failed outcome, never the others'.
 
         TContent binds to this adapter's own payload type, so the value
         flowing from transform into deliver is checked per adapter even
         though the registry itself is erased.
         """
         try:
-            content = await adapter.transform(notification.original_request)
-            return await adapter.deliver(content, notification.user_id)
+            content = await adapter.transform(request)
+            return await adapter.deliver(content, request.user_id)
         except Exception as e:
             log.error(
                 f"{LogTag.NOTIFICATION} Channel delivery failed",
+                channel_type=adapter.channel_type,
                 error=str(e),
                 error_type=type(e).__name__,
             )
             return ChannelDeliveryStatus(
                 channel_type=adapter.channel_type,
-                status=NotificationStatus.PENDING,
+                status=NotificationStatus.FAILED,
                 error_message=str(e),
             )
 

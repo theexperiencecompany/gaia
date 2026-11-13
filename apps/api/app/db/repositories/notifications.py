@@ -11,6 +11,7 @@ from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.base import MongoRepository
 from app.models.notification.notification_models import (
+    ChannelDeliveryStatus,
     NotificationListFilters,
     NotificationRecord,
     NotificationSourceEnum,
@@ -35,6 +36,35 @@ class NotificationRepository(MongoRepository[NotificationRecord, NotificationUpd
         if user_id is not None:
             filter_["user_id"] = user_id
         return await self._find_one(filter_)
+
+    async def insert_if_absent(self, record: NotificationRecord) -> bool:
+        """Store record unless a notification with its id exists; True when this call stored it."""
+        document = record.model_dump(exclude={"updated_at"}, exclude_none=True)
+        matched = await self._apply_raw_update_unfetched(
+            {"id": record.id},
+            {"$setOnInsert": document},
+            scope=REPO_GLOBAL_SCOPE,
+            upsert=True,
+        )
+        return matched == 0
+
+    async def claim_channel(self, notification_id: str, channel_type: str) -> bool:
+        """Record a send on channel_type as started; False when one already was, so it is not repeated."""
+        claim = ChannelDeliveryStatus(channel_type=channel_type, status=NotificationStatus.PENDING)
+        matched = await self._apply_raw_update_unfetched(
+            {"id": notification_id, "channels.channel_type": {"$ne": channel_type}},
+            {"$push": {"channels": claim.model_dump()}},
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        return matched == 1
+
+    async def record_channel(self, notification_id: str, outcome: ChannelDeliveryStatus) -> None:
+        """Replace a claimed channel's entry with how its send ended."""
+        await self._apply_raw_update_unfetched(
+            {"id": notification_id, "channels.channel_type": outcome.channel_type},
+            {"$set": {"channels.$": outcome.model_dump()}},
+            scope=REPO_GLOBAL_SCOPE,
+        )
 
     async def update_fields(self, notification_id: str, **fields: object) -> None:
         """Apply a free-form field patch. updated_at is auto-stamped by the base."""

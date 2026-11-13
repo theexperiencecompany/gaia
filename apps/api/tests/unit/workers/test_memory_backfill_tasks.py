@@ -336,7 +336,7 @@ class TestBackfillUserMemories:
 class TestNotifyMemoryReady:
     async def test_notification_redirects_to_the_memory_settings_page(self) -> None:
         create = AsyncMock()
-        with patch(f"{MODULE}.notification_service.create_notification", create):
+        with patch(f"{MODULE}.notification_service.notify", create):
             await _notify_memory_ready(USER_ID)
 
         (request,) = create.await_args.args
@@ -350,7 +350,7 @@ class TestNotifyMemoryReady:
 
     async def test_a_failed_notification_is_warned_not_raised(self) -> None:
         create = AsyncMock(side_effect=RuntimeError("notification service down"))
-        with patch(f"{MODULE}.notification_service.create_notification", create):
+        with patch(f"{MODULE}.notification_service.notify", create):
             async with captured_wide_event() as event:
                 await _notify_memory_ready(USER_ID)
 

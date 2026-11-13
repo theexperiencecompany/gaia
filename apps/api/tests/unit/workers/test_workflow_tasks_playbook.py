@@ -172,7 +172,6 @@ class _Harness:
         self.update_workflow = AsyncMock(return_value=None)
         self.add_messages = AsyncMock()
         self.platform_delivery = AsyncMock()
-        self.completion_notification = AsyncMock()
         self.tiered_limit = AsyncMock()
         self.log = MagicMock()
         #: The conversation the fire is admitted to, the admission key's Redis calls, and the
@@ -251,11 +250,7 @@ class _Harness:
                 self.update_workflow,
             ),
             patch(f"{MODULE}.log_playbook_run", self.add_messages),
-            patch(f"{MODULE}.deliver_workflow_result", self.platform_delivery),
-            patch(
-                f"{MODULE}.send_workflow_completion_notification",
-                self.completion_notification,
-            ),
+            patch(f"{MODULE}.notify_workflow_result", self.platform_delivery),
             patch(f"{MODULE}.enforce_tiered_limit", self.tiered_limit),
             patch(f"{MODULE}.get_or_create_workflow_conversation", self.conversation),
             patch(
@@ -532,7 +527,7 @@ async def test_a_fallback_that_raises_still_records_the_replays_calls() -> None:
     harness.playbook_run = AsyncMock(return_value=_stopped_replay())
     harness.chat = AsyncMock(side_effect=RuntimeError("agent exploded"))
 
-    with patch(f"{MODULE}.notification_service.create_notification", AsyncMock()):
+    with patch(f"{MODULE}.notification_service.notify", AsyncMock()):
         await _fire(harness)
 
     harness.complete_execution.assert_awaited_once()
@@ -551,7 +546,7 @@ async def test_a_failed_outcome_write_after_a_replay_still_records_its_calls() -
     harness.playbook_run = AsyncMock(return_value=_stopped_replay())
     harness.record_run_outcome = AsyncMock(side_effect=ConnectionError("mongo away"))
 
-    with patch(f"{MODULE}.notification_service.create_notification", AsyncMock()):
+    with patch(f"{MODULE}.notification_service.notify", AsyncMock()):
         await _fire(harness)
 
     kwargs = harness.complete_execution.await_args.kwargs
@@ -692,7 +687,6 @@ class TestSuspectReplay:
 
         harness.add_messages.assert_not_awaited()
         harness.platform_delivery.assert_not_awaited()
-        harness.completion_notification.assert_not_awaited()
 
     async def test_the_record_keeps_the_replays_calls_ahead_of_the_agents(self) -> None:
         workflow = _workflow()
@@ -1050,14 +1044,15 @@ class TestReplayCompletionNotification:
         await _fire(harness)
 
         harness.platform_delivery.assert_awaited_once()
-        assert harness.platform_delivery.await_args.kwargs["notification_text"] == "Agenda sent."
-        assert harness.platform_delivery.await_args.kwargs["user"].user_id == workflow.user_id
-        harness.completion_notification.assert_awaited_once_with(
-            workflow_id=workflow.id,
-            workflow_title=workflow.title,
-            conversation_id="conv_1",
-            user_id=workflow.user_id,
-        )
+        assert harness.platform_delivery.await_args.kwargs["result_text"] == "Agenda sent."
+        assert harness.platform_delivery.await_args.kwargs == {
+            "workflow_id": workflow.id,
+            "workflow_title": workflow.title,
+            "execution_id": "exec_1",
+            "conversation_id": "conv_1",
+            "user_id": workflow.user_id,
+            "result_text": "Agenda sent.",
+        }
 
     async def test_an_untrusted_replay_leaves_the_notification_to_the_agent(
         self,
@@ -1074,7 +1069,6 @@ class TestReplayCompletionNotification:
 
         harness.chat.assert_awaited_once()
         harness.platform_delivery.assert_not_awaited()
-        harness.completion_notification.assert_not_awaited()
 
     async def test_a_silent_workflow_is_not_notified(self) -> None:
         workflow = _workflow().model_copy(update={"notify_on_completion": False})
@@ -1086,7 +1080,6 @@ class TestReplayCompletionNotification:
 
         harness.add_messages.assert_awaited_once()
         harness.platform_delivery.assert_not_awaited()
-        harness.completion_notification.assert_not_awaited()
 
     async def test_a_stopped_replay_leaves_the_notification_to_the_agent(self) -> None:
         """The fallback agent run delivers its own result through the executor path."""
@@ -1099,7 +1092,6 @@ class TestReplayCompletionNotification:
 
         harness.chat.assert_awaited_once()
         harness.platform_delivery.assert_not_awaited()
-        harness.completion_notification.assert_not_awaited()
 
     async def test_a_notification_failure_does_not_fail_the_run(self) -> None:
         workflow = _workflow()
@@ -1412,7 +1404,7 @@ class _LockedReplayHarness(_Harness):
             patch(f"{MODULE}.record_work_carried", self.work_started),
             patch(f"{MODULE}.record_work_finished", self.work_finished),
             patch(f"{MODULE}.build_playbook_tool_data", AsyncMock(return_value=[])),
-            patch(f"{MODULE}.notification_service.create_notification", self.notify),
+            patch(f"{MODULE}.notification_service.notify", self.notify),
             patch(f"{MODULE}.require_owner", self.get_user),
         ]
 
@@ -1502,7 +1494,6 @@ class TestTheFireIsAdmittedToItsConversation:
         await _fire(harness)
 
         harness.notify.assert_not_awaited()
-        harness.completion_notification.assert_not_awaited()
         harness.platform_delivery.assert_not_awaited()
 
     async def test_a_held_lock_leaves_the_playbooks_record_alone(self) -> None:
@@ -2058,10 +2049,12 @@ class TestATrustedReplayWritesTheTurnAndTellsTheUser:
 
         assert harness.platform_delivery.await_args_list == [
             call(
-                user=AGENT_USER,
                 workflow_id="wf_1",
-                notification_text="Agenda sent.",
-                origin='workflow "Daily agenda" (id wf_1)',
+                workflow_title="Daily agenda",
+                execution_id="exec_1",
+                conversation_id="conv_1",
+                user_id=USER_ID,
+                result_text="Agenda sent.",
             )
         ]
 
@@ -2211,20 +2204,19 @@ class TestTheRunCompletionNotificationEdges:
         """Workflow.id is optional on the model; the notification contract is a string, so the empty string — not a stand-in — is what it gets."""
         workflow = _workflow().model_copy(update={"id": None})
         completion = AsyncMock()
-        with (
-            patch(f"{MODULE}.deliver_workflow_result", AsyncMock()),
-            patch(f"{MODULE}.send_workflow_completion_notification", completion),
-        ):
+        with patch(f"{MODULE}.notify_workflow_result", completion):
             await _notify_run_finished(
-                workflow, AGENT_USER, "conv_1", "Agenda sent.", notify_on_completion=True
+                workflow, "exec_1", "conv_1", "Agenda sent.", notify_on_completion=True
             )
 
         assert completion.await_args_list == [
             call(
                 workflow_id="",
                 workflow_title="Daily agenda",
+                execution_id="exec_1",
                 conversation_id="conv_1",
                 user_id=USER_ID,
+                result_text="Agenda sent.",
             )
         ]
 
@@ -2233,14 +2225,13 @@ class TestTheRunCompletionNotificationEdges:
         log_seam = MagicMock()
         with (
             patch(
-                f"{MODULE}.deliver_workflow_result",
+                f"{MODULE}.notify_workflow_result",
                 AsyncMock(side_effect=TimeoutError("platform down")),
             ),
-            patch(f"{MODULE}.send_workflow_completion_notification", AsyncMock()),
             patch(f"{MODULE}.log", log_seam),
         ):
             await _notify_run_finished(
-                workflow, AGENT_USER, "conv_1", "Agenda sent.", notify_on_completion=True
+                workflow, "exec_1", "conv_1", "Agenda sent.", notify_on_completion=True
             )
 
         log_seam.warning.assert_called_once_with(
@@ -2391,7 +2382,7 @@ class TestAFailureAfterAReplayIsStillTheWorkflowsOwn:
         harness.playbook_run = AsyncMock(return_value=_stopped_replay())
         harness.chat = AsyncMock(side_effect=RuntimeError("agent exploded"))
 
-        with patch(f"{MODULE}.notification_service.create_notification", AsyncMock()):
+        with patch(f"{MODULE}.notification_service.notify", AsyncMock()):
             await _fire(harness)
 
         assert increment.await_args_list == [call("wf_1", USER_ID, is_successful=False)]
@@ -2542,7 +2533,7 @@ class TestANarrationFailureIsADeliveredRunNotAFailedOne:
         await _fire(harness)
 
         assert harness.delivered_text() == result.text
-        assert harness.platform_delivery.await_args.kwargs["notification_text"] == result.text
+        assert harness.platform_delivery.await_args.kwargs["result_text"] == result.text
 
     async def test_the_execution_record_says_the_summary_is_the_part_that_is_missing(
         self,
@@ -2858,7 +2849,7 @@ class TestQuietHoursOnTheRecord:
 
         await _fire_with_context(harness, {"quiet_hours": {"kind": "bypass", "reason": _MEETING}})
 
-        delivered = harness.platform_delivery.await_args.kwargs["notification_text"]
+        delivered = harness.platform_delivery.await_args.kwargs["result_text"]
         assert delivered == (
             f"I'm interrupting your quiet hours because {_MEETING}.\n\nAgenda sent."
         )
@@ -2880,4 +2871,4 @@ class TestQuietHoursOnTheRecord:
 
         await _fire_with_context(harness, {"quiet_hours": {"kind": "hold"}})
 
-        assert harness.platform_delivery.await_args.kwargs["notification_text"] == "Agenda sent."
+        assert harness.platform_delivery.await_args.kwargs["result_text"] == "Agenda sent."

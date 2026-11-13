@@ -122,6 +122,12 @@ from app.models.conversation_log_models import (
 from app.models.conversation_send_models import SendMessageRequest
 from app.models.hil_models import ApprovalProposal, HILApprovalRecord
 from app.models.message_models import ReplyToMessageData
+from app.models.notification.notification_models import (
+    ChannelDeliveryStatus,
+    NotificationRecord,
+    NotificationRequest,
+    NotificationStatus,
+)
 from app.models.playbook_models import PlaybookDocument, ToolStep
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.todo_wake_models import TodoRunWake
@@ -196,6 +202,7 @@ from app.services.workflow.playbook.runner import PlaybookNarration
 from app.services.workflow.playbook.scripted_model import ScriptedCall
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import ConversationIdTakenError
+from app.utils.notification.orchestrator import Notified
 from app.workers.tasks import workflow_tasks
 from app.workers.tasks.workflow_tasks import (
     _admit_fire_to_conversation,
@@ -1791,6 +1798,19 @@ class _TodoDelivery:
     finished: AsyncMock
 
 
+def _sent_on_telegram(request: NotificationRequest, channel: ChatChannel) -> Notified:
+    delivered = NotificationStatus.DELIVERED
+    record = NotificationRecord(
+        id=request.id,
+        user_id=request.user_id,
+        status=delivered,
+        created_at=request.created_at,
+        channels=[ChannelDeliveryStatus(channel_type="telegram", status=delivered)],
+        original_request=request,
+    )
+    return Notified(record=record, target=channel)
+
+
 @asynccontextmanager
 async def _todo_rig(
     rig_for: RigFactory,
@@ -1801,19 +1821,17 @@ async def _todo_rig(
     rig = await rig_for(model, build_turn=build_comms_turn)
     repo = MagicMock()
     repo.get_by_id = AsyncMock(return_value=todo.model_copy(update={"user_id": rig.user_id}))
-    delivery = _TodoDelivery(
-        sent=AsyncMock(return_value=ConversationSource.TELEGRAM), finished=AsyncMock()
-    )
     channel = ChatChannel(
         source=ConversationSource.TELEGRAM, platform_user_id="tg_1", basis="recent_activity"
+    )
+    delivery = _TodoDelivery(
+        sent=AsyncMock(side_effect=lambda request: _sent_on_telegram(request, channel)),
+        finished=AsyncMock(),
     )
     with (
         patch.object(todo_run, "run_executor_background", executor),
         patch.object(todo_run_delivery, "todo_repository", repo),
-        patch.object(
-            todo_run_delivery, "resolve_proactive_target", AsyncMock(return_value=channel)
-        ),
-        patch.object(todo_run_delivery, "deliver_result_to_platforms", delivery.sent),
+        patch.object(todo_run_delivery.notification_service, "notify", delivery.sent),
         patch.object(todo_run_delivery, "record_run_finished", delivery.finished),
     ):
         yield rig, delivery
@@ -1864,7 +1882,7 @@ async def test_a_todo_wake_gets_one_write_up_in_its_chat_and_that_write_up_is_wh
     assert any("tracked todo" in text for text in humans(model.prompts[0]))
     delivery.sent.assert_awaited_once()
     assert (
-        delivery.sent.await_args.kwargs["notification_text"]
+        delivery.sent.await_args.args[0].message
         == "Acme accepted the quote and asked for the invoice"
     )
     assert delivery.finished.await_args.args[2] == "run_acme"
@@ -2317,7 +2335,8 @@ async def test_a_delivered_reminder_is_one_notice_shown_once_with_its_cards(
     with patch.object(result_delivery, "deliver_message_to_platform", AsyncMock()) as to_platform:
         await deliver_message_to_conversation(
             conversation_id=rig.conversation_id,
-            user=AuthenticatedUser(user_id=rig.user_id),
+            user_id=rig.user_id,
+            notification_id="stretch",
             text="time to stretch",
             origin="reminder",
             tool_data=[card],

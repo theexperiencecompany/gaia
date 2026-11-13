@@ -13,9 +13,6 @@ from app.agents.core.background.executor_queue import (
     decode_raw_item,
     keep_alive,
 )
-from app.agents.core.background.workflow_platform_delivery import (
-    deliver_workflow_result,
-)
 from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_FALLBACK_TEMPLATE,
     PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE,
@@ -69,6 +66,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
     RedirectConfig,
+    notification_id,
 )
 from app.models.payment_models import PlanType
 from app.models.playbook_models import PlaybookDocument, PlaybookRunOutcome, PlaybookRunStatus
@@ -124,7 +122,7 @@ from app.services.workflow.execution_service import (
     record_skipped_execution,
 )
 from app.services.workflow.integration_pause import pause_workflow_before_fire
-from app.services.workflow.notifications import send_workflow_completion_notification
+from app.services.workflow.notifications import notify_workflow_result
 from app.services.workflow.playbook.check import distrust_fresh_playbook
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.lifecycle import (
@@ -527,7 +525,7 @@ async def _limit_notice_already_sent(workflow: Workflow) -> bool:
 
 
 async def _notify_workflow_paused_for_integrations(
-    workflow: Workflow, missing: list[IntegrationRef]
+    workflow: Workflow, missing: list[IntegrationRef], fired_at: datetime
 ) -> None:
     """Send the one notice a workflow gets when it pauses for a dead integration.
 
@@ -538,8 +536,11 @@ async def _notify_workflow_paused_for_integrations(
     names = ", ".join(ref.name for ref in missing)
     first = missing[0]
     try:
-        await notification_service.create_notification(
+        await notification_service.notify(
             NotificationRequest(
+                id=notification_id(
+                    workflow.user_id, "workflow_paused", workflow.id or "", fired_at.isoformat()
+                ),
                 user_id=workflow.user_id,
                 source=NotificationSourceEnum.INTEGRATION_EXPIRED,
                 type=NotificationType.WARNING,
@@ -579,7 +580,9 @@ async def _notify_workflow_paused_for_integrations(
         )
 
 
-async def _notify_workflow_failed(error: Exception, workflow: Workflow) -> None:
+async def _notify_workflow_failed(
+    error: Exception, workflow: Workflow, execution_id: str | None
+) -> None:
     """Tell the user the workflow failed.
 
     Best-effort: a notification failure must not mask the error that caused it.
@@ -601,8 +604,13 @@ async def _notify_workflow_failed(error: Exception, workflow: Workflow) -> None:
             else f"Workflow Failed: {workflow.title}"
         )
 
-        await notification_service.create_notification(
+        # A fire that failed before its execution record existed: one notice a day.
+        occurrence = execution_id or datetime.now(UTC).date().isoformat()
+        await notification_service.notify(
             NotificationRequest(
+                id=notification_id(
+                    workflow.user_id, "workflow_failed", workflow.id or "", occurrence
+                ),
                 user_id=workflow.user_id,
                 source=NotificationSourceEnum.WORKFLOW_FAILED,
                 type=NotificationType.ERROR,
@@ -671,7 +679,7 @@ async def _record_execution_failure(
         except Exception as e2:
             log.debug(f"{LogTag.WORKER} Failed to update workflow stats: %s" % e2)
 
-    await _notify_workflow_failed(error, workflow)
+    await _notify_workflow_failed(error, workflow, execution_id)
 
 
 def _fallback_note(result: PlaybookRunResult) -> str:
@@ -929,15 +937,15 @@ async def _run_workflow(fire: _Fire) -> tuple[str, list[RecordedCall], str]:
 
 async def _notify_run_finished(
     workflow: Workflow,
-    user: AuthenticatedUser,
+    execution_id: str,
     conversation_id: str,
     text: str,
     *,
     notify_on_completion: bool,
 ) -> None:
-    """Deliver a finished run, replayed or answered by the agent, into the user's chat app and in-app.
+    """Deliver a finished run, replayed or answered by the agent, through the one notify pipeline.
 
-    Gated on notify_on_completion and best-effort.
+    Gated on notify_on_completion and best-effort: the result is already in its conversation.
     """
     if not notify_on_completion:
         log.info(
@@ -946,20 +954,13 @@ async def _notify_run_finished(
         )
         return
     try:
-        # The in-app badge does not depend on where the chat message goes.
-        await asyncio.gather(
-            deliver_workflow_result(
-                user=user,
-                workflow_id=workflow.id,
-                notification_text=text,
-                origin=f'workflow "{workflow.title}" (id {workflow.id})',
-            ),
-            send_workflow_completion_notification(
-                workflow_id=workflow.id or "",
-                workflow_title=workflow.title,
-                conversation_id=conversation_id,
-                user_id=workflow.user_id,
-            ),
+        await notify_workflow_result(
+            workflow_id=workflow.id or "",
+            workflow_title=workflow.title,
+            execution_id=execution_id,
+            conversation_id=conversation_id,
+            user_id=workflow.user_id,
+            result_text=text,
         )
     except Exception as e:
         log.warning(
@@ -982,7 +983,7 @@ async def _deliver_replay(
     over, so one fire shows one result instead of a half-run followed by a
     real one.
     """
-    workflow, workflow_id, user = fire.workflow, fire.workflow_id, fire.user
+    workflow, workflow_id = fire.workflow, fire.workflow_id
     log.set_ns(
         "playbook",
         mode="replay",
@@ -1005,7 +1006,11 @@ async def _deliver_replay(
         text = f"{opening}\n\n{text}"
     await log_playbook_run(conversation_id, workflow.user_id, workflow, text)
     await _notify_run_finished(
-        workflow, user, conversation_id, text, notify_on_completion=workflow.notify_on_completion
+        workflow,
+        fire.execution_id,
+        conversation_id,
+        text,
+        notify_on_completion=workflow.notify_on_completion,
     )
     summary = REPLAY_SUMMARY if result.narration_failed is None else REPLAY_NARRATION_FAILED_SUMMARY
     return conversation_id, result.trace, summary
@@ -1215,7 +1220,7 @@ async def _admit_fire(
     if trigger_type != TriggerType.MANUAL.value:
         missing = await pause_workflow_before_fire(workflow)
         if missing:
-            await _notify_workflow_paused_for_integrations(workflow, missing)
+            await _notify_workflow_paused_for_integrations(workflow, missing, actual_fire_utc)
             names = ", ".join(ref.id for ref in missing)
             return f"Workflow {workflow_id} paused — not connected: {names}"
     return None
@@ -1880,7 +1885,7 @@ async def execute_workflow_as_chat(
     if outcome.text:
         await _notify_run_finished(
             workflow,
-            user,
+            execution_id,
             conversation_id,
             outcome.text,
             notify_on_completion=run.trigger.workflow_notify_on_completion,

@@ -40,6 +40,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
     RedirectConfig,
+    notification_id,
 )
 from app.services.notification_service import notification_service
 from app.utils.redis_utils import RedisPoolManager
@@ -176,8 +177,9 @@ def _conversation_date(conversation: LoadedConversation) -> datetime:
 async def _notify_memory_ready(user_id: str) -> None:
     """Tell the user their memory was just seeded, linking to the memory page."""
     try:
-        await notification_service.create_notification(
+        await notification_service.notify(
             NotificationRequest(
+                id=notification_id(user_id, "memory_ready", user_id),
                 user_id=user_id,
                 source=NotificationSourceEnum.BACKGROUND_JOB,
                 type=NotificationType.INFO,

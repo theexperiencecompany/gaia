@@ -256,8 +256,8 @@ class TestNotifyWorkflowsProvisioned:
         req = _make_workflow_request("Email Digest", "Daily digest of important emails")
         await _notify_workflows_provisioned("user-1", "Gmail", [req])
 
-        mock_svc.create_notification.assert_awaited_once()
-        call_args = mock_svc.create_notification.call_args
+        mock_svc.notify.assert_awaited_once()
+        call_args = mock_svc.notify.call_args
         notification = call_args[0][0]
         assert "I set up a workflow" in notification.content.title
         assert "Gmail" in notification.content.title
@@ -276,7 +276,7 @@ class TestNotifyWorkflowsProvisioned:
         req2 = _make_workflow_request("Sorter", "desc2")
         await _notify_workflows_provisioned("user-1", "Gmail", [req1, req2])
 
-        notification = mock_svc.create_notification.call_args[0][0]
+        notification = mock_svc.notify.call_args[0][0]
         assert "2 workflows" in notification.content.title
 
     @pytest.mark.asyncio
@@ -296,7 +296,7 @@ class TestNotifyWorkflowsProvisioned:
         req2 = _make_workflow_request("Sorter", "Files your mail")
         await _notify_workflows_provisioned("user-1", "Gmail", [req1, req2])
 
-        notification = mock_svc.create_notification.call_args[0][0]
+        notification = mock_svc.notify.call_args[0][0]
         assert notification.content.body == (
             "Here's what I've got running for you:\n\n"
             "\u2022 Digest: Daily digest\n"
@@ -308,7 +308,7 @@ class TestNotifyWorkflowsProvisioned:
     @patch(f"{MODULE}.NotificationService")
     async def test_notification_failure_does_not_raise(self, mock_notif_cls: MagicMock) -> None:
         mock_svc = AsyncMock()
-        mock_svc.create_notification = AsyncMock(side_effect=RuntimeError("notify fail"))
+        mock_svc.notify = AsyncMock(side_effect=RuntimeError("notify fail"))
         mock_notif_cls.return_value = mock_svc
 
         from app.services.system_workflows.provisioner import (

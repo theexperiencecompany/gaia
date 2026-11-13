@@ -228,9 +228,7 @@ class _Tick:
             ):
                 stack.enter_context(patch(f"{TASKS_MODULE}.{target}", value))
             # On the singleton, so a notification sent through any import path is seen.
-            stack.enter_context(
-                patch.object(notification_service, "create_notification", self.notify)
-            )
+            stack.enter_context(patch.object(notification_service, "notify", self.notify))
             stack.enter_context(
                 patch(
                     "app.db.repositories.todos.todo_repository.find_active_by_user_and_trigger",

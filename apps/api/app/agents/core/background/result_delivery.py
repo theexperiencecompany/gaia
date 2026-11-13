@@ -1,17 +1,14 @@
-"""Deliver an already-voiced proactive message, a reminder, into one conversation.
+"""Deliver an already-voiced proactive message into the conversation it belongs to.
 
 The conversation's log is the one record: the message is logged as a Notice carrying its
 cards, which every device reads off the events stream. A bot conversation is sent the text
 on its platform first, and logged only once it was sent.
 """
 
-from uuid import uuid4
-
 from app.constants.log_tags import LogTag
 from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import ConversationSource, ToolDataEntry
 from app.models.conversation_log_models import Notice
-from app.models.user_models import AuthenticatedUser
 from app.services.conversation.log import accept
 from app.services.conversation.runtime import runtime_ports
 from app.services.platform_message_service import (
@@ -25,26 +22,33 @@ from shared.py.wide_events import log
 async def deliver_message_to_conversation(
     *,
     conversation_id: str,
-    user: AuthenticatedUser,
+    user_id: str,
+    notification_id: str,
     text: str,
     origin: str,
     tool_data: list[ToolDataEntry] | None = None,
-) -> ConversationSource | None:
-    """Log text as a Notice in the conversation, sending it to a bot platform first; the source, or None.
+) -> bool:
+    """Log text as a Notice in the conversation, sending it to a bot platform first; whether it got there.
 
-    None when the text is blank, the platform send failed, or the conversation is gone.
+    False when the text is blank, the platform send failed, or the conversation is gone.
+    The notification id keys both the Notice and the platform send, so neither repeats.
     """
     if not text.strip():
-        return None
-    user_id = user.user_id
+        return False
     source = await _get_conversation_source(conversation_id, user_id)
     on_platform = is_bot_platform(source)
     delivered = (
-        await deliver_message_to_platform(source, user_id, text, conversation_id=conversation_id)
+        await deliver_message_to_platform(
+            source,
+            user_id,
+            text,
+            conversation_id=conversation_id,
+            notification_id=notification_id,
+        )
         if on_platform
         else True
     )
-    notice_id = f"notice:{uuid4()}"
+    notice_id = f"notice:{notification_id}"
     if delivered:
         notice = Notice(id=notice_id, text=text, origin=origin, tool_data=tuple(tool_data or ()))
         try:
@@ -54,7 +58,7 @@ async def deliver_message_to_conversation(
                 f"{LogTag.AGENT} conversation deleted, nothing delivered",
                 conversation_id=conversation_id,
             )
-            return None
+            return False
     _log_delivery_verdict(
         notice_id=notice_id,
         conversation_id=conversation_id,
@@ -62,7 +66,7 @@ async def deliver_message_to_conversation(
         transport="platform" if on_platform else "events",
         delivered=delivered,
     )
-    return source if delivered else None
+    return delivered
 
 
 def _log_delivery_verdict(

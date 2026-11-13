@@ -35,6 +35,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
     RedirectConfig,
+    notification_id,
 )
 from app.services.integrations.integration_accounts import (
     get_account_record,
@@ -201,8 +202,10 @@ async def announce_account_expiry(
         if expired.account_count > 1
         else integration_name
     )
-    await notification_service.create_notification(
+    await notification_service.notify(
         NotificationRequest(
+            # One per account lost: reconnecting gives the account a new id, so a later loss is new.
+            id=notification_id(user_id, "integration_expired", integration_id, expired.account.id),
             user_id=user_id,
             source=NotificationSourceEnum.INTEGRATION_EXPIRED,
             type=NotificationType.WARNING,

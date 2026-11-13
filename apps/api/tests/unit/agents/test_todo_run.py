@@ -157,13 +157,12 @@ async def test_the_run_is_logged_as_started_only_once_the_chat_is_its_own(seams:
     assert seams.order == ["started", "wake", "run"]
     dispatched = run.await_args.kwargs["run"]
     assert dispatched.task_id == seams.task_ids[0]
-    finished, user = seams.finish.await_args.args
+    (finished,) = seams.finish.await_args.args
     assert (finished.run_id, finished.write_up, finished.result_text) == (
         "run_1",
         "written up",
         "report",
     )
-    assert user is REQUEST.user
 
 
 async def test_a_wake_the_log_refuses_frees_the_lock_and_runs_nothing(seams: _Seams) -> None:

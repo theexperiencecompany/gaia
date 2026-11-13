@@ -159,6 +159,7 @@ async def publish_outbound_message(
     destination_override: str | None = None,
     is_channel: bool = False,
     ttl_seconds: int = OUTBOUND_TTL_SECONDS_DEFAULT,
+    notification_id: str | None = None,
 ) -> OutboundResult:
     """Enqueue text_parts as a single ordered envelope for user_id on platform.
 
@@ -187,6 +188,7 @@ async def publish_outbound_message(
             destination_id=destination_id,
             text=parts[0],
             is_channel=is_channel,
+            notification_id=notification_id,
         )
     else:
         envelope = OutboundMessageEnvelope(
@@ -194,6 +196,7 @@ async def publish_outbound_message(
             destination_id=destination_id,
             text_parts=parts,
             is_channel=is_channel,
+            notification_id=notification_id,
         )
 
     try:
