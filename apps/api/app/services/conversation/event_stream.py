@@ -5,7 +5,7 @@ reader may replay a frame it already applied; it must never miss one. The stream
 capped, and anything older than what it retains is replayed from the log.
 """
 
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import TypedDict
 
@@ -20,8 +20,20 @@ from app.constants.conversation import (
     EVENTS_STREAM_TTL_SECONDS,
 )
 from app.db.redis import redis_cache
-from app.models.conversation_frame_models import EntryFrame, OutputFrame, state_frame
-from app.models.conversation_log_models import Reply, ReplySettled
+from app.models.conversation_frame_models import (
+    EntryFrame,
+    EntryUpdatedFrame,
+    OutputFrame,
+    ReplyDeltaFrame,
+    WorkDeltaFrame,
+    state_frame,
+)
+from app.models.conversation_log_models import (
+    ConversationState,
+    LoggedEntry,
+    Reply,
+    ReplySettled,
+)
 from app.models.conversation_send_models import ConversationEvent
 from app.services.conversation.ports import ConversationLog
 
@@ -96,16 +108,19 @@ class RedisStreamFrames:
         )
 
 
+def _streamed(stream_id: str, fields: object) -> StreamedFrame:
+    return StreamedFrame(
+        stream_id=stream_id, frame=_FRAME.validate_json(_FIELDS.validate_python(fields)["frame"])
+    )
+
+
 async def read_frames(
     conversation_id: str, cursor: str, *, block_ms: int = EVENTS_BLOCK_MS
 ) -> list[StreamedFrame]:
     """Return the frames after cursor, waiting up to block_ms for the first; empty when none came."""
     results = await redis_cache.client.xread({_key(conversation_id): cursor}, block=block_ms)
     return [
-        StreamedFrame(
-            stream_id=stream_id,
-            frame=_FRAME.validate_json(_FIELDS.validate_python(fields)["frame"]),
-        )
+        _streamed(stream_id, fields)
         for _stream, entries in results
         for stream_id, fields in entries
     ]
@@ -121,8 +136,20 @@ async def replay_from_log(
     log: ConversationLog, conversation_id: str, user_id: str, after_seq: int
 ) -> list[StreamedFrame]:
     """Return the entries after after_seq and the current state, as the frames that announced them."""
-    entries = await log.read_after(conversation_id, user_id, after_seq)
-    state = await log.state(conversation_id, user_id)
+    entries, state = await _log_after(log, conversation_id, user_id, after_seq)
+    return _log_frames(entries, state)
+
+
+async def _log_after(
+    log: ConversationLog, conversation_id: str, user_id: str, after_seq: int
+) -> tuple[Sequence[LoggedEntry], ConversationState]:
+    return (
+        await log.read_after(conversation_id, user_id, after_seq),
+        await log.state(conversation_id, user_id),
+    )
+
+
+def _log_frames(entries: Sequence[LoggedEntry], state: ConversationState) -> list[StreamedFrame]:
     frames: list[OutputFrame] = [
         *(EntryFrame(seq=logged.seq, at=logged.at, entry=logged.entry) for logged in entries),
         state_frame(state),
@@ -133,24 +160,68 @@ async def replay_from_log(
 async def follow(
     log: ConversationLog, conversation_id: str, user_id: str, after: str
 ) -> AsyncIterator[StreamedFrame | None]:
-    """Yield every frame after the cursor, then follow live; after is a stream id or a seq.
+    """Yield every frame after the cursor once, then follow live; after is a stream id or a seq.
 
     None follows every read that drained or timed out, so the caller can check its client is still there.
-
-    A seq replays the log after it and then every frame the stream still holds, so an
-    open reply's deltas are shown again; a stream id resumes exactly after that frame.
+    A seq replays the log after it, then from the stream only what the log cannot say: the open
+    reply's and live work's deltas, and updates to entries the client already had.
     """
-    cursor = after
+    cursor, covered = after, 0
     if not _is_stream_id(after):
-        for replayed in await replay_from_log(log, conversation_id, user_id, int(after or 0)):
+        after_seq = int(after or 0)
+        # Taken before the log read, so a frame published after it is followed live, never lost.
+        cursor = await latest_frame_id(conversation_id)
+        entries, state = await _log_after(log, conversation_id, user_id, after_seq)
+        for replayed in _log_frames(entries, state):
             yield replayed
-        cursor = EVENTS_STREAM_START
+        for unlogged in await _unlogged_frames(conversation_id, cursor, state, after_seq):
+            yield unlogged
+        covered = entries[-1].seq if entries else after_seq
     while True:
         for streamed in await read_frames(conversation_id, cursor):
             if streamed.stream_id is not None:
                 cursor = streamed.stream_id
-            yield streamed
+            if not (isinstance(streamed.frame, EntryFrame) and streamed.frame.seq <= covered):
+                yield streamed
         yield None
+
+
+async def _unlogged_frames(
+    conversation_id: str, through: str, state: ConversationState, after_seq: int
+) -> list[StreamedFrame]:
+    """Return the stream's frames up to through that came after entry after_seq and that no log entry carries yet."""
+    if through == EVENTS_STREAM_START:
+        return []
+    raw = await redis_cache.client.xrange(_key(conversation_id), "-", through)
+    frames = [_streamed(stream_id, fields) for stream_id, fields in raw]
+    seen = next(
+        (
+            index
+            for index, streamed in enumerate(frames)
+            if isinstance(streamed.frame, EntryFrame) and streamed.frame.seq == after_seq
+        ),
+        -1,
+    )
+    live_tasks = {work.task_id for work in state.work}
+    return [
+        streamed
+        for streamed in frames[seen + 1 :]
+        if _unlogged(streamed.frame, state.open_reply, live_tasks, after_seq)
+    ]
+
+
+def _unlogged(
+    frame: OutputFrame, open_reply: str | None, live_tasks: set[str], after_seq: int
+) -> bool:
+    match frame:
+        case ReplyDeltaFrame(reply_id=reply_id):
+            return reply_id is not None and reply_id == open_reply
+        case WorkDeltaFrame(task_id=task_id):
+            return task_id in live_tasks
+        case EntryUpdatedFrame(seq=seq):
+            return seq <= after_seq
+        case _:
+            return False
 
 
 def _is_stream_id(cursor: str) -> bool:

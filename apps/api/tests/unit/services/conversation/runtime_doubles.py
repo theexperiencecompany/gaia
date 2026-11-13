@@ -123,11 +123,17 @@ class InMemoryConversationLog:
         conversation = self._conversations.setdefault(conversation_id, _Conversation(user_id))
         if conversation.holder is not None and self._clock() < conversation.alive_until:
             return None
+        took_over = conversation.holder is not None
         conversation.epoch += 1
         conversation.holder = conversation.epoch
         conversation.alive_until = self._clock() + LIVENESS
         await self.pause("claim:done")
-        return StepClaim(conversation_id=conversation_id, user_id=user_id, epoch=conversation.epoch)
+        return StepClaim(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            epoch=conversation.epoch,
+            took_over=took_over,
+        )
 
     async def release_if_caught_up(self, claim: StepClaim) -> bool:
         await self.pause("release")

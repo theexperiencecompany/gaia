@@ -197,10 +197,10 @@ class StepScenarios:
         assert (await settles(rt))[0].through == 1
         assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1",))]
         assert rt.runner.calls == [Started(batch=(1,), context=())]
+        # The accepted message streams once: a step that took no one's place republishes nothing.
         assert frame_kinds(rt) == [
             "entry",
             "state",
-            "entry",
             "state",
             "entry",
             "reply_delta",

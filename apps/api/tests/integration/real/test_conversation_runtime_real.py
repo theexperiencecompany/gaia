@@ -10,6 +10,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequen
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from typing import Any, Protocol, TypeVar, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -83,6 +84,7 @@ from app.models.conversation_frame_models import (
     EntryFrame,
     ReplyDeltaFrame,
     ResponseEvent,
+    StateFrame,
     ToolDataEvent,
     WorkDeltaFrame,
 )
@@ -125,7 +127,13 @@ from app.services import analytics_service, conversation_stop_service
 from app.services.browser.handoff import create_pending_handoff
 from app.services.browser.handoff_buttons import decide_handoff_by_button
 from app.services.checkpoint_thread_reset import ThreadReset
-from app.services.conversation import mongo_log, reply_analytics, step as step_module, sweeper
+from app.services.conversation import (
+    event_stream,
+    mongo_log,
+    reply_analytics,
+    step as step_module,
+    sweeper,
+)
 from app.services.conversation.bot_followers import list_active_bot_conversations
 from app.services.conversation.comms_runner import (
     CommsGraphRunner,
@@ -640,6 +648,63 @@ async def test_a_client_resuming_from_a_seq_replays_what_it_missed(
     resumed = [streamed.frame for streamed in await _frames_until_settled(rig)]
     entries = [frame.entry.kind.value for frame in resumed if isinstance(frame, EntryFrame)]
     assert entries[:3] == ["user_message", "reply", "reply_settled"]
+
+
+async def _whole_stream(rig: Rig) -> list[StreamedFrame]:
+    return await read_frames(rig.conversation_id, "0-0", block_ms=1)
+
+
+async def _resumed_after(rig: Rig, seq: int) -> list[StreamedFrame]:
+    """Every frame a client resuming after seq is sent before it waits for new ones."""
+    seen: list[StreamedFrame] = []
+    with patch.object(event_stream, "read_frames", partial(read_frames, block_ms=1)):
+        async for streamed in follow(rig.ports.log, rig.conversation_id, rig.user_id, str(seq)):
+            if streamed is None:
+                return seen
+            seen.append(streamed)
+    return seen
+
+
+@pytest.mark.service
+async def test_one_append_streams_one_entry_frame_and_at_most_one_state_frame(
+    rig_for: RigFactory,
+) -> None:
+    """Regression (live test): every accept streamed its entry and state twice, every append re-sent ~3 entries."""
+    rig = await rig_for(gated("first answer", "second answer"))
+    await rig.send("m1", "hi")
+    await rig.settle()
+    await rig.send("m2", "and again")
+    await rig.settle()
+    frames = [streamed.frame for streamed in await _whole_stream(rig)]
+    entry_seqs = [frame.seq for frame in frames if isinstance(frame, EntryFrame)]
+    states = [frame for frame in frames if isinstance(frame, StateFrame)]
+    assert entry_seqs == [logged.seq for logged in await rig.entries()]
+    assert len(states) <= len(entry_seqs)
+
+
+@pytest.mark.service
+async def test_a_client_resuming_from_a_seq_gets_each_later_frame_once(
+    rig_for: RigFactory,
+) -> None:
+    """Regression (live test): after=<seq> replayed the log and then the whole stream from its start."""
+    rig = await rig_for(gated("first answer", "second answer"))
+    await rig.send("m1", "hi")
+    await rig.settle()
+    resume_after = (await rig.entries())[-1].seq
+    await rig.send("m2", "and again")
+    await rig.settle()
+
+    resumed = [streamed.frame for streamed in await _resumed_after(rig, resume_after)]
+
+    entry_seqs = [frame.seq for frame in resumed if isinstance(frame, EntryFrame)]
+    later = [logged.seq for logged in await rig.entries() if logged.seq > resume_after]
+    assert entry_seqs == later
+    first_reply = next(e.reply_id for e in await rig.of(Reply))
+    assert not [
+        frame
+        for frame in resumed
+        if isinstance(frame, ReplyDeltaFrame) and frame.reply_id == first_reply
+    ]
 
 
 @pytest.mark.service

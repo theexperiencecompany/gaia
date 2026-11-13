@@ -214,10 +214,13 @@ async def _recover(ports: RuntimePorts, claim: StepClaim) -> None:
     """Republish what a dead holder may not have, then close the attempt it left open."""
     conversation_id = claim.conversation_id
     state = await ports.log.state(conversation_id, claim.user_id)
-    for logged in await ports.log.read_after(conversation_id, claim.user_id, state.settled_through):
-        await ports.frames.publish(
-            conversation_id, EntryFrame(seq=logged.seq, at=logged.at, entry=logged.entry)
-        )
+    if claim.took_over:
+        for logged in await ports.log.read_after(
+            conversation_id, claim.user_id, state.settled_through
+        ):
+            await ports.frames.publish(
+                conversation_id, EntryFrame(seq=logged.seq, at=logged.at, entry=logged.entry)
+            )
     reply_id = state.open_reply
     if reply_id is None and _started_work_unseen(state):
         # Committed work is never redone silently: the dead attempt gets a failed reply too.

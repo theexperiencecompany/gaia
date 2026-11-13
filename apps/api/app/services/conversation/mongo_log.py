@@ -166,7 +166,12 @@ class MongoConversationLog:
                 alive_key=alive_key,
             ):
                 await _raise_hint(conversation_id, user_id, HintField.EPOCH, epoch, {})
-                return StepClaim(conversation_id=conversation_id, user_id=user_id, epoch=epoch)
+                return StepClaim(
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    epoch=epoch,
+                    took_over=head.holder is not None,
+                )
             await client.delete(alive_key)
         return None
 

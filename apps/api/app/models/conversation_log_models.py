@@ -579,3 +579,5 @@ class StepClaim(BaseModel):
     conversation_id: str
     user_id: str
     epoch: int
+    # The step was taken from a holder that died, so what it appended may never have been published.
+    took_over: bool = False
