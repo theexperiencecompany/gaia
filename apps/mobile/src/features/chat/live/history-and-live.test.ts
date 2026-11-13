@@ -1,20 +1,14 @@
-import type { ConversationEntry } from "@gaia/shared/api/generated";
+import type { ConversationFrame, Entry } from "@gaia/shared/conversation";
 import {
-  applyFrame,
-  type ConversationFrame,
-  type ConversationView,
-  EMPTY_CONVERSATION_VIEW,
-  type Entry,
-  REPLY_FAILURE_MESSAGE,
-  withLiveRows,
-} from "@gaia/shared/conversation";
-import {
+  approvalDecided,
+  approvalRequested,
   entryFrame,
   entryUpdatedFrame,
   notice,
   reply,
   replyDelta,
   replySettled,
+  stateFrame,
   todoWoke,
   toolCallCard,
   userMessage,
@@ -23,10 +17,17 @@ import {
   workStarted,
 } from "@gaia/shared/conversation/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchConversation, type Message } from "../api/chat-api";
+import { applyConversationPage } from "./connection";
+import {
+  liveConversation,
+  useLiveConversationStore,
+} from "./live-conversation-store";
 import { liveMessages } from "./live-messages";
 
-const { getMock } = vi.hoisted(() => ({ getMock: vi.fn() }));
+const { getMock, saved } = vi.hoisted(() => ({
+  getMock: vi.fn(),
+  saved: new Map<string, unknown>(),
+}));
 
 vi.mock("@/features/auth/utils/auth-storage", () => ({
   getAuthToken: vi.fn().mockResolvedValue("test-token"),
@@ -38,130 +39,104 @@ vi.mock("@/lib/api", async () => {
   return {
     ApiError: actual.ApiError,
     apiService: { get: getMock, post: vi.fn(), put: vi.fn() },
-    API_BASE_URL: "http://test.local/api/v1",
   };
 });
 
+vi.mock("@/lib/db/chatDb", () => ({
+  chatDb: {
+    getLog: async (id: string) => saved.get(id) ?? null,
+    saveLog: async (id: string, log: unknown) => {
+      saved.set(id, log);
+    },
+  },
+}));
+
+vi.mock("@/lib/query-provider", () => ({ queryClient: {} }));
+
+const NOW = new Date("2026-11-13T09:00:00Z");
 const AT = "2026-11-13T09:00:00+00:00";
-const NOW = new Date(AT);
 const IMAGE = { url: "https://img.test/cat.png", prompt: "a cat" };
 const APPROVAL_CARD = {
   tool_name: "approval_request",
   tool_category: "gmail",
-  data: { approval_id: "ap1", status: "approved", summary: "Send the email" },
+  data: { approval_id: "ap1", status: "pending", summary: "Send the email" },
   timestamp: AT,
 };
 const WORK_CARD = toolCallCard("c2", "Checked the invoice");
-const WORKFLOW = {
-  id: "wf-f1",
-  title: "Morning brief",
-  description: "",
-  steps: [],
-};
 
-const row = (
-  seq: number,
-  type: "user" | "bot",
-  messageId: string,
-  fields: Partial<ConversationEntry> = {},
-): ConversationEntry => ({
-  seq,
-  date: AT,
-  type,
-  response: "",
-  message_id: messageId,
-  ...fields,
-});
-
-// The server's history of the log below, read while r3 was still streaming.
-const HISTORY: ConversationEntry[] = [
-  row(1, "user", "m1", { response: "email the landlord" }),
-  row(5, "bot", "t1", {
-    response: "Sent the email to your landlord.",
+const LOG: Entry[] = [
+  userMessage("m1", "email the landlord"),
+  workStarted("t1", 1),
+  approvalRequested("t1", "ap1"),
+  approvalDecided("ap1"),
+  workFinished("t1", "done", [APPROVAL_CARD]),
+  {
+    ...reply("t1", "a1", "Sent the email to your landlord."),
     tool_data: [APPROVAL_CARD],
-  }),
-  row(7, "bot", "n1", { response: "Reminder: pay rent" }),
-  row(8, "user", "f1", { selectedWorkflow: WORKFLOW }),
-  row(9, "bot", "r2", {
-    response: "Here is the picture.",
-    image_data: IMAGE,
+  } as Entry,
+  replySettled("t1", ["m1"], 1),
+  notice("n1", "Reminder: pay rent"),
+  workflowFired("f1", "Morning brief"),
+  {
+    ...reply("r2", "a2", "Here is the picture."),
+    image: IMAGE,
     pinned: true,
-  }),
-  row(11, "user", "w1", {
-    todo_run_wake: {
-      kind: "schedule",
-      trigger_names: [],
-      approval_summary: null,
-    },
-  }),
-  row(12, "bot", "work:t2", { tool_data: [WORK_CARD] }),
-  row(14, "user", "m3", { response: "and tomorrow?" }),
-  row(15, "bot", "r3", { response: "Tomorrow you", in_progress: true }),
+  } as Entry,
+  replySettled("r2", ["f1"], 9),
+  todoWoke("w1"),
+  workStarted("t2", 12),
+  workFinished("t2", "done", [WORK_CARD]),
+  userMessage("m3", "and tomorrow?"),
+  reply("r3", "a3", "Tomorrow you"),
+];
+const HEAD = LOG.length;
+const LOGGED = LOG.map((entry, at) => entryFrame(at + 1, entry));
+const AFTER: ConversationFrame[] = [
+  entryUpdatedFrame(HEAD, reply("r3", "a3", "Tomorrow you have one call.", 1)),
+  entryFrame(HEAD + 1, replySettled("r3", ["m3"], HEAD - 1)),
+  stateFrame(HEAD + 1, "idle"),
 ];
 
-const imageReply = {
-  ...reply("r2", "a2", "Here is the picture."),
-  image: IMAGE,
-  pinned: true,
-} as Entry;
+const rows = (conversationId: string) =>
+  liveMessages(liveConversation(conversationId).view, {}, NOW);
 
-// The events stream replays from the notice on: every entry the history also shows.
-const REPLAY: ConversationFrame[] = [
-  entryFrame(7, notice("n1", "Reminder: pay rent")),
-  entryFrame(8, workflowFired("f1", "Morning brief")),
-  entryFrame(9, imageReply),
-  entryFrame(10, replySettled("r2", ["f1"], 8)),
-  entryFrame(11, todoWoke("w1")),
-  entryFrame(12, workStarted("t2", 11)),
-  entryFrame(13, workFinished("t2", "done", [WORK_CARD])),
-  entryFrame(14, userMessage("m3", "and tomorrow?")),
-  entryFrame(15, reply("r3", "a3", "Tomorrow you")),
-];
-
-const fold = (frames: ConversationFrame[]): ConversationView =>
-  frames.reduce((view, frame) => {
-    const outcome = applyFrame(view, frame);
-    if (outcome.status !== "applied")
-      throw new Error(`frame not applied: ${outcome.status}`);
-    return outcome.view;
-  }, EMPTY_CONVERSATION_VIEW);
-
-const loadHistory = async (history: ConversationEntry[]) => {
+/** The server's GET /conversations/{id}: the log's entries and the head's state. */
+const serveLoad = () =>
   getMock.mockResolvedValue({
-    _id: "head-1",
-    user_id: "u1",
     conversation_id: "conv-1",
-    description: "Landlord",
-    is_unread: false,
+    entries: LOGGED,
+    state: { kind: "state", head: HEAD, display: "thinking", work: [] },
     has_older: false,
-    messages: history,
-    createdAt: AT,
-    updatedAt: AT,
+    cursor: null,
   });
-  const detail = await fetchConversation("conv-1");
-  if (!detail) throw new Error("history did not load");
-  return detail.messages;
-};
 
-const shown = (saved: Message[], frames: ConversationFrame[]) =>
-  withLiveRows(saved, liveMessages(fold(frames), {}, NOW), (row) => row.id);
+const load = async () => {
+  serveLoad();
+  const { fetchConversationPage } = await import("../api/chat-api");
+  await applyConversationPage("conv-1", await fetchConversationPage("conv-1"));
+};
 
 beforeEach(() => {
   getMock.mockReset();
+  saved.clear();
+  useLiveConversationStore.setState({ conversations: {} });
 });
 
 describe("a mobile conversation loaded from history, then continued live", () => {
-  it("shows every row once, in the log's order", async () => {
-    const rows = shown(await loadHistory(HISTORY), [
-      ...REPLAY,
-      entryUpdatedFrame(
-        15,
-        reply("r3", "a3", "Tomorrow you have one call.", 1),
-      ),
-      entryFrame(16, replySettled("r3", ["m3"], 14)),
-    ]);
+  it("renders the same rows, in the same order, as an all-live session of the log", async () => {
+    await load();
+    useLiveConversationStore.getState().applyFrames("conv-1", AFTER);
+    useLiveConversationStore
+      .getState()
+      .applyFrames("all-live", [
+        ...LOGGED,
+        stateFrame(HEAD, "thinking"),
+        ...AFTER,
+      ]);
 
-    expect(rows.map((message) => message.id)).toEqual([
+    const shown = rows("conv-1");
+    expect(shown).toEqual(rows("all-live"));
+    expect(shown.map((message) => message.id)).toEqual([
       "m1",
       "t1",
       "n1",
@@ -172,47 +147,36 @@ describe("a mobile conversation loaded from history, then continued live", () =>
       "m3",
       "r3",
     ]);
-    const byId = new Map(rows.map((message) => [message.id, message]));
-    expect(byId.get("t1")?.toolData).toEqual([APPROVAL_CARD]);
+    const byId = new Map(shown.map((message) => [message.id, message]));
+    expect(byId.get("t1")?.toolData?.[0]?.data).toMatchObject({
+      status: "approved",
+    });
     expect(byId.get("r2")?.imageData).toEqual(IMAGE);
-    expect(byId.get("r2")?.pinned).toBe(true);
     expect(byId.get("f1")?.firedWorkflow?.title).toBe("Morning brief");
-    expect(byId.get("w1")?.todoRunWake?.kind).toBe("schedule");
     expect(byId.get("work:t2")?.toolData).toEqual([WORK_CARD]);
     expect(byId.get("r3")?.text).toBe("Tomorrow you have one call.");
-    expect(byId.get("r3")?.inProgress).toBe(false);
   });
 
-  it("keeps the history's fields on a row the live view has not reached", async () => {
-    const saved = await loadHistory([
-      row(9, "bot", "r2", {
-        response: "Here is the picture.",
-        image_data: IMAGE,
-        pinned: true,
-      }),
-      row(10, "bot", "r4", { response: "Still going", in_progress: true }),
-      row(11, "bot", "r5", { stopped: true }),
-    ]);
+  it("saves the folded log and its cursor, so a reload restores it before the stream resumes", async () => {
+    await load();
 
-    expect(saved[0]).toMatchObject({ imageData: IMAGE, pinned: true });
-    expect(saved[1]?.inProgress).toBe(true);
-    expect(saved[2]?.stopped).toBe(true);
+    expect(saved.get("conv-1")).toEqual({
+      entries: liveConversation("conv-1").view.entries,
+      olderBefore: null,
+    });
   });
 
-  it("shows a reply that was mid-stream at reload once, finishing in place", async () => {
-    const saved = await loadHistory(HISTORY);
-    const streaming = shown(saved, [
-      entryFrame(15, reply("r3", "a3", "Tomorrow you")),
-      replyDelta("a3", "r3", 0, "Tomorrow you have"),
-    ]);
-    expect(streaming.filter((message) => message.id === "r3")).toHaveLength(1);
-    expect(streaming.at(-1)?.inProgress).toBe(true);
-  });
+  it("finishes a reply that was mid-stream when the app reloaded, in its own row", async () => {
+    await load();
+    useLiveConversationStore
+      .getState()
+      .applyFrames("conv-1", [
+        replyDelta("a3", "r3", 0, "Tomorrow you have one call."),
+        ...AFTER,
+      ]);
 
-  it("words a failed reply in history by its reason code", async () => {
-    const [failed] = await loadHistory([
-      row(2, "bot", "r1", { error: "server_restart" }),
-    ]);
-    expect(failed?.error).toBe(REPLY_FAILURE_MESSAGE.server_restart);
+    const r3 = rows("conv-1").filter((message) => message.id === "r3");
+    expect(r3).toHaveLength(1);
+    expect(r3[0]?.inProgress).toBe(false);
   });
 });

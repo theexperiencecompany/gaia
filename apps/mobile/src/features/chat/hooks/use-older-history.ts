@@ -1,41 +1,20 @@
-import { createOlderHistoryLoader, oldestSeq } from "@gaia/shared/conversation";
-import { useQueryClient } from "@tanstack/react-query";
+import { createOlderHistoryLoader } from "@gaia/shared/conversation";
 import { useCallback, useMemo } from "react";
-import { chatDb } from "@/lib/db/chatDb";
-import { chatApi, type Message } from "../api/chat-api";
-import { chatKeys } from "../api/queries";
+import { chatApi } from "../api/chat-api";
+import { applyConversationPage } from "../live/connection";
+import { liveConversation } from "../live/live-conversation-store";
 
-/** The list's start-reached handler: prepend the page before the oldest cached message. */
+/** The list's start-reached handler: prepend the page of the log before the oldest held entry. */
 export function useOlderHistory(conversationId: string | null): () => void {
-  const queryClient = useQueryClient();
-
   const loadOlder = useMemo(() => {
     if (!conversationId) return null;
-    const messagesKey = chatKeys.messages(conversationId);
-    return createOlderHistoryLoader<Message>({
-      hasOlder: () =>
-        queryClient.getQueryData<boolean>(chatKeys.hasOlder(conversationId)) ??
-        false,
-      oldestLoadedSeq: () =>
-        oldestSeq(queryClient.getQueryData<Message[]>(messagesKey) ?? []),
+    return createOlderHistoryLoader({
+      olderBefore: () => liveConversation(conversationId).olderBefore,
       fetchPage: (beforeSeq, limit) =>
-        chatApi.fetchMessagesBefore(conversationId, beforeSeq, limit),
-      applyPage: (page) => {
-        const next = [
-          ...page.messages,
-          ...(queryClient.getQueryData<Message[]>(messagesKey) ?? []),
-        ];
-        queryClient.setQueryData(messagesKey, next);
-        queryClient.setQueryData(
-          chatKeys.hasOlder(conversationId),
-          page.has_more,
-        );
-        chatDb.saveMessages(conversationId, next).catch((err: unknown) => {
-          console.warn("[use-older-history] Failed to persist messages:", err);
-        });
-      },
+        chatApi.fetchEntriesBefore(conversationId, beforeSeq, limit),
+      applyPage: (page) => applyConversationPage(conversationId, page),
     });
-  }, [conversationId, queryClient]);
+  }, [conversationId]);
 
   return useCallback(() => {
     loadOlder?.().catch((error: unknown) => {

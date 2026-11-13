@@ -10,7 +10,6 @@ import {
 import { AppState, InteractionManager } from "react-native";
 import { chatDb } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chat-store";
-import type { Message } from "../api/chat-api";
 import { chatKeys } from "../api/queries";
 import type { Conversation } from "../types";
 import { useApprovalDecisionWebSocket } from "./use-approval-decision-websocket";
@@ -49,25 +48,9 @@ export function ChatProvider({ children }: ChatProviderProps) {
       queryClient.invalidateQueries({ queryKey: cacheKey });
     });
 
-    // Pre-warm messages for every cached conversation in one multiGet so tapping
-    // any chat is instant (no skeleton flash) — web does the equivalent via a
-    // single Dexie getAllMessages. Deferred via InteractionManager to avoid an ANR.
+    // Deferred via InteractionManager so a launch never blocks on storage.
     const interaction = InteractionManager.runAfterInteractions(() => {
-      chatDb.getAllMessages().then((messagesByConversation) => {
-        for (const [conversationId, messages] of messagesByConversation) {
-          if (messages.length === 0) continue;
-          queryClient.setQueryData(
-            chatKeys.messages(conversationId),
-            (existing: Message[] | undefined) => existing ?? messages,
-          );
-        }
-        // Mark messages queries stale so opening a conversation revalidates
-        // against the API in the background (stale-while-revalidate); without
-        // this, seeded data stays "fresh" for 5min, suppressing sync until idle.
-        queryClient.invalidateQueries({
-          queryKey: [...chatKeys.all, "messages"],
-        });
-      });
+      chatDb.dropRetiredMessages();
     });
 
     return () => {
@@ -83,7 +66,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
       if (state === "active") {
         queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
         queryClient.invalidateQueries({
-          queryKey: [...chatKeys.all, "messages"],
+          queryKey: [...chatKeys.all, "page"],
         });
       }
     });

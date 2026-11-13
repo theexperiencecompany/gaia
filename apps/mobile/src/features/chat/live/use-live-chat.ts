@@ -3,11 +3,14 @@ import {
   DISPLAY_STATUS_TEXT,
   sendingLoadingRow,
 } from "@gaia/shared/conversation";
+import { useApprovalSettlementStore } from "@gaia/shared/conversation/live";
 import { getRandomThinkingMessage } from "@gaia/shared/utils";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { AppState } from "react-native";
-import type { Message } from "../api/chat-api";
-import { openConversation } from "./connection";
+import { chatApi, type Message } from "../api/chat-api";
+import { chatKeys } from "../api/queries";
+import { applyConversationPage, openConversation } from "./connection";
 import {
   useLiveConversation,
   useLiveConversationStore,
@@ -37,7 +40,11 @@ export function useOpenConversation(conversationId: string | null): void {
 /** The conversation's rows from its event stream, in the shape the chat bubbles render. */
 export function useLiveMessages(conversationId: string | null): Message[] {
   const { view, sends } = useLiveConversation(conversationId);
-  return useMemo(() => liveMessages(view, sends, new Date()), [view, sends]);
+  const verdicts = useApprovalSettlementStore((state) => state.settled);
+  return useMemo(
+    () => liveMessages(view, sends, new Date(), verdicts),
+    [view, sends, verdicts],
+  );
 }
 
 export interface LiveLoading {
@@ -80,4 +87,22 @@ export function useBusyConversationIds(): ReadonlySet<string> {
       ),
     [conversations],
   );
+}
+
+/** Fetch the conversation's newest page and fold it into the live view, over the saved log. */
+async function loadNewestPage(conversationId: string): Promise<number> {
+  const page = await chatApi.fetchConversationPage(conversationId);
+  await applyConversationPage(conversationId, page);
+  return page.state.head;
+}
+
+export function useConversationPageQuery(conversationId: string | null) {
+  return useQuery({
+    queryKey: chatKeys.page(conversationId!),
+    queryFn: () => loadNewestPage(conversationId!),
+    enabled: !!conversationId && !conversationId.startsWith("temp-"),
+    // Short staleness window: the saved log renders at once, but revisiting a
+    // conversation revalidates quickly enough that other devices' messages appear.
+    staleTime: 15_000,
+  });
 }

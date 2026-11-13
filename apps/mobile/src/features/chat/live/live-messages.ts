@@ -9,6 +9,10 @@ import {
   visibleBubbles,
   type WorkStatus,
 } from "@gaia/shared/conversation";
+import {
+  type ApprovalVerdicts,
+  withVerdicts,
+} from "@gaia/shared/conversation/live";
 import type { ApiFileData, Message, ReplyToMessageData } from "../api/chat-api";
 import type { MobileSend } from "./live-conversation-store";
 
@@ -32,6 +36,7 @@ interface RowContext {
   sends: Readonly<Record<string, MobileSend>>;
   userMessages: ReadonlyMap<string, UserMessage>;
   dates: ReadonlyMap<number, Date>;
+  verdicts: ApprovalVerdicts;
   /** For rows with no seq yet: a streaming draft that opened no entry. */
   now: Date;
 }
@@ -100,7 +105,7 @@ function rowFor(bubble: LiveBubble, context: RowContext): Message {
         text: bubble.text,
         isUser: false,
         timestamp: dateOf(context, bubble.seq),
-        toolData: [...bubble.toolData],
+        toolData: withVerdicts(bubble.toolData, context.verdicts),
         followUpActions: [...bubble.followUpActions],
         imageData: bubble.image,
         pinned: bubble.pinned,
@@ -122,7 +127,7 @@ function rowFor(bubble: LiveBubble, context: RowContext): Message {
         text: "",
         isUser: false,
         timestamp: dateOf(context, bubble.seq),
-        toolData: [...bubble.toolData],
+        toolData: withVerdicts(bubble.toolData, context.verdicts),
         inProgress: RUNNING_WORK.has(bubble.status),
         stopped: STOPPED_WORK.has(bubble.status),
       };
@@ -133,7 +138,7 @@ function rowFor(bubble: LiveBubble, context: RowContext): Message {
         text: bubble.text,
         isUser: false,
         timestamp: dateOf(context, bubble.seq),
-        toolData: [...bubble.toolData],
+        toolData: withVerdicts(bubble.toolData, context.verdicts),
       };
     // The run's side of the chat: its card alone, as a message with no text.
     case "workflow_fired":
@@ -166,6 +171,7 @@ export function liveMessages(
   view: ConversationView,
   sends: Readonly<Record<string, MobileSend>>,
   now: Date,
+  verdicts: ApprovalVerdicts = {},
 ): Message[] {
   const userMessages = new Map<string, UserMessage>();
   const dates = new Map<number, Date>();
@@ -174,6 +180,6 @@ export function liveMessages(
     if (entry.kind === ENTRY_KIND.USER_MESSAGE)
       userMessages.set(entry.id, entry);
   }
-  const context = { view, sends, userMessages, dates, now };
+  const context = { view, sends, userMessages, dates, now, verdicts };
   return visibleBubbles(view).map((bubble) => rowFor(bubble, context));
 }

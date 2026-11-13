@@ -1,15 +1,13 @@
 import type { SelectedWorkflowDataInput } from "@gaia/shared/api/generated";
-import { DISPLAY_STATE, withLiveRows } from "@gaia/shared/conversation";
+import { DISPLAY_STATE } from "@gaia/shared/conversation";
 import type { FlashListRef } from "@shopify/flash-list";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import { chatDb } from "@/lib/db/chatDb";
+import { useCallback, useEffect, useRef } from "react";
 import { useChatStore } from "@/stores/chat-store";
 import { chatApi, type Message } from "../api/chat-api";
 import {
   chatKeys,
   useChatQueryClient,
-  useConversationQuery,
   useConversationsQuery,
 } from "../api/queries";
 import type { AttachmentFile } from "../components/composer/attachment-preview";
@@ -17,13 +15,12 @@ import { useLiveConversation } from "../live/live-conversation-store";
 import { retryMessage, sendMessage } from "../live/send-message";
 import {
   type LiveLoading,
+  useConversationPageQuery,
   useLiveLoading,
   useLiveMessages,
   useOpenConversation,
 } from "../live/use-live-chat";
 import type { ReplyToMessageData } from "../types";
-
-const EMPTY_MESSAGES: Message[] = [];
 
 export type { Message } from "../api/chat-api";
 
@@ -40,7 +37,7 @@ export interface SendMessageOptions {
 }
 
 interface UseChatReturn {
-  /** The saved history from before the conversation runtime, then the live rows. */
+  /** The rows of the conversation's view: its saved and paged log, then the stream. */
   messages: Message[];
   /** The loading row: GAIA owes the user something. */
   loading: LiveLoading;
@@ -68,35 +65,12 @@ export function useChat(
 
   useOpenConversation(conversationId);
 
-  // Seed the history cache from AsyncStorage so it renders before the fetch resolves.
-  useEffect(() => {
-    if (!conversationId) return;
-    const cacheKey = chatKeys.messages(conversationId);
-    if (queryClient.getQueryData(cacheKey) !== undefined) return;
-    chatDb.getMessages(conversationId).then((persisted) => {
-      if (persisted.length > 0) {
-        queryClient.setQueryData(
-          cacheKey,
-          (existing: Message[] | undefined) => existing ?? persisted,
-        );
-      }
-    });
-  }, [conversationId, queryClient]);
-
-  const {
-    data: history,
-    isLoading,
-    refetch: refetchQuery,
-  } = useConversationQuery(conversationId);
-  const liveRows = useLiveMessages(conversationId);
+  const { isLoading, refetch: refetchQuery } =
+    useConversationPageQuery(conversationId);
+  const messages = useLiveMessages(conversationId);
   const loading = useLiveLoading(conversationId);
   const { view } = useLiveConversation(conversationId);
   const busy = view.display !== DISPLAY_STATE.IDLE;
-
-  const messages = useMemo(() => {
-    const saved = history ?? EMPTY_MESSAGES;
-    return withLiveRows(saved, liveRows, (message) => message.id);
-  }, [history, liveRows]);
 
   // Opening a conversation the list shows unread reads it, including one that
   // turns unread while it is on screen.
@@ -118,11 +92,8 @@ export function useChat(
   const onNavigate = options?.onNavigate;
   const openNewConversation = useCallback(
     (newConversationId: string) => {
-      // A new conversation has no saved history: nothing to fetch before its first message lands.
-      queryClient.setQueryData(
-        chatKeys.messages(newConversationId),
-        EMPTY_MESSAGES,
-      );
+      // A new conversation has no log yet: nothing to fetch before its first message lands.
+      queryClient.setQueryData(chatKeys.page(newConversationId), 0);
       useChatStore.getState().setActiveChatId(newConversationId);
       onNavigate?.(newConversationId);
     },

@@ -1,7 +1,8 @@
 import type {
   ApprovalDecisionResponse,
-  ConversationEntry,
+  ConversationEntriesPage,
   ImageData,
+  LoadedConversation,
   MessageAccepted,
   MessageReaction,
   ReplyToMessageData,
@@ -14,8 +15,8 @@ export type { ImageData, ReplyToMessageData } from "@gaia/shared/api/generated";
 
 import type { ApprovalDecisionPayload, ToolDataEntry } from "@gaia/shared/chat";
 import {
-  type HistoryPage,
-  replyFailureMessage,
+  type ConversationPage,
+  ConversationPageSchema,
 } from "@gaia/shared/conversation";
 import { getAuthToken } from "@/features/auth/utils/auth-storage";
 import { ApiError, apiService } from "@/lib/api";
@@ -45,21 +46,6 @@ export interface ApiFileData {
 
 /** @deprecated Use ToolDataEntry from @gaia/shared/chat instead. */
 export type ApiToolData = ToolDataEntry;
-
-export interface ApiConversationDetail {
-  _id: string;
-  user_id: string;
-  conversation_id: string;
-  description: string;
-  is_system_generated: boolean;
-  system_purpose: string | null;
-  is_unread: boolean;
-  /** Messages older than the ones returned remain on the server. */
-  has_older: boolean;
-  messages: ConversationEntry[];
-  createdAt: string;
-  updatedAt?: string;
-}
 
 export interface Message {
   id: string;
@@ -95,94 +81,28 @@ export interface Message {
   firedWorkflow?: SelectedWorkflowDataOutput | null;
 }
 
-export interface ConversationDetail {
-  id: string;
-  title: string;
-  messages: Message[];
-  createdAt: Date;
-  updatedAt: Date;
-  isUnread: boolean;
-  hasOlder: boolean;
-}
-
-function messageIdOf(apiMsg: ConversationEntry): string {
-  if (!apiMsg.message_id)
-    throw new Error(`History row at seq ${apiMsg.seq} has no message_id`);
-  return apiMsg.message_id;
-}
-
-function normalizeMessage(apiMsg: ConversationEntry): Message {
-  const isUser = apiMsg.type === "user";
-  return {
-    id: messageIdOf(apiMsg),
-    seq: apiMsg.seq,
-    text: apiMsg.response,
-    isUser,
-    timestamp: apiMsg.date ? new Date(apiMsg.date) : new Date(),
-    fileIds: apiMsg.fileIds ?? [],
-    fileData: (apiMsg.fileData ?? []).map((file) => ({
-      fileId: file.fileId,
-      fileName: file.filename,
-      url: file.url,
-      contentType: file.type ?? undefined,
-    })),
-    toolData: apiMsg.tool_data ?? undefined,
-    followUpActions: apiMsg.follow_up_actions ?? undefined,
-    imageData: apiMsg.image_data ?? null,
-    pinned: apiMsg.pinned ?? false,
-    replyToMessage: apiMsg.replyToMessage ?? null,
-    reaction: apiMsg.reaction ?? null,
-    inProgress: apiMsg.in_progress ?? false,
-    stopped: apiMsg.stopped ?? false,
-    error: apiMsg.error ? replyFailureMessage(apiMsg.error) : undefined,
-    todoRunWake: apiMsg.todo_run_wake ?? null,
-    // A workflow run is a user-side row with only the workflow card.
-    firedWorkflow:
-      isUser && !apiMsg.response ? (apiMsg.selectedWorkflow ?? null) : null,
-  };
-}
-
-function normalizeConversationDetail(
-  apiConv: ApiConversationDetail,
-): ConversationDetail {
-  return {
-    id: apiConv.conversation_id,
-    title: apiConv.description || "Untitled conversation",
-    messages: apiConv.messages.map(normalizeMessage),
-    createdAt: new Date(apiConv.createdAt),
-    updatedAt: new Date(apiConv.updatedAt || apiConv.createdAt),
-    isUnread: apiConv.is_unread,
-    hasOlder: apiConv.has_older,
-  };
-}
-
-export async function fetchConversation(
+/** The conversation's newest page of its log, as a load returns it. */
+export async function fetchConversationPage(
   conversationId: string,
-): Promise<ConversationDetail | null> {
-  try {
-    const response = await apiService.get<ApiConversationDetail>(
-      `/conversations/${conversationId}`,
-    );
-    return normalizeConversationDetail(response);
-  } catch (error) {
-    console.error("Error fetching conversation:", error);
-    return null;
-  }
+): Promise<ConversationPage> {
+  return ConversationPageSchema.parse(
+    await apiService.get<LoadedConversation>(
+      `/conversations/${encodeURIComponent(conversationId)}`,
+    ),
+  );
 }
 
-/** The page of saved messages before beforeSeq, oldest first. */
-export async function fetchMessagesBefore(
+/** The page of the log before beforeSeq, oldest first. */
+export async function fetchEntriesBefore(
   conversationId: string,
   beforeSeq: number,
   limit: number,
-): Promise<HistoryPage<Message>> {
-  const page = await apiService.get<HistoryPage<ConversationEntry>>(
-    `/conversations/${encodeURIComponent(conversationId)}/messages?before_seq=${beforeSeq}&limit=${limit}`,
+): Promise<ConversationPage> {
+  return ConversationPageSchema.parse(
+    await apiService.get<ConversationEntriesPage>(
+      `/conversations/${encodeURIComponent(conversationId)}/entries?before_seq=${beforeSeq}&limit=${limit}`,
+    ),
   );
-  return {
-    messages: page.messages.map(normalizeMessage),
-    has_more: page.has_more,
-  };
 }
 
 export async function markConversationAsRead(
@@ -404,8 +324,8 @@ export async function submitMessageFeedback(
 }
 
 export const chatApi = {
-  fetchConversation,
-  fetchMessagesBefore,
+  fetchConversationPage,
+  fetchEntriesBefore,
   markConversationAsRead,
   markConversationAsUnread,
   deleteConversation,

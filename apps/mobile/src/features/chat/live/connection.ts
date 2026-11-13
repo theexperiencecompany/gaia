@@ -1,5 +1,7 @@
 import { ApiError, parseSubscriptionRequiredBody } from "@gaia/shared";
+import type { ConversationPage } from "@gaia/shared/conversation";
 import { createConversationFollower } from "@gaia/shared/conversation/live";
+import { chatDb } from "@/lib/db/chatDb";
 import { queryClient } from "@/lib/query-provider";
 import { EventStreamHttpError } from "@/lib/sse-client";
 import { usePaywallStore } from "@/stores/paywall-store";
@@ -13,6 +15,44 @@ import {
 
 const HTTP_NOT_FOUND = 404;
 const HTTP_PAYMENT_REQUIRED = 402;
+const PERSIST_DEBOUNCE_MS = 400;
+
+const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function persistNow(conversationId: string): void {
+  clearTimeout(persistTimers.get(conversationId));
+  persistTimers.delete(conversationId);
+  const { view, olderBefore } = liveConversation(conversationId);
+  chatDb.saveLog(conversationId, { entries: [...view.entries], olderBefore });
+}
+
+/** Save the conversation's log to AsyncStorage, coalescing bursts of frames. */
+function persistConversation(conversationId: string): void {
+  if (persistTimers.has(conversationId)) return;
+  persistTimers.set(
+    conversationId,
+    setTimeout(() => persistNow(conversationId), PERSIST_DEBOUNCE_MS),
+  );
+}
+
+async function restore(conversationId: string): Promise<void> {
+  const saved = await chatDb.getLog(conversationId);
+  useLiveConversationStore.getState().restore(conversationId, {
+    entries: saved?.entries ?? [],
+    olderBefore: saved?.olderBefore ?? null,
+    sends: {},
+  });
+}
+
+/** Fold a page of the server's log into the conversation, over what this device saved of it, and save the result. */
+export async function applyConversationPage(
+  conversationId: string,
+  page: ConversationPage,
+): Promise<void> {
+  await restore(conversationId);
+  useLiveConversationStore.getState().applyPage(conversationId, page);
+  persistNow(conversationId);
+}
 
 /** Write a conversation's title into the sidebar's list, the one place mobile reads it from. */
 function retitleConversation(conversationId: string, title: string) {
@@ -32,11 +72,16 @@ const follower = createConversationFollower({
   isNotFound: (error) =>
     error instanceof EventStreamHttpError && error.status === HTTP_NOT_FOUND,
   view: (conversationId) => liveConversation(conversationId).view,
-  apply: (conversationId, frame) =>
-    useLiveConversationStore.getState().applyFrames(conversationId, [frame]),
+  apply: (conversationId, frame) => {
+    const gap = useLiveConversationStore
+      .getState()
+      .applyFrames(conversationId, [frame]);
+    persistConversation(conversationId);
+    return gap;
+  },
   retitle: retitleConversation,
-  // Mobile keeps the live log in memory only: a fresh follow replays it from the server.
-  prepare: async () => undefined,
+  // The saved log shows at once, and the stream resumes after the newest seq it holds.
+  prepare: restore,
   onInvalidFrame: (conversationId, error) => {
     console.error("[conversation] unreadable frame:", conversationId, error);
   },

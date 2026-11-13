@@ -1,10 +1,9 @@
 import { ApiError } from "@gaia/shared";
-import { createOlderHistoryLoader, oldestSeq } from "@gaia/shared/conversation";
+import { userMessage } from "@gaia/shared/conversation/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  fetchConversation,
-  fetchMessagesBefore,
-  type Message,
+  fetchConversationPage,
+  fetchEntriesBefore,
   postApprovalDecision,
   sendConversationMessage,
   stopConversation,
@@ -73,117 +72,55 @@ describe("postApprovalDecision", () => {
   });
 });
 
-describe("fetchConversation", () => {
-  it("carries what woke a tracked todo's run onto its user message", async () => {
-    const wake = {
-      kind: "schedule",
-      trigger_names: [],
-      approval_summary: null,
-    };
-    getMock.mockResolvedValue({
-      _id: "c",
-      user_id: "u",
-      conversation_id: "todo-chat",
-      description: "Watch the staging deploy",
-      is_system_generated: true,
-      system_purpose: null,
-      is_unread: false,
-      createdAt: "2026-10-31T14:05:00Z",
-      messages: [
-        {
-          type: "user",
-          response: "",
-          date: "2026-10-31T14:05:00Z",
-          message_id: "m-1",
-          fileIds: [],
-          fileData: [],
-          todo_run_wake: wake,
-        },
-      ],
-    });
+const PAGE = {
+  entries: [
+    {
+      kind: "entry",
+      seq: 3,
+      at: "2026-10-31T14:05:00+00:00",
+      entry: {
+        ...userMessage("m-3", "thanks"),
+        reaction: { emoji: "🙌", by: "jev" },
+      },
+    },
+  ],
+  state: { kind: "state", head: 3, display: "idle", work: [] },
+  has_older: true,
+  cursor: 3,
+};
 
-    const conversation = await fetchConversation("todo-chat");
-
-    expect(conversation?.messages[0]?.todoRunWake).toEqual(wake);
-  });
-});
-
-describe("fetchMessagesBefore", () => {
-  const apiMessage = (seq: number) => ({
-    type: "user",
-    response: `message ${seq}`,
-    date: "2026-10-31T14:05:00Z",
-    message_id: `m${seq}`,
-    seq,
-    fileIds: [],
-    fileData: [],
-  });
-
+describe("loading the log", () => {
   beforeEach(() => {
     getMock.mockReset();
   });
 
-  it("pages back from the oldest cached message and stops at the first one", async () => {
-    // The server holds seqs 1..60; the cache starts at 41.
-    getMock.mockImplementation(async (url: string) => {
-      const params = new URL(url, "http://test.local").searchParams;
-      const beforeSeq = Number(params.get("before_seq"));
-      const limit = Number(params.get("limit"));
-      const before = Array.from({ length: beforeSeq - 1 }, (_, i) => i + 1);
-      const page = before.slice(-limit);
-      return {
-        messages: page.map(apiMessage),
-        has_more: before.length > page.length,
-      };
-    });
-    const cache: { messages: Message[]; hasOlder: boolean } = {
-      messages: [],
-      hasOlder: true,
-    };
-    cache.messages = (await fetchMessagesBefore("c1", 61, 20)).messages;
-    const load = createOlderHistoryLoader<Message>({
-      hasOlder: () => cache.hasOlder,
-      oldestLoadedSeq: () => oldestSeq(cache.messages),
-      fetchPage: (beforeSeq, limit) =>
-        fetchMessagesBefore("c1", beforeSeq, limit),
-      applyPage: (page) => {
-        cache.messages = [...page.messages, ...cache.messages];
-        cache.hasOlder = page.has_more;
-      },
-    });
+  it("reads a conversation as its newest page of entries, with the head's state", async () => {
+    getMock.mockResolvedValue({ conversation_id: "c1", ...PAGE });
 
-    await load();
-    await load();
+    const page = await fetchConversationPage("c1");
 
-    expect(getMock).toHaveBeenLastCalledWith(
-      "/conversations/c1/messages?before_seq=41&limit=50",
-    );
-    expect(getMock).toHaveBeenCalledTimes(2);
-    expect(cache.messages.map((message) => message.seq)).toEqual(
-      Array.from({ length: 60 }, (_, i) => i + 1),
-    );
-    expect(cache.messages[0]).toMatchObject({ id: "m1", text: "message 1" });
-    expect(cache.hasOlder).toBe(false);
+    expect(getMock).toHaveBeenCalledWith("/conversations/c1");
+    expect(page.entries[0]?.entry).toMatchObject({
+      id: "m-3",
+      reaction: { emoji: "🙌", by: "jev" },
+    });
+    expect([page.state.head, page.cursor]).toEqual([3, 3]);
   });
 
-  it("reads has_older from the conversation", async () => {
-    getMock.mockResolvedValue({
-      _id: "c",
-      user_id: "u",
-      conversation_id: "c1",
-      description: "chat",
-      is_system_generated: false,
-      system_purpose: null,
-      is_unread: false,
-      has_older: true,
-      createdAt: "2026-10-31T14:05:00Z",
-      messages: [apiMessage(601)],
-    });
+  it("pages back through the entries route before a seq", async () => {
+    getMock.mockResolvedValue(PAGE);
 
-    const conversation = await fetchConversation("c1");
+    await fetchEntriesBefore("c 1", 4, 50);
 
-    expect(conversation?.hasOlder).toBe(true);
-    expect(conversation?.messages[0]?.seq).toBe(601);
+    expect(getMock).toHaveBeenCalledWith(
+      "/conversations/c%201/entries?before_seq=4&limit=50",
+    );
+  });
+
+  it("refuses a payload that is not a page of the log", async () => {
+    getMock.mockResolvedValue({ messages: [], has_more: false });
+
+    await expect(fetchConversationPage("c1")).rejects.toThrow();
   });
 });
 
@@ -213,36 +150,5 @@ describe("the conversation routes", () => {
     await stopConversation("c1");
 
     expect(postMock).toHaveBeenCalledWith("/conversations/c1/stop");
-  });
-
-  it("keeps the reaction the history carries on its message", async () => {
-    getMock.mockResolvedValue({
-      _id: "c",
-      user_id: "u",
-      conversation_id: "c1",
-      description: "",
-      is_system_generated: false,
-      system_purpose: null,
-      is_unread: false,
-      createdAt: "2026-10-31T14:05:00Z",
-      messages: [
-        {
-          type: "user",
-          response: "thanks",
-          date: "2026-10-31T14:05:00Z",
-          message_id: "m-1",
-          fileIds: [],
-          fileData: [],
-          reaction: { emoji: "🙌", by: "jev" },
-        },
-      ],
-    });
-
-    const conversation = await fetchConversation("c1");
-
-    expect(conversation?.messages[0]?.reaction).toEqual({
-      emoji: "🙌",
-      by: "jev",
-    });
   });
 });
