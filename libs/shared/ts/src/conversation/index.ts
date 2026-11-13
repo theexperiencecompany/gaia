@@ -9,13 +9,13 @@ export {
 export { ENTRY_KIND, FAILURE_REASON } from "./entries";
 export type { FrameParseError, FrameParseResult } from "./frames";
 export { DISPLAY_STATE, FRAME_KIND, parseConversationEvent } from "./frames";
-export type { HistoryPage, OlderHistorySource } from "./history";
+export type { ConversationPage, OlderHistorySource } from "./history";
 export {
+  ConversationPageSchema,
   createOlderHistoryLoader,
   HISTORY_PAGE_SIZE,
-  oldestSeq,
-  withLiveRows,
-  withNewestPage,
+  hydrate,
+  olderBefore,
 } from "./history";
 export { CONVERSATION_ID_TAKEN, isConversationIdTaken } from "./idTaken";
 export type { LiveBubble, LoadingRow, WorkStatus } from "./selectors";

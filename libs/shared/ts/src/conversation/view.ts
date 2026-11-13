@@ -70,12 +70,8 @@ function settle(view: ConversationView, replyId: string): ConversationView {
   let closedAttempts = view.closedAttempts;
   for (const attemptId of attempts)
     closedAttempts = withRecord(closedAttempts, attemptId);
-  const keyedByTask = view.drafts.some(
-    (draft) => draft.source === "work" && draft.taskId === replyId,
-  );
-  const closedTasks = keyedByTask
-    ? withRecord(view.closedTasks, replyId)
-    : view.closedTasks;
+  // Closed whether or not its deltas arrived yet: a stream resumed onto a loaded page replays them late.
+  const closedTasks = withRecord(view.closedTasks, replyId);
   const drafts = view.drafts.filter((draft) =>
     draft.source === "reply"
       ? !closedAttempts[draft.attemptId]

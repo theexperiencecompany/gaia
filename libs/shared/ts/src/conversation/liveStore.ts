@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { type ConversationPage, hydrate, olderBefore } from "./history";
 import type {
   ConversationFrame,
   ConversationView,
@@ -16,16 +17,23 @@ export interface QueuedSend {
 export interface LiveConversation<Send extends QueuedSend> {
   view: ConversationView;
   sends: Readonly<Record<string, Send>>;
+  /** The seq the next older page is read before; null once nothing older exists. */
+  olderBefore: number | null;
+}
+
+/** What a device keeps of a conversation between sessions: its log, its cursor and its sends. */
+export interface SavedConversation<Send extends QueuedSend> {
+  entries: readonly LoggedEntry[];
+  olderBefore: number | null;
+  sends: Readonly<Record<string, Send>>;
 }
 
 export interface LiveConversationState<Send extends QueuedSend> {
   conversations: Readonly<Record<string, LiveConversation<Send>>>;
-  /** Seed a conversation from its saved log; a conversation already live keeps what it has. */
-  hydrate: (
-    conversationId: string,
-    entries: readonly LoggedEntry[],
-    sends: Readonly<Record<string, Send>>,
-  ) => void;
+  /** Seed a conversation from what this device saved; a conversation already live keeps what it has. */
+  restore: (conversationId: string, saved: SavedConversation<Send>) => void;
+  /** Fold a page of the server's log (a load, a sync, a page back) into the view. */
+  applyPage: (conversationId: string, page: ConversationPage) => void;
   /** Fold frames in order; returns the first gap, after which nothing more is applied. */
   applyFrames: (
     conversationId: string,
@@ -61,13 +69,14 @@ export function createLiveConversationStore<Send extends QueuedSend>() {
   const empty: LiveConversation<Send> = {
     view: EMPTY_CONVERSATION_VIEW,
     sends: {},
+    olderBefore: null,
   };
 
   const useLiveConversationStore = create<LiveConversationState<Send>>()(
     (set, get) => ({
       conversations: {},
 
-      hydrate: (conversationId, entries, sends) => {
+      restore: (conversationId, { entries, olderBefore, sends }) => {
         if (get().conversations[conversationId]) return;
         const restored = fold(
           EMPTY_CONVERSATION_VIEW,
@@ -85,7 +94,22 @@ export function createLiveConversationStore<Send extends QueuedSend>() {
         set((state) => ({
           conversations: {
             ...state.conversations,
-            [conversationId]: { view, sends },
+            [conversationId]: { view, sends, olderBefore },
+          },
+        }));
+      },
+
+      applyPage: (conversationId, page) => {
+        const live = get().conversations[conversationId] ?? empty;
+        const view = hydrate(live.view, page);
+        set((state) => ({
+          conversations: {
+            ...state.conversations,
+            [conversationId]: {
+              ...live,
+              view,
+              olderBefore: olderBefore(view, page, live.olderBefore),
+            },
           },
         }));
       },
@@ -111,6 +135,7 @@ export function createLiveConversationStore<Send extends QueuedSend>() {
           conversations: {
             ...state.conversations,
             [conversationId]: {
+              ...live,
               view: addPendingSend(live.view, { id, text: send.body.text }),
               sends: { ...live.sends, [id]: send },
             },

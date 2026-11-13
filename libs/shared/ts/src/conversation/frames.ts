@@ -188,7 +188,7 @@ const RetractFrameSchema = z.object({
   attempt_id: z.string(),
 }) satisfies z.ZodType<RetractFrame>;
 
-const StateFrameSchema = z.object({
+export const StateFrameSchema = z.object({
   kind: z.literal(FRAME_KIND.STATE),
   head: z.number().int().min(0),
   display: z.enum([

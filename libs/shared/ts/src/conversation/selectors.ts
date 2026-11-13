@@ -5,6 +5,10 @@ import type {
   ToolDataEntry,
   WorkOutcome,
 } from "../api/generated";
+import {
+  APPROVAL_REQUEST_TOOL_NAME,
+  type ApprovalStatus,
+} from "../chat/approvals";
 import { extractToolProgressMessage } from "../chat/streaming";
 import type { TurnAccumulator } from "../chat/turnAccumulator";
 import { ENTRY_KIND } from "./entries";
@@ -12,6 +16,7 @@ import { DISPLAY_STATE } from "./frames";
 import type {
   ConversationView,
   DisplayState,
+  Entry,
   LoggedEntry,
   PendingSend,
   Reaction,
@@ -105,6 +110,86 @@ const draftContent = (content: TurnAccumulator) => ({
   toolData: content.toolData,
   followUpActions: content.followUpActions ?? [],
 });
+
+type ApprovalDecision = Extract<
+  Entry,
+  { kind: "approval_decided" }
+>["decision"];
+
+const DECIDED_STATUS = {
+  approve: "approved",
+  deny: "denied",
+  timeout: "timeout",
+  abandon: "abandoned",
+} as const satisfies Record<ApprovalDecision, ApprovalStatus>;
+
+const STOPPED_WORK: ReadonlySet<string> = new Set(["cancelled", "lost"]);
+
+/** Each logged approval's status: its decision, abandoned once the work that asked stopped, else pending. */
+function approvalStatuses(
+  view: ConversationView,
+): ReadonlyMap<string, ApprovalStatus> {
+  const stopped = new Set<string>();
+  const decided = new Map<string, ApprovalStatus>();
+  for (const { entry } of view.entries) {
+    if (
+      entry.kind === ENTRY_KIND.WORK_FINISHED &&
+      STOPPED_WORK.has(entry.outcome)
+    )
+      stopped.add(entry.task_id);
+    if (entry.kind === ENTRY_KIND.APPROVAL_DECIDED)
+      decided.set(entry.approval_id, DECIDED_STATUS[entry.decision]);
+  }
+  const statuses = new Map(decided);
+  for (const { entry } of view.entries) {
+    if (
+      entry.kind === ENTRY_KIND.APPROVAL_REQUESTED &&
+      !decided.has(entry.approval_id)
+    )
+      statuses.set(
+        entry.approval_id,
+        stopped.has(entry.task_id) ? "abandoned" : "pending",
+      );
+  }
+  return statuses;
+}
+
+const approvalIdOf = (card: ToolDataEntry): string | null => {
+  if (card.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return null;
+  const data = card.data as { approval_id?: unknown } | null;
+  return typeof data?.approval_id === "string" ? data.approval_id : null;
+};
+
+// Cards keep their identity unless the log changed an approval's status, so memoized rows stay put.
+const shownCards = new WeakMap<
+  readonly ToolDataEntry[],
+  { statuses: string; cards: readonly ToolDataEntry[] }
+>();
+
+/** The cards with each logged approval's status as the log has it; a card the log never asked keeps its own. */
+function withApprovalStatus(
+  cards: readonly ToolDataEntry[],
+  statuses: ReadonlyMap<string, ApprovalStatus>,
+): readonly ToolDataEntry[] {
+  const changes = cards.map((card) => {
+    const approvalId = approvalIdOf(card);
+    const status = approvalId === null ? undefined : statuses.get(approvalId);
+    const own = (card.data as { status?: unknown } | null)?.status;
+    return status === undefined || status === own ? null : status;
+  });
+  if (changes.every((status) => status === null)) return cards;
+  const signature = changes.join(",");
+  const cached = shownCards.get(cards);
+  if (cached?.statuses === signature) return cached.cards;
+  const shown = cards.map((card, at) => {
+    const status = changes[at];
+    return status === null
+      ? card
+      : { ...card, data: { ...(card.data as object), status } };
+  });
+  shownCards.set(cards, { statuses: signature, cards: shown });
+  return shown;
+}
 
 function replyBubble(
   view: ConversationView,
@@ -308,9 +393,14 @@ export function visibleBubbles(view: ConversationView): LiveBubble[] {
       send,
     }),
   );
+  const statuses = approvalStatuses(view);
+  const shown = (bubble: LiveBubble): LiveBubble =>
+    "toolData" in bubble
+      ? { ...bubble, toolData: withApprovalStatus(bubble.toolData, statuses) }
+      : bubble;
   return [
-    ...bySeq,
-    ...placed.filter((bubble) => seqOf(bubble) === null),
+    ...bySeq.map(shown),
+    ...placed.filter((bubble) => seqOf(bubble) === null).map(shown),
     ...unopened,
     ...pending,
   ];

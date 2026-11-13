@@ -8,5 +8,6 @@ export type {
   LiveConversation,
   LiveConversationState,
   QueuedSend,
+  SavedConversation,
 } from "./liveStore";
 export { createLiveConversationStore } from "./liveStore";

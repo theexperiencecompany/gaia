@@ -348,3 +348,44 @@ describe("quoteFor", () => {
     expect(quoteFor(view, "r1")).toBeNull();
   });
 });
+
+describe("approval cards read their status from the log", () => {
+  const approvalCard = (approvalId: string) => ({
+    tool_name: "approval_request",
+    data: { approval_id: approvalId, status: "pending" },
+    timestamp: "2026-11-12T10:00:00+00:00",
+  });
+  const cardStatus = (frames: ConversationFrame[]) => {
+    const view = frames.reduce(
+      (current, frame) => applyFrame(current, frame).view,
+      EMPTY_CONVERSATION_VIEW,
+    );
+    const row = visibleBubbles(view).find((bubble) => bubble.kind === "work");
+    const card = row?.kind === "work" ? row.toolData[0] : undefined;
+    return card ? (card.data as { status: string }).status : null;
+  };
+  const asked = [
+    entryFrame(1, userMessage("u1")),
+    entryFrame(2, workStarted("t1", 1)),
+    entryFrame(3, approvalRequested("t1", "ap1")),
+  ];
+
+  it("shows a decided approval as its decision", () => {
+    expect(
+      cardStatus([
+        ...asked,
+        entryFrame(4, approvalDecided("ap1")),
+        entryFrame(5, workFinished("t1", "done", [approvalCard("ap1")])),
+      ]),
+    ).toBe("approved");
+  });
+
+  it("shows an approval whose work stopped undecided as abandoned", () => {
+    expect(
+      cardStatus([
+        ...asked,
+        entryFrame(4, workFinished("t1", "cancelled", [approvalCard("ap1")])),
+      ]),
+    ).toBe("abandoned");
+  });
+});
