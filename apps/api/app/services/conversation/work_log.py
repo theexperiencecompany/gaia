@@ -104,25 +104,6 @@ async def record_work_finished(
     await accept(runtime_ports(), conversation_id, user_id, entry)
 
 
-async def record_detached_work(
-    conversation_id: str, user_id: str, task_id: str, cards: Sequence[ToolDataEntry]
-) -> None:
-    """Log what a detached run (a background subagent, a browser job) showed as its own finished work.
-
-    Its result reaches the user through the executor run that reads its landing; this entry only
-    keeps its cards, so it wakes nothing (no WorkStarted makes it live) and a reply never takes them in place.
-    """
-    entry = WorkFinished(
-        id=f"work:{task_id}:finished",
-        task_id=task_id,
-        outcome=WorkOutcome.DONE,
-        report="",
-        tool_data=tuple(cards),
-        nothing_for_user=True,
-    )
-    await accept(runtime_ports(), conversation_id, user_id, entry)
-
-
 async def running_step_task(conversation_id: str, user_id: str) -> str | None:
     """Return the task id of the executor running in the conversation when the step started it; else None."""
     holder = await get_lock_holder(conversation_id)
@@ -183,22 +164,31 @@ async def record_approval_decided(
 
 
 async def record_work_carried(
-    conversation_id: str, user_id: str, task_id: str, cause: LoggedEntry | None = None
+    conversation_id: str,
+    user_id: str,
+    task_id: str,
+    cause: LoggedEntry | None = None,
+    *,
+    detached: bool = False,
 ) -> bool:
     """Append WorkStarted for work started outside a step, answering cause, else caused by everything logged so far.
 
-    False when a Stop since refuses it, so nothing dispatches; the step narrates its WorkFinished.
+    False when a Stop since refuses it, so nothing dispatches; the step narrates its WorkFinished
+    unless the work is detached (a background subagent, a browser job), whose result lands elsewhere.
     """
     ports = runtime_ports()
     if cause is None:
         state = await ports.log.state(conversation_id, user_id)
-        entry = WorkStarted(id=f"work:{task_id}", task_id=task_id, cause_through=state.head)
+        entry = WorkStarted(
+            id=f"work:{task_id}", task_id=task_id, cause_through=state.head, detached=detached
+        )
     else:
         entry = WorkStarted(
             id=f"work:{task_id}",
             task_id=task_id,
             cause_through=cause.seq,
             answers=(cause.entry.id,),
+            detached=detached,
         )
     try:
         await accept(ports, conversation_id, user_id, entry)

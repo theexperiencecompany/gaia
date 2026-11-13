@@ -12,11 +12,17 @@ from httpx import AsyncClient
 import pytest
 from redis.asyncio import Redis
 
+from app.agents.core.background import folded_stream
+from app.agents.core.background.folded_stream import close_folded_stream, open_folded_stream
+from app.agents.core.background.running_registry import RunningSubagents
+from app.agents.core.background.work_cancel import cancel_named_work
 from app.api.v1.endpoints.bot_links import _persist_first_contact
 from app.constants.chat import ConversationSource
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
+from app.core.stream_manager import stream_manager
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
+from app.models.agent_models import RunningSubagent
 from app.models.bot_models import RedeemLinkCodeRequest
 from app.models.conversation_log_models import (
     ApprovalDecided,
@@ -32,7 +38,7 @@ from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports, runtime_ports
-from app.services.conversation.work_log import record_detached_work
+from app.services.conversation.work_log import record_user_stop
 from app.services.onboarding.first_conversation import FirstConversation
 from app.utils.seeding_utils import seed_first_conversation
 from tests.conftest import FAKE_USER
@@ -186,37 +192,61 @@ async def test_a_pin_survives_reload_and_lists_until_unpinned(
     assert (await client.put(missing, json={"pinned": True})).status_code == 404
 
 
-async def test_a_detached_runs_cards_are_its_own_work_until_a_reply_answers_that_work(
-    mongo_log: MongoConversationLog,
+async def test_a_detached_runs_cards_sit_where_it_started_until_a_reply_answers_that_work(
+    mongo_log: MongoConversationLog, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     user_id = str(ObjectId())
     conversation_id = await _chat(user_id, _turn("look it up"))
     cards: list[ToolDataEntry] = [{"tool_name": "browser", "data": {"step": 1}}]
+    monkeypatch.setattr(folded_stream, "drain_executor_tool_data", lambda _stream: cards)
 
-    await record_detached_work(conversation_id, user_id, "job-1", cards)
+    assert await open_folded_stream("job-1", conversation_id=conversation_id, user_id=user_id)
+    await mongo_log.append(
+        conversation_id, user_id, UserMessage(id="u2", text="later", surface=ConversationSource.WEB)
+    )
+    await close_folded_stream("job-1", conversation_id=conversation_id, user_id=user_id)
 
     doc = await conversation_repository.get(conversation_id, user_id=user_id)
     assert doc is not None
-    assert [(m.message_id, m.tool_data) for m in doc.messages[2:]] == [("work:job-1", cards)]
-    for entry in (
-        Reply(
-            id="o2", reply_id="job-1", attempt_id="a2", text="it found it", tool_data=tuple(cards)
-        ),
-        ReplySettled(
-            id="s2",
-            reply_id="job-1",
-            outcome=ReplyOutcome.ANSWERED,
-            answers=("work:job-1:finished",),
-            through=4,
-            quote_target=None,
-        ),
-    ):
-        await mongo_log.append(conversation_id, user_id, entry)
-    assert await _messages(user_id, conversation_id) == [
-        ("user", "u1", "look it up"),
-        ("bot", "r1", "done"),
-        ("bot", "job-1", "it found it"),
+    assert [(m.message_id, m.tool_data) for m in doc.messages[2:]] == [
+        ("work:job-1", cards),
+        ("u2", None),
     ]
+    state = await mongo_log.state(conversation_id, user_id)
+    assert (state.work, state.finished_work) == ((), ())
+
+
+async def test_a_stop_cancels_a_background_subagent_that_outlived_its_run(
+    mongo_log: MongoConversationLog,
+) -> None:
+    user_id = str(ObjectId())
+    conversation_id = await _chat(user_id, _turn("research it"))
+    stream_id = f"subagent_{uuid4().hex}"
+    await stream_manager.start_stream(
+        stream_id=stream_id, conversation_id=conversation_id, user_id=user_id
+    )
+    subagent = RunningSubagent(
+        subagent_id="sa-1",
+        subagent_thread_id=f"thread-{uuid4().hex}",
+        integration_id="notion",
+        agent_name="notion",
+        task_summary="research it",
+        started_at=datetime.now(UTC).isoformat(),
+        stream_id=stream_id,
+        dispatched_by="executor-stream-that-ended",
+    )
+    assert await RunningSubagents(conversation_id).claim(subagent)
+    assert await open_folded_stream(stream_id, conversation_id=conversation_id, user_id=user_id)
+
+    await record_user_stop(conversation_id, user_id, "stop-1")
+    effects = runtime_ports().effects
+    assert isinstance(effects, RecordingEffects)
+    [cancel] = [call.argument for call in effects.calls if call.name == "cancel_work"]
+    assert isinstance(cancel, tuple)
+    cancelled = await cancel_named_work(conversation_id, user_id, cancel, approval_ids=())
+
+    assert cancelled.subagent_ids == ["sa-1"]
+    assert await stream_manager.is_cancelled(stream_id)
 
 
 async def _card_status(user_id: str, conversation_id: str) -> object:

@@ -22850,6 +22850,11 @@
             "title": "Cause Through",
             "type": "integer"
           },
+          "detached": {
+            "default": false,
+            "title": "Detached",
+            "type": "boolean"
+          },
           "id": {
             "description": "Producer-minted idempotency key",
             "minLength": 1,

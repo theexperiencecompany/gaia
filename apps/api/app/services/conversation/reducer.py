@@ -137,6 +137,7 @@ def _start_work(state: ConversationState, seq: int, entry: WorkStarted) -> Trans
         cause_through=entry.cause_through,
         answers=entry.answers,
         pending_approvals=frozenset(),
+        detached=entry.detached,
     )
     return Transition(state=state.model_copy(update={"work": (*state.work, work)}), effects=())
 
@@ -178,7 +179,7 @@ def _finish_work(state: ConversationState, seq: int, entry: WorkFinished) -> Tra
     remaining = state.model_copy(
         update={"work": tuple(item for item in state.work if item.task_id != entry.task_id)}
     )
-    if entry.outcome is WorkOutcome.CANCELLED:
+    if entry.outcome is WorkOutcome.CANCELLED or live.detached:
         return Transition(state=remaining, effects=())
     result = FinishedWork(
         seq=seq, task_id=entry.task_id, cause_through=live.cause_through, answers=live.answers

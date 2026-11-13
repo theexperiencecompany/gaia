@@ -10,6 +10,7 @@ live runs. Claimed when a run starts, released when it finishes or parks — run
 only. A parked subagent is not here; its resume claims it again.
 """
 
+from collections.abc import Collection
 from dataclasses import asdict
 import json
 
@@ -100,6 +101,15 @@ class RunningSubagents:
                 if subagent.stream_id:
                     stopped_streams.add(subagent.stream_id)
                     parents.append(subagent.stream_id)
+        return stopped
+
+    async def stop_streams(self, stream_ids: Collection[str]) -> list[RunningSubagent]:
+        """Stop the runs on these streams and every run they dispatched; return the ones this call stopped."""
+        stopped: list[RunningSubagent] = []
+        for subagent in await self.live():
+            if subagent.stream_id in stream_ids and await _stop(subagent):
+                stopped.append(subagent)
+                stopped.extend(await self.stop_dispatched_by(subagent.stream_id))
         return stopped
 
     async def stop_all(self) -> list[RunningSubagent]:

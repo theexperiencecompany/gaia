@@ -16,7 +16,7 @@ from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.agent_models import RunningSubagent
 from app.models.work_cancel_models import WorkCancelled
-from app.services.browser.job_stop import RequesterChat, stop_chat_jobs
+from app.services.browser.job_stop import RequesterChat, stop_chat_jobs, stop_named_jobs
 from app.services.hil.ledger_decide import cancel_ledger_approvals
 from app.services.hil.resolution import cancel_conversation_approvals
 from shared.py.wide_events import log
@@ -59,6 +59,9 @@ async def cancel_named_work(
     subagents: list[RunningSubagent] = []
     if named and lock_value is not None:
         subagents = (await _stop_running_executor(conversation_id, lock_value))[1]
+    # Detached work is logged under its own stream: a background subagent's, or a browser job's relay.
+    subagents.extend(await RunningSubagents(conversation_id).stop_streams(task_ids))
+    browser_jobs = await stop_named_jobs(task_ids)
     # Only once a running named task is gone: closing first would let it ask again.
     approvals = await _close_approvals(conversation_id, user_id, approval_ids)
     work = WorkCancelled(
@@ -68,6 +71,7 @@ async def cancel_named_work(
         pending_task_ids=await inbox.discard(set(task_ids)),
         subagent_ids=[subagent.subagent_id for subagent in subagents],
         approval_ids=approvals,
+        browser_jobs=browser_jobs,
     )
     await _settle(conversation_id, work, redirect)
     return work

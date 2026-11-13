@@ -17301,6 +17301,11 @@ export interface components {
             /** Cause Through */
             cause_through: number;
             /**
+             * Detached
+             * @default false
+             */
+            detached?: boolean;
+            /**
              * Id
              * @description Producer-minted idempotency key
              */

@@ -29,6 +29,7 @@ from app.models.conversation_log_models import (
     WorkFinished,
     WorkflowFired,
     WorkOutcome,
+    WorkStarted,
 )
 from app.models.conversation_models import ConversationEntry
 from app.models.hil_models import HILApprovalStatus
@@ -43,6 +44,7 @@ MESSAGE_KINDS: frozenset[str] = frozenset(
         EntryKind.NOTICE,
         EntryKind.TODO_WOKE,
         EntryKind.WORKFLOW_FIRED,
+        EntryKind.WORK_STARTED,
         EntryKind.WORK_FINISHED,
     }
 )
@@ -54,6 +56,7 @@ RELATED_KINDS: frozenset[str] = frozenset(
         EntryKind.REPLY,
         EntryKind.APPROVAL_REQUESTED,
         EntryKind.APPROVAL_DECIDED,
+        EntryKind.WORK_STARTED,
         EntryKind.WORK_FINISHED,
     }
 )
@@ -81,6 +84,8 @@ class _Beside:
     requests: dict[str, ApprovalRequested] = field(default_factory=dict)
     decisions: dict[str, ApprovalDecided] = field(default_factory=dict)
     finished: dict[str, WorkFinished] = field(default_factory=dict)
+    # Detached work's task ids: its bubble sits at its WorkStarted, where the live view placed it.
+    detached: set[str] = field(default_factory=set)
 
     @classmethod
     def of(cls, entries: Iterable[LoggedEntry]) -> _Beside:
@@ -99,6 +104,8 @@ class _Beside:
                     beside.decisions[decision.approval_id] = decision
                 case WorkFinished() as work:
                     beside.finished[work.task_id] = work
+                case WorkStarted(detached=True) as started:
+                    beside.detached.add(started.task_id)
                 case _:
                     pass
         return beside
@@ -120,6 +127,14 @@ def needed_beside(
             wanted |= {f"approval:{approval_id}", f"approval:{approval_id}:decided"}
     for request in beside.requests.values():
         wanted |= {f"work:{request.task_id}:finished", f"work:{request.task_id}:lost"}
+    for logged in window:
+        match logged.entry:
+            case WorkStarted(detached=True, task_id=task_id):
+                wanted |= {f"work:{task_id}:finished", f"work:{task_id}:lost"}
+            case WorkFinished(task_id=task_id):
+                wanted.add(f"work:{task_id}")
+            case _:
+                pass
     replies = {
         logged.entry.reply_id
         for logged in window
@@ -208,20 +223,29 @@ def _message(logged: LoggedEntry, beside: _Beside) -> ConversationEntry | None:
                 message_id=fired.id,
                 selectedWorkflow=fired.run.workflow,
             )
-        case WorkFinished() as work if work.task_id not in beside.replies and (
-            work.tool_data or work.outcome in _STOPPED_WORK
-        ):
-            return ConversationEntry(
-                seq=seq,
-                date=date,
-                type=BOT_MESSAGE_TYPE,
-                response="",
-                message_id=f"work:{work.task_id}",
-                tool_data=_cards(work.tool_data, beside),
-                stopped=True if work.outcome in _STOPPED_WORK else None,
-            )
+        case WorkStarted(detached=True, task_id=task_id) if task_id in beside.finished:
+            return _work_bubble(seq, date, beside.finished[task_id], beside)
+        case WorkFinished() as work if work.task_id not in beside.detached:
+            return _work_bubble(seq, date, work, beside)
         case _:
             return None
+
+
+def _work_bubble(
+    seq: int, date: str, work: WorkFinished, beside: _Beside
+) -> ConversationEntry | None:
+    """Show finished work no reply took: its cards, or that it stopped."""
+    if work.task_id in beside.replies or not (work.tool_data or work.outcome in _STOPPED_WORK):
+        return None
+    return ConversationEntry(
+        seq=seq,
+        date=date,
+        type=BOT_MESSAGE_TYPE,
+        response="",
+        message_id=f"work:{work.task_id}",
+        tool_data=_cards(work.tool_data, beside),
+        stopped=True if work.outcome in _STOPPED_WORK else None,
+    )
 
 
 def _card_approvals(entry: object) -> list[str]:

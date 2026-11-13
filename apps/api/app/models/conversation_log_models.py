@@ -221,6 +221,8 @@ class WorkStarted(_Entry):
     answers: tuple[str, ...] = ()
     # The live task this one was handed to while it ran; the two finish, and stop, as one.
     joins: str | None = None
+    # A background subagent or browser job: its result lands in another run, so its finish wakes nothing.
+    detached: bool = False
 
 
 class ApprovalRequested(_Entry):
@@ -375,6 +377,7 @@ class LiveWork(BaseModel):
     pending_approvals: frozenset[str]
     # Tasks handed to this work while it ran (WorkStarted.joins); a Stop that ends it ends them.
     joined: tuple[str, ...] = ()
+    detached: bool = False
 
 
 class FinishedWork(BaseModel):
