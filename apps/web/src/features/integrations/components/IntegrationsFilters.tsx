@@ -124,7 +124,8 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
               if (selected) handleSortChange(selected);
             }}
             className="w-40"
-            aria-label="Sort by"
+            // Carries the visible value, so a voice user can say what they see.
+            aria-label={`Sort by: ${SORT_OPTIONS.find((option) => option.key === sort)?.label ?? ""}`}
           >
             {SORT_OPTIONS.map((option) => (
               <SelectItem key={option.key}>{option.label}</SelectItem>

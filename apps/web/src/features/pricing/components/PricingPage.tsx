@@ -42,6 +42,7 @@ export default function PricingPage({
           alt="GAIA Pricing page Wallpaper"
           sizes="100vw"
           priority
+          loading="eager"
           width={PRICING_WALLPAPER.width}
           height={PRICING_WALLPAPER.height}
           className="absolute inset-0 aspect-video h-full w-full object-cover object-bottom opacity-80"
