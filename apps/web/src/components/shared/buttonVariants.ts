@@ -56,7 +56,7 @@ export const buttonOverlayVariants = tv({
  * warning-soft (their flat buttons; danger flat is HeroUI's danger-soft), and
  * text (the small inline text action, 4px by 8px, no fill).
  */
-export const GAIA_BUTTON_FILLS = {
+const GAIA_BUTTON_FILLS = {
   "default-solid":
     "bg-zinc-700 text-foreground hover:bg-zinc-600 active:bg-zinc-600",
   "default-soft":
