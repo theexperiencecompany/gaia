@@ -47,6 +47,7 @@ import {
   ZapIcon,
 } from "@icons";
 import Image from "next/image";
+import { useState } from "react";
 import {
   getIconPath,
   iconAliases,
@@ -164,8 +165,18 @@ const AutoInvertIcon: React.FC<{
   className?: string;
 }> = ({ src, alt, size, width, height, className }) => {
   // const { shouldInvert } = useIconColorDetection(src);
+  const [failed, setFailed] = useState(false);
   const displayWidth = width || size || 20;
   const displayHeight = height || size || 20;
+  if (failed) {
+    return (
+      <PackageOpenIcon
+        width={displayWidth}
+        height={displayHeight}
+        className={className ?? "text-zinc-400"}
+      />
+    );
+  }
   // Border radius scales with the icon size (percentage radius) so small icons
   // aren't disproportionately rounded. object-contain keeps the logo intact.
   const imgClassName = `${className ?? ""} aspect-square rounded-[18%] object-contain`;
@@ -183,6 +194,7 @@ const AutoInvertIcon: React.FC<{
         className={imgClassName}
         src={src}
         unoptimized
+        onError={() => setFailed(true)}
       />
     );
   }
@@ -197,6 +209,7 @@ const AutoInvertIcon: React.FC<{
       className={imgClassName}
       style={{ width: displayWidth, height: displayHeight }}
       src={src}
+      onError={() => setFailed(true)}
     />
   );
 };
