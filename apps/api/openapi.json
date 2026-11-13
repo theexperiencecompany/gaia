@@ -16043,6 +16043,11 @@
             "title": "Id",
             "type": "string"
           },
+          "imported": {
+            "default": false,
+            "title": "Imported",
+            "type": "boolean"
+          },
           "kind": {
             "const": "reply",
             "default": "reply",
@@ -16221,6 +16226,11 @@
             "minLength": 1,
             "title": "Id",
             "type": "string"
+          },
+          "imported": {
+            "default": false,
+            "title": "Imported",
+            "type": "boolean"
           },
           "kind": {
             "const": "reply_settled",
@@ -22019,6 +22029,11 @@
             "title": "Id",
             "type": "string"
           },
+          "imported": {
+            "default": false,
+            "title": "Imported",
+            "type": "boolean"
+          },
           "kind": {
             "const": "user_message",
             "default": "user_message",
@@ -22139,6 +22154,16 @@
           "text": {
             "title": "Text",
             "type": "string"
+          },
+          "todo_run_wake": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TodoRunWake"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "tool_category": {
             "anyOf": [

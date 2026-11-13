@@ -44,7 +44,14 @@ def reduce(state: ConversationState, logged: LoggedEntry) -> Transition | Reject
 def _apply(state: ConversationState, seq: int, entry: Entry) -> Transition | Rejected:
     result: Transition | Rejected
     match entry:
-        case TodoWoke() | Notice() | IntegrationNeeded() | UserMessage(first_contact=True):
+        case (
+            TodoWoke()
+            | Notice()
+            | IntegrationNeeded()
+            | UserMessage(first_contact=True)
+            | UserMessage(imported=True)
+            | Reply(imported=True)
+        ):
             result = Transition(state=state, effects=())
         case UserMessage() | WorkflowFired() | IntegrationConnected():
             result = _wake_input(state, seq, entry)
@@ -196,6 +203,8 @@ def _open_reply(state: ConversationState, entry: Reply) -> Transition | Rejected
 
 
 def _settle_reply(state: ConversationState, seq: int, entry: ReplySettled) -> Transition | Rejected:
+    if entry.imported:
+        return _settle_imported(state, seq, entry)
     if entry.reply_id != state.open_reply:
         return Rejected(reason=RejectReason.REPLY_NOT_OPEN)
     if entry.through >= seq:
@@ -205,6 +214,19 @@ def _settle_reply(state: ConversationState, seq: int, entry: ReplySettled) -> Tr
         update={"comms": CommsPhase.IDLE, "open_reply": None, "settled_through": settled}
     )
     return Transition(state=finished, effects=())
+
+
+def _settle_imported(
+    state: ConversationState, seq: int, entry: ReplySettled
+) -> Transition | Rejected:
+    """Settle imported history: its reply never opened, so only the settled watermark moves."""
+    if entry.through >= seq:
+        return Rejected(reason=RejectReason.REPLY_ANSWERS_FUTURE)
+    settled = max(state.settled_through, entry.through)
+    return Transition(
+        state=_drop_waking_through(state, settled).model_copy(update={"settled_through": settled}),
+        effects=(),
+    )
 
 
 def _drop_waking_through(state: ConversationState, seq: int) -> ConversationState:

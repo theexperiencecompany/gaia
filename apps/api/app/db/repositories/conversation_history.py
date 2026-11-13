@@ -179,8 +179,10 @@ def _message(logged: LoggedEntry, beside: _Beside) -> ConversationEntry | None:
                 platform_message_id=message.platform_message_id,
                 first_contact=message.first_contact or None,
                 pinned=message.pinned or None,
+                todo_run_wake=message.todo_run_wake,
             )
-        case Reply() as reply:
+        # An imported reply with nothing in it is a folded emoji_ack that already held a seq.
+        case Reply() as reply if not reply.imported or reply.text or reply.tool_data:
             settled = beside.settles.get(reply.reply_id)
             target = reply.quote_target if settled is None else settled.quote_target
             return ConversationEntry(

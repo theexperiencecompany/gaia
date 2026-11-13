@@ -1,10 +1,9 @@
 """The stored shape of a conversation entry and its head, and the expressions the append protocol commits with.
 
-An entry is one message as stored today, or one conversation log entry told apart by its
-kind (is_log_entry), keyed by (user_id, conversation_id, seq) and (user_id,
-conversation_id, id); a message's id is its message_id. The head is the
-conversations document: log_head is the highest committed seq and outbox holds the
-committed entries not yet copied into conversation_entries.
+An entry is one conversation log entry, keyed by (user_id, conversation_id, seq) and
+(user_id, conversation_id, id). The head is the conversations document: log_head is the
+highest committed seq and outbox holds the committed entries not yet copied into
+conversation_entries.
 """
 
 from __future__ import annotations
@@ -34,11 +33,10 @@ RUNNER_FIELD = "runner"
 RUNNER_EPOCH_FIELD = "runner_epoch"
 #: On an amendable log entry (a reply, a user message): bumped by each amend, staged through the outbox.
 REVISION_FIELD = "revision"
-#: The fingerprint of the embedded array as the migration last copied it, so any later old-build write shows.
+#: The fingerprint of the embedded array as the migration last rewrote it, so any later old-build write shows.
 MIGRATED_FINGERPRINT_FIELD = "migrated_fingerprint"
-#: On a migrated entry: each field's hash as its embedded element held it (verify and the merge compare them).
+#: On a migrated entry: each field's hash as the migration wrote it (the next pass sets only what changed).
 MIGRATION_FIELDS_FIELD = "migration_fields"
-_EMBEDDED_FIELD = "_embedded"
 #: Head fields that never reach a ConversationDocument (or the client it is returned to).
 HEAD_INTERNAL_FIELDS = (
     "messages",
@@ -48,21 +46,10 @@ HEAD_INTERNAL_FIELDS = (
     RUNNER_FIELD,
     RUNNER_EPOCH_FIELD,
     MIGRATED_FINGERPRINT_FIELD,
-    _EMBEDDED_FIELD,
 )
 #: The kinds the conversation log appends; a stored entry with any other kind, or none, is a message.
 LOG_KINDS: list[str] = [kind.value for kind in EntryKind]
 
-#: A server-side hash of the whole embedded array: any append, trim or in-place edit changes it.
-EMBEDDED_FINGERPRINT: dict[str, object] = {"$toHashedIndexKey": {"$ifNull": ["$messages", []]}}
-#: Heads whose embedded array holds messages the entries do not: never migrated, or written since.
-UNMIGRATED_HEADS: dict[str, object] = {
-    "messages.0": {"$exists": True},
-    "$or": [
-        {LOG_HEAD_FIELD: {"$exists": False}},
-        {"$expr": {"$ne": [EMBEDDED_FINGERPRINT, f"${MIGRATED_FINGERPRINT_FIELD}"]}},
-    ],
-}
 #: Derived from the log's stored state: live work is paused on the user's approval.
 AWAITING_APPROVAL: dict[str, object] = {
     "$anyElementTrue": [
@@ -75,22 +62,16 @@ AWAITING_APPROVAL: dict[str, object] = {
         }
     ]
 }
-#: Added to every head read so the refusal below needs no second query and never ships the array.
-EMBEDDED_STATE_STAGE: dict[str, object] = {
-    "$addFields": {
-        "awaiting_approval": AWAITING_APPROVAL,
-        _EMBEDDED_FIELD: {
-            "count": {"$size": {"$ifNull": ["$messages", []]}},
-            "fingerprint": EMBEDDED_FINGERPRINT,
-        },
-    }
+#: Added to every head read, which never ships the embedded array.
+AWAITING_APPROVAL_STAGE: dict[str, object] = {
+    "$addFields": {"awaiting_approval": AWAITING_APPROVAL}
 }
 DROP_EMBEDDED_STAGE: dict[str, object] = {"$project": {"messages": 0}}
 #: Cards whose message is not committed yet wait on the head under this field, by message id;
 #: a turn saves within itself, so ones a day old are dropped by the next commit.
 FOLDED_CARDS_FIELD = "folded_cards"
 FOLDED_CARDS_KEEP_SECONDS = 86_400
-#: What an append reads of its head: identity, the log, and whether the migration caught up.
+#: What an append reads of its head: identity and the log.
 _APPEND_HEAD_FIELDS: dict[str, object] = {
     "conversation_id": 1,
     "user_id": 1,
@@ -99,8 +80,6 @@ _APPEND_HEAD_FIELDS: dict[str, object] = {
     STATE_FIELD: 1,
     RUNNER_FIELD: 1,
     RUNNER_EPOCH_FIELD: 1,
-    MIGRATED_FINGERPRINT_FIELD: 1,
-    _EMBEDDED_FIELD: 1,
 }
 CONTENT_HASH_FIELD = "content_hash"
 _EXISTING_FIELDS: dict[str, object] = {"_id": 0, "id": 1, "seq": 1, CONTENT_HASH_FIELD: 1}
@@ -177,14 +156,8 @@ class StoredRow:
 
 
 def head_from_raw(raw: Mapping[str, object]) -> Head:
-    """Parse a head read, refusing one whose messages still live only in the embedded array."""
-    document = ConversationHead.model_validate(raw)
-    embedded = document.embedded
-    if embedded is not None and embedded.count:
-        migrated = document.log_head is not None
-        if not migrated or document.migrated_fingerprint != embedded.fingerprint:
-            raise unmigrated(f"conversation {document.conversation_id}")
-    return Head(document=document, fields=head_fields(raw))
+    """Parse a head read into the log's view and the conversation document's own fields."""
+    return Head(document=ConversationHead.model_validate(raw), fields=head_fields(raw))
 
 
 def head_with_existing(
@@ -197,7 +170,6 @@ def head_with_existing(
     """
     return [
         {"$match": {"conversation_id": conversation_id, "user_id": user_id}},
-        EMBEDDED_STATE_STAGE,
         {"$project": _APPEND_HEAD_FIELDS},
         {
             "$lookup": {
@@ -219,8 +191,8 @@ def head_with_existing(
 
 
 def _counted_heads(excluding: Mapping[str, object] | None) -> dict[str, object]:
-    """Match the heads whose entries a cross-conversation read counts: migrated, and not excluded."""
-    return {"$nor": [UNMIGRATED_HEADS, *([dict(excluding)] if excluding else [])]}
+    """Match the heads whose entries a cross-conversation read counts: all but the excluded."""
+    return {"$nor": [dict(excluding)]} if excluding else {}
 
 
 def outbox_entries_matching(
@@ -275,13 +247,13 @@ def stored_entries_matching(
 
 
 def unmigrated(subject: str) -> UnmigratedConversationError:
-    """Build the refusal for messages that still live only in the embedded array, naming the script."""
+    """Build the boot refusal for messages still in the old shape, naming the command that rewrites them."""
     return UnmigratedConversationError(
         message=(
-            f"{subject} has messages the entries migration has not copied: run "
-            f"python -m {CONVERSATION_ENTRIES_MIGRATION_SCRIPT} --apply"
+            f"{subject} still holds messages in the old shape: run "
+            f"python -m {CONVERSATION_ENTRIES_MIGRATION_SCRIPT} --apply, then --verify"
         ),
-        why="its messages still live only in the embedded messages array",
+        why="an embedded messages array no migration pass marked, or message-shaped entries",
     )
 
 
