@@ -10,7 +10,7 @@ from collections.abc import Mapping
 import json
 from typing import cast
 
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.core.held_replies import last_ai_message
@@ -28,9 +28,11 @@ from app.models.conversation_frame_models import (
     StreamPayloadType,
     ToolDataEvent,
 )
+from app.models.stream_events import MainResponseCompleteFrame
 from app.models.tool_data_models import ToolDataEntry
 from app.services.chat.chunks import normalize_custom_event
 from app.services.conversation.ports import (
+    Answered,
     Finished,
     ModelOutput,
     Reacted,
@@ -75,6 +77,14 @@ def payloads_from_event(data: dict[str, object]) -> list[StreamPayload]:
     return [_PAYLOADS.validate_python({"type": key, key: item}) for item in values]
 
 
+def _marks_answer_complete(payload: object) -> bool:
+    """Return whether a custom event is the follow-up pass announcing the main answer is complete."""
+    try:
+        return MainResponseCompleteFrame.model_validate(payload).main_response_complete
+    except ValidationError:
+        return False
+
+
 def _payload_key(data: Mapping[str, object]) -> str | None:
     return next((key for key in data if key in _PAYLOAD_KEYS), None)
 
@@ -90,6 +100,7 @@ class CommsEventMapper:
         self._cards: list[ToolDataEntry] = []
         self._follow_ups: tuple[str, ...] = ()
         self._answer = ""
+        self._final_reported = False
 
     async def map(self, event: GraphEvent) -> list[RunEvent]:
         """Return the step events one graph stream event produces, in the order the step must see them."""
@@ -103,7 +114,19 @@ class CommsEventMapper:
             out.extend(self._streamed(frame))
         if top_level and mode == "updates":
             out.extend(self._model_output(payload))
+        if top_level and mode == "custom" and _marks_answer_complete(payload):
+            out.extend(self._answer_final())
         return out
+
+    def _answer_final(self) -> list[RunEvent]:
+        """Return the held tail and the answer as final: what follows is only follow-up suggestions."""
+        if self._final_reported:
+            return []
+        self._final_reported = True
+        tail = [
+            event for frame in flush_held_frames(self._frames) for event in self._streamed(frame)
+        ]
+        return [*tail, Answered(outcome=self._outcome())]
 
     def finish(self) -> list[RunEvent]:
         """Return the frames still owed once the stream ended, then the run's outcome."""

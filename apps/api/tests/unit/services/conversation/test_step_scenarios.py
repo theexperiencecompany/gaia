@@ -35,6 +35,7 @@ from app.models.conversation_log_models import (
 from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.log import accept
 from app.services.conversation.ports import (
+    Answered,
     CancelReason,
     EntryRejected,
     Finished,
@@ -725,6 +726,31 @@ class StepScenarios:
         await run(rt)
         assert seen == [["user_message"]]
         assert await kinds(rt) == ["user_message", "reply", "reply_settled"]
+
+    async def test_a_reply_settles_when_its_answer_is_final_and_follow_ups_arrive_as_an_update(
+        self, rt: Runtime
+    ) -> None:
+        """Regression (live test): settle waited ~4 s for the follow-up suggestions after the answer."""
+        while_suggesting: list[list[str]] = []
+
+        async def look() -> None:
+            while_suggesting.append(await kinds(rt))
+
+        rt.runner.script(
+            [
+                text("hi"),
+                ModelOutput(False),
+                Answered(Replied("hi")),
+                Do(look),
+                Finished(Replied("hi", follow_up_actions=("Ask more",))),
+            ]
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        assert while_suggesting == [["user_message", "reply", "reply_settled"]]
+        assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1",))]
+        assert (await replies(rt))[0].follow_up_actions == ("Ask more",)
+        assert frame_kinds(rt)[-1] == "entry_updated"
 
     async def test_two_advance_calls_at_once_run_exactly_one_step(self, rt: Runtime) -> None:
         rt.runner.script([Finished(Replied("once"))])

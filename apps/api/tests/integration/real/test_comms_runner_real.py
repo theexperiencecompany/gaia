@@ -59,11 +59,14 @@ from tests.unit.services.conversation.runtime_doubles import Runtime
 USER = "507f1f77bcf86cd799439011"
 CONFIRM_SECONDS = 0.05
 EntryT = TypeVar("EntryT")
-# The text streams, the translator closes the message, the model node returns, the run ends.
+# The text streams, the translator closes the message, the model node returns, the answer is
+# final once the follow-up pass starts, its suggestions stream, the run ends.
 ANSWER_SHAPE = [
     "streamed:response",
     "streamed:message_boundary",
     "model_output:answer",
+    "Answered",
+    "streamed:follow_up_actions",
     "finished:Replied",
 ]
 
@@ -267,7 +270,7 @@ async def test_answer_with_a_tool_card_carries_the_card_on_the_reply(
         "streamed:message_boundary",
         "model_output:tools",
     ]
-    assert shape(events)[-4:] == ANSWER_SHAPE
+    assert shape(events)[-len(ANSWER_SHAPE) :] == ANSWER_SHAPE
     assert len(cards) == 1
     assert events[-1] == Finished(outcome=Replied(text="found it", tool_data=tuple(cards)))
 

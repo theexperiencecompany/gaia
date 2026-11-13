@@ -441,7 +441,6 @@ async def comms_graph(
                 return_value=integration_models.UserIntegrationCapabilities(tool_names=[])
             ),
         ),
-        patch(f"{node_module}.current_stream_writer", return_value=lambda _: None),
         patch("app.agents.tools.memory_tools.memory_engine", memory),
         patch(
             "app.agents.core.background.executor_runner.prepare_executor_execution",

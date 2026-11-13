@@ -150,13 +150,20 @@ RunOutcome = Replied | Reacted | Silent
 
 
 @dataclass(frozen=True)
+class Answered:
+    """The model's answer is final; the run only adds follow-up suggestions after it, so the step settles now."""
+
+    outcome: RunOutcome
+
+
+@dataclass(frozen=True)
 class Finished:
     """The run is done; yielded only once the run task has exited."""
 
     outcome: RunOutcome
 
 
-RunEvent = Streamed | Summarized | ModelOutput | Finished
+RunEvent = Streamed | Summarized | ModelOutput | Answered | Finished
 
 
 class CommsRun(Protocol):

@@ -57,6 +57,7 @@ from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_exec
 from app.agents.core.background.todo_run_delivery import report_form_of
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.graph_manager import GraphManager
+from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.subagents.subagent_runner import prepare_executor_execution
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.run_record import append_call
@@ -82,6 +83,8 @@ from app.models.agent_models import AgentRunnableConfig
 from app.models.chat_models import ImageData
 from app.models.conversation_frame_models import (
     EntryFrame,
+    EntryUpdatedFrame,
+    OutputFrame,
     ReplyDeltaFrame,
     ResponseEvent,
     StateFrame,
@@ -147,6 +150,7 @@ from app.services.conversation.event_stream import (
     RedisStreamFrames,
     StreamedFrame,
     follow,
+    latest_frame_id,
     read_frames,
 )
 from app.services.conversation.integration_log import (
@@ -602,9 +606,13 @@ async def test_a_result_landing_with_a_new_ask_is_delivered_in_the_same_reply(
     assert {"m1", "m2"} <= set((await rig.answered())[-1][1])
 
 
-async def _frames_until_settled(rig: Rig) -> list[StreamedFrame]:
+async def _frames_until_settled(
+    rig: Rig, connected: asyncio.Event | None = None
+) -> list[StreamedFrame]:
     seen: list[StreamedFrame] = []
     async for streamed in follow(rig.ports.log, rig.conversation_id, rig.user_id, "0"):
+        if connected is not None:
+            connected.set()
         if streamed is None:
             continue
         seen.append(streamed)
@@ -625,9 +633,11 @@ async def test_two_clients_on_one_conversation_see_the_same_frames(
     rig_for: RigFactory,
 ) -> None:
     rig = await rig_for(gated("hello there"))
-    first = asyncio.create_task(_frames_until_settled(rig))
-    second = asyncio.create_task(_frames_until_settled(rig))
-    await asyncio.sleep(0)
+    connected = (asyncio.Event(), asyncio.Event())
+    first = asyncio.create_task(_frames_until_settled(rig, connected[0]))
+    second = asyncio.create_task(_frames_until_settled(rig, connected[1]))
+    # Both clients have connected (their catch-up is sent) before anything is said.
+    await asyncio.gather(*(event.wait() for event in connected))
     await rig.send("m1", "hi")
     async with asyncio.timeout(_SETTLE_SECONDS):
         a, b = await asyncio.gather(first, second)
@@ -648,6 +658,10 @@ async def test_a_client_resuming_from_a_seq_replays_what_it_missed(
     resumed = [streamed.frame for streamed in await _frames_until_settled(rig)]
     entries = [frame.entry.kind.value for frame in resumed if isinstance(frame, EntryFrame)]
     assert entries[:3] == ["user_message", "reply", "reply_settled"]
+
+
+def _settles(frame: OutputFrame) -> bool:
+    return isinstance(frame, EntryFrame) and isinstance(frame.entry, ReplySettled)
 
 
 async def _whole_stream(rig: Rig) -> list[StreamedFrame]:
@@ -680,6 +694,38 @@ async def test_one_append_streams_one_entry_frame_and_at_most_one_state_frame(
     states = [frame for frame in frames if isinstance(frame, StateFrame)]
     assert entry_seqs == [logged.seq for logged in await rig.entries()]
     assert len(states) <= len(entry_seqs)
+
+
+@pytest.mark.service
+async def test_a_reply_settles_before_its_follow_up_suggestions_are_made(
+    rig_for: RigFactory,
+) -> None:
+    """Regression (live test): every turn settled ~4 s after its answer, waiting on the follow-up call."""
+    rig = await rig_for(gated("first answer", "second answer"))
+    await rig.send("m1", "hi")
+    await rig.settle()
+    release = asyncio.Event()
+
+    async def suggest_slowly(*_args: object, **_kwargs: object) -> FollowUpActions:
+        await release.wait()
+        return FollowUpActions(actions=["Ask more"])
+
+    with patch(f"{FollowUpActions.__module__}.ainvoke_structured", side_effect=suggest_slowly):
+        before = await latest_frame_id(rig.conversation_id)
+        await rig.send("m2", "and again")
+        # The follow-up call is still held, so the reply can only settle without it.
+        async with asyncio.timeout(_SETTLE_SECONDS):
+            async for streamed in follow(rig.ports.log, rig.conversation_id, rig.user_id, before):
+                if streamed is not None and _settles(streamed.frame):
+                    break
+        release.set()
+        await rig.settle()
+
+    assert (await rig.of(Reply))[-1].follow_up_actions == ("Ask more",)
+    updated = [s.frame for s in await _whole_stream(rig) if isinstance(s.frame, EntryUpdatedFrame)]
+    assert [frame.entry.follow_up_actions for frame in updated if isinstance(frame.entry, Reply)][
+        -1
+    ] == ("Ask more",)
 
 
 @pytest.mark.service
@@ -890,7 +936,12 @@ async def test_work_that_ended_on_a_pending_approval_waits_for_it_and_a_stop_clo
         rig.conversation_id, rig.user_id, "t1", approval_id, summary="Create it", expires_at=None
     )
     await record_work_finished(
-        rig.conversation_id, rig.user_id, "t1", WorkOutcome.DONE, WorkReport("Approve it?")
+        rig.conversation_id,
+        rig.user_id,
+        "t1",
+        WorkOutcome.DONE,
+        WorkReport("Approve it?"),
+        continued_by_decision=True,
     )
     await rig.settle()
     waiting = await rig.ports.log.state(rig.conversation_id, rig.user_id)

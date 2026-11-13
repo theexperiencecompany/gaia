@@ -56,6 +56,7 @@ from app.models.message_models import MessageDict
 from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.log import publish_appended
 from app.services.conversation.ports import (
+    Answered,
     CancelReason,
     ClaimLost,
     CommsRun,
@@ -116,6 +117,8 @@ class _Attempt:
     # The cards and image of the work whose reply this is (reply_id = task_id); the reply opens with them.
     work_cards: tuple[ToolDataEntry, ...] = ()
     work_image: ImageData | None = None
+    # The reply as settled once the answer was final; the run only adds follow-up suggestions after.
+    answered: LoggedEntry | None = None
 
     @property
     def committed(self) -> CommitReason | None:
@@ -432,6 +435,11 @@ async def _watch(ports: RuntimePorts, attempt: _Attempt, run: CommsRun) -> _Endi
     try:
         while True:
             signal = await _next_signal(pump, ports.tick)
+            if attempt.answered is not None:
+                # Settled: later inputs are the next attempt's, so only the run's end matters.
+                if isinstance(signal, Finished | _Crashed):
+                    return signal
+                continue
             if isinstance(signal, ModelOutput | Summarized):
                 # Already checkpointed when its event arrives: this event can never be restarted.
                 _commit_quietly(attempt)
@@ -440,7 +448,9 @@ async def _watch(ports: RuntimePorts, attempt: _Attempt, run: CommsRun) -> _Endi
                 return decision
             if isinstance(signal, Finished | _Crashed):
                 return signal
-            if not isinstance(signal, _Tick):
+            if isinstance(signal, Answered):
+                attempt.answered = await _finish(ports, attempt, signal.outcome)
+            elif not isinstance(signal, _Tick):
                 await _handle(ports, attempt, run, signal)
     finally:
         await _close(pump)
@@ -567,8 +577,17 @@ async def _show(ports: RuntimePorts, attempt: _Attempt, payload: StreamPayload) 
 
 async def _end(ports: RuntimePorts, attempt: _Attempt, run: CommsRun, ending: _Ending) -> None:
     match ending:
+        case Finished(outcome=outcome) if attempt.answered is not None:
+            await _add_follow_ups(ports, attempt, attempt.answered, outcome)
         case Finished(outcome=outcome):
             await _finish(ports, attempt, outcome)
+        case _Crashed(error=error) if attempt.answered is not None:
+            await run.cancel(CancelReason.LOST)
+            log.warning(
+                "comms run failed after its reply settled; no follow-up suggestions",
+                error_type=type(error).__name__,
+                conversation_id=attempt.claim.conversation_id,
+            )
         case _Crashed(error=error):
             await run.cancel(CancelReason.LOST)
             await _fail(ports, attempt, error)
@@ -663,12 +682,28 @@ _AFTER_CANCEL: dict[Verdict, Callable[[RuntimePorts, _Attempt], Awaitable[None]]
 }
 
 
-async def _finish(ports: RuntimePorts, attempt: _Attempt, outcome: RunOutcome) -> None:
-    """Settle a finished run; a reaction-only answer settles silently with no visible bubble."""
+async def _finish(ports: RuntimePorts, attempt: _Attempt, outcome: RunOutcome) -> LoggedEntry:
+    """Settle a finished run and return its stored reply; a reaction-only answer settles silently with no visible bubble."""
     if isinstance(outcome, Reacted):
         await _react(ports, attempt, outcome.emoji)
     reply, settled_as = _final_reply(attempt, outcome)
-    await _conclude(ports, attempt, reply, settled_as)
+    return await _conclude(ports, attempt, reply, settled_as)
+
+
+async def _add_follow_ups(
+    ports: RuntimePorts, attempt: _Attempt, settled: LoggedEntry, outcome: RunOutcome
+) -> None:
+    """Add the suggestions the run made after its reply settled, as an update to that reply."""
+    reply = settled.entry
+    if not isinstance(outcome, Replied) or not outcome.follow_up_actions:
+        return
+    if not isinstance(reply, Reply) or not reply.text:
+        return
+    await _amend(
+        ports,
+        attempt.claim,
+        reply.model_copy(update={"follow_up_actions": outcome.follow_up_actions}),
+    )
 
 
 def _final_reply(attempt: _Attempt, outcome: RunOutcome) -> tuple[Reply, ReplyOutcome]:
@@ -726,8 +761,8 @@ async def _conclude(
     reply: Reply,
     settled_as: ReplyOutcome,
     failure: FailureReason | None = None,
-) -> None:
-    """Save the reply's final content and settle it as answering everything the attempt covered."""
+) -> LoggedEntry:
+    """Save the reply's final content, settle it as answering everything the attempt covered, and return it."""
     stored = await _put_reply(ports, attempt, reply)
     answers, quote = await _answers_and_quote(ports, attempt, stored.seq)
     if settled_as is ReplyOutcome.SILENT:
@@ -738,6 +773,7 @@ async def _conclude(
         attempt.covers,
         _settled(attempt, settled_as, answers, attempt.through, quote, failure),
     )
+    return stored
 
 
 def _settled(

@@ -6,6 +6,7 @@ import pytest
 from app.models.conversation_frame_models import MessageBoundaryEvent, ResponseEvent
 from app.services.conversation.comms_events import CommsEventMapper, GraphEvent, payload_from_frame
 from app.services.conversation.ports import (
+    Answered,
     Finished,
     ModelOutput,
     Reacted,
@@ -84,3 +85,25 @@ async def test_a_directive_answer_ends_as_a_reaction_or_silence(
     mapper = CommsEventMapper("u-1")
     await mapper.map(answer(text))
     assert mapper.finish()[-1] == Finished(outcome=outcome)
+
+
+async def test_the_answer_is_reported_final_when_the_follow_up_pass_starts() -> None:
+    """Regression (live test): the step learned of the answer only after the follow-up model call."""
+    mapper = CommsEventMapper("u-1")
+    await mapper.map(answer("hello"))
+    started = await mapper.map(((), "custom", {"main_response_complete": True}))
+    suggested = await mapper.map(((), "custom", {"follow_up_actions": ["Ask more"]}))
+    assert [event for event in started if isinstance(event, Answered)] == [
+        Answered(outcome=Replied(text="hello"))
+    ]
+    assert mapper.finish()[-1] == Finished(
+        outcome=Replied(text="hello", follow_up_actions=("Ask more",))
+    )
+    assert not [event for event in suggested if isinstance(event, Answered)]
+
+
+async def test_a_subagents_completion_marker_is_not_the_comms_answer() -> None:
+    mapper = CommsEventMapper("u-1")
+    await mapper.map(answer("hello"))
+    nested = await mapper.map((("tools:1",), "custom", {"main_response_complete": True}))
+    assert not [event for event in nested if isinstance(event, Answered)]
