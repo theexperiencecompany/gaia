@@ -1,14 +1,14 @@
 import "../../../styles/marketing.css";
 import type { Metadata } from "next";
 import UseCasesPageClient from "@/app/[locale]/(landing)/use-cases/client";
-import { WorkflowIconElementsProvider } from "@/features/workflows/components/shared/WorkflowIconElements";
-import { workflowIconElements } from "@/features/workflows/lib/workflowIconElements";
 import JsonLd from "@/components/seo/JsonLd";
+import { WorkflowIconElementsProvider } from "@/features/workflows/components/shared/WorkflowIconElements";
 import {
   getAllCommunityWorkflowsServer,
   getExploreWorkflowsServer,
 } from "@/features/workflows/lib/serverWorkflowsApi";
 import { withoutTemplateCopies } from "@/features/workflows/lib/templateCopies";
+import { workflowIconElements } from "@/features/workflows/lib/workflowIconElements";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,

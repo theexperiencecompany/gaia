@@ -6,13 +6,13 @@ import UseCaseDetailClient from "@/app/[locale]/(landing)/use-cases/[slug]/clien
 import JsonLd from "@/components/seo/JsonLd";
 import { relatedUseCases } from "@/features/use-cases/lib/relatedUseCases";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
+import { WorkflowIconElementsProvider } from "@/features/workflows/components/shared/WorkflowIconElements";
+import { DEFAULT_WORKFLOW_ICON_COLOR } from "@/features/workflows/constants/workflowIconStyle";
 import {
   getAllCommunityWorkflowsServer,
   getExploreWorkflowsServer,
   getPublicWorkflowServer,
 } from "@/features/workflows/lib/serverWorkflowsApi";
-import { WorkflowIconElementsProvider } from "@/features/workflows/components/shared/WorkflowIconElements";
-import { DEFAULT_WORKFLOW_ICON_COLOR } from "@/features/workflows/constants/workflowIconStyle";
 import { findCopiedTemplate } from "@/features/workflows/lib/templateCopies";
 import {
   workflowIconElement,

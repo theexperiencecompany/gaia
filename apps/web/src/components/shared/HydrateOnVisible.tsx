@@ -11,7 +11,9 @@ import {
 /** Start rendering a deferred section this far before it scrolls into view. */
 const HYDRATE_AHEAD_MARGIN = "100% 0px";
 
-const subscribeNever = () => () => {};
+const unsubscribeNothing = () => undefined;
+// The hydration state never changes under a mounted component, so nothing to subscribe to.
+const subscribeNever = () => unsubscribeNothing;
 
 /** True while React hydrates server HTML (it reads the server snapshot then), false in a client render. */
 function useIsHydrating(): boolean {

@@ -59,7 +59,11 @@ export default function WorkflowIcons({
   }
   if (icon) {
     return (
-      <CatalogWorkflowIcons icon={icon} iconColor={iconColor} {...categoryProps} />
+      <CatalogWorkflowIcons
+        icon={icon}
+        iconColor={iconColor}
+        {...categoryProps}
+      />
     );
   }
   return <StepCategoryIcons {...categoryProps} />;
