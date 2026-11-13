@@ -8,7 +8,14 @@ import { tv } from "tailwind-variants";
  * flush drops the panel inset for content that lays itself out.
  */
 export const tabsVariants = tv({
-  slots: { base: "", tabList: "", tab: "", tabIndicator: "", tabPanel: "" },
+  slots: {
+    base: "",
+    // v2's tab list scrolled sideways once it outgrew its box instead of spilling past it
+    tabList: "no-scrollbar overflow-x-auto",
+    tab: "",
+    tabIndicator: "",
+    tabPanel: "",
+  },
   variants: {
     variant: {
       solid: {

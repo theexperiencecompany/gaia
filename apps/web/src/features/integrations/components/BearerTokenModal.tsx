@@ -90,6 +90,7 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
       }}
     >
       <Modal.Backdrop
+        variant="blur"
         isDismissable={!isLoading}
         isKeyboardDismissDisabled={isLoading}
       >

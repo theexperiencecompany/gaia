@@ -9,6 +9,13 @@
     padding-inline: var(--gaia-button-md-padding);
     font-size: var(--gaia-button-md-font-size);
     border-radius: var(--gaia-radius-md);
+    /* v2 clipped every button; it also drops an inline button's baseline gap (32px row, not 34) */
+    overflow: hidden;
+  }
+  /* ghost is v2's light: its hover was the default colour at 40%, not v3's solid --default */
+  .button--ghost {
+    --button-bg-hover: var(--default-soft);
+    --button-bg-pressed: var(--default-soft);
   }
   .button--sm {
     height: var(--gaia-button-sm-height);
@@ -125,6 +132,11 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* v2's input filled its field, so a flex-1 field shrank instead of holding the input's 20ch */
+  .textfield .input,
+  .textfield .input-group {
+    width: 100%;
   }
 
   /* Kbd: v2's 6px inset, weight 400 and zinc-300 text (v3: 8px, 500, zinc-400). */
@@ -316,6 +328,12 @@
     --success-soft: color-mix(in oklab, var(--success) var(--gaia-soft-tint-light), transparent);
     --warning-soft: color-mix(in oklab, var(--warning) var(--gaia-soft-tint-light), transparent);
     --danger-soft: color-mix(in oklab, var(--danger) var(--gaia-soft-tint-light), transparent);
+  }
+
+  /* hue secondary (chipVariants): v2's dark secondary, #9353d3 at 20% behind its #ae7ede text. */
+  .gaia-hue-secondary {
+    --accent-soft: color-mix(in oklab, #9353d3 20%, transparent);
+    --accent-soft-foreground: #ae7ede;
   }
 
   /* Field placeholders: v2's zinc-500 at normal weight, in light and dark. */

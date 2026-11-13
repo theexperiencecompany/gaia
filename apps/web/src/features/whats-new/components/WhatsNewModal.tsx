@@ -79,7 +79,7 @@ export function WhatsNewModal() {
 
   return (
     <Modal isOpen={isModalOpen} onOpenChange={closeModal}>
-      <Modal.Backdrop>
+      <Modal.Backdrop variant="blur">
         <Modal.Container>
           <Modal.Dialog className={modalVariants({ size: "2xl" })}>
             <Modal.CloseTrigger aria-label="Close" />
