@@ -31,7 +31,7 @@
         "light": "secondary"
       },
       "color": {
-        "primary": "tabsVariants({ color: \"accent\" })",
+        "primary": "tabsVariants({ color: \"accent\" }).base()",
         "default": "default"
       }
     },
@@ -48,11 +48,11 @@
         "sm": "sm",
         "md": "md",
         "lg": "lg",
-        "xl": "lg + modalVariants({ size: \"xl\" }) on Modal.Dialog",
-        "2xl": "lg + modalVariants({ size: \"2xl\" }) on Modal.Dialog",
-        "3xl": "lg + modalVariants({ size: \"3xl\" }) on Modal.Dialog",
-        "4xl": "lg + modalVariants({ size: \"4xl\" }) on Modal.Dialog",
-        "5xl": "lg + modalVariants({ size: \"5xl\" }) on Modal.Dialog",
+        "xl": "modalVariants({ size: \"xl\" }) on Modal.Dialog, no Container size",
+        "2xl": "modalVariants({ size: \"2xl\" }) on Modal.Dialog, no Container size",
+        "3xl": "modalVariants({ size: \"3xl\" }) on Modal.Dialog, no Container size",
+        "4xl": "modalVariants({ size: \"4xl\" }) on Modal.Dialog, no Container size",
+        "5xl": "modalVariants({ size: \"5xl\" }) on Modal.Dialog, no Container size",
         "full": "full"
       }
     },
@@ -120,7 +120,7 @@
       "outside": "outside"
     },
     "avatar": {
-      "isBordered": "avatarVariants({ bordered: true })"
+      "isBordered": "avatarVariants({ isBordered: true })"
     },
     "slider": {
       "size": {
