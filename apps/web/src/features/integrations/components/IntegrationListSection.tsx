@@ -2,13 +2,14 @@ import {
   Accordion,
   AccordionItem,
   Chip,
+  type Key,
   Link,
   ScrollShadow,
   Tooltip,
 } from "@heroui/react";
 import { ArrowRight02Icon, ConnectIcon, InformationCircleIcon } from "@icons";
 import { useRouter } from "next/navigation";
-import { type Key, useState } from "react";
+import { useState } from "react";
 import { accordionVariants } from "@/components/shared/accordionVariants";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { chipVariants } from "@/components/shared/controlVariants";
