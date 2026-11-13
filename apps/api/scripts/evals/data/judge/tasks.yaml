@@ -1,0 +1,3165 @@
+- id: tasks-T01
+  ticket: Live answer the user is waiting on (timely); no world cutoff, so deadline none (v2 conv 5); judge-free path per design §5.4.
+  tags:
+  - tasks
+  - holdout
+  setup:
+    state:
+      now: '2026-11-04T14:00:25'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - 'Summary of ''Open Banking Adoption Report 2026'' (42 pages): API call volume up 38% YoY; variable recurring payments pilot expanding to utilities in Q2 2027; SME uptake lags consumers (11% vs 19%).'
+        - Section 5 lists three regulatory milestones for 2027.
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: Summarize this PDF — mainly what it says about VRP timelines
+        asked_at: '2026-11-04T13:59:58'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-04T13:59:58'
+        surface: web
+        text: Summarize this PDF — mainly what it says about VRP timelines
+      - at: '2026-11-04T12:41:00'
+        surface: whatsapp
+        text: remind me to call the vet before 5
+      open_subjects:
+      - label: summarize Open Banking report PDF
+        status: running
+        since: '2026-11-04T13:59:58'
+      - label: call the vet reminder
+        status: scheduled
+        since: '2026-11-04T12:41:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T12:41:05'
+        channel: whatsapp
+        summary: 'Reminder set for 16:30: call the vet'
+        answered: true
+      memory:
+      - Works on the payments product team
+      - Has a cocker spaniel called Biscuit
+      calendar:
+      - start: '2026-11-04T15:00:00'
+        end: '2026-11-04T15:30:00'
+        title: Roadmap review
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: web
+        last_active_at: '2026-11-04T14:00:20'
+        in_live_chat: true
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T02
+  ticket: 'User asked and is waiting on five research answers (v2 conv 2: >= timely); no world deadline; meeting is ordinary, not high-stakes.'
+  tags:
+  - tasks
+  - dev
+  setup:
+    state:
+      now: '2026-11-04T10:19:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - 'Three dentists within 1 mile of Clapham North accepting new NHS patients: Northcote Dental (next slot 18 Nov), Bedford Smile Studio (private only, £65 check-up), Venn Street Dental (NHS, waitlist ~3 weeks).'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: find me a dentist near clapham north taking new patients
+        asked_at: '2026-11-04T10:00:40'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-04T10:01:30'
+        surface: web
+        text: also look up whether my car insurance covers windscreen chips
+      - at: '2026-11-04T10:01:05'
+        surface: web
+        text: and 2-3 options for a standing desk under £400
+      - at: '2026-11-04T10:00:55'
+        surface: web
+        text: what's the cheapest way to get to Bristol on the 21st
+      - at: '2026-11-04T10:00:40'
+        surface: web
+        text: find me a dentist near clapham north taking new patients
+      - at: '2026-11-04T10:00:10'
+        surface: web
+        text: compare HubSpot, Pipedrive and Attio for a 6-person sales team
+      open_subjects:
+      - label: CRM comparison
+        status: done
+        since: '2026-11-04T10:00:10'
+      - label: Bristol travel options 21 Nov
+        status: done
+        since: '2026-11-04T10:00:55'
+      - label: find a dentist near Clapham North
+        status: done
+        since: '2026-11-04T10:00:40'
+      - label: standing desk options
+        status: running
+        since: '2026-11-04T10:01:05'
+      - label: windscreen chip insurance cover
+        status: running
+        since: '2026-11-04T10:01:30'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T10:06:10'
+        channel: whatsapp
+        summary: 'CRM comparison: Attio best fit for 6 seats, Pipedrive cheapest'
+        answered: false
+      - at: '2026-11-04T10:11:20'
+        channel: whatsapp
+        summary: 'Bristol 21 Nov: GWR advance £24.50 off-peak, coach £9'
+        answered: false
+      memory:
+      - Lives in Clapham
+      - Last dental check-up was 2024
+      - Drives a 2019 Golf
+      calendar:
+      - start: '2026-11-04T10:05:00'
+        end: '2026-11-04T11:05:00'
+        title: Quarterly planning — Product & Eng
+      - start: '2026-11-04T12:30:00'
+        end: '2026-11-04T13:15:00'
+        title: Lunch w/ Priya
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: web
+        last_active_at: '2026-11-04T10:01:30'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T03
+  ticket: 'As-if-new: an 18:00 cab before a 18:45 train is today''s need; user cancelled 20s later, so moot (rails record only).'
+  tags:
+  - tasks
+  - dev
+  setup:
+    state:
+      now: '2026-11-05T16:42:40'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: executor_task
+        outcome: partial
+        facts:
+        - Found Uber Comfort for 18:00 from home to Paddington, £21.40 estimate; not yet confirmed.
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: Book me a cab for 6pm to paddington
+        asked_at: '2026-11-05T16:42:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-05T16:42:21'
+        surface: whatsapp
+        text: actually never mind
+      - at: '2026-11-05T16:42:00'
+        surface: whatsapp
+        text: Book me a cab for 6pm to paddington
+      - at: '2026-11-05T15:10:00'
+        surface: whatsapp
+        text: can you move my gym class to saturday
+      open_subjects:
+      - label: cab to Paddington 18:00
+        status: cancelled
+        since: '2026-11-05T16:42:21'
+      - label: move gym class to Saturday
+        status: done
+        since: '2026-11-05T15:10:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T15:11:30'
+        channel: whatsapp
+        summary: Moved your spin class to Sat 09:00
+        answered: true
+      memory:
+      - Parents live in Bath
+      - Usually takes the GWR from Paddington
+      calendar:
+      - start: '2026-11-05T18:45:00'
+        end: '2026-11-05T20:15:00'
+        title: Train to Bath
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T16:42:21'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: moot
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T04
+  ticket: 'As-if-new: requested hotel research for a trip next week; user then called the trip off, so moot.'
+  tags:
+  - tasks
+  - holdout
+  setup:
+    state:
+      now: '2026-11-03T10:05:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - 'Five hotels in Lisbon for 10–13 Nov under €180/night: Memmo Alfama (€172), Lumiares (€165), The Lumen (€149), Casa do Barão (€138), Hotel das Amoreiras (€121).'
+        - All five have free cancellation until 48h before arrival.
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: research hotels in lisbon for next week, tue-fri, under 180 a night, walkable to alfama
+        asked_at: '2026-11-03T09:00:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-03T09:52:00'
+        surface: whatsapp
+        text: did Leo reply about saturday?
+      - at: '2026-11-03T09:40:00'
+        surface: whatsapp
+        text: trip's off, client moved the workshop to january. never mind
+      - at: '2026-11-03T09:00:00'
+        surface: web
+        text: research hotels in lisbon for next week, tue-fri, under 180 a night, walkable to alfama
+      open_subjects:
+      - label: Lisbon hotel research 10–13 Nov
+        status: running
+        since: '2026-11-03T09:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-03T09:53:00'
+        channel: whatsapp
+        summary: Leo hasn't replied about Saturday yet
+        answered: false
+      memory:
+      - Client workshop in Lisbon planned for mid-November
+      - Prefers boutique hotels
+      - Leo is a close friend
+      calendar:
+      - start: '2026-11-10T09:00:00'
+        end: '2026-11-13T18:00:00'
+        title: Lisbon — client workshop (tentative)
+      - start: '2026-11-03T11:00:00'
+        end: '2026-11-03T11:30:00'
+        title: 1:1 with Dan
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-03T09:52:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: moot
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T05
+  ticket: 'As-if-new: same-day plumber slots the user asked for; neighbour fixed the leak, so moot.'
+  tags:
+  - tasks
+  - holdout
+  setup:
+    state:
+      now: '2026-11-06T11:40:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - 'Three plumbers near Walthamstow with same-day emergency slots: FlowFix (£85 call-out, can come 14:00), E17 Plumbing (£70 + £60/h, 15:30), Marsh & Sons (£95 call-out, 13:00).'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: find me a plumber for the kitchen leak, today ideally
+        asked_at: '2026-11-06T11:00:00'
+        surface: telegram
+      recent_user_messages:
+      - at: '2026-11-06T11:27:00'
+        surface: telegram
+        text: also is the farmers market on this sunday or next
+      - at: '2026-11-06T11:25:00'
+        surface: telegram
+        text: haha yeah the party was great. oh and neighbour fixed the sink thing, all good. anyway what time does the market open
+      - at: '2026-11-06T11:00:00'
+        surface: telegram
+        text: find me a plumber for the kitchen leak, today ideally
+      open_subjects:
+      - label: plumber for kitchen leak
+        status: running
+        since: '2026-11-06T11:00:00'
+      - label: farmers market dates
+        status: done
+        since: '2026-11-06T11:27:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-06T11:28:00'
+        channel: telegram
+        summary: 'Walthamstow farmers market: every Sunday 10:00–14:00'
+        answered: true
+      memory:
+      - Rents a flat in Walthamstow
+      - Neighbour Dev is handy with DIY
+      calendar: []
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: telegram
+        last_active_at: '2026-11-06T11:28:30'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: moot
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T06
+  ticket: 'As-if-new: approval for tomorrow-evening booking; ''change it to Friday'' supersedes it, and reminding risks a stray ''yes''.'
+  tags:
+  - tasks
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-04T09:10:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: approval
+        outcome: needs_you
+        facts:
+        - 'Approval still pending: book Nopi, Thursday 5 Nov 20:00, table for 2 under your name (card on file not charged; £20 no-show fee).'
+        producer_suggested:
+          urgency: timely
+      other_items_in_batch: []
+      ask:
+        text: book nopi for thursday 8pm for 2
+        asked_at: '2026-11-03T15:00:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-03T21:30:00'
+        surface: whatsapp
+        text: night
+      - at: '2026-11-03T15:06:00'
+        surface: web
+        text: change it to friday, same time
+      - at: '2026-11-03T15:00:00'
+        surface: web
+        text: book nopi for thursday 8pm for 2
+      open_subjects:
+      - label: Nopi booking Thu 5 Nov 20:00
+        status: awaiting_approval
+        since: '2026-11-03T15:01:10'
+      - label: Nopi booking Fri 6 Nov 20:00
+        status: awaiting_approval
+        since: '2026-11-03T15:07:30'
+      pending_asks:
+      - question: Book Nopi Thu 5 Nov 20:00 for 2?
+        asked_at: '2026-11-03T15:01:10'
+        channel: web
+      - question: Book Nopi Fri 6 Nov 20:00 for 2?
+        asked_at: '2026-11-03T15:07:30'
+        channel: web
+      recent_deliveries:
+      - at: '2026-11-03T15:01:10'
+        channel: web
+        summary: Asked to approve Nopi Thu 20:00 for 2
+        answered: false
+      - at: '2026-11-03T15:07:30'
+        channel: web
+        summary: Asked to approve Nopi Fri 20:00 for 2
+        answered: false
+      memory:
+      - Anniversary with partner Sam is 6 Nov
+      - Vegetarian
+      calendar:
+      - start: '2026-11-05T19:00:00'
+        end: '2026-11-05T21:00:00'
+        title: Book club
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-03T21:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: superseded
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T07
+  ticket: New confirmation for the changed booking (not a duplicate of Thursday's); user should know before Thursday evening.
+  tags:
+  - tasks
+  - dev
+  setup:
+    state:
+      now: '2026-11-04T15:04:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - Nopi booking moved from Thu 5 Nov to Fri 6 Nov 20:00, table for 2. New confirmation NP-88213; Thursday booking cancelled without fee.
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: can you change the nopi booking to friday instead
+        asked_at: '2026-11-04T15:00:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-04T15:00:00'
+        surface: whatsapp
+        text: can you change the nopi booking to friday instead
+      - at: '2026-11-04T14:20:00'
+        surface: whatsapp
+        text: what's the weather friday evening
+      open_subjects:
+      - label: move Nopi booking to Friday
+        status: done
+        since: '2026-11-04T15:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-03T15:02:00'
+        channel: whatsapp
+        summary: Booked Nopi Thu 5 Nov 20:00 for 2, confirmation NP-87740
+        answered: true
+      - at: '2026-11-04T14:20:30'
+        channel: whatsapp
+        summary: 'Friday evening: 9°C, dry'
+        answered: false
+      memory:
+      - Anniversary with partner Sam is 6 Nov
+      calendar:
+      - start: '2026-11-05T19:00:00'
+        end: '2026-11-05T21:00:00'
+        title: Book club
+      - start: '2026-11-05T20:00:00'
+        end: '2026-11-05T22:00:00'
+        title: Nopi
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T15:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T08
+  ticket: 'As-if-new: research the user asked for minutes ago; user cancelled it, so moot (rails drop late reports).'
+  tags:
+  - tasks
+  - dev
+  setup:
+    state:
+      now: '2026-11-05T11:23:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - 'Competitor scan: Ledgerly raised a $12M Series A; Paybridge launched VRP sweeping for SMEs; Coinvoice cut prices 20%.'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: research our top 3 competitors' moves this quarter
+        asked_at: '2026-11-05T11:05:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-05T11:20:00'
+        surface: web
+        text: stop the competitor research, Maya already has a deck on it
+      - at: '2026-11-05T11:05:00'
+        surface: web
+        text: research our top 3 competitors' moves this quarter
+      open_subjects:
+      - label: competitor research Q4
+        status: cancelled
+        since: '2026-11-05T11:20:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T11:20:05'
+        channel: web
+        summary: Stopped the competitor research
+        answered: false
+      memory:
+      - Maya is head of strategy
+      calendar:
+      - start: '2026-11-05T14:00:00'
+        end: '2026-11-05T15:00:00'
+        title: Strategy offsite prep
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: web
+        last_active_at: '2026-11-05T11:20:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: moot
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T09
+  ticket: 'As-if-new: dinner tonight, needed this evening; at 23:10 the occasion has passed, so moot.'
+  tags:
+  - tasks
+  - holdout
+  setup:
+    state:
+      now: '2026-11-06T23:10:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: browser_job
+        outcome: done
+        facts:
+        - 'Three options for 4 people near Shoreditch: Smoking Goat (table at 21:30), Gloria (bar seating only), Brat (waitlist).'
+        - Two booking sites timed out during the search.
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: find a dinner spot for 4 tonight near shoreditch, something fun
+        asked_at: '2026-11-06T17:30:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-06T19:02:00'
+        surface: whatsapp
+        text: can you add oat milk to the shopping list
+      - at: '2026-11-06T17:30:00'
+        surface: whatsapp
+        text: find a dinner spot for 4 tonight near shoreditch, something fun
+      open_subjects:
+      - label: dinner spot for 4 near Shoreditch
+        status: running
+        since: '2026-11-06T17:30:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-06T19:02:30'
+        channel: whatsapp
+        summary: Added oat milk to the shopping list
+        answered: false
+      memory:
+      - 'Friends group: Jess, Omar, Ravi'
+      - Loves Thai food
+      calendar:
+      - start: '2026-11-07T10:00:00'
+        end: '2026-11-07T11:00:00'
+        title: Parkrun
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-06T19:02:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: moot
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T10
+  ticket: User said 'ping me the moment'; slots vanish in minutes — wake them despite quiet hours.
+  tags:
+  - tasks
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T01:30:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: tracked_todo
+        outcome: done
+        facts:
+        - 'VFS Global London: Schengen (France) appointment slot available Tue 18 Nov 09:15, Hammersmith centre.'
+        - Slots on this calendar have typically been taken within 2–5 minutes of appearing.
+        source_excerpt: 'VFS Global — France Visa Application Centre London. Available appointments: 18/11/2026 09:15 (1). Book now — slots are not reserved until payment is completed.'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: ping me the moment a schengen visa slot opens at VFS london, any date before 25 nov
+        asked_at: '2026-11-04T22:00:00'
+        surface: telegram
+      recent_user_messages:
+      - at: '2026-11-04T22:14:00'
+        surface: telegram
+        text: ok night
+      - at: '2026-11-04T22:00:00'
+        surface: telegram
+        text: ping me the moment a schengen visa slot opens at VFS london, any date before 25 nov
+      open_subjects:
+      - label: watch VFS London for Schengen slot before 25 Nov
+        status: running
+        since: '2026-11-04T22:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T22:00:20'
+        channel: telegram
+        summary: Watching VFS London every 5 minutes for a slot before 25 Nov
+        answered: true
+      memory:
+      - Indian passport holder living in London
+      - Wedding in Lyon on 12 Dec
+      calendar:
+      - start: '2026-11-05T09:30:00'
+        end: '2026-11-05T10:00:00'
+        title: Standup
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: telegram
+        last_active_at: '2026-11-04T22:14:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T11
+  ticket: 10-minute basket hold on a sell-out sale and the user explicitly said call any time; payment approval is finance.
+  tags:
+  - tasks
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-07T02:01:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: approval
+        outcome: needs_you
+        facts:
+        - 2 Coldplay tickets, Wembley 14 Jun 2027, Block 112, £142 each (£284 + £18 fees) are in the basket.
+        - Payment requires your approval and a 3-D Secure confirmation in your banking app.
+        source_excerpt: 'Ticketmaster: Your tickets are reserved. Complete checkout within 10:00 minutes or they will be released. High demand — 480,000 people in queue.'
+        producer_suggested:
+          urgency: timely
+      other_items_in_batch: []
+      ask:
+        text: buy 2 coldplay tickets when the general sale opens sat 2am, max £150 each
+        asked_at: '2026-11-03T19:40:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-06T22:45:00'
+        surface: whatsapp
+        text: going to bed. honestly if the coldplay thing needs me just call, I don't care what time
+      - at: '2026-11-05T08:10:00'
+        surface: whatsapp
+        text: what's on my calendar today
+      - at: '2026-11-03T19:40:00'
+        surface: whatsapp
+        text: buy 2 coldplay tickets when the general sale opens sat 2am, max £150 each
+      open_subjects:
+      - label: Coldplay tickets at general sale
+        status: awaiting_approval
+        since: '2026-11-07T02:01:00'
+      pending_asks:
+      - question: Approve £302 payment for 2 Coldplay tickets?
+        asked_at: '2026-11-07T02:01:00'
+        channel: whatsapp
+      recent_deliveries:
+      - at: '2026-11-05T08:10:20'
+        channel: whatsapp
+        summary: 'Today: 3 meetings, gym at 18:00'
+        answered: false
+      memory:
+      - Partner Aisha's birthday is in June
+      - 'Bank: Monzo (3-D Secure via app)'
+      calendar: []
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-06T22:45:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T12
+  ticket: Flight cancelled overnight with seats on alternatives draining and a 10:30 onsite; decision needed before the 06:10 departure.
+  tags:
+  - tasks
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T01:00:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: tracked_todo
+        outcome: needs_you
+        facts:
+        - BA1442 London Heathrow → Edinburgh, Thu 5 Nov 06:10, has been cancelled.
+        - 'Rebooking options: BA1444 at 08:15 (4 seats left), BA1448 at 10:40; or easyJet from Gatwick 07:05 (£96).'
+        - Rebooking onto BA needs your approval.
+        source_excerpt: 'British Airways: We''re sorry, your flight BA1442 on 05 Nov has been cancelled due to operational reasons. Manage your booking to choose an alternative flight.'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: keep an eye on my BA flight to edinburgh tomorrow 06:10, rebook if it gets cancelled
+        asked_at: '2026-11-04T18:20:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-04T22:50:00'
+        surface: whatsapp
+        text: set an alarm for 4:15 pls
+      - at: '2026-11-04T18:20:00'
+        surface: web
+        text: keep an eye on my BA flight to edinburgh tomorrow 06:10, rebook if it gets cancelled
+      open_subjects:
+      - label: monitor BA1442 Thu 06:10, rebook if cancelled
+        status: awaiting_approval
+        since: '2026-11-05T01:00:00'
+      - label: alarm 04:15
+        status: scheduled
+        since: '2026-11-04T22:50:00'
+      pending_asks:
+      - question: Rebook onto BA1444 08:15?
+        asked_at: '2026-11-05T01:00:00'
+        channel: whatsapp
+      recent_deliveries:
+      - at: '2026-11-04T22:50:10'
+        channel: whatsapp
+        summary: Alarm set for 04:15
+        answered: false
+      memory:
+      - Client Harwick Group is based in Edinburgh
+      calendar:
+      - start: '2026-11-05T10:30:00'
+        end: '2026-11-05T12:30:00'
+        title: Harwick Group onsite — Edinburgh
+      - start: '2026-11-05T06:10:00'
+        end: '2026-11-05T07:35:00'
+        title: BA1442 LHR-EDI
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T22:50:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: before_next_morning
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T13
+  ticket: 'Scheduled work digest (routine as-if-new) during a holiday DND the user asked to keep free: hold until Monday.'
+  tags:
+  - tasks
+  - dev
+  setup:
+    state:
+      now: '2026-11-05T07:00:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: workflow
+        outcome: done
+        facts:
+        - 'Sales pipeline: £412k open (+£18k vs yesterday); 3 deals moved to negotiation; no deals lost; 2 tasks overdue for the team.'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: every weekday at 7am send me the sales pipeline digest from HubSpot
+        asked_at: '2026-09-22T09:00:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-03T18:00:00'
+        surface: whatsapp
+        text: landed in Crete!! don't message me until monday unless it's important
+      - at: '2026-11-03T08:30:00'
+        surface: whatsapp
+        text: can you check in for my flight
+      open_subjects:
+      - label: weekday sales pipeline digest 07:00
+        status: scheduled
+        since: '2026-09-22T09:00:00'
+      - label: daily standup summary 10:00
+        status: scheduled
+        since: '2026-10-01T10:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-03T08:31:00'
+        channel: whatsapp
+        summary: Checked in, seat 14A, boarding pass attached
+        answered: false
+      memory:
+      - Head of sales at a B2B SaaS company
+      - On holiday in Crete 3–8 Nov
+      - Mother lives alone in Leeds
+      calendar:
+      - start: '2026-11-03T00:00:00'
+        end: '2026-11-09T00:00:00'
+        title: OOO — Crete
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        dnd_until: '2026-11-09T08:00:00'
+        rules:
+        - don't message me until Monday unless it's important
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-03T18:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: hold
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T14
+  ticket: Weekly listings digest is routine as-if-new; user signed a lease elsewhere, so moot.
+  tags:
+  - tasks
+  - dev
+  setup:
+    state:
+      now: '2026-11-06T09:00:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: workflow
+        outcome: done
+        facts:
+        - 7 new 2-bed listings in Hackney this week, £1,950–£2,600 pcm; 2 with gardens (Lauriston Rd, Well St).
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: every friday morning send me new 2-bed rentals in hackney under 2.6k
+        asked_at: '2026-08-14T08:40:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-05T20:10:00'
+        surface: whatsapp
+        text: can you find a man with a van for saturday morning
+      - at: '2026-10-28T19:00:00'
+        surface: whatsapp
+        text: we signed the lease on the Leyton place!! moving saturday 8th
+      open_subjects:
+      - label: weekly Hackney 2-bed listings
+        status: scheduled
+        since: '2026-08-14T08:40:00'
+      - label: man with a van Sat 8 Nov
+        status: done
+        since: '2026-11-05T20:10:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-10-30T09:00:00'
+        channel: whatsapp
+        summary: 9 new Hackney 2-bed listings
+        answered: false
+      - at: '2026-11-05T20:25:00'
+        channel: whatsapp
+        summary: Booked VanGo for Sat 08:30, £140
+        answered: true
+      memory:
+      - Signed a 12-month lease on a flat in Leyton (Oct 2026)
+      - Moving 8 Nov with partner Kai
+      calendar:
+      - start: '2026-11-08T08:30:00'
+        end: '2026-11-08T13:00:00'
+        title: Move — VanGo
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T20:25:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: moot
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T15
+  ticket: 'Weekly digest the user set up: routine as-if-new; six unread digests are a rails pause signal, not ''unwanted'' (never said).'
+  tags:
+  - tasks
+  - dev
+  setup:
+    state:
+      now: '2026-11-06T08:00:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: workflow
+        outcome: done
+        facts:
+        - 'Competitor digest: Ledgerly shipped multi-currency invoicing; Paybridge hiring 4 sales roles in Berlin; no pricing changes.'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: every friday 8am send me a competitor digest on telegram
+        asked_at: '2026-07-10T12:00:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-05T13:00:00'
+        surface: telegram
+        text: what time is the Arsenal game sunday
+      open_subjects:
+      - label: weekly competitor digest (Telegram)
+        status: scheduled
+        since: '2026-07-10T12:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-10-30T08:00:00'
+        channel: telegram
+        summary: Competitor digest
+        answered: false
+        read: false
+      - at: '2026-10-23T08:00:00'
+        channel: telegram
+        summary: Competitor digest
+        answered: false
+        read: false
+      - at: '2026-10-16T08:00:00'
+        channel: telegram
+        summary: Competitor digest
+        answered: false
+        read: false
+      - at: '2026-10-09T08:00:00'
+        channel: telegram
+        summary: Competitor digest
+        answered: false
+        read: false
+      - at: '2026-10-02T08:00:00'
+        channel: telegram
+        summary: Competitor digest
+        answered: false
+        read: false
+      - at: '2026-09-25T08:00:00'
+        channel: telegram
+        summary: Competitor digest
+        answered: false
+        read: false
+      - at: '2026-11-05T13:00:30'
+        channel: telegram
+        summary: Arsenal v Spurs Sun 16:30
+        answered: false
+        read: true
+      memory:
+      - Arsenal fan
+      calendar: []
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: telegram
+        last_active_at: '2026-11-05T13:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - read_receipts
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T16
+  ticket: A no-change 'still no reply' that GAIA already told the user twice; user only asked to hear when he does reply.
+  tags:
+  - tasks
+  - holdout
+  setup:
+    state:
+      now: '2026-11-04T13:00:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: tracked_todo
+        outcome: done
+        facts:
+        - 'Checked Gmail: still no reply from Graham Holt (landlord) about the deposit return.'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: check hourly if the landlord replied about the deposit, tell me when he does
+        asked_at: '2026-11-04T09:00:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-04T12:15:00'
+        surface: whatsapp
+        text: is the 38 bus running ok
+      - at: '2026-11-04T09:00:00'
+        surface: whatsapp
+        text: check hourly if the landlord replied about the deposit, tell me when he does
+      open_subjects:
+      - label: watch for landlord reply re deposit
+        status: running
+        since: '2026-11-04T09:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T11:00:00'
+        channel: whatsapp
+        summary: Still no reply from Graham about the deposit
+        answered: false
+      - at: '2026-11-04T12:00:00'
+        channel: whatsapp
+        summary: Still no reply from Graham about the deposit
+        answered: false
+      - at: '2026-11-04T12:15:30'
+        channel: whatsapp
+        summary: '38 bus: good service'
+        answered: false
+      memory:
+      - Moved out of the Dalston flat on 15 Oct
+      - Deposit £1,800 held by landlord Graham Holt
+      calendar:
+      - start: '2026-11-04T14:00:00'
+        end: '2026-11-04T15:00:00'
+        title: Design crit
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T12:15:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: background
+      deadline: none
+      relevance: already_known
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T17
+  ticket: 'As-if-new: a daily business routine failing needs a fix today; same Gmail root cause already delivered at 08:00, so duplicate.'
+  tags:
+  - tasks
+  - dev
+  setup:
+    state:
+      now: '2026-11-05T09:00:30'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: workflow
+        outcome: failed
+        facts:
+        - 'Invoice filing routine could not run: Gmail access was refused (authorization expired).'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: every weekday at 9 file new invoice emails into the Invoices drive folder
+        asked_at: '2026-08-01T10:00:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-05T08:20:00'
+        surface: whatsapp
+        text: morning. what's the weather
+      open_subjects:
+      - label: Gmail connection
+        status: needs_you
+        since: '2026-11-05T03:12:00'
+      - label: 07:00 morning briefing
+        status: failed
+        since: '2026-11-05T07:00:00'
+      - label: 09:00 invoice filing
+        status: failed
+        since: '2026-11-05T09:00:00'
+      - label: 12:00 follow-ups
+        status: scheduled
+        since: '2026-09-01T12:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T08:00:00'
+        channel: whatsapp
+        summary: 'Gmail disconnected at 03:12 — your 07:00 briefing couldn''t run. Reconnect: link'
+        answered: false
+      - at: '2026-11-05T08:20:20'
+        channel: whatsapp
+        summary: London 11°C, showers after 3pm
+        answered: false
+      memory:
+      - Runs a 2-person bookkeeping practice
+      calendar:
+      - start: '2026-11-05T10:00:00'
+        end: '2026-11-05T11:00:00'
+        title: Client call — Fenwick & Co
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T08:20:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: duplicate
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T18
+  ticket: Live partial answer plus same-root-cause integration notice; no world cutoff, so deadline none.
+  tags:
+  - tasks
+  - dev
+  setup:
+    state:
+      now: '2026-11-04T11:02:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: executor_task
+        outcome: partial
+        facts:
+        - Sent the renovation brief to Ana Ruiz (ana@ruizbuild.example).
+        - 'Sending to Ben Okafor and Cara Lind failed: Gmail authorization expired mid-run.'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch:
+      - producer: system
+        outcome: needs_you
+        facts:
+        - Gmail connection expired; reconnect to keep sending and reading email.
+        producer_suggested:
+          urgency: timely
+      ask:
+        text: email the 3 contractors the brief
+        asked_at: '2026-11-04T11:00:30'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-04T11:00:30'
+        surface: whatsapp
+        text: email the 3 contractors the brief
+      - at: '2026-11-04T10:58:00'
+        surface: whatsapp
+        text: ok the brief is final, attached
+      open_subjects:
+      - label: email brief to 3 contractors
+        status: partial
+        since: '2026-11-04T11:00:30'
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Renovating a Victorian terrace
+      - 'Contractors shortlisted: Ana Ruiz, Ben Okafor, Cara Lind'
+      calendar: []
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T11:00:30'
+        in_live_chat: true
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T19
+  ticket: Bill due today with a late fee and the payment didn't happen; user needs to act today, not in a minutes-critical way.
+  tags:
+  - tasks
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T09:15:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: approval
+        outcome: failed
+        facts:
+        - The approval to pay the Octopus Energy bill (£84.20, due 5 Nov) expired unanswered after 24h; the bill has not been paid.
+        source_excerpt: 'Octopus Energy: Your bill of £84.20 is due on 5 November 2026. Late payments may incur a £10 fee.'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: pay my electricity bills when they come in, ask me first
+        asked_at: '2026-06-02T19:00:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-05T08:40:00'
+        surface: whatsapp
+        text: add eggs and bin bags to the list
+      - at: '2026-11-04T18:30:00'
+        surface: whatsapp
+        text: how long to get to Kings Cross from here
+      open_subjects:
+      - label: pay Octopus bill £84.20
+        status: expired
+        since: '2026-11-04T09:10:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T09:10:00'
+        channel: whatsapp
+        summary: Asked to approve paying Octopus £84.20 (due tomorrow)
+        answered: false
+      - at: '2026-11-05T08:40:20'
+        channel: whatsapp
+        summary: Added eggs and bin bags
+        answered: false
+      memory:
+      - Pays utilities from Monzo joint account
+      calendar:
+      - start: '2026-11-05T09:30:00'
+        end: '2026-11-05T17:00:00'
+        title: Site visit — Brentford
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T08:40:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T20
+  ticket: 'As-if-new: reply about a visit next Thursday is routine; user already sent the same reply themselves, so moot.'
+  tags:
+  - tasks
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-07T13:40:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: approval
+        outcome: needs_you
+        facts:
+        - 'Reminder: approval pending to send the drafted reply to Graham Holt about the boiler engineer visit (''Thursday morning works, I''ll be in from 9'').'
+        source_excerpt: 'Thread ''Boiler service'' — latest message: From: you <me@mail.example> to Graham Holt, Fri 6 Nov 19:40: ''Hi Graham, Thursday works for the engineer, I''m in all morning. Thanks!'''
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: draft a reply to Graham saying Thursday morning is fine for the boiler guy
+        asked_at: '2026-11-06T19:30:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-07T10:05:00'
+        surface: whatsapp
+        text: any good brunch places near Broadway Market
+      - at: '2026-11-06T19:30:00'
+        surface: web
+        text: draft a reply to Graham saying Thursday morning is fine for the boiler guy
+      open_subjects:
+      - label: reply to Graham re boiler engineer
+        status: awaiting_approval
+        since: '2026-11-06T19:31:00'
+      pending_asks:
+      - question: Send this reply to Graham?
+        asked_at: '2026-11-06T19:31:00'
+        channel: web
+      recent_deliveries:
+      - at: '2026-11-06T19:31:00'
+        channel: web
+        summary: Drafted reply to Graham — send it?
+        answered: false
+      - at: '2026-11-07T10:05:40'
+        channel: whatsapp
+        summary: 'Brunch: Climpson''s, E5 Bakehouse, Hash E8'
+        answered: false
+      memory:
+      - Landlord is Graham Holt
+      - Boiler annual service due November
+      calendar:
+      - start: '2026-11-12T09:00:00'
+        end: '2026-11-12T12:00:00'
+        title: Boiler service (home)
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-07T10:05:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: moot
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T21
+  ticket: Bare 'yes' with two open asks is a resolver problem (rails); the invoice approval itself remains a live, finance, today item.
+  tags:
+  - tasks
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-04T11:45:10'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: approval
+        outcome: needs_you
+        facts:
+        - 'Approval pending since 09:00: send invoice INV-2041 (£3,600, October retainer) to accounts@acme.example.'
+        producer_suggested:
+          urgency: timely
+      other_items_in_batch: []
+      ask:
+        text: send acme the october invoice today
+        asked_at: '2026-11-04T08:55:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-04T11:45:00'
+        surface: whatsapp
+        text: 'yes'
+      - at: '2026-11-04T08:55:00'
+        surface: whatsapp
+        text: send acme the october invoice today
+      open_subjects:
+      - label: send INV-2041 to Acme
+        status: awaiting_approval
+        since: '2026-11-04T09:00:00'
+      - label: newsletter cleanup
+        status: awaiting_approval
+        since: '2026-11-04T11:30:00'
+      pending_asks:
+      - question: Send INV-2041 (£3,600) to accounts@acme.example?
+        asked_at: '2026-11-04T09:00:00'
+        channel: whatsapp
+      - question: Want me to unsubscribe you from 12 newsletters?
+        asked_at: '2026-11-04T11:30:00'
+        channel: whatsapp
+      recent_deliveries:
+      - at: '2026-11-04T09:00:00'
+        channel: whatsapp
+        summary: Invoice INV-2041 ready — send to Acme?
+        answered: false
+      - at: '2026-11-04T11:30:00'
+        channel: whatsapp
+        summary: 'Check-in: 2 meetings left today; want me to unsubscribe you from 12 newsletters?'
+        answered: false
+      memory:
+      - Acme Ltd is the biggest client (retainer)
+      - Invoices due by the 5th
+      calendar: []
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T11:45:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T22
+  ticket: Live confirmation the user is waiting on in Slack; no world cutoff, so deadline none.
+  tags:
+  - tasks
+  - dev
+  setup:
+    state:
+      now: '2026-11-04T16:02:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - Replied to Tom confirming Tuesday 10:00 for the vendor review.
+        - Declined the 'Scaling Payments' webinar invite from Finlo.
+        - Item 2 (archive 41 promotional emails) is still waiting for your go-ahead.
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: yes to 1 and 3
+        asked_at: '2026-11-04T16:01:40'
+        surface: slack
+      recent_user_messages:
+      - at: '2026-11-04T16:01:40'
+        surface: slack
+        text: yes to 1 and 3
+      open_subjects:
+      - label: archive 41 promotional emails
+        status: awaiting_approval
+        since: '2026-11-04T15:55:00'
+      pending_asks:
+      - question: 2. Archive 41 promotional emails?
+        asked_at: '2026-11-04T15:55:00'
+        channel: slack
+      recent_deliveries:
+      - at: '2026-11-04T15:55:00'
+        channel: slack
+        summary: '3 approvals: 1) confirm Tue with Tom 2) archive 41 promos 3) decline Finlo webinar'
+        answered: true
+      memory:
+      - Tom Reyes is the vendor manager
+      calendar: []
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: slack
+        last_active_at: '2026-11-04T16:01:40'
+        in_live_chat: true
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T23
+  ticket: Unverified purchase the user is waiting on (timely); no world cutoff, so deadline none.
+  tags:
+  - tasks
+  - dev
+  setup:
+    state:
+      now: '2026-11-05T14:06:30'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: browser_job
+        outcome: unverified
+        facts:
+        - Clicked 'Place order' for the Anker 65W USB-C charger (£39.99) on Currys; the browser session ended before a confirmation page loaded.
+        - No order confirmation email seen yet.
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: order the replacement charger from currys, the anker 65w one
+        asked_at: '2026-11-05T14:00:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-05T14:00:00'
+        surface: whatsapp
+        text: order the replacement charger from currys, the anker 65w one
+      - at: '2026-11-05T13:20:00'
+        surface: whatsapp
+        text: what's a good gift for a 6 year old who likes dinosaurs
+      open_subjects:
+      - label: order Anker 65W charger from Currys
+        status: unverified
+        since: '2026-11-05T14:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T13:21:00'
+        channel: whatsapp
+        summary: 'Dino gift ideas: excavation kit, Lego T-rex, glow puzzle'
+        answered: false
+      memory:
+      - Laptop charger broke on Monday
+      - Nephew Arlo turns 6 on 20 Nov
+      calendar:
+      - start: '2026-11-05T14:30:00'
+        end: '2026-11-05T15:30:00'
+        title: Sprint review
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T14:01:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T24
+  ticket: Requested 3 weeks ago; processing times rise next week and the passport expires before a March trip, so worth landing soon but not urgently.
+  tags:
+  - tasks
+  - dev
+  setup:
+    state:
+      now: '2026-11-05T09:20:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: tracked_todo
+        outcome: done
+        facts:
+        - The HM Passport Office online renewal service has reopened after the system upgrade.
+        source_excerpt: 'HM Passport Office: Online applications have now reopened. Due to high demand we expect processing times to increase from next week. Please apply at least 10 weeks before travel.'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: let me know when the passport renewal portal reopens
+        asked_at: '2026-10-15T20:10:00'
+        surface: telegram
+      recent_user_messages:
+      - at: '2026-11-04T21:00:00'
+        surface: telegram
+        text: remind me to call mum sunday
+      - at: '2026-10-15T20:10:00'
+        surface: telegram
+        text: let me know when the passport renewal portal reopens
+      open_subjects:
+      - label: watch passport renewal portal
+        status: running
+        since: '2026-10-15T20:10:00'
+      - label: call mum Sunday
+        status: scheduled
+        since: '2026-11-04T21:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T21:00:10'
+        channel: telegram
+        summary: 'Reminder set: call mum, Sun 11:00'
+        answered: false
+      memory:
+      - Passport expires 20 Jan 2027
+      - Trip to Japan planned for March 2027
+      calendar:
+      - start: '2026-11-05T10:00:00'
+        end: '2026-11-05T11:00:00'
+        title: Team retro
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: telegram
+        last_active_at: '2026-11-04T21:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T25
+  ticket: 'Direct question the user is waiting on (v2 conv 2: >= timely); no deadline.'
+  tags:
+  - tasks
+  - dev
+  setup:
+    state:
+      now: '2026-11-04T10:12:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - Your rent payment of £1,450 to Bramley Lettings was sent on 1 Nov (Barclays confirmation email, ref RENT-NOV).
+        source_excerpt: 'Barclays: Your payment of £1,450.00 to BRAMLEY LETTINGS was sent on 01/11/2026. Reference: RENT-NOV.'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: did my rent payment go through?
+        asked_at: '2026-11-04T10:02:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-04T10:02:00'
+        surface: whatsapp
+        text: did my rent payment go through?
+      - at: '2026-11-03T22:00:00'
+        surface: whatsapp
+        text: letting agent says they haven't seen november rent??
+      open_subjects:
+      - label: check November rent payment
+        status: done
+        since: '2026-11-04T10:02:00'
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Rent £1,450 paid on the 1st by standing order
+      - 'Letting agent: Bramley Lettings'
+      calendar:
+      - start: '2026-11-04T10:30:00'
+        end: '2026-11-04T11:00:00'
+        title: Dentist
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T10:02:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T26
+  ticket: About acceptance-criteria matching in code; attention-wise a no-rush answer for a trip next week.
+  tags:
+  - tasks
+  - holdout
+  setup:
+    state:
+      now: '2026-11-03T16:30:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - 'Hyatt Place Austin Downtown, 14–16 Nov: $189/night, free cancellation until 48h before check-in.'
+        - 'Runner-up: Hotel Ella, $199/night, non-refundable rate only.'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: find me a refundable hotel in austin for the 14th-16th under $200 a night, no rush
+        asked_at: '2026-11-03T15:50:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-03T15:50:00'
+        surface: web
+        text: find me a refundable hotel in austin for the 14th-16th under $200 a night, no rush
+      open_subjects:
+      - label: Austin hotel 14–16 Nov
+        status: done
+        since: '2026-11-03T15:50:00'
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Speaking at a conference in Austin 14–15 Nov
+      calendar:
+      - start: '2026-11-14T09:00:00'
+        end: '2026-11-15T17:00:00'
+        title: FinDev Summit, Austin
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: web
+        last_active_at: '2026-11-03T15:51:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T27
+  ticket: The defect is the executor calling an unconfirmed request 'done' (outcome classification), not the Judge's five answers.
+  tags:
+  - tasks
+  - holdout
+  setup:
+    state:
+      now: '2026-11-05T12:10:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: browser_job
+        outcome: done
+        facts:
+        - Submitted a booking at Brat for Sat 7 Nov 20:00, 2 people.
+        source_excerpt: Brat — Thank you. Request received — the restaurant will confirm your booking by email within 24 hours.
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: book a table at Brat saturday 8pm
+        asked_at: '2026-11-05T12:05:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-05T12:05:00'
+        surface: whatsapp
+        text: book a table at Brat saturday 8pm
+      open_subjects:
+      - label: Brat Sat 20:00 for 2
+        status: done
+        since: '2026-11-05T12:05:00'
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - 'Partner: Sam'
+      calendar:
+      - start: '2026-11-07T10:00:00'
+        end: '2026-11-07T11:00:00'
+        title: Parkrun
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T12:05:30'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T28
+  ticket: Bounce on the email GAIA just reported as sent (typo vs the address in memory); the order needs to go out today to arrive by Friday.
+  tags:
+  - tasks
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-04T15:12:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 06:45
+        usual_sleep: '23:00'
+        role: operations lead at a small furniture business
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - 'Delivery failure: message to orders@kelsall-supply.example could not be delivered (address not found).'
+        source_excerpt: 'From: Mail Delivery Subsystem <mailer-daemon@mail.example> Subject: Delivery Status Notification (Failure) — Address not found. Your message wasn''t delivered to orders@kelsall-supply.example because the address couldn''t be found. Original subject: ''PO-3318 — reorder walnut veneer sheets'''
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: email kelsall the reorder for the walnut veneer, we need it by friday
+        asked_at: '2026-11-04T14:58:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-04T14:58:00'
+        surface: whatsapp
+        text: email kelsall the reorder for the walnut veneer, we need it by friday
+      - at: '2026-11-04T13:30:00'
+        surface: whatsapp
+        text: who's on the rota tomorrow
+      open_subjects:
+      - label: reorder walnut veneer from Kelsall (PO-3318)
+        status: done
+        since: '2026-11-04T14:58:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T15:02:00'
+        channel: whatsapp
+        summary: Sent PO-3318 to Kelsall Supplies (orders@kelsall-supply.example)
+        answered: false
+      - at: '2026-11-04T13:30:30'
+        channel: whatsapp
+        summary: 'Tomorrow''s rota: Jo, Marcus, Bea'
+        answered: false
+      memory:
+      - Supplier Kelsall Supplies, contact orders@kelsall-supplies.example
+      - Workshop needs veneer for the Hartley order shipping next week
+      calendar:
+      - start: '2026-11-04T16:00:00'
+        end: '2026-11-04T17:00:00'
+        title: Supplier call — Hartley
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T14:58:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T29
+  ticket: Contradicts the 3pm GAIA told the user this morning (they even planned around it); correction needed well before 15:00.
+  tags:
+  - tasks
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-04T11:00:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: system
+        outcome: info
+        facts:
+        - 'Calendar sync: ''Team standup'' today is 16:00–16:15 (moved by the organiser at 08:40 from 10:00).'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T07:45:00'
+        surface: whatsapp
+        text: thanks. can you block 3-4 for standup prep then
+      open_subjects:
+      - label: morning briefing 4 Nov
+        status: done
+        since: '2026-11-04T07:30:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T07:30:00'
+        channel: whatsapp
+        summary: 'Briefing: 3 meetings today; standup moved to 3pm; rain after 5'
+        answered: true
+      - at: '2026-11-04T07:46:00'
+        channel: whatsapp
+        summary: Blocked 15:00–16:00 'standup prep'
+        answered: false
+      memory:
+      - Runs the team standup on Wednesdays
+      calendar:
+      - start: '2026-11-04T15:00:00'
+        end: '2026-11-04T16:00:00'
+        title: standup prep
+      - start: '2026-11-04T16:00:00'
+        end: '2026-11-04T16:15:00'
+        title: Team standup
+      - start: '2026-11-04T12:00:00'
+        end: '2026-11-04T13:00:00'
+        title: Lunch & learn
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T07:46:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: true
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T30
+  ticket: GAIA sent the proposal to the wrong John; the right one needs it by end of day. Interrupt vs timely is arguable — hours, not minutes.
+  tags:
+  - tasks
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T13:05:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:30
+        usual_sleep: 00:00
+        role: freelance architect
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - 'John Park replied to ''Fernway — Q1 proposal'': ''Hi, I think this wasn''t meant for me? Happy to delete it.'''
+        source_excerpt: 'From: John Park <john.park@parkdesign.example> Subject: Re: Fernway — Q1 proposal. Hi, I think this wasn''t meant for me? Happy to delete it. Best, John'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: send the Q1 proposal to John at Fernway, he needs it by end of day
+        asked_at: '2026-11-05T10:50:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-05T12:30:00'
+        surface: whatsapp
+        text: push my 4pm to tomorrow
+      - at: '2026-11-05T10:50:00'
+        surface: web
+        text: send the Q1 proposal to John at Fernway, he needs it by end of day
+      open_subjects:
+      - label: send Q1 proposal to John (Fernway)
+        status: done
+        since: '2026-11-05T10:50:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T11:02:00'
+        channel: web
+        summary: Sent the Q1 proposal to John (john.park@parkdesign.example)
+        answered: false
+      - at: '2026-11-05T12:31:00'
+        channel: whatsapp
+        summary: Moved 'Pricing sync' to tomorrow 16:00
+        answered: false
+      memory:
+      - John Lee is the procurement lead at Fernway (john.lee@fernway.example)
+      - John Park is an old design-school friend
+      calendar:
+      - start: '2026-11-05T14:00:00'
+        end: '2026-11-05T15:00:00'
+        title: Design review
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T12:31:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T31
+  ticket: Stall detection / heartbeat is rails; the handoff itself is needed within the 20-minute session window.
+  tags:
+  - tasks
+  - dev
+  setup:
+    state:
+      now: '2026-11-06T10:05:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: browser_job
+        outcome: needs_you
+        facts:
+        - The DVLA vehicle tax site is showing a CAPTCHA; the session is paused waiting for it to be solved.
+        - Session expires 20 minutes after the challenge appeared (10:04).
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: renew my car tax on the DVLA site, reg LK19 ABC
+        asked_at: '2026-11-06T10:00:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-06T10:00:00'
+        surface: whatsapp
+        text: renew my car tax on the DVLA site, reg LK19 ABC
+      open_subjects:
+      - label: renew vehicle tax LK19 ABC
+        status: needs_you
+        since: '2026-11-06T10:04:00'
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Car tax for LK19 ABC expires 30 Nov
+      calendar:
+      - start: '2026-11-06T11:00:00'
+        end: '2026-11-06T12:00:00'
+        title: Client workshop
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-06T10:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_1h
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T32
+  ticket: Fraud-claim finding changes an £86k signing at 15:00 and a 14:00 call eats the window; worth interrupting lunch now.
+  tags:
+  - tasks
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-04T13:20:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 06:45
+        usual_sleep: '23:00'
+        role: operations lead at a small furniture business
+      item:
+        producer: executor_task
+        outcome: progress
+        facts:
+        - 'Interim finding: BuildRight Ltd (Co. No. 0981234) is defendant in two active High Court claims alleging fraudulent misrepresentation (filed Jun and Sep 2026).'
+        - Remaining research (accounts, director history, reviews) still running; estimated finish ~15:30.
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: dig into BuildRight Ltd before I sign their contract at 3pm
+        asked_at: '2026-11-04T13:00:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-04T13:02:00'
+        surface: whatsapp
+        text: grabbing lunch
+      - at: '2026-11-04T13:00:00'
+        surface: web
+        text: dig into BuildRight Ltd before I sign their contract at 3pm
+      open_subjects:
+      - label: due diligence on BuildRight Ltd
+        status: running
+        since: '2026-11-04T13:00:00'
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Extending the office; BuildRight quoted £86k for the fit-out
+      calendar:
+      - start: '2026-11-04T14:00:00'
+        end: '2026-11-04T14:45:00'
+        title: Weekly ops call
+      - start: '2026-11-04T15:00:00'
+        end: '2026-11-04T15:30:00'
+        title: BuildRight contract signing
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T13:02:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_today
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T33
+  ticket: Live answer the user just asked for; no world cutoff, so deadline none.
+  tags:
+  - tasks
+  - holdout
+  setup:
+    state:
+      now: '2026-11-05T16:20:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 06:45
+        usual_sleep: '23:00'
+        role: operations lead at a small furniture business
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - 'Compiled 40 grant programmes for small manufacturers (UK + EU), 38 pages: eligibility, amounts (£5k–£500k), deadlines, application effort.'
+        - '6 close before 31 Dec 2026; best fits: Made Smarter Adoption, Innovate UK Smart, Green Business Fund.'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: give me everything you found on the 40 grant programmes
+        asked_at: '2026-11-05T16:19:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-05T16:19:00'
+        surface: whatsapp
+        text: give me everything you found on the 40 grant programmes
+      open_subjects:
+      - label: grant programmes research
+        status: done
+        since: '2026-11-04T09:00:00'
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Furniture workshop, 9 staff
+      calendar: []
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T16:19:00'
+        in_live_chat: true
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T34
+  ticket: The group asked for the booking; time/place are fine to share there (the producer's 'personal' floor is too coarse).
+  tags:
+  - tasks
+  - dev
+  setup:
+    state:
+      now: '2026-11-06T17:13:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - Booked Dishoom Shoreditch tonight 19:45 for 4 via OpenTable (under your name), confirmation OT-55102.
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask:
+        text: '@GAIA book a table for 4 at dishoom tonight'
+        asked_at: '2026-11-06T17:10:00'
+        surface: whatsapp_group:Friday crew
+      recent_user_messages:
+      - at: '2026-11-06T17:10:00'
+        surface: whatsapp_group:Friday crew
+        text: '@GAIA book a table for 4 at dishoom tonight'
+      - at: '2026-11-06T17:08:00'
+        surface: whatsapp_group:Friday crew
+        text: dishoom? I'm starving
+      open_subjects:
+      - label: Dishoom table for 4 tonight
+        status: done
+        since: '2026-11-06T17:10:00'
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - '''Friday crew'' group: user, Jess, Omar, Ravi'
+      - OpenTable connected
+      calendar:
+      - start: '2026-11-06T18:00:00'
+        end: '2026-11-06T18:30:00'
+        title: Gym
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-06T17:10:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T35
+  ticket: Abnormal health results the user asked for and is waiting on (>= timely); GP says non-urgent; soften.
+  tags:
+  - tasks
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T12:40:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: browser_job
+        outcome: done
+        facts:
+        - 'Blood test results (taken 30 Oct) are on the GP portal: ALT 98 U/L (range 7–56), AST 71 U/L (range 8–48); other values normal.'
+        - 'GP comment: ''Raised liver enzymes — please book a non-urgent appointment to discuss.'''
+        source_excerpt: 'Riverside Medical Practice — Patient portal. Test results: Liver function tests. ALT 98 H, AST 71 H. Clinician note: Raised liver enzymes — please book a non-urgent appointment to discuss.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask:
+        text: check my GP portal for my blood test results
+        asked_at: '2026-11-05T12:30:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-05T12:30:00'
+        surface: whatsapp
+        text: check my GP portal for my blood test results
+      - at: '2026-11-05T09:10:00'
+        surface: whatsapp
+        text: order more coffee beans
+      open_subjects:
+      - label: check GP portal blood results
+        status: done
+        since: '2026-11-05T12:30:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T09:11:00'
+        channel: whatsapp
+        summary: Ordered 1kg Origin beans, arriving Fri
+        answered: false
+      memory:
+      - 'GP: Riverside Medical Practice'
+      calendar:
+      - start: '2026-11-05T13:00:00'
+        end: '2026-11-05T14:00:00'
+        title: Lunch with Chloe
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T12:31:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: new
+      sensitivity: health
+      moment: soften
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T36
+  ticket: User is mid-conversation about their father's funeral; a cheerful portfolio update should wait.
+  tags:
+  - tasks
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-06T18:30:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: workflow
+        outcome: done
+        facts:
+        - 'Weekly portfolio: up 3.2% this week to £48,210; best performer: global tech ETF (+5.1%).'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: every friday 6:30pm tell me how my portfolio did this week
+        asked_at: '2026-05-01T18:00:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-06T18:28:00'
+        surface: web
+        text: I just don't know if he'd have wanted the hymn or something more upbeat. mum says the hymn
+      - at: '2026-11-06T18:20:00'
+        surface: web
+        text: can you help me write the order of service for dad's funeral, it's on wednesday
+      - at: '2026-11-06T18:05:00'
+        surface: web
+        text: I keep forgetting things. who do I need to call about his pension
+      open_subjects:
+      - label: weekly portfolio update
+        status: scheduled
+        since: '2026-05-01T18:00:00'
+      - label: funeral order of service
+        status: running
+        since: '2026-11-06T18:20:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-06T18:06:00'
+        channel: web
+        summary: Pension provider contacts for your dad
+        answered: true
+      memory:
+      - Father passed away on 1 Nov 2026
+      - Funeral Wed 11 Nov
+      - Invests via a stocks & shares ISA
+      calendar:
+      - start: '2026-11-11T11:00:00'
+        end: '2026-11-11T13:00:00'
+        title: Funeral — St Mary's
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: web
+        last_active_at: '2026-11-06T18:28:00'
+        in_live_chat: true
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: new
+      sensitivity: finance
+      moment: hold
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T37
+  ticket: User asked to be told on WhatsApp when done (waiting user, >= timely); routing to WhatsApp is rails.
+  tags:
+  - tasks
+  - holdout
+  setup:
+    state:
+      now: '2026-11-04T11:04:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - 'Visa options for a 6-month stay in Portugal: D7 passive-income visa (€3,480/yr income), D8 digital nomad (€3,480/mo), Schengen short-stay not sufficient.'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask:
+        text: research visa options for 6 months in portugal, tell me on whatsapp when it's done
+        asked_at: '2026-11-04T11:00:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-04T11:00:00'
+        surface: web
+        text: research visa options for 6 months in portugal, tell me on whatsapp when it's done
+      open_subjects:
+      - label: Portugal visa options
+        status: done
+        since: '2026-11-04T11:00:00'
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Remote software engineer
+      - Considering a winter in Porto
+      calendar: []
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: web
+        last_active_at: '2026-11-04T11:03:30'
+        in_live_chat: true
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T38
+  ticket: One of many month-end invoices; due 29 Nov, so deadline later; routine and batchable.
+  tags:
+  - tasks
+  - dev
+  setup:
+    state:
+      now: '2026-10-30T15:42:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 06:45
+        usual_sleep: '23:00'
+        role: operations lead at a small furniture business
+      item:
+        producer: trigger
+        outcome: done
+        facts:
+        - 'Invoice from Northgate Timber: £1,284.00, due 29 Nov; filed to Drive /Invoices/2026-10.'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch:
+      - producer: trigger
+        outcome: done
+        facts:
+        - 'Invoice from Brightline Couriers: £96.40, due 14 Nov; filed.'
+        producer_suggested:
+          urgency: routine
+      - producer: trigger
+        outcome: done
+        facts:
+        - 'Invoice from Halden Hardware: £412.75, due 29 Nov; filed.'
+        producer_suggested:
+          urgency: routine
+      ask:
+        text: whenever an invoice email arrives, tell me the amount and file it
+        asked_at: '2026-06-10T09:00:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-10-30T12:10:00'
+        surface: whatsapp
+        text: ugh month end
+      open_subjects:
+      - label: 'invoice arrivals: tell + file'
+        status: scheduled
+        since: '2026-06-10T09:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-10-30T08:05:00'
+        channel: whatsapp
+        summary: 'Invoice: Ashby Paints £220 filed'
+        answered: false
+      - at: '2026-10-30T08:40:00'
+        channel: whatsapp
+        summary: 'Invoice: Corwen Glass £1,050 filed'
+        answered: false
+      - at: '2026-10-30T09:12:00'
+        channel: whatsapp
+        summary: 'Invoice: Ridley Fixings £64 filed'
+        answered: false
+      - at: '2026-10-30T10:03:00'
+        channel: whatsapp
+        summary: 'Invoice: Ofgem-registered energy £388 filed'
+        answered: false
+      - at: '2026-10-30T10:50:00'
+        channel: whatsapp
+        summary: 'Invoice: Pellow Fabrics £2,310 filed'
+        answered: false
+      - at: '2026-10-30T11:31:00'
+        channel: whatsapp
+        summary: 'Invoice: Brook Packaging £177 filed'
+        answered: false
+      - at: '2026-10-30T12:02:00'
+        channel: whatsapp
+        summary: 'Invoice: Tamar Logistics £640 filed'
+        answered: false
+      - at: '2026-10-30T13:15:00'
+        channel: whatsapp
+        summary: 'Invoice: Wexley Varnish £95 filed'
+        answered: false
+      - at: '2026-10-30T14:00:00'
+        channel: whatsapp
+        summary: 'Invoice: Fenby Tools £1,120 filed'
+        answered: false
+      - at: '2026-10-30T14:48:00'
+        channel: whatsapp
+        summary: 'Invoice: Ostler Leather £812 filed'
+        answered: false
+      - at: '2026-10-30T15:20:00'
+        channel: whatsapp
+        summary: 'Invoice: Mirren Print £58 filed'
+        answered: false
+      memory:
+      - Pays suppliers in a weekly batch on Fridays
+      calendar: []
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-10-30T12:10:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T39
+  ticket: £300 saving on a laptop the user said they'd buy this week, ends 19:10 — must land before then, ahead of the trivia.
+  tags:
+  - tasks
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T15:10:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: tracked_todo
+        outcome: done
+        facts:
+        - The Lenovo ThinkPad X1 Carbon Gen 13 recommended yesterday is £1,149 at Currys today (was £1,449).
+        - Deal banner says the price ends at 19:10 today.
+        source_excerpt: 'Currys: FLASH DEAL — Lenovo ThinkPad X1 Carbon Gen 13 £1,149 (save £300). Ends in 04:00:00.'
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch:
+      - producer: inbox_check
+        outcome: info
+        facts:
+        - Tidied 18 emails into the 'Receipts' label.
+        producer_suggested:
+          urgency: routine
+      - producer: workflow
+        outcome: done
+        facts:
+        - 'Newsletter digest: 5 newsletters, top story on Apple''s M6 chips.'
+        producer_suggested:
+          urgency: routine
+      ask:
+        text: find me the best laptop for work under £1,500, I'll buy this week
+        asked_at: '2026-11-04T19:00:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-05T12:00:00'
+        surface: whatsapp
+        text: thanks, will look at laptops tonight probably
+      - at: '2026-11-04T19:00:00'
+        surface: web
+        text: find me the best laptop for work under £1,500, I'll buy this week
+      open_subjects:
+      - label: laptop under £1,500
+        status: done
+        since: '2026-11-04T19:00:00'
+      - label: watch price of recommended laptop
+        status: running
+        since: '2026-11-04T19:40:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T19:40:00'
+        channel: web
+        summary: 'Best pick: ThinkPad X1 Carbon Gen 13, £1,449'
+        answered: true
+      - at: '2026-11-05T09:00:00'
+        channel: whatsapp
+        summary: Labelled 12 receipts
+        answered: false
+      - at: '2026-11-05T10:30:00'
+        channel: whatsapp
+        summary: Spotify Wrapped preview is out
+        answered: false
+      - at: '2026-11-05T11:15:00'
+        channel: whatsapp
+        summary: Unsubscribed from 3 promo lists
+        answered: false
+      - at: '2026-11-05T12:05:00'
+        channel: whatsapp
+        summary: Weather turns cold this weekend
+        answered: false
+      - at: '2026-11-05T13:40:00'
+        channel: whatsapp
+        summary: 2 new LinkedIn connection requests
+        answered: false
+      - at: '2026-11-05T14:50:00'
+        channel: whatsapp
+        summary: Cleared 30 old calendar invites
+        answered: false
+      memory:
+      - Old laptop battery is dying
+      - Prefers ThinkPads
+      calendar: []
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        max_unsolicited_per_day: 6
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T12:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: tasks-T40
+  ticket: 'GAIA-created nudge suggestion, no deadline: routine as-if-new; back-off on ignored proposals is rails.'
+  tags:
+  - tasks
+  - holdout
+  setup:
+    state:
+      now: '2026-11-06T10:00:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a 60-person fintech
+      item:
+        producer: tracked_todo
+        outcome: needs_you
+        facts:
+        - Sam Whitlow hasn't replied to the partnership email sent 3 Nov.
+        - 'Suggested nudge drafted: ''Hi Sam, just bumping this — any thoughts on the pilot terms?'''
+        producer_suggested:
+          urgency: routine
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T17:00:00'
+        surface: whatsapp
+        text: what's my first meeting tomorrow
+      open_subjects:
+      - label: nudge Sam if no reply in 3 days (created by GAIA)
+        status: running
+        since: '2026-11-03T11:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-10-27T10:00:00'
+        channel: whatsapp
+        summary: Priya hasn't replied in 3 days — want me to nudge her?
+        answered: false
+      - at: '2026-10-31T10:00:00'
+        channel: whatsapp
+        summary: No reply from Marco yet — send a nudge?
+        answered: false
+      - at: '2026-11-05T17:00:20'
+        channel: whatsapp
+        summary: 'First meeting tomorrow: 09:30 design sync'
+        answered: false
+      memory:
+      - Sam Whitlow is BD lead at Corvel
+      calendar: []
+      attention_settings:
+        quiet_hours: 23:00-07:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T17:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision

@@ -70,6 +70,11 @@ def test_the_closed_vocabularies_are_exactly_these() -> None:
         "user_muted",
         "not_watching",
         "expired",
+        "already_known",
+        "moot",
+        "superseded",
+        "duplicate",
+        "unwanted",
     }
     assert _values(ItemFailure) == {
         "no_destination",

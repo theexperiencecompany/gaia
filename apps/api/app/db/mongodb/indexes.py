@@ -17,6 +17,7 @@ from app.constants.outbox import (
     ITEMS_COLLECTION,
     MESSAGES_COLLECTION,
 )
+from app.constants.outbox_judge import ATTENTION_PROFILES_COLLECTION
 from app.constants.payments import CLAIMED_STATUS
 from app.constants.run_trace import (
     CALL_PAYLOADS_COLLECTION,
@@ -1641,14 +1642,15 @@ async def create_llm_call_indexes() -> None:
 
 
 async def create_outbox_indexes() -> None:
-    """Create indexes for the outbox: items and the message ledger.
+    """Create indexes for the outbox: items, the message ledger and the attention profiles.
 
-    The unique pairs are the idempotency gates: one item per report and one message per
-    compose attempt. The series index serves what earlier runs of one producer were told;
-    the sent-at order serves the later flush and ledger reads. Both collections expire on expires_at.
+    The unique pairs are the idempotency gates: one item per report, one message per compose
+    attempt and one profile per user. The partial indexes serve the series, the Judge's reads
+    and the later flush; the sent-at order serves the ledger. Items and messages expire.
     """
     items = get_async_collection(ITEMS_COLLECTION)
     messages = get_async_collection(MESSAGES_COLLECTION)
+    profiles = get_async_collection(ATTENTION_PROFILES_COLLECTION)
     try:
         await asyncio.gather(
             items.create_index([("user_id", 1), ("report_id", 1)], unique=True),
@@ -1661,7 +1663,25 @@ async def create_outbox_indexes() -> None:
                 [("user_id", 1), ("report.subject.series", 1), ("report.occurred_at", -1)],
                 partialFilterExpression={"report.subject.series": {"$type": "string"}},
             ),
+            items.create_index([("user_id", 1), ("state", 1), ("created_at", -1)]),
+            items.create_index(
+                [("user_id", 1), ("report.subject.owner_conversation_id", 1)],
+                partialFilterExpression={
+                    "report.subject.owner_conversation_id": {"$type": "string"}
+                },
+            ),
+            items.create_index(
+                [("user_id", 1), ("created_at", -1)],
+                name="judge_raised_interrupts",
+                partialFilterExpression={"judgement.raised_interrupt": True},
+            ),
+            items.create_index(
+                [("user_id", 1), ("created_at", -1)],
+                name="judge_waits",
+                partialFilterExpression={"judgement.verdict.wait_for_run": {"$type": "string"}},
+            ),
             items.create_index("expires_at", expireAfterSeconds=0),
+            profiles.create_index("user_id", unique=True),
             messages.create_index([("user_id", 1), ("compose_attempt_id", 1)], unique=True),
             messages.create_index([("user_id", 1), ("sent_at", -1)]),
             messages.create_index("expires_at", expireAfterSeconds=0),

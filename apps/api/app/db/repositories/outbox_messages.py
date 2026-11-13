@@ -58,6 +58,16 @@ class OutboxMessagesRepository(UserScopedRepository[OutboxMessageDocument, Outbo
         )
         return settled is not None
 
+    async def sent_since(
+        self, user_id: str, since: datetime, *, limit: int
+    ) -> list[OutboxMessageDocument]:
+        """Return what GAIA told the user since the cutoff, newest first."""
+        return await self._find(
+            {"user_id": user_id, "state": MessageState.SENT.value, "sent_at": {"$gte": since}},
+            sort=[("sent_at", -1)],
+            limit=limit,
+        )
+
     async def recent_sent(self, user_id: str, *, limit: int) -> list[OutboxMessageDocument]:
         """Return the user's latest sent messages, newest first."""
         return await self._find(

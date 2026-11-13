@@ -1,0 +1,53 @@
+{
+  "learned_from": "answers the user gave to occasional calibration questions and to GAIA's 'was that the right call?' check-ins",
+  "answers": [
+    {
+      "q": "If another app or person already alerted you about something (bank SMS, PagerDuty call, airline app, a colleague) and you saw or acknowledged it, should I also tell you?",
+      "a": "No, don't repeat it. Only tell me if you have something they didn't, or if I clearly haven't seen it."
+    },
+    {
+      "q": "If you can see I've already done the thing a reminder or nudge is about, should it still go off?",
+      "a": "No. Just skip it. Reminders I set are for things I haven't done yet."
+    },
+    {
+      "q": "When something newer replaces an older update (a newer email, a cancelled request, an approval I already gave elsewhere), what should happen to the old one?",
+      "a": "Drop the old one, only tell me the latest state."
+    },
+    {
+      "q": "What is worth waking you up or interrupting a meeting for?",
+      "a": "Family health or safety, my home (leaks, alarms), money actually leaving or being blocked, travel on the day of travel, a person waiting on me right now, a hard deadline that closes before I'd normally see it, and anything I explicitly said to ping me the moment it happens."
+    },
+    {
+      "q": "If a deadline closes before you'd normally check your messages, do you want to hear about it in time even if it's early or late?",
+      "a": "Yes, always in time. Missing a real deadline is worse than an extra message."
+    },
+    {
+      "q": "During a call or meeting, what should come through?",
+      "a": "Only things about that meeting or the people in it, or real emergencies. Everything else after."
+    },
+    {
+      "q": "When you ask me to watch something or ping you when it changes, do you want it straight away?",
+      "a": "Yes, that's why I asked. If I said 'the moment', even at night."
+    },
+    {
+      "q": "Money alerts: which ones matter?",
+      "a": "Fraud checks, failed or declined payments, anything that triggers a late fee or service cut-off, and large unexpected debits. Routine statements and small receipts can wait for the summary."
+    },
+    {
+      "q": "Deals, price drops, newsletters?",
+      "a": "Only for things I'm actively watching, and only if I can still act. Otherwise batch them or skip."
+    },
+    {
+      "q": "Mistakes you make on my behalf (wrong recipient, wrong booking)?",
+      "a": "Tell me as soon as you notice, while it can still be fixed."
+    },
+    {
+      "q": "Anything private you should be careful with on my lock screen or in groups?",
+      "a": "Health, money, and anything about family or relationships. Keep previews generic."
+    },
+    {
+      "q": "Weekends and holidays?",
+      "a": "Keep work out unless it's an emergency or something I'm waiting on. Personal and family things are fine."
+    }
+  ]
+}

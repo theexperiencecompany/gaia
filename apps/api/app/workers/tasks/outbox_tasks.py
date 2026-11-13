@@ -10,8 +10,10 @@ from app.services.outbox.models import NoticeReport, OutboxReport, RunReport
 _REPORT: TypeAdapter[RunReport | NoticeReport] = TypeAdapter(OutboxReport)
 
 
-async def outbox_intake(_ctx: Mapping[str, object], report: Mapping[str, object]) -> str:
+async def outbox_intake(
+    _ctx: Mapping[str, object], report: Mapping[str, object], batched: bool = False
+) -> str:
     """Validate the submitted report and run it through intake; a malformed payload raises."""
     parsed = _REPORT.validate_python(report)
-    await process_report(parsed)
+    await process_report(parsed, batched=batched)
     return parsed.report_id

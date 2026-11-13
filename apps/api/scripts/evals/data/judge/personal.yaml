@@ -1,0 +1,3281 @@
+- id: personal-P01
+  ticket: Sick child waiting at school for a parent; beats the meeting and any message budget.
+  tags:
+  - personal
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-10T11:10:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - 'Email from the school health office about Aarav: fever of 39°C, asking a parent to pick him up.'
+        source_excerpt: 'From: Joanne Pruitt, RN <health.office@maplegrove.school.example>
+
+          Subject: Aarav Varma - please pick up
+
+
+          Hi Ms. Varma, Aarav came to the office at 10:55 feeling unwell. His temperature is 39.0°C. Per board policy he needs to go home. Please come to the front office to pick him up as soon as you can, or call us at 416-555-0142 if someone else will collect him. He is resting in the health room.
+
+
+          Joanne Pruitt, School Nurse'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-10T08:02:00'
+        surface: whatsapp
+        text: morning! what's on today
+      - at: '2026-11-10T09:40:00'
+        surface: whatsapp
+        text: push my 4pm with Lena to tomorrow if she's free
+      - at: '2026-11-10T10:12:00'
+        surface: whatsapp
+        text: thanks. also add oat milk to the grocery list
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-10T08:03:00'
+        channel: whatsapp
+        summary: 'Morning briefing: 4 meetings, rain after 3pm'
+        answered: true
+      - at: '2026-11-10T09:00:00'
+        channel: whatsapp
+        summary: Package from Indigo arriving today
+        answered: false
+      - at: '2026-11-10T09:30:00'
+        channel: whatsapp
+        summary: 'Hydro bill posted: $84.20'
+        answered: false
+      - at: '2026-11-10T09:45:00'
+        channel: whatsapp
+        summary: Lena accepted the move to Wed 4pm
+        answered: true
+      - at: '2026-11-10T10:20:00'
+        channel: whatsapp
+        summary: Grocery list updated
+        answered: false
+      - at: '2026-11-10T11:00:00'
+        channel: whatsapp
+        summary: New newsletter from Figma Config
+        answered: false
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Kabir works on-site in Hamilton on Tuesdays
+      - Office is 20 minutes from the school
+      calendar:
+      - start: '2026-11-10T11:00:00'
+        end: '2026-11-10T12:00:00'
+        title: Sprint review (Design + Eng)
+      - start: '2026-11-10T13:00:00'
+        end: '2026-11-10T13:30:00'
+        title: 1:1 with Marcus
+      - start: '2026-11-10T18:00:00'
+        end: '2026-11-10T19:00:00'
+        title: Yoga
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-10T10:12:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: health
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P02
+  ticket: Live planning around a trip that is now cancelled; world cutoff is the ~09:00 departure (after wake), so deadline later.
+  tags:
+  - personal
+  - holdout
+  setup:
+    state:
+      now: '2026-11-14T23:40:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - School emailed that tomorrow's Grade 3 zoo trip is cancelled.
+        source_excerpt: 'From: Maple Grove PS Office <office@maplegrove.school.example>
+
+          Subject: CANCELLED - Sunday Grade 3 Family Zoo Trip
+
+
+          Dear families, due to the forecast freezing rain the Grade 3 family trip to the Toronto Zoo planned for Sunday Nov 15 (meet 9:30 at the main gate) is cancelled. We will share a new date soon. Refunds will be processed automatically.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-14T23:31:00'
+        surface: whatsapp
+        text: 'ok so tomorrow: zoo with aarav in the morning, then lunch at mom''s. what time should we leave to make 9:30 at the zoo?'
+      - at: '2026-11-14T23:36:00'
+        surface: whatsapp
+        text: and remind me to pack the thermos
+      - at: '2026-11-14T19:05:00'
+        surface: whatsapp
+        text: order pizza from the usual place
+      open_subjects:
+      - label: planning Sunday
+        status: open
+        since: '2026-11-14T23:31:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-14T19:07:00'
+        channel: whatsapp
+        summary: Pizza ordered, ETA 19:45
+        answered: true
+      - at: '2026-11-14T23:37:00'
+        channel: whatsapp
+        summary: 'Reminder set: pack thermos, Sun 08:30'
+        answered: false
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Sunday lunches are usually at Mom's place in Mississauga
+      calendar:
+      - start: '2026-11-15T09:30:00'
+        end: '2026-11-15T12:30:00'
+        title: Zoo trip - Aarav's class
+      - start: '2026-11-15T13:00:00'
+        end: '2026-11-15T15:00:00'
+        title: Lunch at Mom's
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-14T23:36:00'
+        in_live_chat: true
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P03
+  ticket: Only the Monday permission slip matters; no same-day pressure, fits a check-in before Monday.
+  tags:
+  - personal
+  - dev
+  setup:
+    state:
+      now: '2026-11-13T15:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - Weekly school newsletter arrived (bake sale, library week, lost & found, Grade 3 permission slip).
+        source_excerpt: 'From: Maple Grove PS <newsletter@maplegrove.school.example>
+
+          Subject: Maple Grove Weekly - Nov 13
+
+
+          Principal''s note: thank you to everyone who came to Curriculum Night!
+
+          Bake sale Thursday - nut-free please.
+
+          Library Week starts Nov 23.
+
+          Lost & found will be donated Nov 27.
+
+          Grade 3: Please sign and return the Science Centre permission slip (attached) by Monday Nov 16. Students without a signed slip cannot attend.
+
+          Spirit day: Wear green next Friday.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-13T12:20:00'
+        surface: whatsapp
+        text: 'lunch order: the falafel bowl please'
+      - at: '2026-11-13T14:10:00'
+        surface: whatsapp
+        text: what's the weather for the weekend
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-13T12:22:00'
+        channel: whatsapp
+        summary: Falafel bowl ordered
+        answered: true
+      - at: '2026-11-13T14:11:00'
+        channel: whatsapp
+        summary: 'Weekend: Sat sunny 6°C, Sun freezing rain'
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      calendar:
+      - start: '2026-11-13T15:30:00'
+        end: '2026-11-13T16:30:00'
+        title: Design crit
+      - start: '2026-11-14T10:00:00'
+        end: '2026-11-14T11:00:00'
+        title: Kiara swim lesson
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-13T14:10:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P04
+  ticket: 'Departure is ~40 min away: needs to land now but is not an emergency; personal (routine checkup, not a health matter).'
+  tags:
+  - personal
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-14T14:30:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: workflow
+        outcome: info
+        facts:
+        - 'Upcoming event in 60 minutes: ''Dentist - Aarav'' at 15:30, Bloor Family Dental, 1820 Bloor St W.'
+        source_excerpt: 'Calendar event: Dentist - Aarav
+
+          When: Sat Nov 14 15:30-16:15
+
+          Where: Bloor Family Dental, 1820 Bloor St W
+
+          Notes: 6-month cleaning'
+        producer_suggested:
+          urgency: timely
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-14T10:40:00'
+        surface: whatsapp
+        text: swim done, heading home
+      - at: '2026-11-14T12:15:00'
+        surface: whatsapp
+        text: find a recipe for veggie pad thai
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-14T12:17:00'
+        channel: whatsapp
+        summary: Veggie pad thai recipe
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Home is about 20 minutes' drive from Bloor St W
+      calendar:
+      - start: '2026-11-14T15:30:00'
+        end: '2026-11-14T16:15:00'
+        title: Dentist - Aarav
+      - start: '2026-11-14T19:00:00'
+        end: '2026-11-14T22:00:00'
+        title: Dinner at the Okafors'
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-14T12:15:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_1h
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P05
+  ticket: User-set reminder for this time, but the user said two minutes ago they are leaving to pick the kids up.
+  tags:
+  - personal
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-11T14:52:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: reminder
+        outcome: info
+        facts:
+        - 'User reminder: ''pick up kids at 15:00''.'
+        source_excerpt: 'Reminder created by user on 2026-11-09: "pick up kids at 15:00" (Wed, one-off)'
+        producer_suggested:
+          urgency: interrupt
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-11T14:50:00'
+        surface: whatsapp
+        text: leaving now to grab the kids, what's for dinner?
+      - at: '2026-11-11T11:30:00'
+        surface: whatsapp
+        text: cancel my 2pm, i'm working from home today
+      open_subjects:
+      - label: dinner idea
+        status: open
+        since: '2026-11-11T14:50:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-11T11:31:00'
+        channel: whatsapp
+        summary: 2pm design sync cancelled
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      calendar:
+      - start: '2026-11-11T16:00:00'
+        end: '2026-11-11T16:30:00'
+        title: Kiara - piano
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-11T14:50:00'
+        in_live_chat: true
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: already_known
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P06
+  ticket: User's own medication reminder at its set time; being at dinner does not change it.
+  tags:
+  - personal
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-12T20:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: reminder
+        outcome: info
+        facts:
+        - 'Daily user reminder: ''take antibiotics'' (day 4 of 7).'
+        source_excerpt: 'Reminder created by user on 2026-11-09: "take antibiotics" daily at 20:00 until 2026-11-15'
+        producer_suggested:
+          urgency: interrupt
+          sensitivity: health
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-11T21:10:00'
+        surface: whatsapp
+        text: done, took it
+      - at: '2026-11-11T07:45:00'
+        surface: whatsapp
+        text: what's the traffic on the 401
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-11T20:00:00'
+        channel: whatsapp
+        summary: 'Reminder: take antibiotics'
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Started a 7-day course of amoxicillin on Nov 9
+      calendar:
+      - start: '2026-11-12T19:00:00'
+        end: '2026-11-12T21:00:00'
+        title: Dinner with the Mehtas
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-11T21:10:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: health
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P07
+  ticket: No deadline, fine tonight if budget allows; health topic, so neutral careful wording and generic preview.
+  tags:
+  - personal
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-13T21:30:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - Clinic says lab results are available in the patient portal.
+        source_excerpt: 'From: Danforth Medical Clinic <noreply@danforthmedical.example>
+
+          Subject: New results available
+
+
+          Hello Neha, new results have been posted to your patient portal. Log in at portal.danforthmedical.example to view them. If your doctor needs to discuss them, the clinic will contact you. Please do not reply to this email.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-13T18:40:00'
+        surface: whatsapp
+        text: kids are in bed early, finally
+      - at: '2026-11-13T18:42:00'
+        surface: whatsapp
+        text: any good documentaries on netflix?
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-13T18:44:00'
+        channel: whatsapp
+        summary: 3 documentary picks
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Had blood work done on Nov 10 (annual physical)
+      calendar:
+      - start: '2026-11-14T10:00:00'
+        end: '2026-11-14T11:00:00'
+        title: Kiara swim lesson
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-13T18:42:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: new
+      sensitivity: health
+      moment: soften
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P08
+  ticket: Third identical daily email for the same filled prescription already delivered; same real-world fact (already_known also defensible).
+  tags:
+  - personal
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-12T10:05:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - 'Pharmacy email: prescription ready for pickup at Shoppers on College St.'
+        source_excerpt: 'From: Shoppers Pharmacy <rx@shoppers-pharmacy.example>
+
+          Subject: Your prescription is ready
+
+
+          Hi NEHA, your prescription (Rx #4471902) is ready for pickup at College & Spadina. Prescriptions not picked up within 10 days of being filled are returned to stock. Filled: Nov 10.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: health
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-11T08:15:00'
+        surface: whatsapp
+        text: will grab it later this week
+      - at: '2026-11-12T09:20:00'
+        surface: whatsapp
+        text: book a haircut for saturday morning
+      open_subjects:
+      - label: prescription pickup at Shoppers
+        status: open
+        since: '2026-11-10T10:04:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-10T10:04:00'
+        channel: whatsapp
+        summary: Prescription ready for pickup at Shoppers College & Spadina (held 10 days)
+        answered: false
+      - at: '2026-11-11T08:10:00'
+        channel: whatsapp
+        summary: 'Reminder from yesterday: prescription waiting at Shoppers'
+        answered: true
+      - at: '2026-11-12T09:22:00'
+        channel: whatsapp
+        summary: Haircut booked Sat 10:30
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      calendar:
+      - start: '2026-11-12T12:00:00'
+        end: '2026-11-12T13:00:00'
+        title: Lunch with Asha
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-12T09:20:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: duplicate
+      sensitivity: health
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P09
+  ticket: User's own ask, but it's bad health news and the kids are audibly in the car on the voice call; hold or ask before speaking.
+  tags:
+  - personal
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-09T08:15:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - Retrieved skin biopsy pathology report from the clinic portal, as the user asked on Friday.
+        - 'Report summary: atypical melanocytic cells; dermatologist recommends a follow-up excision.'
+        source_excerpt: 'Danforth Dermatology - Pathology report (posted Nov 8)
+
+          Specimen: left shoulder shave biopsy
+
+          Diagnosis: Atypical (dysplastic) melanocytic nevus with moderate atypia. Margins involved.
+
+          Recommendation: Re-excision with 5 mm margins. Please book a follow-up.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: health
+      other_items_in_batch: []
+      ask:
+        text: when my biopsy results show up on the portal, pull them and tell me what they say
+        at: '2026-11-06T17:20:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-09T08:05:00'
+        surface: voice
+        text: hey gaia, I'm driving Aarav and Kiara to school, quick rundown of my day?
+      - at: '2026-11-09T08:11:00'
+        surface: voice
+        text: kids say hi! ok what's after the 10 o'clock
+      - at: '2026-11-09T08:13:00'
+        surface: voice
+        text: Kiara wants to know if it'll snow today
+      open_subjects: []
+      pending_asks:
+      - label: biopsy results
+        asked_at: '2026-11-06T17:20:00'
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      calendar:
+      - start: '2026-11-09T10:00:00'
+        end: '2026-11-09T11:00:00'
+        title: Roadmap review
+      - start: '2026-11-09T11:30:00'
+        end: '2026-11-09T12:00:00'
+        title: Hiring sync
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: voice
+        last_active_at: '2026-11-09T08:13:00'
+        in_live_chat: false
+        in_voice_call: true
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: new
+      sensitivity: health
+      moment: hold
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P10
+  ticket: Therapy cancelled; useful until she leaves ~08:15, which is after her 06:30 wake, so deadline later; no need to wake her.
+  tags:
+  - personal
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-15T22:30:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - Therapist cancels tomorrow's 9:00 session.
+        source_excerpt: 'From: Dr. Hannah Lowe <hannah@lowepsychotherapy.example>
+
+          Subject: Tomorrow''s session
+
+
+          Hi Neha, I''m so sorry, I have to cancel our 9:00 session tomorrow (Monday) due to a family matter. I''ll send some options to reschedule this week. Take care, Hannah'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-15T20:55:00'
+        surface: whatsapp
+        text: goodnight, early start tomorrow
+      - at: '2026-11-15T17:30:00'
+        surface: whatsapp
+        text: add dish soap to the list
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-15T17:31:00'
+        channel: whatsapp
+        summary: Grocery list updated
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Weekly therapy with Dr. Hannah Lowe on Mondays 9:00, in person on Danforth Ave
+      - On Mondays leaves home around 08:15 after school drop-off arrangements
+      calendar:
+      - start: '2026-11-16T09:00:00'
+        end: '2026-11-16T09:50:00'
+        title: Therapy
+      - start: '2026-11-16T11:00:00'
+        end: '2026-11-16T12:00:00'
+        title: Team standup + planning
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-15T20:55:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: new
+      sensitivity: health
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P11
+  ticket: Nothing time-bound in the summary; the user is anxious and talking about their father, so not now.
+  tags:
+  - personal
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-11T23:55:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: workflow
+        outcome: done
+        facts:
+        - 'Weekly spending summary: $1,284 spent this week, 18% over the usual; biggest category groceries.'
+        source_excerpt: 'Spending summary (Nov 5 - Nov 11): total $1,284.40; groceries $412.10; dining $186.50; transport $96.00; other $589.80.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: finance
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-11T23:50:00'
+        surface: whatsapp
+        text: can't sleep. dad's surgery is tomorrow morning
+      - at: '2026-11-11T23:52:00'
+        surface: whatsapp
+        text: they said it's routine but he's 71 and I keep thinking about it
+      - at: '2026-11-11T23:54:00'
+        surface: whatsapp
+        text: sorry. just needed to say it to someone
+      open_subjects:
+      - label: conversation about dad's surgery
+        status: open
+        since: '2026-11-11T23:50:00'
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - 'Father: Ramesh Rao, 71, bypass surgery scheduled Nov 12 at Sunnybrook'
+      calendar:
+      - start: '2026-11-12T07:30:00'
+        end: '2026-11-12T12:00:00'
+        title: Dad - surgery at Sunnybrook
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-11T23:54:00'
+        in_live_chat: true
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: new
+      sensitivity: finance
+      moment: hold
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P12
+  ticket: User-set reminder at its time, but the grandmother died last week; moot, and grief makes it health-sensitive.
+  tags:
+  - personal
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-18T09:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: reminder
+        outcome: info
+        facts:
+        - 'Yearly user reminder: ''Grandma''s birthday - call her''.'
+        source_excerpt: 'Reminder created by user on 2023-11-02: "Grandma''s birthday - call her" yearly on Nov 18 at 09:00'
+        producer_suggested:
+          urgency: interrupt
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-11T22:14:00'
+        surface: whatsapp
+        text: nani passed away last night. we're flying to Delhi for the cremation
+      - at: '2026-11-17T19:30:00'
+        surface: whatsapp
+        text: back home. kids are back at school tomorrow
+      - at: '2026-11-18T07:50:00'
+        surface: whatsapp
+        text: remind me to call the school about aarav's missed homework
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-17T19:32:00'
+        channel: whatsapp
+        summary: Welcome back; 3 items waiting from this week
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Grandmother (Nani), Kamala Devi, lived in Delhi; died Nov 10, 2026
+      - User calls Nani every Sunday
+      calendar:
+      - start: '2026-11-18T10:00:00'
+        end: '2026-11-18T11:00:00'
+        title: Design review
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-18T07:50:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_today
+      relevance: moot
+      sensitivity: health
+      moment: hold
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P13
+  ticket: Happy news from Asha, not yet public; no clock on it.
+  tags:
+  - personal
+  - holdout
+  setup:
+    state:
+      now: '2026-11-10T14:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - Close friend Asha emailed that she got engaged.
+        source_excerpt: 'From: Asha Menon <asha.menon@mailbox.example>
+
+          Subject: WE''RE ENGAGED!!
+
+
+          Neha!!! Dev proposed on Saturday at the lake!! I wanted you to hear it from me before it goes on Instagram. Call me when you can, I want to tell you everything. xoxo'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-10T12:30:00'
+        surface: whatsapp
+        text: what's left on my afternoon
+      - at: '2026-11-10T09:10:00'
+        surface: whatsapp
+        text: order more printer paper
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-10T12:31:00'
+        channel: whatsapp
+        summary: 'Afternoon: 2 meetings, 1 focus block'
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - 'Best friend since university: Asha Menon'
+      calendar:
+      - start: '2026-11-10T14:00:00'
+        end: '2026-11-10T15:00:00'
+        title: Focus block
+      - start: '2026-11-10T15:00:00'
+        end: '2026-11-10T15:30:00'
+        title: Vendor call
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-10T12:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: new
+      sensitivity: third_party_private
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P14
+  ticket: Bad news about something she said mattered; no deadline, deliver on its own and with care.
+  tags:
+  - personal
+  - dev
+  setup:
+    state:
+      now: '2026-11-09T08:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - 'University emailed an admission decision for the part-time Master of Design program: not admitted.'
+        source_excerpt: 'From: Graduate Admissions <admissions@lakeshore-university.example>
+
+          Subject: Your application to the Master of Design (Part-time)
+
+
+          Dear Neha Varma, thank you for applying. After careful review, we regret to inform you that we are unable to offer you admission for the Winter 2027 intake. The committee received an exceptionally strong pool of applicants this year...'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch:
+      - producer: workflow
+        outcome: info
+        facts:
+        - 'Weather today: 4°C, cloudy, light rain after 4pm'
+      - producer: inbox_check
+        outcome: info
+        facts:
+        - Amazon package arriving today
+      - producer: workflow
+        outcome: info
+        facts:
+        - 'Morning briefing: 3 meetings today'
+      - producer: inbox_check
+        outcome: info
+        facts:
+        - 'Library hold ready: ''The Design of Everyday Things'''
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-08T21:40:00'
+        surface: whatsapp
+        text: decision on the MDes is supposed to come this week. I really want this one
+      - at: '2026-11-08T21:45:00'
+        surface: whatsapp
+        text: ok goodnight
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Applied to Lakeshore University's part-time Master of Design in September; said it's the program she most wants
+      - Spent 3 months on the portfolio for the application
+      calendar:
+      - start: '2026-11-09T09:30:00'
+        end: '2026-11-09T10:00:00'
+        title: Standup
+      - start: '2026-11-09T13:00:00'
+        end: '2026-11-09T14:00:00'
+        title: Usability test readout
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-08T21:45:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: new
+      sensitivity: personal
+      moment: soften
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P15
+  ticket: Answer to her own pending ask (>= timely); surprise for someone who is with her now, so nothing revealing on the lock screen.
+  tags:
+  - personal
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-12T20:30:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - 'Found 3 birthday gift options for Priya under $50: a ceramic pour-over set ($42), a personalised star map print ($38), a botanical candle trio ($35).'
+        source_excerpt: 'Shortlist:
+
+          1. Hario-style ceramic pour-over set - $42 - ships in 2 days
+
+          2. Custom star map print (night of her birth) - $38 - ships in 5 days
+
+          3. Botanical soy candle trio - $35 - ships in 3 days'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask:
+        text: find a surprise birthday gift for Priya under $50, she can't find out
+        at: '2026-11-12T16:05:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-12T16:05:00'
+        surface: whatsapp
+        text: find a surprise birthday gift for Priya under $50, she can't find out
+      - at: '2026-11-12T18:50:00'
+        surface: whatsapp
+        text: Priya's coming over for dinner, phone's going on silent
+      open_subjects: []
+      pending_asks:
+      - label: gift for Priya
+        asked_at: '2026-11-12T16:05:00'
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - 'Sister: Priya Rao; birthday Nov 22'
+      - Priya loves coffee and plants
+      calendar:
+      - start: '2026-11-12T19:00:00'
+        end: '2026-11-12T22:00:00'
+        title: Dinner - Priya over
+      - start: '2026-11-21T19:00:00'
+        end: '2026-11-21T22:00:00'
+        title: Priya's birthday dinner
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-12T18:50:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: new
+      sensitivity: social_private
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P16
+  ticket: Confirmation of her pending booking ask (>= timely); the scenario is about the shared iPad, a routing decision.
+  tags:
+  - personal
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-11T19:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - Booked an STI screening appointment at Bay Street Sexual Health Clinic for Thu Nov 19 at 17:30.
+        source_excerpt: 'Bay Street Sexual Health Clinic - Booking confirmed
+
+          Service: STI screening (full panel)
+
+          Date: Thu Nov 19, 17:30
+
+          Ref: BSC-88213'
+        producer_suggested:
+          urgency: routine
+          sensitivity: health
+      other_items_in_batch: []
+      ask:
+        text: book me an STI screening at the Bay St clinic, any evening next week
+        at: '2026-11-11T12:40:00'
+        surface: web
+      recent_user_messages:
+      - at: '2026-11-11T12:40:00'
+        surface: web
+        text: book me an STI screening at the Bay St clinic, any evening next week
+      open_subjects: []
+      pending_asks:
+      - label: clinic booking
+        asked_at: '2026-11-11T12:40:00'
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Web account is also logged in on the family iPad in the kitchen
+      calendar:
+      - start: '2026-11-11T19:00:00'
+        end: '2026-11-11T20:00:00'
+        title: Family dinner
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: web
+        last_active_at: '2026-11-11T12:41:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: new
+      sensitivity: health
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P17
+  ticket: Answer to a pending ask made 25 minutes ago (>= timely); delivery timing is a rails question.
+  tags:
+  - personal
+  - holdout
+  setup:
+    state:
+      now: '2026-11-12T01:55:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - 'Mattress research done: top pick under $800 is a hybrid queen at $749 with a 100-night trial; two alternatives listed.'
+        source_excerpt: 'Comparison: 1) Haven Hybrid Queen $749 (100-night trial) 2) CloudFoam Queen $629 3) Birchline Latex $795'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask:
+        text: research the best mattress under $800
+        at: '2026-11-12T01:30:00'
+        surface: telegram
+      recent_user_messages:
+      - at: '2026-11-12T01:30:00'
+        surface: telegram
+        text: research the best mattress under $800
+      - at: '2026-11-12T01:32:00'
+        surface: telegram
+        text: back is killing me on this one lol
+      open_subjects: []
+      pending_asks:
+      - label: mattress research
+        asked_at: '2026-11-12T01:30:00'
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: telegram
+        last_active_at: '2026-11-12T01:32:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P18
+  ticket: Must reach her after she wakes (~06:30) and before the 07:30 school run; no reason to wake her.
+  tags:
+  - personal
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-24T05:45:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - 'School board email: all schools closed today due to snow.'
+        source_excerpt: 'From: Toronto Region School Board <alerts@trsb.example>
+
+          Subject: All schools closed today, Tuesday November 24
+
+
+          Due to severe winter weather, all schools and board offices are closed today. Buses are cancelled. Before- and after-school programs at schools are also cancelled.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-23T21:20:00'
+        surface: whatsapp
+        text: night! alarm's at 6:30
+      - at: '2026-11-23T19:00:00'
+        surface: whatsapp
+        text: pack lunches list for tomorrow?
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-23T19:02:00'
+        channel: whatsapp
+        summary: Lunch ideas for tomorrow
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Leaves for the school run around 07:30 on weekdays
+      - Usually picks up the phone shortly after waking
+      calendar:
+      - start: '2026-11-24T09:30:00'
+        end: '2026-11-24T10:00:00'
+        title: Standup
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-23T21:20:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - wake_time
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P19
+  ticket: User configured a daily 9:00 work-email digest; a Saturday run is still what they asked for.
+  tags:
+  - personal
+  - dev
+  setup:
+    state:
+      now: '2026-11-14T09:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: workflow
+        outcome: done
+        facts:
+        - 'Work-email digest: 7 new emails since yesterday; 1 from manager about Monday''s roadmap review, 2 calendar updates, 4 newsletters.'
+        source_excerpt: 'Digest (Fri 09:00 - Sat 09:00): Marcus Lee - ''Roadmap review Monday, pls bring the onboarding flows''; Jira - 2 issues assigned; Calendar - Design crit moved; 4 newsletters.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-02T08:30:00'
+        surface: whatsapp
+        text: every day at 9 send me my work-email digest
+      - at: '2026-11-14T08:20:00'
+        surface: whatsapp
+        text: pancakes or waffles for the kids?
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-13T09:00:00'
+        channel: whatsapp
+        summary: Work-email digest (Fri)
+        answered: false
+      - at: '2026-11-14T08:21:00'
+        channel: whatsapp
+        summary: Pancake recipe
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      calendar:
+      - start: '2026-11-14T10:00:00'
+        end: '2026-11-14T11:00:00'
+        title: Kiara swim lesson
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-14T08:20:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P20
+  ticket: 'Work request during a vacation where she said no work: unwanted, hold; as an item it is a routine no-rush manager ask.'
+  tags:
+  - personal
+  - dev
+  setup:
+    state:
+      now: '2026-11-16T10:30:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - 'Slack message in #design from Marcus Lee: asking for feedback on the Q1 onboarding deck when convenient.'
+        source_excerpt: 'Slack #design - Marcus Lee: "@Neha when you get a chance can you leave comments on the Q1 onboarding deck? No rush, sometime next week works."'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch:
+      - producer: inbox_check
+        outcome: needs_you
+        facts:
+        - 'Air Canada: online check-in now open for AC 1255 Puerto Vallarta - Toronto, Fri Nov 20 13:10'
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-13T18:05:00'
+        surface: whatsapp
+        text: I'm off till the 20th, don't bug me about work
+      - at: '2026-11-15T16:30:00'
+        surface: whatsapp
+        text: find a snorkeling tour near the hotel for wednesday
+      - at: '2026-11-16T09:15:00'
+        surface: whatsapp
+        text: kids want tacos again lol, any spots in the old town
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-15T16:33:00'
+        channel: whatsapp
+        summary: 2 snorkeling tours for Wed
+        answered: true
+      - at: '2026-11-16T09:17:00'
+        channel: whatsapp
+        summary: 3 taco spots in Zona Romántica
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Family vacation in Puerto Vallarta Nov 14-20, 2026
+      - 'Manager: Marcus Lee'
+      calendar:
+      - start: '2026-11-14T00:00:00'
+        end: '2026-11-20T23:59:00'
+        title: OOO - vacation
+      - start: '2026-11-18T09:00:00'
+        end: '2026-11-18T12:00:00'
+        title: Snorkeling tour
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-16T09:15:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: unwanted
+      sensitivity: none
+      moment: hold
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P21
+  ticket: The item itself is ordinary; the scenario is about quiet hours using Toronto time while she is in Tokyo (midnight JST), a rails/timezone issue.
+  tags:
+  - personal
+  - holdout
+  setup:
+    state:
+      now: '2026-11-10T10:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - 'Toronto Public Library: hold ready for pickup, ''Braiding Sweetgrass'', available until Nov 17.'
+        source_excerpt: 'From: Toronto Public Library <notices@tpl.example>
+
+          Subject: Hold ready
+
+
+          Your hold ''Braiding Sweetgrass'' is ready at Lillian H. Smith branch. Pick up by Nov 17.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-08T16:00:00'
+        surface: whatsapp
+        text: landed in Tokyo! so tired
+      - at: '2026-11-09T07:30:00'
+        surface: whatsapp
+        text: best breakfast near Shibuya station?
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-09T07:32:00'
+        channel: whatsapp
+        summary: 3 breakfast spots near Shibuya
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Work trip to Tokyo Nov 8-15, 2026 (client workshop)
+      calendar:
+      - start: '2026-11-08T13:00:00'
+        end: '2026-11-08T16:00:00'
+        title: Flight YYZ-HND AC 001 (arrives Tokyo Nov 9 15:35 JST)
+      - start: '2026-11-15T17:00:00'
+        end: '2026-11-15T19:00:00'
+        title: Flight HND-YYZ AC 002
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-09T07:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - itinerary
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P22
+  ticket: Must reach her when she wakes (~04:15), before leaving at 05:00; no need to wake her at 23:30.
+  tags:
+  - personal
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-15T23:30:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - 'Airline: flight PC 412 Toronto-Calgary tomorrow 07:00 cancelled; rebooked on PC 418 departing 15:00.'
+        source_excerpt: 'From: Pacific Coast Air <noreply@pcair.example>
+
+          Subject: Important: change to your trip
+
+
+          Dear Neha Varma, your flight PC 412 (YYZ 07:00 -> YYC 09:15) on Mon Nov 16 has been cancelled. We have rebooked you on PC 418 departing YYZ 15:00, arriving YYC 17:15. No action is needed to accept. Manage booking: pcair.example/manage'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-15T21:15:00'
+        surface: whatsapp
+        text: packed. alarm at 4:15, leaving at 5
+      - at: '2026-11-15T21:16:00'
+        surface: whatsapp
+        text: night
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Client workshop in Calgary Mon-Tue
+      calendar:
+      - start: '2026-11-16T05:00:00'
+        end: '2026-11-16T05:45:00'
+        title: Drive to Pearson
+      - start: '2026-11-16T07:00:00'
+        end: '2026-11-16T09:15:00'
+        title: Flight PC 412 YYZ-YYC
+      - start: '2026-11-16T13:00:00'
+        end: '2026-11-16T17:00:00'
+        title: Client workshop day 1
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-15T21:16:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: timely
+      deadline: before_next_morning
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P23
+  ticket: Concrete deadline tomorrow 22:30 with money at stake; the morning is fine, no wake needed.
+  tags:
+  - personal
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-12T22:30:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - StreamBox free trial converts to a $99/year plan in 24 hours unless cancelled.
+        source_excerpt: 'From: StreamBox <billing@streambox.example>
+
+          Subject: Your free trial ends tomorrow
+
+
+          Hi Neha, your 30-day free trial ends on Nov 13 at 22:30. Your card ending 4417 will be charged $99.00 for an annual plan. Cancel anytime before then in Account > Subscription.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: finance
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-12T21:05:00'
+        surface: whatsapp
+        text: ok heading to bed early
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Started a StreamBox trial for the kids' cartoons in October
+      calendar:
+      - start: '2026-11-13T09:30:00'
+        end: '2026-11-13T10:00:00'
+        title: Standup
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-12T21:05:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P24
+  ticket: Power disconnection deadline in 3 days; tell today, not a wake-up item.
+  tags:
+  - personal
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-12T14:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - 'Toronto Hydro: autopay failed; disconnection notice, service may be disconnected in 3 days if unpaid.'
+        source_excerpt: 'From: Toronto Hydro <billing@torontohydro.example>
+
+          Subject: Payment unsuccessful - disconnection notice
+
+
+          Your pre-authorized payment of $142.37 was declined. To avoid disconnection, please pay the balance by Nov 15. Pay at torontohydro.example/pay'
+        producer_suggested:
+          urgency: routine
+          sensitivity: finance
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-12T12:10:00'
+        surface: whatsapp
+        text: is the vendor call still at 3?
+      - at: '2026-11-12T08:40:00'
+        surface: whatsapp
+        text: what's for lunch at the office cafe
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-12T12:11:00'
+        channel: whatsapp
+        summary: Vendor call at 15:00 confirmed
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Replaced her Visa card in October after it expired
+      calendar:
+      - start: '2026-11-12T15:00:00'
+        end: '2026-11-12T15:30:00'
+        title: Vendor call
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-12T12:10:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P25
+  ticket: Active water leak at home causes damage by the minute; worth waking her.
+  tags:
+  - personal
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-13T03:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - Home leak sensor service reports water detected in the basement.
+        source_excerpt: 'From: AquaGuard Home <alerts@aquaguard.example>
+
+          Subject: Leak detected - Basement (Laundry)
+
+
+          Sensor ''Basement Laundry'' detected water at 02:58. Automatic shut-off valve: not installed. Reply STOP to unsubscribe from alerts.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-12T22:40:00'
+        surface: whatsapp
+        text: goodnight
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - House has a finished basement with the kids' playroom and the laundry room
+      - Installed AquaGuard leak sensors in September
+      calendar:
+      - start: '2026-11-13T09:30:00'
+        end: '2026-11-13T10:00:00'
+        title: Standup
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-12T22:40:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P26
+  ticket: Family medical emergency, mother waiting for a call; wake her, gently. health chosen over third_party_private.
+  tags:
+  - personal
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-15T02:30:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - 'Email from user''s mother: father taken to hospital, asks user to call.'
+        source_excerpt: 'From: Sunita Rao <sunita.rao@homemail.example>
+
+          Subject: Dad
+
+
+          Neha beta, Papa had chest pain tonight and we''re at Credit Valley Hospital emergency. They''re doing tests. Call me when you see this. Your phone is going to voicemail.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-14T22:50:00'
+        surface: whatsapp
+        text: night gaia
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - 'Father: Ramesh Rao, 71, has a heart condition'
+      calendar:
+      - start: '2026-11-15T13:00:00'
+        end: '2026-11-15T15:00:00'
+        title: Lunch at Mom's
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules:
+        - Silence my phone at night
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-14T22:50:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: health
+      moment: soften
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P27
+  ticket: User-set proximity reminder; the scenario is about the missing geofence signal, not judgment.
+  tags:
+  - personal
+  - holdout
+  setup:
+    state:
+      now: '2026-11-12T18:20:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: reminder
+        outcome: info
+        facts:
+        - 'Location reminder: ''buy milk'' - user is near FreshCo on Bloor St.'
+        source_excerpt: 'Reminder created by user on 2026-11-12 08:10: "buy milk when I''m near the store" (trigger: near FreshCo Bloor)'
+        producer_suggested:
+          urgency: interrupt
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-12T08:10:00'
+        surface: whatsapp
+        text: remind me to buy milk when I'm near the store
+      - at: '2026-11-12T17:45:00'
+        surface: whatsapp
+        text: leaving the office now
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      calendar:
+      - start: '2026-11-12T19:00:00'
+        end: '2026-11-12T20:00:00'
+        title: Kids' dinner + bath
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-12T17:45:00'
+        in_live_chat: false
+        in_voice_call: false
+        location: 120 m from FreshCo, Bloor St W
+    requires_signal:
+    - location
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P28
+  ticket: Her own ask from 10 minutes ago needs approval tonight for a morning slot; she's still around.
+  tags:
+  - personal
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-12T22:25:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: approval
+        outcome: needs_you
+        facts:
+        - 'Grocery order ready: 23 items, $96.40, delivery tomorrow 07:00-08:00. Needs approval to charge the card.'
+        source_excerpt: 'FreshCart checkout: 23 items, subtotal $91.40 + delivery $5.00 = $96.40. Slot: Fri Nov 13 07:00-08:00. Pay with Visa ending 4417? [Approve] [Edit]'
+        producer_suggested:
+          urgency: routine
+          sensitivity: finance
+      other_items_in_batch: []
+      ask:
+        text: order groceries for tomorrow morning, the usual plus eggs and bananas
+        at: '2026-11-12T22:15:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-12T22:15:00'
+        surface: whatsapp
+        text: order groceries for tomorrow morning, the usual plus eggs and bananas
+      - at: '2026-11-12T22:10:00'
+        surface: whatsapp
+        text: ugh forgot to shop today
+      open_subjects: []
+      pending_asks:
+      - label: grocery order
+        asked_at: '2026-11-12T22:15:00'
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Usual grocery order is saved in FreshCart
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-12T22:15:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: true
+    score:
+      gates:
+      - judge_decision
+- id: personal-P29
+  ticket: Her own ask; the slot she needs for the kids' breakfast is released in 15 minutes.
+  tags:
+  - personal
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-12T22:45:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: approval
+        outcome: needs_you
+        facts:
+        - 'Grocery order ready: 23 items, $96.40. The reserved 07:00-08:00 delivery slot is held until 23:00; needs approval to charge the card.'
+        source_excerpt: 'FreshCart checkout: 23 items, total $96.40. Your reserved slot Fri Nov 13 07:00-08:00 is held until 23:00 tonight. After that the slot is released (next available: Fri 16:00-17:00). [Approve] [Edit]'
+        producer_suggested:
+          urgency: routine
+          sensitivity: finance
+      other_items_in_batch: []
+      ask:
+        text: order groceries for tomorrow morning, the usual plus eggs and bananas
+        at: '2026-11-12T22:08:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-12T22:08:00'
+        surface: whatsapp
+        text: order groceries for tomorrow morning, the usual plus eggs and bananas
+      - at: '2026-11-12T22:10:00'
+        surface: whatsapp
+        text: kids have nothing for breakfast otherwise
+      open_subjects: []
+      pending_asks:
+      - label: grocery order
+        asked_at: '2026-11-12T22:08:00'
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-12T22:10:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P30
+  ticket: Her own reminder at its time; the scenario tests speaking it at a voice turn boundary.
+  tags:
+  - personal
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-12T14:30:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: reminder
+        outcome: info
+        facts:
+        - 'User reminder: ''dentist at 3''.'
+        source_excerpt: 'Reminder created by user on 2026-11-10: "dentist at 3" on Nov 12 at 14:30'
+        producer_suggested:
+          urgency: interrupt
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-12T14:22:00'
+        surface: voice
+        text: let's go through my notes from the vendor call
+      - at: '2026-11-12T14:28:00'
+        surface: voice
+        text: ok next point, pricing tiers
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      calendar:
+      - start: '2026-11-12T15:00:00'
+        end: '2026-11-12T15:45:00'
+        title: Dentist - Dr. Okoye
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: voice
+        last_active_at: '2026-11-12T14:28:00'
+        in_live_chat: false
+        in_voice_call: true
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P31
+  ticket: Hard 5pm cutoff today to keep a medical slot; needs her today, minutes don't matter.
+  tags:
+  - personal
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-10T10:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - Clinic asks to reply Y by 5pm today to confirm Thursday's appointment or the slot is released.
+        source_excerpt: 'From: Danforth Medical Clinic <appointments@danforthmedical.example>
+
+          Subject: Please confirm your appointment
+
+
+          Hi Neha, please reply Y to confirm your appointment with Dr. Fernandes on Thursday Nov 12 at 08:40. If we do not hear from you by 5:00 pm today, the slot will be offered to another patient.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: health
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-10T08:30:00'
+        surface: whatsapp
+        text: running late, what time's my first meeting
+      - at: '2026-11-10T09:45:00'
+        surface: whatsapp
+        text: remind me to send the invoice to the contractor
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-10T08:31:00'
+        channel: whatsapp
+        summary: First meeting at 10:30
+        answered: true
+      - at: '2026-11-10T09:00:00'
+        channel: whatsapp
+        summary: Package delivered to front door
+        answered: false
+      - at: '2026-11-10T09:30:00'
+        channel: whatsapp
+        summary: Netflix price change notice
+        answered: false
+      - at: '2026-11-10T09:46:00'
+        channel: whatsapp
+        summary: 'Reminder set: invoice to contractor, 14:00'
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Follow-up with Dr. Fernandes to go over annual physical results
+      calendar:
+      - start: '2026-11-10T10:30:00'
+        end: '2026-11-10T11:30:00'
+        title: Roadmap review
+      - start: '2026-11-12T08:40:00'
+        end: '2026-11-12T09:00:00'
+        title: Dr. Fernandes
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-10T09:45:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: health
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P32
+  ticket: She asked to be kept posted (>= timely) but not woken; a 2am listing can wait for morning.
+  tags:
+  - personal
+  - dev
+  setup:
+    state:
+      now: '2026-11-13T02:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - 'Resale tickets for the Aurora World Tour Toronto show (Jun 12) just appeared: 4 tickets, section 112, $340 each.'
+        source_excerpt: 'TicketLoop resale alert: Aurora World Tour - Rogers Centre, Sat Jun 12 2027. New listings: Sec 112 Row 18, 4 tickets, $340/ea. Listings may sell at any time.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T19:20:00'
+        surface: whatsapp
+        text: keep me posted on the Aurora tour resale, want 2 for me and Priya
+      - at: '2026-11-12T21:30:00'
+        surface: whatsapp
+        text: night
+      open_subjects:
+      - label: Aurora World Tour resale tickets
+        status: followed
+        since: '2026-11-05T19:20:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-08T12:00:00'
+        channel: whatsapp
+        summary: 'Aurora resale: 2 tickets, upper bowl, $410 each'
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-12T21:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P33
+  ticket: She read the email herself in Gmail at 07:10.
+  tags:
+  - personal
+  - dev
+  setup:
+    state:
+      now: '2026-11-12T08:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - 'School email: picture day is Thursday Nov 19; order forms due Nov 18.'
+        - Gmail now shows this message as read (marked read at 07:10 from the Gmail mobile app).
+        source_excerpt: 'From: Maple Grove PS Office <office@maplegrove.school.example>
+
+          Subject: Picture Day - Thursday Nov 19
+
+
+          Picture day is Thursday Nov 19. Order forms are due Nov 18. Retakes in January.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-11T21:30:00'
+        surface: whatsapp
+        text: night
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      calendar:
+      - start: '2026-11-12T09:30:00'
+        end: '2026-11-12T10:00:00'
+        title: Standup
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-11T21:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - gmail_read_state
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: already_known
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P34
+  ticket: 'UNSURE: she wished Tanvi at 00:01 in a personal chat GAIA cannot see today; no requires_signal value names this, so judge_applicable=false.'
+  tags:
+  - personal
+  - dev
+  setup:
+    state:
+      now: '2026-11-19T09:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: reminder
+        outcome: info
+        facts:
+        - 'GAIA-inferred reminder: today is Tanvi Shah''s birthday.'
+        source_excerpt: 'Inferred from contacts/calendar: Tanvi Shah - birthday Nov 19'
+        producer_suggested:
+          urgency: timely
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-19T00:01:00'
+        surface: whatsapp_personal_chat_with_tanvi
+        text: Happy birthday Tanvi!! 🎂 have the best day, lunch on me this week
+      - at: '2026-11-18T21:00:00'
+        surface: whatsapp
+        text: night gaia
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - 'Friend from work: Tanvi Shah'
+      calendar:
+      - start: '2026-11-19T09:30:00'
+        end: '2026-11-19T10:00:00'
+        title: Standup
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-18T21:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: already_known
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P35
+  ticket: Email from her ex while she's planning a date; nothing time-bound, so not in this conversation.
+  tags:
+  - personal
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-13T21:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto, recently started dating Jordan
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - Email from Arjun Sethi saying he still has some of the user's books and asking to drop them off.
+        source_excerpt: 'From: Arjun Sethi <arjun.sethi@mailbox.example>
+
+          Subject: your books
+
+
+          Hey, hope you''re doing ok. I still have that box of your books and the blue lamp. Want me to drop them off sometime, or should I leave them with Priya? -A'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-13T20:40:00'
+        surface: whatsapp
+        text: help me plan saturday with Jordan, thinking dinner + something fun after
+      - at: '2026-11-13T20:52:00'
+        surface: whatsapp
+        text: ooh the jazz bar sounds perfect. can you check if they need a reservation?
+      - at: '2026-11-13T20:58:00'
+        surface: whatsapp
+        text: and a backup if it's full
+      open_subjects:
+      - label: planning Saturday date with Jordan
+        status: open
+        since: '2026-11-13T20:40:00'
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - 'Ex-partner: Arjun Sethi (separated in March 2026)'
+      - Started seeing Jordan Ellis in October
+      calendar:
+      - start: '2026-11-14T19:00:00'
+        end: '2026-11-14T23:00:00'
+        title: Jordan
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-13T20:58:00'
+        in_live_chat: true
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: new
+      sensitivity: social_private
+      moment: hold
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P36
+  ticket: Passport renewal must start within ~2 weeks for the Dec 18 flight; important but no deadline within 48h.
+  tags:
+  - personal
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-07T10:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: tracked_todo
+        outcome: needs_you
+        facts:
+        - Todo 'renew passport' is overdue (due Oct 27); fourth reminder.
+        source_excerpt: 'Todo: renew passport. Created Oct 20 by user. Due Oct 27. Notes: ''expires Jan 30 2027, renewal takes about 4 weeks''.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-06T19:10:00'
+        surface: whatsapp
+        text: book the airport parking for the Singapore trip
+      - at: '2026-11-05T08:00:00'
+        surface: whatsapp
+        text: what's on today
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-10-28T09:00:00'
+        channel: whatsapp
+        summary: 'Reminder: renew passport (overdue)'
+        answered: false
+      - at: '2026-10-30T09:00:00'
+        channel: whatsapp
+        summary: 'Reminder: renew passport (overdue)'
+        answered: false
+      - at: '2026-11-03T09:00:00'
+        channel: whatsapp
+        summary: 'Reminder: renew passport (overdue)'
+        answered: false
+      - at: '2026-11-06T19:12:00'
+        channel: whatsapp
+        summary: Airport parking booked Dec 18-Jan 3
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - Family trip to Singapore over the holidays
+      - Singapore requires 6 months of passport validity on entry
+      calendar:
+      - start: '2026-12-18T22:00:00'
+        end: '2026-12-19T08:00:00'
+        title: Flight YYZ-SIN
+      - start: '2026-11-07T10:00:00'
+        end: '2026-11-07T11:00:00'
+        title: Kiara swim lesson
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-06T19:10:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P37
+  ticket: 'She told GAIA to stop these nudges: unwanted.'
+  tags:
+  - personal
+  - dev
+  setup:
+    state:
+      now: '2026-11-14T18:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: tracked_todo
+        outcome: needs_you
+        facts:
+        - Todo 'call Nani' is overdue; scheduled 7-day nudge.
+        source_excerpt: 'Todo: call Nani. Created Nov 3 by user. Due Nov 4.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-07T09:05:00'
+        surface: whatsapp
+        text: stop reminding me about that
+      - at: '2026-11-13T12:00:00'
+        surface: whatsapp
+        text: lunch rec near the office?
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T09:00:00'
+        channel: whatsapp
+        summary: 'Reminder: call Nani (overdue)'
+        answered: false
+      - at: '2026-11-07T09:00:00'
+        channel: whatsapp
+        summary: 'Reminder: call Nani (overdue)'
+        answered: true
+      - at: '2026-11-13T12:02:00'
+        channel: whatsapp
+        summary: 2 lunch spots nearby
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      calendar:
+      - start: '2026-11-14T19:00:00'
+        end: '2026-11-14T22:00:00'
+        title: Dinner at the Okafors'
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-13T12:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: unwanted
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P38
+  ticket: 'Not about the kids during her detox weekend: unwanted, hold; reply due Thursday is routine.'
+  tags:
+  - personal
+  - dev
+  setup:
+    state:
+      now: '2026-11-14T11:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - Friend Lena invites the family to brunch next Sunday (Nov 22) and asks for a reply by Thursday.
+        source_excerpt: 'From: Lena Kowalski <lena.k@mailbox.example>
+
+          Subject: brunch?
+
+
+          Hi! We''re doing a brunch at ours next Sunday the 22nd, 11ish. Kids welcome, obviously. Let me know by Thursday so I know how many pancakes to make :)'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch:
+      - producer: inbox_check
+        outcome: info
+        facts:
+        - 'Swim school: Kiara''s Sunday lesson moved from 10:00 to 11:30 tomorrow'
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-14T08:30:00'
+        surface: whatsapp
+        text: Digital detox this weekend, only message me if it's about the kids
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - 'Friend: Lena Kowalski (neighbour)'
+      calendar:
+      - start: '2026-11-15T10:00:00'
+        end: '2026-11-15T10:45:00'
+        title: Kiara swim lesson
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-14T08:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: unwanted
+      sensitivity: personal
+      moment: hold
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P39
+  ticket: Bruno died this morning; hikes for the dog no longer apply and sending them now would hurt.
+  tags:
+  - personal
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-12T18:00:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: workflow
+        outcome: done
+        facts:
+        - 'Weekly ''dog-friendly hikes this weekend'' result: 3 trails near Toronto, weather looks dry on Saturday.'
+        source_excerpt: 'Dog-friendly hikes this weekend: 1) Rouge National Urban Park - Vista Trail 2) Crawford Lake loop 3) Humber Arboretum. Sat 7°C, dry.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-12T15:00:00'
+        surface: whatsapp
+        text: our dog Bruno died this morning
+      - at: '2026-11-12T15:04:00'
+        surface: whatsapp
+        text: the kids are devastated. I don't really want to talk about it right now
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-12T15:01:00'
+        channel: whatsapp
+        summary: Condolence reply
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      - 'Dog: Bruno, 11-year-old golden retriever'
+      - 'Vet: Riverdale Animal Hospital; Bruno''s booster due Nov 19'
+      calendar:
+      - start: '2026-11-19T17:00:00'
+        end: '2026-11-19T17:30:00'
+        title: Bruno - vet booster
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-12T15:04:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: moot
+      sensitivity: personal
+      moment: hold
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: personal-P40
+  ticket: Same cancellation she was told about 4 minutes ago from the school email.
+  tags:
+  - personal
+  - dev
+  setup:
+    state:
+      now: '2026-11-13T16:05:00'
+      user:
+        timezone: America/Toronto
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: product designer at a mid-size software company; lives in Toronto with partner Kabir and two kids, Aarav (8) and Kiara (5)
+      item:
+        producer: workflow
+        outcome: info
+        facts:
+        - 'Calendar change: event ''Grade 3 Science Centre trip'' (Fri Nov 20) was deleted by the organizer (Maple Grove PS).'
+        source_excerpt: 'Calendar update: Organizer office@maplegrove.school.example cancelled ''Grade 3 Science Centre trip'' (Fri Nov 20, 09:00-14:30).'
+        producer_suggested:
+          urgency: timely
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-13T14:10:00'
+        surface: whatsapp
+        text: what's the weather for the weekend
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-13T16:01:00'
+        channel: whatsapp
+        summary: 'School email: Grade 3 Science Centre trip on Fri Nov 20 is cancelled (bus contractor issue), refunds automatic'
+        answered: false
+      - at: '2026-11-13T14:11:00'
+        channel: whatsapp
+        summary: 'Weekend: Sat sunny 6°C, Sun freezing rain'
+        answered: true
+      memory:
+      - User's name is Neha Varma
+      - 'Partner: Kabir Varma'
+      - 'Kids: Aarav (8, grade 3) and Kiara (5, senior kindergarten), both at Maple Grove Public School'
+      - Prefers WhatsApp for messages from GAIA
+      - Vegetarian; Kabir eats fish
+      - Does yoga Tuesday and Thursday evenings
+      - 'Mother: Sunita Rao, lives in Mississauga'
+      calendar:
+      - start: '2026-11-13T15:30:00'
+        end: '2026-11-13T16:30:00'
+        title: Design crit
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-13T14:10:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: duplicate
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision

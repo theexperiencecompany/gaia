@@ -1,0 +1,2952 @@
+- id: work-W01
+  ticket: Co-founder asks the user to join a board call in 10 minutes; a person is waiting, value gone within the hour.
+  tags:
+  - work
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-03T14:10:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: co-founder and CEO-facing product lead at a 20-person B2B SaaS startup
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - Maya Iyer (co-founder) emailed asking the user to join the board call starting in 10 minutes.
+        source_excerpt: 'From: Maya Iyer <maya@lumenstack.example> To: you Subject: join? Sent 14:09 -- Hey, Rohan (board) wants you on the call in 10 min to walk through the roadmap slide, can you join? Same Meet link as the board invite. -M'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-03T12:40:00'
+        surface: whatsapp
+        text: move my dentist to next week if they have anything thursday
+      - at: '2026-11-03T09:15:00'
+        surface: slack
+        text: what did Kabir say about the pricing page copy
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-03T08:05:00'
+        channel: whatsapp
+        summary: 'Morning summary: 3 meetings, 2 PRs waiting on you'
+        answered: false
+      - at: '2026-11-03T09:40:00'
+        channel: whatsapp
+        summary: 'Notion: Kabir commented on Pricing v3'
+        answered: false
+      - at: '2026-11-03T10:30:00'
+        channel: whatsapp
+        summary: 'Figma: 4 new comments on onboarding flow'
+        answered: false
+      - at: '2026-11-03T11:20:00'
+        channel: whatsapp
+        summary: 'Linear: 3 issues assigned to you'
+        answered: false
+      - at: '2026-11-03T12:15:00'
+        channel: whatsapp
+        summary: 'Gmail: AWS invoice for October available'
+        answered: false
+      - at: '2026-11-03T13:30:00'
+        channel: whatsapp
+        summary: 'Slack: #design thread mentions you'
+        answered: false
+      memory:
+      - Maya Iyer is the user's co-founder and CEO
+      - Rohan Mehta is an independent board member
+      - Quarterly board meeting is usually run by Maya
+      - Prefers WhatsApp for anything quick
+      - 'Dentist: Dr. Pillai, Indiranagar'
+      calendar:
+      - start: '2026-11-03T14:20:00'
+        end: '2026-11-03T15:30:00'
+        title: Q4 Board meeting (Maya, Rohan, Ananya) - user optional
+      - start: '2026-11-03T16:00:00'
+        end: '2026-11-03T16:30:00'
+        title: 'Design review: onboarding'
+      - start: '2026-11-03T19:30:00'
+        end: '2026-11-03T21:00:00'
+        title: Dinner w/ Aditi
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-03T12:40:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W02
+  ticket: 'Marketing newsletter matched a sender-based workflow; nothing actionable, FYI at most (IDEAL: check-in or never).'
+  tags:
+  - work
+  - dev
+  setup:
+    state:
+      now: '2026-11-04T11:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: founder of a 6-person e-commerce tools startup
+      item:
+        producer: workflow
+        outcome: info
+        facts:
+        - 'Stripe sent a product-update newsletter: new Payment Links customization options and Tax reporting UI changes.'
+        source_excerpt: 'From: Stripe <no-reply@updates.stripe.example> Subject: What''s new in Stripe - November -- New this month: customize Payment Links with your brand fonts, a redesigned Tax reporting page, and Billing meter improvements. Read the changelog. Unsubscribe | Manage preferences'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T09:20:00'
+        surface: whatsapp
+        text: did the payout from yesterday land?
+      - at: '2026-11-04T10:05:00'
+        surface: whatsapp
+        text: remind me to call the CA at 4
+      open_subjects:
+      - label: 'Workflow: Emails from Stripe'
+        status: active
+        since: '2026-09-12T10:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T09:22:00'
+        channel: whatsapp
+        summary: Stripe payout of $4,180 arrived in the business account
+        answered: true
+      - at: '2026-11-04T08:01:00'
+        channel: whatsapp
+        summary: 'Morning summary: 2 calls today, 1 refund request'
+        answered: false
+      memory:
+      - Uses Stripe for all payments
+      - Asked to be told about disputes and payouts from Stripe
+      - Works out of a co-working space in Pune
+      - Is learning Spanish on Duolingo
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T10:05:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: background
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W03
+  ticket: 'SEV2 page is interrupt-grade on its own, but PagerDuty already rang the user (answered): already_known, so GAIA must not wake them again.'
+  tags:
+  - work
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T03:10:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:15
+        usual_sleep: '23:00'
+        role: backend engineer on the platform team; on the PagerDuty primary rotation this week
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - 'PagerDuty SEV2: api-gateway p99 latency above threshold; PagerDuty phoned the user per escalation policy.'
+        source_excerpt: 'From: PagerDuty <no-reply@pagerduty.example> Subject: [Triggered] #8812 SEV2 api-gateway p99 latency > 2s -- Service: api-gateway. Urgency: High. Assigned to: Arjun Rao. Notifications: Phone call to +91 XXXXX XX412 at 03:08 (answered), SMS at 03:08. Acknowledge | Resolve | View incident'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T22:40:00'
+        surface: whatsapp
+        text: set an alarm reminder for gym at 7:30
+      - at: '2026-11-04T18:10:00'
+        surface: slack
+        text: summarise the RFC comments on the rate limiter
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T18:12:00'
+        channel: slack
+        summary: 'RFC rate limiter: 7 comments, 2 blocking'
+        answered: true
+      memory:
+      - On PagerDuty primary rotation Nov 2-8
+      - Team uses PagerDuty for all paging; phone calls for High urgency
+      - Gym at 07:30 on weekdays
+      - Prefers terse messages
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T22:40:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: already_known
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W04
+  ticket: Checkout broken in prod, user is sole on-call with no pager and explicitly asked to be woken if prod breaks.
+  tags:
+  - work
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-06T01:40:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 08:00
+        usual_sleep: 00:30
+        role: sole engineer and CTO at a 4-person D2C startup
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - 'Sentry alert: error rate 42% on POST /checkout over the last 10 minutes (production).'
+        source_excerpt: 'From: Sentry <alerts@sentry.example> Subject: [Alert] Error rate critical - kettlebrew-web production -- Metric alert ''Checkout errors'' triggered: 42.1% of requests to POST /checkout failed in the last 10 minutes (threshold 5%). Top issue: TypeError: Cannot read properties of undefined (reading ''gst_rate''). First seen 01:28.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T23:55:00'
+        surface: whatsapp
+        text: goodnight, nothing till morning unless it's important
+      - at: '2026-11-05T21:10:00'
+        surface: whatsapp
+        text: add 'renew domain' to my todos
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T21:11:00'
+        channel: whatsapp
+        summary: 'Added todo: renew domain'
+        answered: true
+      memory:
+      - 'Told GAIA on 2026-10-12: ''I''m the only one on call, wake me if prod breaks'''
+      - No PagerDuty/Opsgenie; alerts only go to email
+      - Shipped a GST calculation change to checkout on 2026-11-05 evening
+      - Co-founders handle marketing and ops; non-technical
+      - Cat named Biscuit
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T23:55:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W05
+  ticket: Must land before the 07:00 call, but no need to wake at 06:00; usual wake 06:30 leaves time.
+  tags:
+  - work
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-04T06:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: founder raising a seed round
+      item:
+        producer: system
+        outcome: info
+        facts:
+        - 'Briefing for 07:00 investor call with Lena Ward (Harbor Ventures): her last 3 investments, the questions she asked in the intro call, open diligence items.'
+        source_excerpt: 'Calendar event: ''Call - Lena Ward / Harbor Ventures'' 07:00-07:45, Zoom. Notes from 2026-10-28 intro: asked about net revenue retention and Q1 hiring plan.'
+        producer_suggested:
+          urgency: timely
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-03T22:15:00'
+        surface: whatsapp
+        text: early call with Lena tomorrow, make sure I have her stuff before
+      - at: '2026-11-03T20:00:00'
+        surface: whatsapp
+        text: order more coffee beans
+      open_subjects:
+      - label: Seed round outreach
+        status: active
+        since: '2026-10-01T10:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-03T20:02:00'
+        channel: whatsapp
+        summary: Ordered 1kg Blue Tokai Attikan
+        answered: true
+      memory:
+      - Raising a $2M seed
+      - Lena Ward is a partner at Harbor Ventures (US, PST)
+      - Runs at 05:45 some days
+      calendar:
+      - start: '2026-11-04T07:00:00'
+        end: '2026-11-04T07:45:00'
+        title: Call - Lena Ward / Harbor Ventures
+      - start: '2026-11-04T11:00:00'
+        end: '2026-11-04T11:30:00'
+        title: Standup
+      - start: '2026-11-04T18:00:00'
+        end: '2026-11-04T19:00:00'
+        title: Badminton
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-03T22:15:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+    - wake_time
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_1h
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W06
+  ticket: Meaning is straightforward; the scenario is about delivering at the next calendar gap (rails + busy signal), not the Judge.
+  tags:
+  - work
+  - dev
+  setup:
+    state:
+      now: '2026-11-05T10:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: engineering manager with 9 reports
+      item:
+        producer: system
+        outcome: info
+        facts:
+        - 'Briefing for 11:00 ''Hiring sync - Platform'': 3 candidates in loop, 1 offer pending approval.'
+        source_excerpt: 'Calendar event: ''Hiring sync - Platform'' 11:00-11:45 with Recruiting (Neha Kapoor).'
+        producer_suggested:
+          urgency: timely
+          sensitivity: none
+      other_items_in_batch:
+      - producer: system
+        facts:
+        - 'Briefing for 12:00 ''1:1 with Sam'': Sam''s last 1:1 notes and open action items.'
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T08:50:00'
+        surface: whatsapp
+        text: busy morning, meetings till 1
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Manages the Platform team
+      - Weekly hiring sync on Thursdays
+      - Lunch usually 13:15
+      calendar:
+      - start: '2026-11-05T10:00:00'
+        end: '2026-11-05T11:00:00'
+        title: Quarterly planning
+      - start: '2026-11-05T11:00:00'
+        end: '2026-11-05T11:45:00'
+        title: Hiring sync - Platform
+      - start: '2026-11-05T11:50:00'
+        end: '2026-11-05T12:00:00'
+        title: Break
+      - start: '2026-11-05T12:00:00'
+        end: '2026-11-05T13:00:00'
+        title: 1:1 with Sam
+      - start: '2026-11-05T15:00:00'
+        end: '2026-11-05T15:30:00'
+        title: Vendor demo
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T08:50:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_1h
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W07
+  ticket: Changes what GAIA told at 14:00; user may be travelling to the meeting. Useful only before 15:00.
+  tags:
+  - work
+  - dev
+  setup:
+    state:
+      now: '2026-11-05T14:40:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: account manager at a consulting firm
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - Acme cancelled today's 15:00 meeting (calendar event cancelled by organiser).
+        source_excerpt: 'From: Google Calendar <calendar-notification@google.example> Subject: Cancelled event: Acme quarterly review @ Thu Nov 5 15:00 - 16:00 -- This event has been cancelled by dana.cole@acme.example. Note: ''So sorry, something came up on our side - will propose new times.'''
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T13:55:00'
+        surface: whatsapp
+        text: prep me for acme
+      - at: '2026-11-05T12:10:00'
+        surface: whatsapp
+        text: book a cab to the Acme office for 2:30
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T14:00:00'
+        channel: whatsapp
+        summary: 'Briefing: Acme quarterly review 15:00 at Acme''s office, Dana Cole + 2'
+        answered: true
+      - at: '2026-11-05T12:12:00'
+        channel: whatsapp
+        summary: Cab booked for 14:30 pickup to Acme office
+        answered: true
+      memory:
+      - Acme is the user's largest account
+      - Dana Cole is the Acme ops lead
+      - Prefers in-person QBRs
+      calendar:
+      - start: '2026-11-05T15:00:00'
+        end: '2026-11-05T16:00:00'
+        title: Acme quarterly review (cancelled)
+      - start: '2026-11-05T17:00:00'
+        end: '2026-11-05T17:30:00'
+        title: Internal pipeline review
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T13:55:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_1h
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W08
+  ticket: Closes a 3-week tracked follow-up and the user is about to send a chase email today; must reach them before that.
+  tags:
+  - work
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T16:05:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: enterprise sales lead
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - 'DocuSign: Acme Corp completed signing the Master Services Agreement.'
+        source_excerpt: 'From: DocuSign <dse@docusign.example> Subject: Completed: Acme Corp - Master Services Agreement 2026 -- All parties have completed the envelope ''Acme Corp - Master Services Agreement 2026''. Signed by: Peter Wong (Acme Corp) 16:02.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T15:48:00'
+        surface: whatsapp
+        text: drafting one last nudge to Acme's legal, will send before EOD. ugh 3 weeks
+      - at: '2026-11-05T13:20:00'
+        surface: whatsapp
+        text: what's the status on the Brightwater renewal
+      - at: '2026-11-05T11:00:00'
+        surface: whatsapp
+        text: lunch with Karan at 1
+      open_subjects:
+      - label: follow up on Acme contract
+        status: open (tracked todo)
+        since: '2026-10-14T10:00:00'
+      - label: Brightwater renewal
+        status: open
+        since: '2026-10-30T09:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T08:00:00'
+        channel: whatsapp
+        summary: 'Morning: 4 meetings, Acme MSA still unsigned (day 22)'
+        answered: false
+      - at: '2026-11-05T10:15:00'
+        channel: whatsapp
+        summary: 'Gmail: Q4 commission statement available'
+        answered: false
+      - at: '2026-11-05T11:30:00'
+        channel: whatsapp
+        summary: 'HubSpot: 3 new inbound leads'
+        answered: false
+      - at: '2026-11-05T12:30:00'
+        channel: whatsapp
+        summary: 'Slack: #deals mention'
+        answered: false
+      - at: '2026-11-05T13:22:00'
+        channel: whatsapp
+        summary: 'Brightwater renewal: awaiting procurement'
+        answered: true
+      - at: '2026-11-05T14:45:00'
+        channel: whatsapp
+        summary: 'Gmail: Zoom webinar recording ready'
+        answered: false
+      memory:
+      - Peter Wong is Acme's General Counsel
+      - Q4 quota closes Dec 31; Acme is the biggest deal in pipeline
+      - Hates being double-pinged about the same thing
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T15:48:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W09
+  ticket: 'Routine scheduled report during a vacation where the user asked to be bothered only for fires: unwanted, hold.'
+  tags:
+  - work
+  - holdout
+  setup:
+    state:
+      now: '2026-11-09T09:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: founder and head of sales at a 15-person startup
+      item:
+        producer: workflow
+        outcome: done
+        facts:
+        - 'Weekly pipeline report generated: 14 open deals, $410k weighted, 2 deals slipped to December.'
+        source_excerpt: Scheduled workflow 'Monday 9am pipeline report' (created by the user 2026-08-03).
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-06T19:40:00'
+        surface: whatsapp
+        text: off from tomorrow till the 16th, Bali! only bug me if something's actually on fire
+      - at: '2026-11-06T17:00:00'
+        surface: whatsapp
+        text: set my gmail out of office
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-06T17:02:00'
+        channel: whatsapp
+        summary: 'Gmail out-of-office set Nov 7-16, contact: ops@saltline.example'
+        answered: true
+      - at: '2026-11-08T18:00:00'
+        channel: whatsapp
+        summary: 'Slack: 9 mentions across #sales and #ops'
+        answered: false
+      memory:
+      - Vacation Nov 7-16 in Bali
+      - Ravi (head of ops) covers while the user is away
+      - Pipeline report goes to the user only
+      calendar:
+      - start: '2026-11-07T00:00:00'
+        end: '2026-11-16T23:59:00'
+        title: OOO - Bali
+      - start: '2026-11-17T10:00:00'
+        end: '2026-11-17T11:00:00'
+        title: Pipeline review w/ team
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-06T19:40:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: unwanted
+      sensitivity: none
+      moment: hold
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W10
+  ticket: SF is blocked but nothing is lost overnight; cutoff (~07:30 IST) is after the 07:00 wake. Not worth waking.
+  tags:
+  - work
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-04T23:30:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:00
+        usual_sleep: '23:00'
+        role: release manager / eng lead in Bengaluru working with a San Francisco team
+      item:
+        producer: trigger
+        outcome: needs_you
+        facts:
+        - 'Teammate Jordan Blake (SF) on Slack: asking the user to approve the release; they are blocked.'
+        source_excerpt: 'Slack #release-train, Jordan Blake 10:00 PST: @you can you approve the release? we''re blocked on the v4.12 promotion, need your sign-off in the release tool.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T21:50:00'
+        surface: whatsapp
+        text: ok heading to bed, early start tomorrow
+      - at: '2026-11-04T19:30:00'
+        surface: slack
+        text: did the QA signoff come in for 4.12?
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T19:32:00'
+        channel: slack
+        summary: QA signed off v4.12 at 19:05
+        answered: true
+      memory:
+      - Jordan Blake is an SF-based engineer on the release team
+      - Release approvals require the user's sign-off
+      - SF team works 09:00-18:00 Pacific
+      - Usually up at 07:00
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T21:50:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W11
+  ticket: Non-urgent client revision with no deadline; the user's own rule holds work until Monday working hours.
+  tags:
+  - work
+  - dev
+  setup:
+    state:
+      now: '2026-11-07T11:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: freelance brand designer
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - Client Hollis & Grey emailed asking for a colour tweak on the logo set; no deadline mentioned.
+        source_excerpt: 'From: Mara Hollis <mara@hollisgrey.example> Subject: small revision -- Hi! Whenever you get a chance, could we try the wordmark in the darker green from the moodboard? No rush at all. Thanks, Mara'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-07T09:30:00'
+        surface: whatsapp
+        text: remind me to buy flowers for mum at 5
+      - at: '2026-11-06T17:55:00'
+        surface: whatsapp
+        text: done for the week!
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-07T09:31:00'
+        channel: whatsapp
+        summary: 'Reminder set: buy flowers for mum at 17:00'
+        answered: true
+      memory:
+      - Works 10:00-18:00 Monday to Friday
+      - 'Clients: Hollis & Grey, Moss Studio, Fernway Cafe'
+      - Mum's birthday is Nov 8
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules:
+        - No client or work messages on evenings or weekends unless it's genuinely urgent; personal reminders are fine anytime.
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-07T09:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: hold
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W12
+  ticket: A routine review request; holding until landing is an in-transit rails decision, not a Judge one.
+  tags:
+  - work
+  - holdout
+  setup:
+    state:
+      now: '2026-11-05T02:30:00'
+      user:
+        timezone: America/Los_Angeles
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: staff engineer travelling to the London office
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - 'GitHub: review requested on PR #3120 ''Migrate session store to Redis 7''.'
+        source_excerpt: 'From: GitHub <notifications@github.example> Subject: [orbit/api] Review requested: Migrate session store to Redis 7 (#3120) -- @priya-n requested your review.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T21:05:00'
+        surface: whatsapp
+        text: boarding, see you in london
+      - at: '2026-11-04T18:30:00'
+        surface: whatsapp
+        text: pack charger reminder at 7
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Flying SFO-LHR Nov 4 overnight
+      - Staying at the Shoreditch office apartment
+      - Prefers WhatsApp
+      calendar:
+      - start: '2026-11-04T21:40:00'
+        end: '2026-11-05T06:20:00'
+        title: Flight BA286 SFO -> LHR (arrives 14:20 London)
+      - start: '2026-11-06T01:00:00'
+        end: '2026-11-06T02:00:00'
+        title: London team lunch
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T21:05:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+    - itinerary
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W13
+  ticket: Routine review request with a within-a-day team norm; holding to the end of the focus block is a calendar rail.
+  tags:
+  - work
+  - dev
+  setup:
+    state:
+      now: '2026-11-05T09:20:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: frontend engineer
+      item:
+        producer: trigger
+        outcome: needs_you
+        facts:
+        - 'GitHub: review requested on PR #882 ''Fix tooltip z-index in settings panel''.'
+        source_excerpt: 'From: GitHub <notifications@github.example> Subject: [atlas/web] Review requested (#882) -- @leo-m requested your review on ''Fix tooltip z-index in settings panel''. +12 -4.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T08:55:00'
+        surface: whatsapp
+        text: deep work till noon
+      - at: '2026-11-04T19:00:00'
+        surface: whatsapp
+        text: add oat milk to groceries
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Blocks 09:00-12:00 for focus most weekdays
+      - Team expects PR reviews within a day
+      calendar:
+      - start: '2026-11-05T09:00:00'
+        end: '2026-11-05T12:00:00'
+        title: Focus - no meetings
+      - start: '2026-11-05T14:00:00'
+        end: '2026-11-05T14:30:00'
+        title: Design sync
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T08:55:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W14
+  ticket: Needs action before Friday's pricing call, not mid-demo with Northwind watching; confidential deal intel about the prospect. Sensitivity class for business-confidential content is a judgement call (finance also defensible).
+  tags:
+  - work
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T11:20:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: account executive selling a logistics platform
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - 'Colleague Tom Reyes forwarded intel: competitor Fleetline quoted Northwind $40k lower than our proposal.'
+        source_excerpt: 'From: Tom Reyes <tom@cargowise-labs.example> Subject: FW: Northwind pricing -- Heads up, their ops guy told me off the record Fleetline came in $40k under us for the 3-year deal. Don''t let them know we know. We should rethink the bundle before Friday''s pricing call.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T10:50:00'
+        surface: slack
+        text: demo time, wish me luck
+      - at: '2026-11-05T09:10:00'
+        surface: whatsapp
+        text: what's on today
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T09:11:00'
+        channel: whatsapp
+        summary: 'Today: Northwind demo 11:00, pipeline review 15:00'
+        answered: true
+      memory:
+      - Northwind is in late-stage evaluation
+      - Tom Reyes is a sales engineer on the user's team
+      - Uses Slack desktop on the work laptop
+      calendar:
+      - start: '2026-11-05T11:00:00'
+        end: '2026-11-05T12:00:00'
+        title: 'Northwind - product demo (external: 4 Northwind attendees), Zoom'
+      - start: '2026-11-05T15:00:00'
+        end: '2026-11-05T15:45:00'
+        title: Pipeline review
+      - start: '2026-11-06T16:00:00'
+        end: '2026-11-06T16:30:00'
+        title: Northwind pricing call
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: slack
+        last_active_at: '2026-11-05T10:50:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: new
+      sensitivity: third_party_private
+      moment: hold
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W15
+  ticket: The vendor said 'whenever suits' and the rate card is effective February; nothing waits on this approval.
+  tags:
+  - work
+  - dev
+  setup:
+    state:
+      now: '2026-11-04T15:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: operations manager at a manufacturing firm
+      item:
+        producer: approval
+        outcome: needs_you
+        facts:
+        - 'Inbox workflow drafted a reply to vendor Kestrel Packaging and needs approval to send: ''Thanks, will review next week.'''
+        source_excerpt: 'Inbound from: Ivy Tan <ivy@kestrelpack.example> Subject: Updated 2027 rate card -- Hi, attaching our updated rate card for 2027, effective Feb 1. Happy to walk through it whenever suits. Draft reply: ''Thanks Ivy, will review next week.'''
+        producer_suggested:
+          urgency: timely
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T14:30:00'
+        surface: whatsapp
+        text: heading into the client meeting
+      - at: '2026-11-04T10:00:00'
+        surface: whatsapp
+        text: check if the forklift service is booked
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T10:03:00'
+        channel: whatsapp
+        summary: Forklift service booked for Nov 10
+        answered: true
+      memory:
+      - Kestrel Packaging is a secondary packaging vendor
+      - Annual vendor reviews happen in January
+      calendar:
+      - start: '2026-11-04T14:30:00'
+        end: '2026-11-04T16:00:00'
+        title: Client visit - Delmar Foods
+      - start: '2026-11-04T17:00:00'
+        end: '2026-11-04T17:30:00'
+        title: Shift handover
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T14:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W16
+  ticket: Answer to the user's own ask, needed before tomorrow's 10:00 board meeting; company financials are finance-sensitive.
+  tags:
+  - work
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-04T19:40:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: COO of a subscription software company
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - 'Q3 churn: logo churn 3.1%, revenue churn 2.4%, top reason ''budget cuts''; table attached.'
+        source_excerpt: 'Source: Chartmogul export + HubSpot churn reasons, Q3 2026.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask:
+        text: pull Q3 churn numbers for tomorrow's board meeting
+        at: '2026-11-04T18:55:00'
+        surface: slack
+      recent_user_messages:
+      - at: '2026-11-04T18:55:00'
+        surface: slack
+        text: pull Q3 churn numbers for tomorrow's board meeting
+      - at: '2026-11-04T17:30:00'
+        surface: slack
+        text: cancel my 6pm, running late
+      open_subjects: []
+      pending_asks:
+      - text: pull Q3 churn numbers for tomorrow's board meeting
+        at: '2026-11-04T18:55:00'
+      recent_deliveries: []
+      memory:
+      - Board meetings are quarterly, prepared the evening before
+      - Prefers numbers in a table
+      calendar:
+      - start: '2026-11-05T10:00:00'
+        end: '2026-11-05T12:00:00'
+        title: Board meeting
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: slack
+        last_active_at: '2026-11-04T18:56:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W17
+  ticket: Pending ask the user will review in the morning (code's not_before); investor update goes out today, the 5th.
+  tags:
+  - work
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T00:10:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: 00:00
+        role: founder
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - Draft of the November investor update is ready (MRR, hires, asks).
+        source_excerpt: Google Doc 'Investor update - Nov 2026' (draft, 640 words).
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask:
+        text: draft the investor update, I'll review in the morning
+        at: '2026-11-04T23:30:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-04T23:30:00'
+        surface: whatsapp
+        text: draft the investor update, I'll review in the morning
+      - at: '2026-11-04T23:28:00'
+        surface: whatsapp
+        text: ok shutting down for today
+      open_subjects: []
+      pending_asks:
+      - text: draft the investor update, I'll review in the morning
+        at: '2026-11-04T23:30:00'
+      recent_deliveries: []
+      memory:
+      - Sends investor updates on the 5th of each month
+      - 'Investors: 11 angels + 1 fund'
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T23:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W18
+  ticket: User asked to be pinged the moment CI is green; the world cutoff is today's 10:00 payments freeze.
+  tags:
+  - work
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T00:20:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 08:00
+        usual_sleep: 00:00
+        role: backend engineer
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - 'CI is green on PR #4471 ''payments: idempotency keys'' (all 38 checks passed).'
+        source_excerpt: 'GitHub Actions: workflow ''ci'' succeeded on refs/pull/4471 at 00:19.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask:
+        text: ping me when CI goes green so I can merge and sleep
+        at: '2026-11-04T23:30:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-04T23:30:00'
+        surface: whatsapp
+        text: ping me when CI goes green so I can merge and sleep
+      - at: '2026-11-04T23:25:00'
+        surface: whatsapp
+        text: why is the integration lane so slow today
+      open_subjects: []
+      pending_asks:
+      - text: ping me when CI goes green so I can merge and sleep
+        at: '2026-11-04T23:30:00'
+      recent_deliveries:
+      - at: '2026-11-04T23:26:00'
+        channel: whatsapp
+        summary: 'Integration lane: queue depth 14, ~40 min wait'
+        answered: true
+      memory:
+      - Merges own PRs after green CI
+      - Team freeze for payments starts Thursday 10:00
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T23:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_today
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W19
+  ticket: One report bundles noise with a largest-customer production outage; the outage drives the report's urgency.
+  tags:
+  - work
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T11:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: founder and CTO of an API-first shipping-rates company
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - Recruiter cold email offering contract developers.
+        - Brightline Logistics (customer) reports the API is returning 500s for them since 10:40.
+        - Calendly confirmation for Friday 15:00 with a design candidate.
+        source_excerpt: '1) From: Zed Hire <zed@talentpipe.example> Subject: Scale your team fast ... 2) From: Omar Haddad <omar@brightline.example> Subject: API returning 500s -- Since about 10:40 every /rates call returns HTTP 500 for us. Our checkout is quoting no shipping. Can someone look ASAP? 3) From: Calendly <no-reply@calendly.example> Subject: New event: Design chat - Fri 15:00'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T10:20:00'
+        surface: slack
+        text: in a long sales call till 11:30
+      - at: '2026-11-05T08:40:00'
+        surface: whatsapp
+        text: what's on today
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T08:41:00'
+        channel: whatsapp
+        summary: 'Today: sales call 10-11:30, team lunch 13:00'
+        answered: true
+      - at: '2026-11-05T10:00:00'
+        channel: whatsapp
+        summary: 'Inbox: 2 newsletters, 1 invoice'
+        answered: false
+      memory:
+      - Brightline Logistics is the largest customer (~30% of ARR)
+      - Omar Haddad is Brightline's engineering lead
+      - No status-page or uptime monitoring set up yet
+      - Hiring a product designer
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: slack
+        last_active_at: '2026-11-05T10:20:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W20
+  ticket: Same flaky test already reported twice and acknowledged by the user; another PR hitting it is the same fact.
+  tags:
+  - work
+  - dev
+  setup:
+    state:
+      now: '2026-11-04T15:20:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: tech lead for the api/ service
+      item:
+        producer: workflow
+        outcome: failed
+        facts:
+        - 'CI failed on PR #2219 ''Add pagination to /invoices'': test_rate_limit_window timed out.'
+        source_excerpt: 'GitHub Actions: ''api-ci'' failed on #2219. Failing test: tests/limits/test_rate_limit_window.py::test_window_rollover (Timeout after 30s).'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T14:45:00'
+        surface: whatsapp
+        text: ugh that rate limit test again, will look after my 4pm
+      - at: '2026-11-04T12:00:00'
+        surface: whatsapp
+        text: book lunch table for 4 at 1
+      open_subjects:
+      - label: 'Workflow: tell me when a PR in api/ fails CI'
+        status: active
+        since: '2026-10-01T09:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T14:12:00'
+        channel: whatsapp
+        summary: 'CI failed on PR #2201: test_rate_limit_window timed out'
+        answered: true
+      - at: '2026-11-04T14:40:00'
+        channel: whatsapp
+        summary: Same timeout in test_rate_limit_window failed 6 more PRs (#2203-#2214)
+        answered: false
+      - at: '2026-11-04T12:02:00'
+        channel: whatsapp
+        summary: Table for 4 booked at 13:00
+        answered: true
+      memory:
+      - Owns the api/ service CI
+      - Prefers fewer, grouped notifications
+      calendar:
+      - start: '2026-11-04T16:00:00'
+        end: '2026-11-04T16:30:00'
+        title: Platform sync
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T14:45:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: duplicate
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W21
+  ticket: Incident touches the user's service but they aren't asked and on-call is someone else; worth one heads-up, not an interrupt. Timely vs routine is arguable.
+  tags:
+  - work
+  - dev
+  setup:
+    state:
+      now: '2026-11-05T15:03:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: engineering manager of the payments team
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - 'Incident thread in #eng (12 messages in 3 minutes): checkout failures; two messages mention payments-service; no one has asked the user.'
+        source_excerpt: 'Slack #eng thread started by Dev Patel 15:00: ''checkout is throwing 502s for ~20% of users'' ... Ana Ruiz 15:02: ''traces show timeouts calling payments-service'' ... Dev Patel 15:02: ''could be the new ingress, checking''.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T14:30:00'
+        surface: slack
+        text: doing perf reviews this afternoon, only ping me if it matters
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T13:00:00'
+        channel: slack
+        summary: 'Midday: 2 PRs merged, 1 hiring loop scheduled'
+        answered: false
+      memory:
+      - Manages the payments team; payments-service is theirs
+      - 'Payments on-call this week: Kiran (not the user)'
+      - Doing performance reviews this week
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: slack
+        last_active_at: '2026-11-05T14:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W22
+  ticket: Breaks tomorrow's 07:30 agenda (at wake) and other workflows; tell once now, not urgent enough to interrupt.
+  tags:
+  - work
+  - dev
+  setup:
+    state:
+      now: '2026-11-06T18:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: agency founder
+      item:
+        producer: system
+        outcome: needs_you
+        facts:
+        - Google Calendar connection expired; 4 active workflows depend on it (daily agenda, meeting briefings, client-call prep, weekly time report).
+        source_excerpt: 'Integration google_calendar: refresh token rejected (invalid_grant) at 17:58.'
+        producer_suggested:
+          urgency: timely
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-06T17:30:00'
+        surface: whatsapp
+        text: wrapping up for the week
+      open_subjects:
+      - label: 'Workflow: daily agenda 07:30'
+        status: active
+        since: '2026-07-01T00:00:00'
+      - label: 'Workflow: meeting briefings'
+        status: active
+        since: '2026-07-01T00:00:00'
+      - label: 'Workflow: client-call prep'
+        status: active
+        since: '2026-08-15T00:00:00'
+      - label: 'Workflow: weekly time report (Mon 09:00)'
+        status: active
+        since: '2026-09-01T00:00:00'
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Daily agenda runs every day incl. weekends
+      - Runs a 7-person design agency
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-06T17:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: before_next_morning
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W23
+  ticket: 'Nothing active depends on GitHub and the user stopped using it: moot.'
+  tags:
+  - work
+  - holdout
+  setup:
+    state:
+      now: '2026-11-04T12:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: product manager
+      item:
+        producer: system
+        outcome: needs_you
+        facts:
+        - GitHub connection expired.
+        source_excerpt: 'Integration github: token expired at 11:58.'
+        producer_suggested:
+          urgency: timely
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T10:00:00'
+        surface: whatsapp
+        text: what's my week look like
+      open_subjects:
+      - label: 'Workflow: weekly roadmap digest (Notion)'
+        status: active
+        since: '2026-09-02T00:00:00'
+      - label: 'Workflow: Linear triage summary'
+        status: active
+        since: '2026-09-10T00:00:00'
+      - label: 'Workflow: GitHub PR digest'
+        status: deleted
+        since: '2026-09-05T00:00:00'
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Deleted GitHub workflows in early September; said 'I don't really use GitHub anymore'
+      - 'Main tools: Notion, Linear, Slack'
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T10:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: background
+      deadline: none
+      relevance: moot
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W24
+  ticket: 'The user''s own reminder for now; the overrun meeting doesn''t cancel it. Sensitivity: a candidate''s offer is her private matter (personal also defensible).'
+  tags:
+  - work
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T15:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: head of engineering
+      item:
+        producer: reminder
+        outcome: info
+        facts:
+        - 'Reminder: call Priya re: offer.'
+        source_excerpt: 'Reminder set by the user on 2026-11-04 21:10 for 2026-11-05 15:00: ''call Priya re: offer''.'
+        producer_suggested:
+          urgency: interrupt
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T14:48:00'
+        surface: slack
+        text: Q4 review running long, ugh
+      - at: '2026-11-05T09:00:00'
+        surface: whatsapp
+        text: move gym to 7pm
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Hiring a senior engineer; Priya Nair is the top candidate
+      - Offer letter drafted 2026-11-04
+      calendar:
+      - start: '2026-11-05T14:00:00'
+        end: '2026-11-05T14:45:00'
+        title: Q4 review
+      - start: '2026-11-05T19:00:00'
+        end: '2026-11-05T20:00:00'
+        title: Gym
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: slack
+        last_active_at: '2026-11-05T14:48:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: third_party_private
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W25
+  ticket: User-set reminder, but Expensify confirmed the report was submitted at 14:05; the reminder no longer matters.
+  tags:
+  - work
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-06T17:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: solutions consultant
+      item:
+        producer: reminder
+        outcome: info
+        facts:
+        - 'Reminder: submit expense report.'
+        source_excerpt: 'Reminder set by the user on 2026-11-02 09:00 for 2026-11-06 17:00: ''submit expense report''.'
+        producer_suggested:
+          urgency: interrupt
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-06T14:00:00'
+        surface: whatsapp
+        text: finally doing my expenses
+      - at: '2026-11-06T11:00:00'
+        surface: whatsapp
+        text: find me a train to Mysore Sunday
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-06T11:05:00'
+        channel: whatsapp
+        summary: 'Train options to Mysore Sunday: 3 found'
+        answered: true
+      - at: '2026-11-06T14:10:00'
+        channel: whatsapp
+        summary: 'Inbox: Expensify - report ''October client travel'' submitted for approval to Ritu Sen'
+        answered: false
+      memory:
+      - Expense reports due by end of day Friday each fortnight
+      - 'Manager: Ritu Sen'
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-06T14:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_today
+      relevance: moot
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W26
+  ticket: Irreversible chance; the competing offer expires 09:00 (after wake), user is likely awake now and called her the top priority.
+  tags:
+  - work
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-04T22:30:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: 00:30
+        role: founder hiring the first senior engineers
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - Top engineering candidate Elena Sorokina is declining because another offer expires at 09:00 tomorrow.
+        source_excerpt: 'From: Elena Sorokina <elena.s@mailbox.example> Subject: Re: Offer - Senior Backend Engineer -- Hi, thank you so much for the offer. I have to be honest: I have another offer that expires at 9am tomorrow and I''m leaning towards accepting it, so I''m going to decline yours. I really enjoyed meeting the team. Elena'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T19:40:00'
+        surface: whatsapp
+        text: Elena is the one, do whatever it takes to close her
+      - at: '2026-11-04T19:00:00'
+        surface: whatsapp
+        text: what time is the Nikhil call tomorrow
+      open_subjects:
+      - label: Hire senior backend engineer
+        status: offer out to Elena Sorokina
+        since: '2026-10-20T10:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T19:02:00'
+        channel: whatsapp
+        summary: Nikhil call tomorrow 11:00
+        answered: true
+      memory:
+      - 'Elena Sorokina: top candidate for senior backend role, offer sent 2026-11-02'
+      - User usually stays up until ~00:30
+      - Has budget headroom of ~15% on the senior role
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T19:40:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: later
+      relevance: new
+      sensitivity: third_party_private
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W27
+  ticket: 16:00 cutoff on a Friday with salaries at stake; user is between lunch and a call.
+  tags:
+  - work
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-06T13:30:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: founder of a 12-person startup
+      item:
+        producer: trigger
+        outcome: failed
+        facts:
+        - 'Bank rejected the payroll wire for 12 employees: beneficiary IFSC mismatch.'
+        source_excerpt: 'From: HDFC Corporate <alerts@bank.example> Subject: Payment rejected - Bulk RTGS batch PAY-NOV -- Your bulk payment batch PAY-NOV (12 beneficiaries, INR 18,40,000) was rejected: IFSC mismatch for beneficiary 7. Please correct and resubmit before the 16:00 RTGS cutoff to ensure same-day credit.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: finance
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-06T13:05:00'
+        surface: whatsapp
+        text: lunch then investor call at 2
+      - at: '2026-11-06T10:00:00'
+        surface: whatsapp
+        text: did the AWS credits get applied
+      open_subjects:
+      - label: monthly payroll run
+        status: done
+        since: '2026-11-06T11:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-06T11:02:00'
+        channel: whatsapp
+        summary: Payroll submitted to bank
+        answered: false
+      - at: '2026-11-06T10:02:00'
+        channel: whatsapp
+        summary: 'AWS credits applied: $5,000'
+        answered: true
+      - at: '2026-11-06T13:00:00'
+        channel: whatsapp
+        summary: 'Midday check-in: 3 emails, 1 PR'
+        answered: false
+      memory:
+      - Pays salaries on the 6th each month
+      - 'Bank: HDFC corporate'
+      - Weekend starts Saturday; bank closed
+      calendar:
+      - start: '2026-11-06T14:00:00'
+        end: '2026-11-06T15:00:00'
+        title: Investor call
+      - start: '2026-11-06T17:00:00'
+        end: '2026-11-06T17:30:00'
+        title: Team retro
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-06T13:05:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_today
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W28
+  ticket: One of 15 sprint assignments; bundling into one summary is a coalescing rail.
+  tags:
+  - work
+  - dev
+  setup:
+    state:
+      now: '2026-11-03T11:12:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: backend engineer
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - 'Linear: LIN-491 ''Add retries to webhook dispatcher'' assigned to the user (priority: Medium).'
+        source_excerpt: 'Linear notification: Ritika Das assigned LIN-491 to you in cycle ''Sprint 46''.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch:
+      - producer: trigger
+        facts:
+        - LIN-482 'SSO redirect loop for enterprise tenant' assigned (Urgent)
+      - producer: trigger
+        facts:
+        - LIN-488 'Audit log export timeout' assigned (Urgent)
+      - producer: trigger
+        facts:
+        - LIN-485 'Bump pydantic' assigned (Low)
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-03T10:58:00'
+        surface: slack
+        text: sprint planning now
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Ritika Das is the user's engineering manager
+      - Sprint planning Tuesdays 11:00
+      calendar:
+      - start: '2026-11-03T11:00:00'
+        end: '2026-11-03T11:30:00'
+        title: Sprint 46 planning
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: slack
+        last_active_at: '2026-11-03T10:58:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W29
+  ticket: User asked to be kept posted (>= timely); collapsing the states is a same-subject replace rail.
+  tags:
+  - work
+  - dev
+  setup:
+    state:
+      now: '2026-11-04T16:12:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: QA lead
+      item:
+        producer: workflow
+        outcome: done
+        facts:
+        - Jira QA-311 'Export CSV drops last row' moved to Done.
+        source_excerpt: 'Jira: QA-311 transitioned Review -> Done by Sunil Varma at 16:11.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch:
+      - producer: workflow
+        facts:
+        - Jira QA-311 moved In Progress -> Review (16:06)
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T15:00:00'
+        surface: whatsapp
+        text: keep me posted on the csv bug
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T16:03:00'
+        channel: whatsapp
+        summary: QA-311 'Export CSV drops last row' moved to In Progress
+        answered: false
+      memory:
+      - Release candidate cut on Thursdays
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T15:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W30
+  ticket: Must reach the user before 08:00 but not at 03:00; deliver around wake time.
+  tags:
+  - work
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T03:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: consultant serving clients in Japan
+      item:
+        producer: trigger
+        outcome: needs_you
+        facts:
+        - Tokyo client Kenji Sato asks to move today's 09:00 call to 08:00.
+        source_excerpt: 'From: Kenji Sato <k.sato@hoshino-trading.example> Subject: Today''s call -- Good morning, would it be possible to move today''s 09:00 (IST) call to 08:00 (IST)? I have a board session added after. Apologies for the short notice. Kenji'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T23:10:00'
+        surface: whatsapp
+        text: night!
+      - at: '2026-11-04T18:00:00'
+        surface: whatsapp
+        text: prep notes for Hoshino call tomorrow
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T18:05:00'
+        channel: whatsapp
+        summary: Hoshino call prep notes ready
+        answered: true
+      memory:
+      - Kenji Sato is the main contact at Hoshino Trading
+      - Usually wakes around 07:30
+      calendar:
+      - start: '2026-11-05T09:00:00'
+        end: '2026-11-05T10:00:00'
+        title: Hoshino Trading - weekly call
+      - start: '2026-11-05T13:00:00'
+        end: '2026-11-05T14:00:00'
+        title: Lunch with Meera
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T23:10:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+    - wake_time
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W31
+  ticket: Nothing actionable before Monday and the user just left for a weekend trip; anxiety-inducing news is better held (soften also defensible).
+  tags:
+  - work
+  - dev
+  setup:
+    state:
+      now: '2026-11-06T18:05:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: software engineer
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - 'Manager Grace Liu commented on the 1:1 doc: wants to talk about the user''s performance on Monday.'
+        source_excerpt: 'Google Docs comment by Grace Liu on ''1:1 - Grace / you'': ''Let''s talk about your performance Monday.'''
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-06T17:50:00'
+        surface: whatsapp
+        text: logging off, weekend trek to Kudremukh!
+      - at: '2026-11-06T12:00:00'
+        surface: whatsapp
+        text: order lunch from the usual
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-06T12:01:00'
+        channel: whatsapp
+        summary: Lunch ordered
+        answered: true
+      memory:
+      - Grace Liu is the user's manager
+      - Weekly 1:1 on Mondays 11:00
+      - Trekking this weekend
+      calendar:
+      - start: '2026-11-09T11:00:00'
+        end: '2026-11-09T11:30:00'
+        title: 1:1 Grace / you
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-06T17:50:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: new
+      sensitivity: personal
+      moment: hold
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W32
+  ticket: Routing problem (which surface the user is on), not a Judge decision; slack presence is not among the listed signals.
+  tags:
+  - work
+  - dev
+  setup:
+    state:
+      now: '2026-11-04T15:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: backend engineer
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - 'Notion: 2 new comments on the ''Caching RFC'' page.'
+        source_excerpt: 'Notion: Wei Zhang and Abby Cole commented on ''Caching RFC''.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T11:00:00'
+        surface: whatsapp
+        text: what's due this week
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T11:01:00'
+        channel: whatsapp
+        summary: 'Due this week: Caching RFC review, on-call handoff'
+        answered: true
+      memory:
+      - Works from the office at a desk all day, Slack desktop open
+      - 'chat_channel_priority: whatsapp, slack'
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T11:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W33
+  ticket: Answer the user asked for before a call starting in one minute; minutes matter.
+  tags:
+  - work
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-04T13:59:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: sales director
+      item:
+        producer: executor_task
+        outcome: done
+        facts:
+        - 'Sarah Kim (Copperleaf) said on Oct 29: budget capped at $60k/yr, wants 2-year lock, open to annual prepay for 10% off.'
+        source_excerpt: 'Source: email thread ''Copperleaf - proposal'' 2026-10-29 and call notes.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask:
+        text: remind me what Sarah said about pricing before my 2pm call
+        at: '2026-11-04T13:40:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-04T13:40:00'
+        surface: whatsapp
+        text: remind me what Sarah said about pricing before my 2pm call
+      open_subjects: []
+      pending_asks:
+      - text: remind me what Sarah said about pricing before my 2pm call
+        at: '2026-11-04T13:40:00'
+      recent_deliveries: []
+      memory:
+      - Sarah Kim is VP Ops at Copperleaf
+      - Copperleaf is in negotiation stage
+      calendar:
+      - start: '2026-11-04T14:00:00'
+        end: '2026-11-04T14:45:00'
+        title: Copperleaf pricing call (Sarah Kim)
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T13:40:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W34
+  ticket: Contradicts what GAIA told this morning and affects a room booking; tell today, before Thursday.
+  tags:
+  - work
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-03T14:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: partnerships manager
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - Acme's Lucy Park asks to move the partnership meeting from Thursday to Friday 11:00.
+        source_excerpt: 'From: Lucy Park <lucy@acme.example> Subject: Re: Partnership kickoff -- Hi! Something came up on Thursday, could we do Friday 11:00 instead? Same agenda. Thanks, Lucy'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-03T10:05:00'
+        surface: whatsapp
+        text: great, thanks
+      - at: '2026-11-03T12:30:00'
+        surface: whatsapp
+        text: book the big meeting room for thursday
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-03T10:00:00'
+        channel: whatsapp
+        summary: Acme partnership meeting confirmed for Thursday 11:00
+        answered: true
+      - at: '2026-11-03T12:32:00'
+        channel: whatsapp
+        summary: Booked Room Everest for Thursday 10:30-12:30
+        answered: true
+      memory:
+      - Lucy Park is head of partnerships at Acme
+      - 'Friday mornings: usually free'
+      calendar:
+      - start: '2026-11-05T11:00:00'
+        end: '2026-11-05T12:00:00'
+        title: Acme partnership kickoff
+      - start: '2026-11-06T10:00:00'
+        end: '2026-11-06T10:30:00'
+        title: Team standup
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-03T12:32:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W35
+  ticket: SEV1 outage is interrupt-grade on its own, but it duplicates the PagerDuty page the user already acknowledged.
+  tags:
+  - work
+  - dev
+  setup:
+    state:
+      now: '2026-11-04T10:15:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: SRE lead
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - 'GitHub issue opened: ''payments-api returning 5xx'' (#5521).'
+        source_excerpt: 'From: GitHub <notifications@github.example> Subject: [core/payments] payments-api returning 5xx (#5521) -- Opened by mo-qa: Seeing 5xx from payments-api since ~10:00, linking PD incident.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch:
+      - producer: trigger
+        facts:
+        - 'Slack #incidents 10:06: @you payments-api 5xx spike, incident channel opened'
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T10:05:00'
+        surface: whatsapp
+        text: on it
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T10:03:00'
+        channel: whatsapp
+        summary: 'PagerDuty: SEV1 payments-api 5xx spike (incident #9020)'
+        answered: true
+      memory:
+      - SRE lead for payments
+      - 'Incident channel convention #inc-<id>'
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T10:05:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: duplicate
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W36
+  ticket: Sent by the person the user is talking to right now, referenced for this call; useless after the call.
+  tags:
+  - work
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T16:20:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: founder
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - Investor Jane Okafor emailed the market map deck link 'as discussed'.
+        source_excerpt: 'From: Jane Okafor <jane@northpeak.example> Subject: deck as discussed -- Here''s the market map deck as discussed, page 4 is the one I mentioned. https://docs.example/d/market-map'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T15:55:00'
+        surface: whatsapp
+        text: jumping on with Jane
+      - at: '2026-11-05T11:00:00'
+        surface: whatsapp
+        text: send the cap table to the lawyer
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T11:05:00'
+        channel: whatsapp
+        summary: Cap table sent to Rao & Partners
+        answered: true
+      - at: '2026-11-05T13:00:00'
+        channel: whatsapp
+        summary: 'Midday: 4 new emails'
+        answered: false
+      memory:
+      - Jane Okafor is a partner at Northpeak Capital, considering leading the round
+      calendar:
+      - start: '2026-11-05T16:00:00'
+        end: '2026-11-05T16:45:00'
+        title: 'Call: Jane Okafor (Northpeak)'
+      - start: '2026-11-05T18:00:00'
+        end: '2026-11-05T18:30:00'
+        title: Hiring sync
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T15:55:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W37
+  ticket: User's own rule asks for every client reply the moment it arrives; this one also asks for a contract today.
+  tags:
+  - work
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-04T11:20:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: account executive
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - 'Client Tidewater Freight replied: they approved the revised quote and want the contract today.'
+        source_excerpt: 'From: Ben Ortiz <ben@tidewaterfreight.example> Subject: Re: Revised quote -- Looks good, approved on our side. Can you send the contract today?'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T09:00:00'
+        surface: whatsapp
+        text: busy day, lots of client calls
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T08:30:00'
+        channel: whatsapp
+        summary: 'Client reply: Larkspur Foods'
+        answered: false
+      - at: '2026-11-04T09:10:00'
+        channel: whatsapp
+        summary: 'Client reply: Moss & Pine'
+        answered: false
+      - at: '2026-11-04T09:45:00'
+        channel: whatsapp
+        summary: 'Client reply: Larkspur Foods'
+        answered: false
+      - at: '2026-11-04T10:15:00'
+        channel: whatsapp
+        summary: 'Client reply: Brightwell'
+        answered: false
+      - at: '2026-11-04T10:40:00'
+        channel: whatsapp
+        summary: 'Client reply: Delmar Foods'
+        answered: false
+      - at: '2026-11-04T11:05:00'
+        channel: whatsapp
+        summary: 'Client reply: Moss & Pine'
+        answered: false
+      memory:
+      - 'Clients: Larkspur Foods, Moss & Pine, Brightwell, Delmar Foods, Tidewater Freight'
+      - Gets ~20 client replies a day
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules:
+        - The moment a client replies, tell me. Never tell me about marketing emails.
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T09:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_today
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W38
+  ticket: 'User handed off the deal and muted it: unwanted.'
+  tags:
+  - work
+  - dev
+  setup:
+    state:
+      now: '2026-11-05T10:30:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: VP sales
+      item:
+        producer: trigger
+        outcome: info
+        facts:
+        - 'HubSpot: Acme deal stage moved from Proposal to Negotiation by Kai Lund.'
+        source_excerpt: 'HubSpot notification: Deal ''Acme - Platform 2027'' stage changed Proposal -> Negotiation (owner: Kai Lund).'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T17:20:00'
+        surface: whatsapp
+        text: stop messaging me about the Acme deal, Kai owns it now
+      - at: '2026-11-05T09:00:00'
+        surface: whatsapp
+        text: what are my 1:1s today
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T17:21:00'
+        channel: whatsapp
+        summary: Okay, muted Acme deal updates
+        answered: true
+      - at: '2026-11-05T09:01:00'
+        channel: whatsapp
+        summary: '1:1s today: Kai 14:00, Rhea 16:00'
+        answered: true
+      memory:
+      - Kai Lund owns the Acme deal since 2026-11-04
+      - Asked not to be messaged about the Acme deal
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T09:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: none
+      relevance: unwanted
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W39
+  ticket: 'Hard 17:00 no-late deadline, three hours left: timely, must go now, not wake-grade.'
+  tags:
+  - work
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-06T14:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: founder of a climate-tech startup
+      item:
+        producer: tracked_todo
+        outcome: progress
+        facts:
+        - Grant application on the portal is still in 'Draft - not submitted'; deadline today 17:00.
+        source_excerpt: 'Portal: GreenFuture Innovation Grant - Application #GF-2291 status: Draft (last edited Wed 21:40). Submissions close Fri 6 Nov 17:00 IST. Late submissions are not accepted.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-06T11:30:00'
+        surface: whatsapp
+        text: crazy day, customer escalations all morning
+      - at: '2026-11-04T18:00:00'
+        surface: whatsapp
+        text: yeah yeah I'll do the grant thing
+      open_subjects:
+      - label: submit grant application by Fri 17:00
+        status: open (tracked todo)
+        since: '2026-10-28T10:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T17:55:00'
+        channel: whatsapp
+        summary: Grant application due Fri 17:00; draft is 80% complete
+        answered: true
+      - at: '2026-11-06T11:32:00'
+        channel: whatsapp
+        summary: 'Inbox: 2 escalations from Ridgeway Farms'
+        answered: false
+      memory:
+      - Grant worth INR 50 lakh
+      - Co-founder Asha drafted the budget section
+      calendar: []
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-06T11:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: work-W40
+  ticket: Provisioning notice; mention when the user next talks to GAIA.
+  tags:
+  - work
+  - dev
+  setup:
+    state:
+      now: '2026-11-04T15:10:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: product designer
+      item:
+        producer: system
+        outcome: done
+        facts:
+        - 'Your workflows are set up: inbox digest, meeting briefings, weekly design review reminder.'
+        source_excerpt: 'System: provisioning completed for 3 default workflows.'
+        producer_suggested:
+          urgency: background
+          sensitivity: none
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T14:55:00'
+        surface: whatsapp
+        text: set it all up, I'm going into a crit
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Joined GAIA today
+      calendar:
+      - start: '2026-11-04T15:00:00'
+        end: '2026-11-04T16:00:00'
+        title: Design crit
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T14:55:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: background
+      deadline: none
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision

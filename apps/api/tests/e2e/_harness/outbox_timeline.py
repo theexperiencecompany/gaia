@@ -3,8 +3,8 @@
 Real: intake, policy, watching (presence), router, compose's validation and degrade, deliver's state machine, the
 two outbox repositories (on real Mongo, with the production indexes), the comms thread lock
 (on fakeredis), presence (fakeredis, read through the clock seam).
-Doubled: the clock, the ARQ queue (in memory, keyed on the instant a job is due), the compose
-model (scripted), the comms thread (an in-memory graph), the speech transports (capture
+Doubled: the clock, the ARQ queue (in memory, keyed on the instant a job is due), the Judge
+(scripted: nothing remarkable unless a test says otherwise), the compose model (scripted), the comms thread (an in-memory graph), the speech transports (capture
 sinks), and the user, conversation and bot-session reads (a World).
 """
 
@@ -36,6 +36,7 @@ from app.services.outbox.transport.bot_queue import OutboundResult
 from app.utils import clock
 from app.workers.tasks.outbox_tasks import outbox_intake
 from shared.py.analytics.catalog.delivery import DeliveryMessageSent
+from tests._harness.judge import ScriptedJudge
 
 T0 = datetime(2026, 11, 10, 9, 0, tzinfo=UTC)
 ROUTER = "app.services.outbox.router"
@@ -72,13 +73,15 @@ class FakeArq:
         *args: Any,
         _job_id: str | None = None,
         _defer_until: datetime | None = None,
+        _defer_by: float | None = None,
         **kwargs: Any,
     ) -> object | None:
         assert function == "outbox_intake", function
         if _job_id in self.jobs:
             return None
         key = _job_id or f"job-{len(self.jobs)}"
-        self.jobs[key] = _Job(run_at=_defer_until or self._clock.now(), args=args)
+        run_at = _defer_until or self._clock.now() + timedelta(seconds=_defer_by or 0)
+        self.jobs[key] = _Job(run_at=run_at, args=args)
         return SimpleNamespace(job_id=key)
 
     async def run_due(self) -> list[str]:
@@ -218,6 +221,7 @@ class OutboxTimeline:
     clock: FakeClock
     arq: FakeArq
     compose: ScriptedCompose
+    judge: ScriptedJudge
     graph: FakeThreadGraph
     sinks: Sinks
 
@@ -256,7 +260,9 @@ class OutboxTimeline:
 
 
 @contextmanager
-def _patched(world: World, sinks: Sinks, arq: FakeArq, compose: ScriptedCompose) -> Iterator[None]:
+def _patched(
+    world: World, sinks: Sinks, arq: FakeArq, compose: ScriptedCompose, judge: ScriptedJudge
+) -> Iterator[None]:
     async def get_user(user_id: str) -> UserDocument | None:
         return world.user_document() if user_id == world.user_id else None
 
@@ -352,6 +358,7 @@ def _patched(world: World, sinks: Sinks, arq: FakeArq, compose: ScriptedCompose)
         enter(patch(f"{DELIVER}.capture", capture))
         enter(patch(f"{DELIVER}.load_user_context", load_user))
         enter(patch(f"{COMPOSE}.ainvoke_structured", compose))
+        enter(patch("app.services.outbox.intake.judge_report", judge))
         enter(
             patch(
                 "app.services.outbox.intake.RedisPoolManager.get_pool", AsyncMock(return_value=arq)
@@ -376,6 +383,7 @@ def outbox_timeline(
     fake_clock = FakeClock(T0)
     arq = FakeArq(fake_clock)
     compose = ScriptedCompose()
+    judge = ScriptedJudge()
     sinks = Sinks()
 
     async def lock_held(thread: str) -> bool:
@@ -386,9 +394,9 @@ def outbox_timeline(
         patch.object(clock, "now", fake_clock.now),
         patch.object(Lock, "release", _release_without_lua),
         patch(f"{COMPOSE}.GraphManager.get_graph", AsyncMock(return_value=graph)),
-        _patched(world, sinks, arq, compose),
+        _patched(world, sinks, arq, compose, judge),
     ):
-        yield OutboxTimeline(db, world, fake_clock, arq, compose, graph, sinks)
+        yield OutboxTimeline(db, world, fake_clock, arq, compose, judge, graph, sinks)
 
 
 async def prepare_collections(db: AsyncIOMotorDatabase[Any]) -> None:

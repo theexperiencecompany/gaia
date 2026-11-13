@@ -1,0 +1,3087 @@
+- id: time-money-TM01
+  ticket: Possible card fraud on an active card; user must confirm/deny within minutes, budget is irrelevant.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-03T14:20:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 07:00
+        usual_sleep: '23:00'
+        role: freelance UX designer
+      item:
+        producer: inbox_check
+        outcome: needs_you
+        facts:
+        - Chase asks whether a $1,240.00 BestBuy.com purchase on card ending 4417 was made by the user (reply Y/N).
+        source_excerpt: 'From: Chase Fraud Alerts <alerts@chase-alerts.example> Subject: Did you make this purchase? Chase Sapphire card ending 4417: We noticed an unusual purchase of $1,240.00 at BESTBUY.COM on Nov 3 at 2:14 PM ET. If this was you, reply Y. If not, reply N and we will block your card and send a replacement. Until we hear from you, further purchases on this card may be declined.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-03T13:58:00'
+        surface: whatsapp
+        text: can you move my dentist thing to next week
+      - at: '2026-11-03T11:10:00'
+        surface: whatsapp
+        text: what's the weather saturday
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-03T08:05:00'
+        channel: whatsapp
+        summary: Morning briefing
+        answered: false
+      - at: '2026-11-03T09:40:00'
+        channel: whatsapp
+        summary: Figma invoice paid
+        answered: false
+      - at: '2026-11-03T10:30:00'
+        channel: whatsapp
+        summary: Newsletter digest
+        answered: false
+      - at: '2026-11-03T11:45:00'
+        channel: whatsapp
+        summary: 'Package shipped: desk lamp'
+        answered: false
+      - at: '2026-11-03T12:30:00'
+        channel: whatsapp
+        summary: Client replied about logo draft
+        answered: false
+      - at: '2026-11-03T13:40:00'
+        channel: whatsapp
+        summary: Gym class booked for Thursday
+        answered: false
+      memory:
+      - Uses a Chase Sapphire card for most purchases
+      - Bought a monitor from Amazon last month
+      - Has a dog named Pixel
+      - Prefers WhatsApp over email
+      calendar:
+      - start: '2026-11-03T16:00:00'
+        end: '2026-11-03T16:30:00'
+        title: Client review - Northwind
+      - start: '2026-11-04T10:00:00'
+        end: '2026-11-04T10:30:00'
+        title: Dentist
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-03T13:58:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM02
+  ticket: Card already on hold so no money is leaving; lead the message at the user's real wake (06:30), do not wake them.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-04T02:30:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 06:30
+        usual_sleep: '23:00'
+        role: freelance UX designer
+      item:
+        producer: inbox_check
+        outcome: needs_you
+        facts:
+        - Chase asks whether a $1,240.00 BestBuy.com purchase at 2:21 AM was made by the user; card ending 4417 is on temporary hold until they respond.
+        source_excerpt: 'From: Chase Fraud Alerts <alerts@chase-alerts.example> Subject: Did you make this purchase? Chase Sapphire card ending 4417: We noticed an unusual purchase of $1,240.00 at BESTBUY.COM on Nov 4 at 2:21 AM ET. If this was you, reply Y. If not, reply N and we will block your card and send a replacement. We have placed a temporary hold on your card. No further purchases will be approved until you respond.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-03T22:40:00'
+        surface: whatsapp
+        text: night! remind me to call mom tomorrow
+      - at: '2026-11-03T19:12:00'
+        surface: whatsapp
+        text: order the dog food again
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-03T22:41:00'
+        channel: whatsapp
+        summary: 'Reminder set: call mom tomorrow'
+        answered: true
+      memory:
+      - Usually first active around 06:30 on weekdays (gym before work)
+      - Uses a Chase Sapphire card for most purchases
+      - Has a dog named Pixel
+      calendar:
+      - start: '2026-11-04T07:00:00'
+        end: '2026-11-04T08:00:00'
+        title: Gym
+      - start: '2026-11-04T10:00:00'
+        end: '2026-11-04T10:30:00'
+        title: Dentist
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-03T22:40:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - wake_time
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM03
+  ticket: User is checking out themselves and gets the OTP by SMS (memory); credential that dies in 10 minutes.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T11:02:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: product manager at a fintech company
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - HDFC Bank OTP 482913 for a ₹4,599 transaction at Croma.example, valid for 10 minutes.
+        source_excerpt: 'From: HDFC Bank <alerts@hdfcbank.example> Subject: OTP for your transaction. 482913 is your OTP for a transaction of INR 4,599.00 at CROMA.EXAMPLE on your card ending 9921. Valid for 10 mins. Do not share this OTP with anyone.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T10:56:00'
+        surface: whatsapp
+        text: ok ordering the air fryer from croma now, the 4.6k one
+      - at: '2026-11-05T10:20:00'
+        surface: whatsapp
+        text: what time is the standup tomorrow
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T08:05:00'
+        channel: whatsapp
+        summary: Morning briefing
+        answered: false
+      memory:
+      - Has an HDFC credit card ending 9921
+      - Was comparing air fryers yesterday
+      - Sister lives in Bengaluru
+      - HDFC sends transaction OTPs by SMS to the user's phone as well as by email
+      calendar:
+      - start: '2026-11-05T12:00:00'
+        end: '2026-11-05T12:30:00'
+        title: 1:1 with Meera
+      - start: '2026-11-06T10:00:00'
+        end: '2026-11-06T10:15:00'
+        title: Standup
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T10:56:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: already_known
+      sensitivity: credentials
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM04
+  ticket: Automatic retry in 3 days; fine for the next check-in.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T11:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: product manager at a fintech company
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - Netflix payment failed; Netflix will retry the charge in 3 days.
+        source_excerpt: 'From: Netflix <info@mailer.netflix.example> Subject: Your payment didn''t go through. We couldn''t process your payment for this month''s membership. We''ll try again in 3 days. You can update your payment method anytime.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T09:30:00'
+        surface: whatsapp
+        text: add milk to the list
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T08:00:00'
+        channel: whatsapp
+        summary: Morning briefing
+        answered: false
+      memory:
+      - Netflix is billed to an old debit card
+      - Watches cricket on weekends
+      calendar:
+      - start: '2026-11-05T15:00:00'
+        end: '2026-11-05T16:00:00'
+        title: Sprint planning
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: web
+        last_active_at: '2026-11-05T09:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM05
+  ticket: Production infra suspended tomorrow 16:00 if unpaid; needs action today but not a minutes-level interrupt.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T16:00:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 07:00
+        usual_sleep: 00:30
+        role: founder of a 6-person SaaS startup
+      item:
+        producer: inbox_check
+        outcome: failed
+        facts:
+        - AWS could not charge the card on file for October usage ($3,412.18); the account will be suspended in 24 hours if unpaid.
+        source_excerpt: 'From: Amazon Web Services <aws-billing@aws.example> Subject: Action required: payment failed for account 4471-2290-8813. We were unable to charge your payment method for $3,412.18. If payment is not received within 24 hours, your account and its resources may be suspended.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T15:20:00'
+        surface: whatsapp
+        text: push the board deck review to friday
+      - at: '2026-11-05T12:05:00'
+        surface: whatsapp
+        text: who's on call this week?
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T08:00:00'
+        channel: whatsapp
+        summary: Morning briefing
+        answered: false
+      - at: '2026-11-05T10:10:00'
+        channel: whatsapp
+        summary: Stripe payout landed
+        answered: false
+      - at: '2026-11-05T11:30:00'
+        channel: whatsapp
+        summary: Investor update reply
+        answered: false
+      - at: '2026-11-05T13:00:00'
+        channel: whatsapp
+        summary: Midday check-in
+        answered: false
+      - at: '2026-11-05T14:20:00'
+        channel: whatsapp
+        summary: GitHub billing receipt
+        answered: false
+      - at: '2026-11-05T15:05:00'
+        channel: whatsapp
+        summary: Candidate accepted interview
+        answered: false
+      memory:
+      - Runs the company's production stack on AWS
+      - Company card was reissued last week after expiry
+      - 'Co-founder: Priya Raman'
+      calendar:
+      - start: '2026-11-05T16:30:00'
+        end: '2026-11-05T17:30:00'
+        title: Hiring panel
+      - start: '2026-11-06T09:00:00'
+        end: '2026-11-06T09:30:00'
+        title: Standup
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: slack
+        last_active_at: '2026-11-05T15:20:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM06
+  ticket: 'Joined with memory: rent debits at 07:00 before the user wakes; must be told tonight, no need to wake.'
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-10-31T19:30:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: product manager at a fintech company
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - ICICI savings account ending 3304 balance is ₹4,812, below the ₹5,000 alert threshold.
+        source_excerpt: 'From: ICICI Bank <alerts@icicibank.example> Subject: Low balance alert. Dear customer, the available balance in your account XX3304 is INR 4,812.40 as on 31-Oct-2026 19:24. This is below the threshold set by you (INR 5,000).'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-10-31T18:50:00'
+        surface: whatsapp
+        text: book a table for 2 at that thai place tomorrow
+      - at: '2026-10-31T13:15:00'
+        surface: whatsapp
+        text: send me the deck link again
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-10-31T18:52:00'
+        channel: whatsapp
+        summary: Table booked at Thai Basil, 1 Nov 13:00
+        answered: true
+      memory:
+      - Rent of ₹25,000 auto-debits from ICICI XX3304 on the 1st of every month at 07:00 (standing instruction)
+      - Landlord charges a ₹750 fee for a bounced debit
+      - Salary lands in an HDFC account on the last working day
+      - Likes Thai food
+      calendar:
+      - start: '2026-11-01T13:00:00'
+        end: '2026-11-01T14:30:00'
+        title: Lunch - Thai Basil
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-10-31T18:50:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: before_next_morning
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM07
+  ticket: 'User just told GAIA about this exact purchase: already_known; record only.'
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-06T16:10:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: product manager at a fintech company
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - HDFC credit card ending 9921 debited ₹1,20,000 at Reliance Digital online.
+        source_excerpt: 'From: HDFC Bank <alerts@hdfcbank.example> Subject: Transaction alert. INR 1,20,000.00 spent on your card ending 9921 at RELIANCEDIGITAL.EXAMPLE on 06-11-2026 16:04.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-06T16:06:00'
+        surface: web
+        text: done, bought the macbook from reliance digital. 1.2L, ouch
+      - at: '2026-11-06T16:07:00'
+        surface: web
+        text: can you add the warranty end date to my notes
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-06T16:07:30'
+        channel: web
+        summary: 'Noted warranty end date: Nov 2027'
+        answered: true
+      memory:
+      - Was deciding between MacBook Air and Pro this week
+      - HDFC credit card ending 9921
+      - Gym on Mon/Wed/Fri
+      calendar:
+      - start: '2026-11-06T18:00:00'
+        end: '2026-11-06T19:00:00'
+        title: Gym
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: web
+        last_active_at: '2026-11-06T16:07:00'
+        in_live_chat: true
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: already_known
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM08
+  ticket: User asked to be told (>= timely); dip already recovered, tell at wake in past tense.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-07T07:30:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 07:15
+        usual_sleep: '23:30'
+        role: software engineer
+      item:
+        producer: tracked_todo
+        outcome: done
+        facts:
+        - 'BTC price check at 03:10: $59,214, below the $60,000 threshold the user set.'
+        source_excerpt: 'CoinGecko.example BTC/USD spot at 2026-11-07 03:10 ET: 59,214.33'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch:
+      - producer: tracked_todo
+        outcome: info
+        facts:
+        - 'BTC price check at 07:10: $61,032.'
+        source_excerpt: 'CoinGecko.example BTC/USD spot at 2026-11-07 07:10 ET: 61,032.10'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      ask:
+        text: tell me if BTC drops below 60k
+        at: '2026-11-06T09:12:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-06T09:12:00'
+        surface: whatsapp
+        text: tell me if BTC drops below 60k
+      - at: '2026-11-06T21:40:00'
+        surface: whatsapp
+        text: what's on tomorrow
+      open_subjects:
+      - label: BTC below $60k alert (hourly check)
+        status: open
+        since: '2026-11-06T09:12:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-06T21:41:00'
+        channel: whatsapp
+        summary: 'Tomorrow: run with Sam at 8'
+        answered: true
+      memory:
+      - Holds a small amount of BTC on Coinbase
+      - Runs on Saturday mornings
+      calendar:
+      - start: '2026-11-07T08:00:00'
+        end: '2026-11-07T09:00:00'
+        title: Run with Sam
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-07T07:22:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM09
+  ticket: An alert workflow the user built for exactly this; the open is in 25 minutes.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T09:05:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 06:45
+        usual_sleep: '23:00'
+        role: portfolio manager at a family office
+      item:
+        producer: workflow
+        outcome: done
+        facts:
+        - NVDA is down 9.1% in premarket trading at $121.40.
+        - NVDA is 18% of the user's tracked holdings.
+        source_excerpt: 'Workflow ''Alert me on big moves in my holdings'' (trigger: market data, threshold ±5%). MarketWatch.example premarket: NVDA 121.40 -12.15 (-9.10%) as of 9:04 AM ET. Regular session opens 9:30 AM ET.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T08:40:00'
+        surface: whatsapp
+        text: summarise the fed minutes for me
+      - at: '2026-11-04T17:00:00'
+        surface: whatsapp
+        text: set up an alert workflow for big moves in my holdings, anything over 5%
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T08:50:00'
+        channel: whatsapp
+        summary: Fed minutes summary
+        answered: true
+      memory:
+      - Created the 'big moves in my holdings' workflow on Nov 4
+      - 'Holdings: NVDA, MSFT, AAPL, TLT'
+      - Trades at the open when something moves
+      calendar:
+      - start: '2026-11-05T10:00:00'
+        end: '2026-11-05T11:00:00'
+        title: Investment committee
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T08:40:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM10
+  ticket: The answer the user asked for; deal ends 01:30 so tell now while they are awake.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T21:30:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: high school teacher
+      item:
+        producer: tracked_todo
+        outcome: done
+        facts:
+        - Sony WH-1000XM6 is $279 at Shopmart.example as a lightning deal ending 01:30 ET.
+        source_excerpt: 'Shopmart.example: Sony WH-1000XM6 Wireless Headphones — Lightning Deal $279.00 (list $399.99). Deal ends in 3h 59m. 62% claimed.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask:
+        text: tell me if the Sony XM6 goes under $300
+        at: '2026-11-01T12:00:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-01T12:00:00'
+        surface: whatsapp
+        text: tell me if the Sony XM6 goes under $300
+      - at: '2026-11-05T20:45:00'
+        surface: whatsapp
+        text: grade sheet for period 3 is due friday right?
+      open_subjects:
+      - label: Sony XM6 under $300 (price watch)
+        status: open
+        since: '2026-11-01T12:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T20:46:00'
+        channel: whatsapp
+        summary: Yes, period 3 grades due Fri 5pm
+        answered: true
+      memory:
+      - Commutes by train, wants noise-cancelling headphones
+      - Grades are due Friday
+      calendar:
+      - start: '2026-11-06T07:45:00'
+        end: '2026-11-06T15:00:00'
+        title: School
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T20:45:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: before_next_morning
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM11
+  ticket: Deal dies at 03:30 while the user sleeps; not worth waking for, but useless as live news at 08:00.
+  tags:
+  - time-money
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-06T23:30:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 07:30
+        usual_sleep: '23:00'
+        role: high school teacher
+      item:
+        producer: tracked_todo
+        outcome: done
+        facts:
+        - Sony WH-1000XM6 is $279 at Shopmart.example as a lightning deal ending 03:30 ET.
+        source_excerpt: 'Shopmart.example: Sony WH-1000XM6 Wireless Headphones — Lightning Deal $279.00 (list $399.99). Deal ends in 3h 59m. 41% claimed.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask:
+        text: tell me if the Sony XM6 goes under $300
+        at: '2026-11-01T12:00:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-01T12:00:00'
+        surface: whatsapp
+        text: tell me if the Sony XM6 goes under $300
+      - at: '2026-11-06T22:35:00'
+        surface: whatsapp
+        text: ok goodnight, early class tomorrow
+      open_subjects:
+      - label: Sony XM6 under $300 (price watch)
+        status: open
+        since: '2026-11-01T12:00:00'
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Commutes by train, wants noise-cancelling headphones
+      - Has never asked to be woken for deals
+      calendar:
+      - start: '2026-11-07T07:45:00'
+        end: '2026-11-07T15:00:00'
+        title: School
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-06T22:35:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: before_next_morning
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM12
+  ticket: User said they want to cancel; 7 days left, so check-in today is right but it must not be dropped.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T10:00:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: freelance video editor
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - Adobe Creative Cloud All Apps annual plan renews on Nov 12 for $659.88.
+        source_excerpt: 'From: Adobe <mail@adobe.example> Subject: Your plan renews soon. Your Creative Cloud All Apps (annual, paid upfront) plan will automatically renew on November 12, 2026 for US$659.88. To make changes, visit your account.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T09:20:00'
+        surface: whatsapp
+        text: send the invoice to Harbor Films
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T09:21:00'
+        channel: whatsapp
+        summary: Invoice sent to Harbor Films
+        answered: true
+      memory:
+      - 'Said on Oct 8: ''I want to cancel Adobe, I''ve moved everything to DaVinci Resolve'''
+      - 'Main client: Harbor Films'
+      - Pays for software on a Capital One card
+      calendar:
+      - start: '2026-11-05T14:00:00'
+        end: '2026-11-05T15:00:00'
+        title: Harbor Films review
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T09:20:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM13
+  ticket: Trial charges at 23:59 tonight; send while awake. Inferred (not user-set) reminder, so timely not interrupt.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T20:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a fintech company
+      item:
+        producer: reminder
+        outcome: info
+        facts:
+        - 'Reminder GAIA created from a Nov 2 email: the Headspace.example free trial converts to a ₹3,999 annual plan tonight at 23:59.'
+        source_excerpt: 'From: Headspace <hello@headspace.example> (Nov 2) Subject: Your trial ends soon. Your 7-day free trial ends on 5 Nov at 23:59 IST, after which your annual plan of INR 3,999 will begin.'
+        producer_suggested:
+          urgency: timely
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T19:10:00'
+        surface: whatsapp
+        text: what's for dinner ideas, something quick
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T19:11:00'
+        channel: whatsapp
+        summary: Quick dinner ideas
+        answered: true
+      memory:
+      - Tried Headspace but prefers the free Insight Timer app
+      - Vegetarian
+      calendar:
+      - start: '2026-11-06T09:30:00'
+        end: '2026-11-06T10:00:00'
+        title: Standup
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T19:10:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM14
+  ticket: Today is the last day before the late fee; the earlier 2 Nov notice went unanswered, and this is the deadline-day reminder.
+  tags:
+  - time-money
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T09:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: product manager at a fintech company
+      item:
+        producer: inbox_check
+        outcome: needs_you
+        facts:
+        - 'Landlord Mr. Kulkarni: November rent ₹32,000 has not been received; a ₹1,500 late fee applies from 6 Nov.'
+        source_excerpt: 'From: Anil Kulkarni <anil.kulkarni@mail.example> Subject: Re: November rent. Hi, just a reminder that I haven''t received November''s rent of Rs 32,000 yet. As per the agreement, a late fee of Rs 1,500 applies from the 6th. Please transfer today. Thanks, Anil'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T21:00:00'
+        surface: whatsapp
+        text: remind me what I owe Rohit for the trip
+      - at: '2026-11-03T18:30:00'
+        surface: whatsapp
+        text: pause the meal plan this week
+      open_subjects:
+      - label: November rent overdue
+        status: open
+        since: '2026-11-02T09:15:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-02T09:15:00'
+        channel: whatsapp
+        summary: Landlord says November rent (₹32,000, due 1 Nov) is overdue; late fee after the 5th
+        answered: false
+      - at: '2026-11-04T21:01:00'
+        channel: whatsapp
+        summary: You owe Rohit ₹4,200 for Goa
+        answered: true
+      memory:
+      - Pays rent to Anil Kulkarni by bank transfer
+      - 'Rent agreement: due on the 1st, ₹1,500 late fee from the 6th'
+      - Owes Rohit ₹4,200 for Goa trip
+      calendar:
+      - start: '2026-11-05T11:00:00'
+        end: '2026-11-05T12:00:00'
+        title: Design review
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T21:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM15
+  ticket: 'Paid in full on 10 Nov (user said so, bank confirmed): moot; reminding is a nag.'
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-13T09:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: product manager at a fintech company
+      item:
+        producer: tracked_todo
+        outcome: info
+        facts:
+        - 'Axis credit card statement: minimum due ₹3,200 (total ₹18,450) by 15 Nov; no payment recorded on the statement subject.'
+        source_excerpt: 'From: Axis Bank <statements@axisbank.example> (1 Nov) Subject: Credit card statement. Total amount due: INR 18,450.00. Minimum amount due: INR 3,200.00. Payment due date: 15-Nov-2026.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-10T14:15:00'
+        surface: whatsapp
+        text: paid the axis card
+      - at: '2026-11-12T20:30:00'
+        surface: whatsapp
+        text: movie tickets for saturday?
+      open_subjects:
+      - label: Axis card statement due 15 Nov
+        status: open
+        since: '2026-11-01T10:00:00'
+      - label: Axis card payment received ₹18,450
+        status: done
+        since: '2026-11-10T14:22:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-01T13:00:00'
+        channel: whatsapp
+        summary: 'Axis card statement: ₹18,450 due 15 Nov (min ₹3,200)'
+        answered: false
+      - at: '2026-11-10T18:00:00'
+        channel: whatsapp
+        summary: Axis Bank confirmed payment of ₹18,450 received on your card
+        answered: false
+      memory:
+      - Pays the Axis card in full from the bank app
+      - Likes Saturday evening shows
+      calendar:
+      - start: '2026-11-15T19:00:00'
+        end: '2026-11-15T22:00:00'
+        title: Movie
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-12T20:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: moot
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM16
+  ticket: Final notice; policy lapses tomorrow 23:59; earlier notices went unanswered.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-19T10:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: product manager at a fintech company
+      item:
+        producer: inbox_check
+        outcome: needs_you
+        facts:
+        - ACKO.example car insurance policy for MH-12-AB-4421 expires tomorrow, 20 Nov.
+        source_excerpt: 'From: ACKO <renewals@acko.example> Subject: Your car policy expires tomorrow. Your policy for MH-12-AB-4421 expires on 20-Nov-2026 at 23:59. Driving an uninsured vehicle is an offence under the Motor Vehicles Act, with fines up to Rs 2,000 and possible imprisonment. Renew now in 2 minutes.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-19T09:31:00'
+        surface: whatsapp
+        text: nice pics, forward them to Neha
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-10-20T18:00:00'
+        channel: whatsapp
+        summary: 'Car insurance renewal notice: policy expires 20 Nov'
+        answered: false
+      - at: '2026-11-13T13:00:00'
+        channel: whatsapp
+        summary: Car insurance expires in 7 days (20 Nov)
+        answered: false
+      - at: '2026-11-19T08:00:00'
+        channel: whatsapp
+        summary: Morning briefing
+        answered: false
+      - at: '2026-11-19T08:40:00'
+        channel: whatsapp
+        summary: Swiggy refund issued
+        answered: false
+      - at: '2026-11-19T09:00:00'
+        channel: whatsapp
+        summary: PR review requested
+        answered: false
+      - at: '2026-11-19T09:15:00'
+        channel: whatsapp
+        summary: Electricity bill generated
+        answered: false
+      - at: '2026-11-19T09:30:00'
+        channel: whatsapp
+        summary: Mom shared photos
+        answered: false
+      - at: '2026-11-19T09:45:00'
+        channel: whatsapp
+        summary: 'Calendar: offsite moved'
+        answered: false
+      memory:
+      - Drives to the office in Hinjewadi most days
+      - 'Car: Honda City MH-12-AB-4421'
+      - 'Sister: Neha'
+      calendar:
+      - start: '2026-11-20T09:30:00'
+        end: '2026-11-20T18:00:00'
+        title: Office (Hinjewadi)
+      - start: '2026-11-19T15:00:00'
+        end: '2026-11-19T16:00:00'
+        title: Team sync
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-19T09:31:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM17
+  ticket: Answer to the user's pending refund ask (>= timely); closes the chase.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-08T12:30:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: nurse
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - Zara.example issued a refund of $84.00 to the Visa ending 2208 for order 55102938.
+        source_excerpt: 'From: Zara <noreply@zara.example> Subject: Your refund has been processed. We have issued a refund of $84.00 for order 55102938 to your Visa ending 2208. It may take 5–10 business days to appear.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-10-25T18:00:00'
+        surface: whatsapp
+        text: chase my Zara refund for the returned jacket
+      - at: '2026-11-08T07:40:00'
+        surface: whatsapp
+        text: night shift tonight, wake me at 4pm pls
+      open_subjects:
+      - label: Chase Zara refund for order 55102938
+        status: open
+        since: '2026-10-25T18:00:00'
+      pending_asks:
+      - text: chase my Zara refund for the returned jacket
+        at: '2026-10-25T18:00:00'
+        status: following up
+      recent_deliveries:
+      - at: '2026-11-01T13:00:00'
+        channel: whatsapp
+        summary: Followed up with Zara support about refund for order 55102938
+        answered: false
+      - at: '2026-11-07T13:00:00'
+        channel: whatsapp
+        summary: Zara refund still pending; sent a second follow-up
+        answered: false
+      memory:
+      - Works night shifts this week
+      - Returned a Zara jacket on Oct 20
+      calendar:
+      - start: '2026-11-08T19:00:00'
+        end: '2026-11-09T07:00:00'
+        title: Night shift
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-08T07:40:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: none
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM18
+  ticket: 'Chargeback window closes Nov 15 (five days): routine but must not be dropped; bad news.'
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-10T11:00:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 07:00
+        usual_sleep: '23:00'
+        role: accountant
+      item:
+        producer: inbox_check
+        outcome: failed
+        facts:
+        - SkyRoute Airlines.example denied the user's refund request for cancelled flight SR 2291 ($612).
+        source_excerpt: 'From: SkyRoute Airlines <refunds@skyroute.example> Subject: Your refund request #R-77812. We have reviewed your request and are unable to issue a refund. If you disagree, you may dispute the charge with your card issuer. Note: most issuers require disputes within 60 days of the statement date on which the charge appeared. (Charge of $612.00 appeared on your Citi statement dated September 16, 2026.)'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-10T08:15:00'
+        surface: whatsapp
+        text: what's my 1pm about
+      open_subjects:
+      - label: SkyRoute refund for cancelled SR 2291
+        status: open
+        since: '2026-10-02T10:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-10T08:16:00'
+        channel: whatsapp
+        summary: 1pm is Delgado tax prep
+        answered: true
+      memory:
+      - Citi card statement closes on the 16th
+      - Flight SR 2291 was cancelled by the airline on Sep 30
+      - Prefers short messages
+      calendar:
+      - start: '2026-11-10T13:00:00'
+        end: '2026-11-10T14:00:00'
+        title: 'Client: Delgado tax prep'
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-10T08:15:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: new
+      sensitivity: finance
+      moment: soften
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM19
+  ticket: User is travelling right now for a 06:15 flight; boarding in 25 min at another terminal — quiet hours do not apply.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-08T05:10:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 07:00
+        usual_sleep: '23:00'
+        role: sales director
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - 'Flight UA 1820 SFO→ORD departing 06:15: gate changed from B12 to D41 (Terminal 3).'
+        source_excerpt: 'From: United <notifications@united.example> Subject: Gate change for UA 1820. Your flight UA 1820 San Francisco to Chicago departing 6:15 AM now departs from Gate D41 (Terminal 3). Previous gate: B12 (Terminal 1). Boarding begins 5:35 AM.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-07T21:30:00'
+        surface: whatsapp
+        text: what time should I leave for SFO tomorrow
+      - at: '2026-11-07T21:35:00'
+        surface: whatsapp
+        text: ok setting alarm for 4
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-07T21:31:00'
+        channel: whatsapp
+        summary: Leave by 4:30 AM for a 6:15 flight
+        answered: true
+      memory:
+      - Flies to Chicago monthly for client visits
+      - Prefers aisle seats
+      calendar:
+      - start: '2026-11-08T06:15:00'
+        end: '2026-11-08T12:20:00'
+        title: Flight UA 1820 SFO → ORD
+      - start: '2026-11-08T14:00:00'
+        end: '2026-11-08T15:30:00'
+        title: Client meeting - Lakeshore Foods
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-07T21:35:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM20
+  ticket: Delay changes the 15:30 car to the airport; user is in meetings but asked to be pinged if needed — before 15:30 is enough.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-06T14:00:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: management consultant
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - Delta flight DL 455 BOS→ATL, scheduled 18:00, is delayed about 2 hours to 20:05.
+        source_excerpt: 'From: Delta <deltaalerts@delta.example> Subject: Flight delay DL 455. Your flight DL 455 from Boston to Atlanta, originally departing 6:00 PM, is now expected to depart at 8:05 PM.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-06T08:30:00'
+        surface: whatsapp
+        text: book me a car to logan at 3:30
+      - at: '2026-11-06T12:50:00'
+        surface: whatsapp
+        text: back to back till 3, only ping if needed
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-06T08:31:00'
+        channel: whatsapp
+        summary: Car booked for 3:30 PM to Logan
+        answered: true
+      - at: '2026-11-06T09:00:00'
+        channel: whatsapp
+        summary: Morning briefing
+        answered: false
+      - at: '2026-11-06T10:00:00'
+        channel: whatsapp
+        summary: Expense report approved
+        answered: false
+      - at: '2026-11-06T11:00:00'
+        channel: whatsapp
+        summary: Client deck comments
+        answered: false
+      - at: '2026-11-06T12:00:00'
+        channel: whatsapp
+        summary: Hotel confirmation
+        answered: false
+      - at: '2026-11-06T13:05:00'
+        channel: whatsapp
+        summary: Midday check-in
+        answered: false
+      memory:
+      - Hates waiting at airports
+      - Lives in Back Bay, ~25 min to Logan
+      calendar:
+      - start: '2026-11-06T13:00:00'
+        end: '2026-11-06T14:30:00'
+        title: Client workshop
+      - start: '2026-11-06T14:30:00'
+        end: '2026-11-06T15:00:00'
+        title: Debrief
+      - start: '2026-11-06T15:30:00'
+        end: '2026-11-06T16:00:00'
+        title: Car to Logan
+      - start: '2026-11-06T18:00:00'
+        end: '2026-11-06T20:30:00'
+        title: Flight DL 455 BOS → ATL
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-06T12:50:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM21
+  ticket: Rebooking pushes them past tomorrow's LA pitch; same-day seats go first-come overnight and user asked to be woken for travel breaks.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-09T23:40:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 07:00
+        usual_sleep: '23:00'
+        role: sales director
+      item:
+        producer: inbox_check
+        outcome: needs_you
+        facts:
+        - American flight AA 302 JFK→LAX tomorrow 09:00 is cancelled; auto-rebooked onto Nov 11 09:00; a limited number of same-day alternatives are available first-come.
+        source_excerpt: 'From: American Airlines <aa@notify.aa.example> Subject: Your flight has been cancelled. AA 302 on Nov 10 at 9:00 AM is cancelled due to an aircraft issue. We''ve rebooked you on AA 302 on Nov 11 at 9:00 AM. Prefer to travel sooner? Limited seats are available on other flights Nov 10 — change in the app; seats are first come, first served.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-09T22:10:00'
+        surface: whatsapp
+        text: set alarm 6am, flight at 9
+      - at: '2026-11-09T22:12:00'
+        surface: whatsapp
+        text: night
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-09T22:11:00'
+        channel: whatsapp
+        summary: Alarm set for 6:00 AM
+        answered: true
+      memory:
+      - Has a client pitch in LA on Nov 10 at 16:00
+      - 'Has said: ''wake me if anything breaks my travel'''
+      calendar:
+      - start: '2026-11-10T09:00:00'
+        end: '2026-11-10T12:20:00'
+        title: Flight AA 302 JFK → LAX
+      - start: '2026-11-10T16:00:00'
+        end: '2026-11-10T17:30:00'
+        title: Pitch - Solano Health (LA)
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-09T22:12:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: before_next_morning
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM22
+  ticket: Check-in window runs until Fri 05:10; worth telling today in a check-in.
+  tags:
+  - time-money
+  - dev
+  setup:
+    state:
+      now: '2026-11-04T10:00:00'
+      user:
+        timezone: Europe/Dublin
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: graduate student
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - Ryanair online check-in is open for FR 7102 DUB→BCN on Fri 6 Nov 07:10; it closes 2 hours before departure; airport check-in costs €55.
+        source_excerpt: 'From: Ryanair <noreply@ryanair.example> Subject: Check-in is now open. Check in online for FR 7102 Dublin to Barcelona, Fri 6 Nov 07:10. Online check-in closes 2 hours before departure. Airport check-in fee: €55 per passenger.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-04T09:15:00'
+        surface: whatsapp
+        text: remind me to print the thesis draft
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T09:16:00'
+        channel: whatsapp
+        summary: 'Reminder set: print thesis draft'
+        answered: true
+      memory:
+      - Going to Barcelona for a friend's birthday this weekend
+      - On a tight student budget
+      calendar:
+      - start: '2026-11-04T14:00:00'
+        end: '2026-11-04T15:00:00'
+        title: Supervisor meeting
+      - start: '2026-11-06T07:10:00'
+        end: '2026-11-06T10:40:00'
+        title: FR 7102 DUB → BCN
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T09:15:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM23
+  ticket: 'User decided to keep the booking and said not to bother them about it: unwanted.'
+  tags:
+  - time-money
+  - dev
+  setup:
+    state:
+      now: '2026-11-05T09:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: product manager at a fintech company
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - Free cancellation for the Taj Fort Aguada.example booking (12–14 Nov) ends tomorrow 12:00.
+        source_excerpt: 'From: Bookings.example <noreply@bookings.example> Subject: Free cancellation ends soon. Your free cancellation for Taj Fort Aguada, 12–14 Nov, ends on 6 Nov at 12:00. After that, the booking is non-refundable.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-10-29T20:10:00'
+        surface: whatsapp
+        text: goa hotel is locked, we're definitely keeping the taj booking, don't bother me about it
+      - at: '2026-11-05T08:30:00'
+        surface: whatsapp
+        text: what's the traffic like to the office
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T08:31:00'
+        channel: whatsapp
+        summary: 'Traffic: 35 min to office'
+        answered: true
+      memory:
+      - Anniversary trip to Goa 12–14 Nov, hotel confirmed and final
+      - 'Wife: Ritu'
+      calendar:
+      - start: '2026-11-12T06:00:00'
+        end: '2026-11-12T07:30:00'
+        title: Flight to Goa
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T08:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: unwanted
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM24
+  ticket: Reservation released ~09:00 Sat, before this user's usual 09:30 wake on a day off — must be told tonight.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-06T21:00:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 09:30
+        usual_sleep: 00:30
+        role: restaurant manager
+      item:
+        producer: inbox_check
+        outcome: failed
+        facts:
+        - Hotel Marlow.example could not charge the card for the Nov 7 reservation; it will be cancelled unless a new card is added within 12 hours.
+        source_excerpt: 'From: Hotel Marlow <reservations@hotelmarlow.example> Subject: Payment declined — action needed. The card on file for your reservation (Nov 7–9, confirmation HM-30218) was declined. Please update your payment details within 12 hours or your reservation will be released.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-06T18:40:00'
+        surface: whatsapp
+        text: closing shift tonight, off tomorrow 🎉
+      - at: '2026-11-06T12:00:00'
+        surface: whatsapp
+        text: what's the drive time to portland
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-06T09:00:00'
+        channel: whatsapp
+        summary: Morning briefing
+        answered: false
+      - at: '2026-11-06T11:00:00'
+        channel: whatsapp
+        summary: Supplier invoice due
+        answered: false
+      - at: '2026-11-06T12:01:00'
+        channel: whatsapp
+        summary: 'Drive time: 2h 10m'
+        answered: false
+      - at: '2026-11-06T13:00:00'
+        channel: whatsapp
+        summary: Midday check-in
+        answered: false
+      - at: '2026-11-06T15:00:00'
+        channel: whatsapp
+        summary: Staff schedule posted
+        answered: false
+      - at: '2026-11-06T18:00:00'
+        channel: whatsapp
+        summary: Evening check-in
+        answered: false
+      memory:
+      - Sleeps in on days off, usually up around 9:30
+      - Weekend trip to Portland, ME Nov 7–9
+      - Card ending 1180 expired end of October
+      calendar:
+      - start: '2026-11-06T16:00:00'
+        end: '2026-11-06T23:30:00'
+        title: Closing shift
+      - start: '2026-11-07T13:00:00'
+        end: '2026-11-07T16:00:00'
+        title: Drive to Portland
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-06T18:40:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - wake_time
+  expected:
+    gold:
+      urgency: timely
+      deadline: before_next_morning
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM25
+  ticket: Followed subject the user asked to be kept posted on (>= timely); 10-day window, no need to wake.
+  tags:
+  - time-money
+  - dev
+  setup:
+    state:
+      now: '2026-11-03T23:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: product manager at a fintech company
+      item:
+        producer: tracked_todo
+        outcome: info
+        facts:
+        - 'UK visa application GWF0812234 status: additional documents required within 10 days (bank statements for the last 6 months).'
+        source_excerpt: 'VFS portal.example status for GWF0812234 at 23:00: ''Additional documents required. Please upload the requested documents within 10 calendar days: bank statements (last 6 months).'''
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask:
+        text: keep me posted on the visa
+        at: '2026-10-20T10:00:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-03T22:15:00'
+        surface: whatsapp
+        text: goodnight
+      open_subjects:
+      - label: UK visa application status (following)
+        status: open
+        since: '2026-10-20T10:00:00'
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Applying for a UK visitor visa for a conference in December
+      - 'Bank: HDFC savings'
+      calendar:
+      - start: '2026-11-04T10:00:00'
+        end: '2026-11-04T11:00:00'
+        title: Roadmap review
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-03T22:15:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM26
+  ticket: User asked GAIA to grab a slot that vanishes in minutes; approval is needed now even at 02:40.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T02:40:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a fintech company
+      item:
+        producer: browser_job
+        outcome: needs_you
+        facts:
+        - Found a US B1/B2 visa interview slot at the Mumbai consulate on 24 Nov 09:15; booking requires approving the $185 MRV fee payment.
+        - Slot is held in the booking cart for 10 minutes.
+        source_excerpt: 'ustraveldocs.example: Appointment available — Mumbai, 24-Nov-2026 09:15. Proceed to payment (USD 185). Your selected slot will be held for 10:00 minutes.'
+        producer_suggested:
+          urgency: timely
+          sensitivity: personal
+      other_items_in_batch: []
+      ask:
+        text: find me a US visa slot before December and grab it, they disappear in minutes
+        at: '2026-10-28T19:00:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-10-28T19:00:00'
+        surface: whatsapp
+        text: find me a US visa slot before December and grab it, they disappear in minutes
+      - at: '2026-11-04T23:10:00'
+        surface: whatsapp
+        text: night
+      open_subjects:
+      - label: US visa slot before December (browser job)
+        status: open
+        since: '2026-10-28T19:00:00'
+      pending_asks:
+      - text: approve $185 visa fee to book 24 Nov 09:15 slot
+        at: '2026-11-05T02:40:00'
+        status: awaiting approval
+      recent_deliveries: []
+      memory:
+      - Needs a US visa for a December wedding in New Jersey
+      - Phone is usually on silent at night but WhatsApp calls ring
+      calendar:
+      - start: '2026-11-05T10:00:00'
+        end: '2026-11-05T11:00:00'
+        title: Quarterly planning
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T23:10:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM27
+  ticket: User will be at office; redirect to a locker is possible only until 10:00.
+  tags:
+  - time-money
+  - holdout
+  setup:
+    state:
+      now: '2026-11-05T08:30:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: product manager at a fintech company
+      item:
+        producer: inbox_check
+        outcome: needs_you
+        facts:
+        - Bluedart shipment 7781203 (Samsung monitor) is out for delivery today; signature required. Can be redirected to a pickup locker until 10:00.
+        source_excerpt: 'From: Blue Dart <track@bluedart.example> Subject: Out for delivery. Your shipment 7781203 is out for delivery today. A signature is required. Not home? Redirect to a nearby Blue Dart locker before 10:00 AM.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T07:50:00'
+        surface: whatsapp
+        text: what's my day look like
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T07:51:00'
+        channel: whatsapp
+        summary: 'Your day: office 9:30–6:30, badminton 7:30'
+        answered: true
+      memory:
+      - Lives alone; flat is empty on office days
+      - Ordered a Samsung monitor last week
+      calendar:
+      - start: '2026-11-05T09:30:00'
+        end: '2026-11-05T18:30:00'
+        title: Office
+      - start: '2026-11-05T19:30:00'
+        end: '2026-11-05T20:30:00'
+        title: Badminton
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T07:50:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal:
+    - calendar
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM28
+  ticket: Same in-transit status and ETA the user was already told yesterday, for a ₹999 item.
+  tags:
+  - time-money
+  - dev
+  setup:
+    state:
+      now: '2026-11-06T15:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: product manager at a fintech company
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - 'Meesho.example order #MS-44120 (phone case, ₹999) is in transit, now at the Bhiwandi hub; expected delivery Thu 7 Nov.'
+        source_excerpt: 'From: Meesho <updates@meesho.example> Subject: Your order is on the way. Order #MS-44120 (Silicone phone case, ₹999) has reached Bhiwandi hub. Expected delivery: Thu, 7 Nov.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-06T14:30:00'
+        surface: whatsapp
+        text: draft a reply to Karan saying I'll be 10 min late
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-04T13:00:00'
+        channel: whatsapp
+        summary: Phone case order shipped
+        answered: false
+      - at: '2026-11-05T13:00:00'
+        channel: whatsapp
+        summary: Phone case in transit, arriving Thu 7 Nov
+        answered: false
+      memory:
+      - Orders small accessories online often
+      calendar:
+      - start: '2026-11-06T16:00:00'
+        end: '2026-11-06T17:00:00'
+        title: Coffee with Karan
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-06T14:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: background
+      deadline: none
+      relevance: duplicate
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM29
+  ticket: Transport/idempotency case (push+poll same provider id dedupe by report_id); Judge labels incidental — user already said they paid.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-06T10:15:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: product manager at a fintech company
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - Airtel.example confirmed postpaid bill payment of ₹1,178 received.
+        source_excerpt: 'From: Airtel <ebill@airtel.example> Message-ID: <a81f2c@airtel.example> Subject: Payment received. We have received your payment of Rs 1,178 for postpaid number ending 4410. Thank you.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-06T09:40:00'
+        surface: whatsapp
+        text: paid the airtel bill btw
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Airtel postpaid, number ending 4410
+      calendar:
+      - start: '2026-11-06T11:00:00'
+        end: '2026-11-06T12:00:00'
+        title: Vendor call
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-06T09:40:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: background
+      deadline: none
+      relevance: already_known
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: false
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM30
+  ticket: Answer to the user's ask with a concrete sale time tomorrow (clashes with a client presentation); tell now.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T15:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:00
+        usual_sleep: 00:00
+        role: product manager at a fintech company
+      item:
+        producer: tracked_todo
+        outcome: done
+        facts:
+        - Taylor Swift Mumbai tickets go on general sale tomorrow, 6 Nov, at 12:00 IST on BookMyShow.example.
+        source_excerpt: 'BookMyShow.example: Taylor Swift | The Eras Tour — Mumbai. Sale opens: 06 Nov 2026, 12:00 PM IST. Queue opens 11:45 AM.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask:
+        text: tell me when Taylor Swift Mumbai tickets go on sale
+        at: '2026-10-15T21:00:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-10-15T21:00:00'
+        surface: whatsapp
+        text: tell me when Taylor Swift Mumbai tickets go on sale
+      - at: '2026-11-05T13:20:00'
+        surface: whatsapp
+        text: order lunch from the usual
+      open_subjects:
+      - label: Taylor Swift Mumbai ticket sale
+        status: open
+        since: '2026-10-15T21:00:00'
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T13:21:00'
+        channel: whatsapp
+        summary: Lunch ordered
+        answered: true
+      memory:
+      - Huge Taylor Swift fan, going with best friend Aisha
+      - Has a BookMyShow account
+      calendar:
+      - start: '2026-11-06T11:00:00'
+        end: '2026-11-06T12:30:00'
+        title: Client presentation
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T13:20:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: later
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM31
+  ticket: 'Real scarcity for a band the user loves and missed in the general sale (contrast: the socks item in the batch is noise).'
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T11:40:00'
+      user:
+        timezone: Europe/London
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: architect
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - 'Ticketline.example: only 20 tickets left for Radiohead at the O2, 14 Mar 2027.'
+        source_excerpt: 'From: Ticketline <alerts@ticketline.example> Subject: Final tickets — Radiohead. Only 20 standing tickets remain for Radiohead, The O2 London, Sat 14 Mar 2027. You''re receiving this because you follow Radiohead.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch:
+      - producer: inbox_check
+        outcome: info
+        facts:
+        - 'SockDrawer.example: only 20 left of the ''Autumn Stripes'' socks bundle.'
+        source_excerpt: 'From: SockDrawer <deals@sockdrawer.example> Subject: Hurry! Only 20 left! Our Autumn Stripes 5-pack is almost gone.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T10:05:00'
+        surface: whatsapp
+        text: what's the RIBA deadline again
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T10:06:00'
+        channel: whatsapp
+        summary: RIBA submission due 20 Nov
+        answered: true
+      memory:
+      - Big Radiohead fan; tried and failed to get tickets in the general sale
+      - 'Partner: Tom'
+      calendar:
+      - start: '2026-11-05T12:00:00'
+        end: '2026-11-05T13:00:00'
+        title: Site visit - Camden
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T10:05:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_today
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM32
+  ticket: Weekly manufactured-urgency promo; not worth a message.
+  tags:
+  - time-money
+  - holdout
+  setup:
+    state:
+      now: '2026-11-07T10:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: product manager at a fintech company
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - 'Urbanic.example: 50% off sitewide ends tonight.'
+        source_excerpt: 'From: Urbanic <offers@urbanic.example> Subject: LAST CHANCE ⏰ 50% OFF ENDS TONIGHT! Don''t miss out — our biggest sale ends at midnight.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-07T09:20:00'
+        surface: whatsapp
+        text: find a plumber for monday
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Unsubscribed from most shopping newsletters
+      - Needs a plumber for the kitchen sink
+      calendar:
+      - start: '2026-11-07T17:00:00'
+        end: '2026-11-07T19:00:00'
+        title: Cousin's birthday
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-07T09:20:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: background
+      deadline: within_today
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: false
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM33
+  ticket: 'Real IRS notice with a 4-week legal deadline: lead the check-in, no need to interrupt; dropping it would be harmful.'
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T18:00:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 07:00
+        usual_sleep: '23:00'
+        role: software engineer
+      item:
+        producer: inbox_check
+        outcome: needs_you
+        facts:
+        - 'IRS notice CP2000: proposed changes to the 2024 return adding $3,140 tax; respond by Dec 2 or the assessment becomes final.'
+        source_excerpt: 'From: IRS e-Notices <notices@irs-notices.example> Subject: CP2000 — Proposed changes to your 2024 Form 1040. We are proposing changes to your 2024 tax return based on information received from third parties (1099-B). Proposed amount due: $3,140. Respond by December 2, 2026. If we don''t hear from you, we will finalize the assessment. (Authentication: SPF pass, DKIM pass)'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch:
+      - producer: inbox_check
+        outcome: info
+        facts:
+        - Morning Brew newsletter
+        source_excerpt: ''
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      - producer: inbox_check
+        outcome: info
+        facts:
+        - 'Package shipped: running shoes'
+        source_excerpt: ''
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      - producer: inbox_check
+        outcome: info
+        facts:
+        - 'Package in transit: desk mat'
+        source_excerpt: ''
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      - producer: inbox_check
+        outcome: info
+        facts:
+        - 'Substack: weekly digest'
+        source_excerpt: ''
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      - producer: inbox_check
+        outcome: info
+        facts:
+        - Spotify Wrapped teaser
+        source_excerpt: ''
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      - producer: inbox_check
+        outcome: info
+        facts:
+        - Lyft receipt $18.40
+        source_excerpt: ''
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T12:30:00'
+        surface: whatsapp
+        text: remind me to call the vet tomorrow
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T13:00:00'
+        channel: whatsapp
+        summary: Midday check-in
+        answered: false
+      memory:
+      - Sold some stock in 2024 through Schwab
+      - 'Accountant: Dana Whitfield (dana@whitfieldcpa.example)'
+      - Has a cat
+      calendar:
+      - start: '2026-11-06T09:00:00'
+        end: '2026-11-06T09:15:00'
+        title: Standup
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T12:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM34
+  ticket: Gift-card IRS demand from a failing sender is a scam; must never be relayed as urgent (at most a scam flag).
+  tags:
+  - time-money
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T14:00:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 07:00
+        usual_sleep: '23:00'
+        role: retired teacher
+      item:
+        producer: inbox_check
+        outcome: needs_you
+        facts:
+        - Email claims to be from the IRS demanding $2,300 in gift cards today to avoid arrest.
+        source_excerpt: 'From: IRS Department <irs.final.notice@secure-taxmail.example> Subject: IRS FINAL NOTICE — ARREST WARRANT. You owe $2,300 in back taxes. Pay TODAY using Google Play or Apple gift cards and send the codes to this email, or local police will arrest you within 24 hours. (Authentication: SPF fail, DKIM none)'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T11:00:00'
+        surface: whatsapp
+        text: what's a good recipe for banana bread
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T11:01:00'
+        channel: whatsapp
+        summary: Banana bread recipe
+        answered: true
+      memory:
+      - Filed 2025 taxes in April with a local preparer, no balance due
+      - 'Grandson: Leo'
+      calendar:
+      - start: '2026-11-05T16:00:00'
+        end: '2026-11-05T17:00:00'
+        title: Book club
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T11:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: background
+      deadline: none
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: suspicious
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM35
+  ticket: 60 days before 31 Jan is 2 Dec; user is moving out, so written notice is due in ~2.5 weeks — mention now, not urgent today.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-15T10:00:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: product manager at a fintech company
+      item:
+        producer: workflow
+        outcome: info
+        facts:
+        - 'Lease agreement (emailed 2 Feb 2026) for Flat 702, Baner: lease ends 31 Jan 2027; notice of non-renewal must be given in writing at least 60 days before lease end.'
+        source_excerpt: 'Workflow ''Monthly documents & bills review''. Lease_Flat702.pdf, clause 14: ''Either party wishing not to renew shall give written notice no later than sixty (60) days prior to the expiry of the term on 31 January 2027.'' Landlord: Sunita Deshpande, sunita.d@mail.example'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-14T19:00:00'
+        surface: whatsapp
+        text: start shortlisting packers and movers for feb
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-14T19:05:00'
+        channel: whatsapp
+        summary: Shortlisted 3 packers & movers
+        answered: true
+      memory:
+      - Moving to Hyderabad in February 2027 for a new job; not renewing the Baner lease
+      - 'Landlord: Sunita Deshpande'
+      - Security deposit ₹1,20,000
+      calendar:
+      - start: '2026-11-15T11:00:00'
+        end: '2026-11-15T12:00:00'
+        title: Haircut
+      - start: '2026-11-18T10:00:00'
+        end: '2026-11-18T11:00:00'
+        title: Offer letter call
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-14T19:00:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: routine
+      deadline: later
+      relevance: new
+      sensitivity: personal
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM36
+  ticket: The user's own task needs their OTP within 5 minutes or the payment fails and power is cut at midnight.
+  tags:
+  - time-money
+  - holdout
+  - critical
+  setup:
+    state:
+      now: '2026-11-05T21:50:00'
+      user:
+        timezone: Asia/Kolkata
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product manager at a fintech company
+      item:
+        producer: browser_job
+        outcome: needs_you
+        facts:
+        - Paying the MSEDCL electricity bill (₹4,860) — the payment page is waiting for the OTP sent to the user's phone; the session times out in 5 minutes.
+        source_excerpt: 'MSEDCL.example Pay Bill: Consumer 1700 2345 6789, amount ₹4,860. ''Disconnection notice: supply will be disconnected after 23:59 today if unpaid.'' Bank page: ''Enter the OTP sent to your registered mobile ending 4410. Session expires in 05:00.'''
+        producer_suggested:
+          urgency: timely
+          sensitivity: personal
+      other_items_in_batch: []
+      ask:
+        text: pay the electricity bill tonight, they'll cut it at midnight
+        at: '2026-11-05T21:30:00'
+        surface: whatsapp
+      recent_user_messages:
+      - at: '2026-11-05T21:30:00'
+        surface: whatsapp
+        text: pay the electricity bill tonight, they'll cut it at midnight
+      - at: '2026-11-05T21:38:00'
+        surface: whatsapp
+        text: ok going to put the kids to bed
+      open_subjects:
+      - label: Pay MSEDCL electricity bill
+        status: open
+        since: '2026-11-05T21:30:00'
+      pending_asks:
+      - text: OTP for electricity bill payment
+        at: '2026-11-05T21:50:00'
+        status: awaiting user
+      recent_deliveries: []
+      memory:
+      - Two kids, bedtime around 21:45
+      - Mobile number ending 4410
+      calendar:
+      - start: '2026-11-06T09:00:00'
+        end: '2026-11-06T09:30:00'
+        title: School drop
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T21:38:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: holdout
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM37
+  ticket: An alarm the user set for this exact time with a 07:00 cutoff; must fire even though they are asleep.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-06T06:30:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: PhD student
+      item:
+        producer: reminder
+        outcome: info
+        facts:
+        - 'Reminder the user set: pay the visa fee — the portal closes at 07:00.'
+        source_excerpt: 'Reminder created 2026-11-05 22:10 from: ''remind me at 06:30 to pay the visa fee — portal closes at 07:00'''
+        producer_suggested:
+          urgency: interrupt
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-05T22:10:00'
+        surface: whatsapp
+        text: remind me at 06:30 to pay the visa fee — portal closes at 07:00
+      - at: '2026-11-05T22:15:00'
+        surface: whatsapp
+        text: night
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-05T22:11:00'
+        channel: whatsapp
+        summary: Reminder set for 06:30
+        answered: true
+      memory:
+      - Applying for a Schengen visa for a conference in Lisbon
+      - Usually not up before 7:30
+      calendar:
+      - start: '2026-11-06T10:00:00'
+        end: '2026-11-06T11:00:00'
+        title: Lab meeting
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-05T22:15:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM38
+  ticket: User is abroad and their card was just declined mid-meal; tell now with the fix.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-08T13:00:00'
+      user:
+        timezone: Asia/Tokyo
+        usual_wake: 07:30
+        usual_sleep: '23:30'
+        role: marketing lead
+      item:
+        producer: inbox_check
+        outcome: failed
+        facts:
+        - 'Wells Fargo declined a ¥18,600 transaction at Tsukiji Sushi Dai, Tokyo: international usage is disabled on the debit card ending 6620.'
+        source_excerpt: 'From: Wells Fargo <alerts@wellsfargo.example> Subject: Transaction declined. A transaction of JPY 18,600 at TSUKIJI SUSHI DAI TOKYO JP on your debit card ending 6620 was declined because international transactions are turned off. You can turn them on in the Wells Fargo app under Card Settings.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-08T12:40:00'
+        surface: whatsapp
+        text: best way from tsukiji to shibuya?
+      - at: '2026-11-07T20:00:00'
+        surface: whatsapp
+        text: jet lag is brutal
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-08T12:45:00'
+        channel: whatsapp
+        summary: 'Tsukiji → Shibuya: Hibiya line + Ginza line, ~30 min'
+        answered: true
+      memory:
+      - On a trip to Japan Nov 5–14
+      - 'Main card: Wells Fargo debit ending 6620'
+      - Vegetarian except for fish
+      calendar:
+      - start: '2026-11-08T15:00:00'
+        end: '2026-11-08T17:00:00'
+        title: teamLab Planets
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-08T12:40:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: new
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM39
+  ticket: Contradicts what GAIA told them at 15:00; they leave home at 16:30, so it must land before then.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-07T16:00:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 07:00
+        usual_sleep: '23:30'
+        role: product designer
+      item:
+        producer: inbox_check
+        outcome: info
+        facts:
+        - JetBlue flight B6 1123 JFK→MCO, scheduled 18:00, is delayed 3 hours to 21:00.
+        source_excerpt: 'From: JetBlue <flightalerts@jetblue.example> Subject: Your flight is delayed. B6 1123 New York (JFK) to Orlando (MCO), scheduled 6:00 PM, now departs 9:00 PM.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch: []
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-07T14:58:00'
+        surface: whatsapp
+        text: is my 6pm flight on time?
+      - at: '2026-11-07T15:30:00'
+        surface: whatsapp
+        text: cool, leaving home at 4:30
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries:
+      - at: '2026-11-07T15:00:00'
+        channel: whatsapp
+        summary: Your 6 PM JetBlue flight to Orlando is on time
+        answered: true
+      memory:
+      - Visiting parents in Orlando for the weekend
+      - Lives in Brooklyn
+      calendar:
+      - start: '2026-11-07T18:00:00'
+        end: '2026-11-07T20:45:00'
+        title: B6 1123 JFK → MCO
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-07T15:30:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: timely
+      deadline: within_1h
+      relevance: new
+      sensitivity: none
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision
+- id: time-money-TM40
+  ticket: Fraud Y/N is interrupt-grade on its own, but the 06:10 block notice in the batch supersedes it and should lead.
+  tags:
+  - time-money
+  - dev
+  - critical
+  setup:
+    state:
+      now: '2026-11-04T08:00:00'
+      user:
+        timezone: America/New_York
+        usual_wake: 07:45
+        usual_sleep: '23:00'
+        role: freelance UX designer
+      item:
+        producer: inbox_check
+        outcome: needs_you
+        facts:
+        - Chase asks whether a $1,240.00 BestBuy.com purchase at 2:21 AM was made by the user (reply Y/N).
+        source_excerpt: 'From: Chase Fraud Alerts <alerts@chase-alerts.example> Subject: Did you make this purchase? Chase Sapphire card ending 4417: We noticed an unusual purchase of $1,240.00 at BESTBUY.COM on Nov 4 at 2:21 AM ET. If this was you, reply Y. If not, reply N and we will block your card and send a replacement. Until we hear from you, further purchases on this card may be declined.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      other_items_in_batch:
+      - producer: inbox_check
+        outcome: info
+        facts:
+        - Chase blocked card ending 4417 at 06:10 because the suspicious $1,240 BestBuy.com charge was not confirmed; call the number on the back of the card to restore access.
+        source_excerpt: 'From: Chase Fraud Alerts <alerts@chase-alerts.example> Subject: Your card has been blocked. Because we did not hear back about the $1,240.00 purchase at BESTBUY.COM, we have blocked your card ending 4417. Call 1-800-555-0142 to verify recent activity.'
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      - producer: inbox_check
+        outcome: info
+        facts:
+        - 'Chase card statement: $2,104 due Nov 14.'
+        source_excerpt: ''
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      - producer: inbox_check
+        outcome: info
+        facts:
+        - Uniqlo refund of $39.90 issued.
+        source_excerpt: ''
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      - producer: inbox_check
+        outcome: info
+        facts:
+        - 'UPS: desk lamp out for delivery'
+        source_excerpt: ''
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      - producer: inbox_check
+        outcome: info
+        facts:
+        - 'UPS: monitor arm in transit'
+        source_excerpt: ''
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      - producer: inbox_check
+        outcome: info
+        facts:
+        - 'USPS: letter arriving today'
+        source_excerpt: ''
+        producer_suggested:
+          urgency: routine
+          sensitivity: personal
+      ask: null
+      recent_user_messages:
+      - at: '2026-11-03T22:40:00'
+        surface: whatsapp
+        text: night! remind me to call mom tomorrow
+      open_subjects: []
+      pending_asks: []
+      recent_deliveries: []
+      memory:
+      - Uses a Chase Sapphire card for most purchases
+      - Has a dog named Pixel
+      calendar:
+      - start: '2026-11-04T10:00:00'
+        end: '2026-11-04T10:30:00'
+        title: Dentist
+      attention_settings:
+        quiet_hours: 22:00-08:00
+        rules: []
+      presence:
+        last_active_surface: whatsapp
+        last_active_at: '2026-11-04T07:52:00'
+        in_live_chat: false
+        in_voice_call: false
+    requires_signal: []
+  expected:
+    gold:
+      urgency: interrupt
+      deadline: within_1h
+      relevance: superseded
+      sensitivity: finance
+      moment: ok
+      authenticity: genuine
+    critical: true
+    split: dev
+    judge_applicable: true
+    ambiguous: false
+    score:
+      gates:
+      - judge_decision

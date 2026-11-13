@@ -30,7 +30,7 @@ from app.agents.core.outcome_review import OutcomeReview
 from app.agents.prompts.compose_prompts import OUTCOME_REPLY_SHAPES
 from app.constants.agents import OutcomeState
 from app.constants.outbound import OUTBOUND_TTL_SECONDS_DEFAULT, OUTBOUND_TTL_SECONDS_GREETING
-from app.constants.outbox import LIVE_WATCH_WINDOW_SECONDS
+from app.constants.outbox import LIVE_WATCH_WINDOW_SECONDS, OUTBOX_BATCHED_JOB_ID_SUFFIX
 from app.constants.task_report import FactKind, NeedsYouKind
 from app.models.chat_models import ConversationSource
 from app.models.ownership_models import DeliveryPolicy, DeliveryTiming
@@ -47,6 +47,7 @@ from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.schemas.outbound import OutboundAttachment
 from app.services.outbox.deliver import flush_subject
+from app.services.outbox.judge_models import Relevance, Sensitivity
 from app.services.outbox.models import (
     ComposeResult,
     DropReason,
@@ -65,6 +66,7 @@ from app.services.outbox.models import (
 from app.services.outbox.transport.bot_queue import OutboundResult
 from app.services.platform_link_completion import complete_platform_link
 from app.services.platform_link_service import PlatformLinkService
+from tests._harness.judge import verdict
 from tests.e2e._harness.outbox_timeline import (
     DELIVER,
     T0,
@@ -220,10 +222,27 @@ async def test_b8_a_newer_report_of_a_replace_subject_supersedes_the_one_not_yet
     assert message.report_ids == ["run-2"]
 
 
+async def test_an_update_nobody_asked_for_waits_out_the_batch_window_as_a_deferred_job(
+    tl: OutboxTimeline,
+) -> None:
+    report = _run("run-1", OutcomeState.DONE, initiative=Initiative.SELF_INITIATED)
+    await tl.submit(report)
+
+    await tl.drain()
+    assert await tl.ledger() == []
+    assert list(tl.arq.jobs) == [f"outbox:run-1{OUTBOX_BATCHED_JOB_ID_SUFFIX}"]
+
+    await tl.at(1)
+    await tl.drain()
+    assert len(await tl.ledger()) == 1
+
+
 async def test_b9_accumulating_reports_of_a_subject_are_one_message(tl: OutboxTimeline) -> None:
     first = _run("run-1", OutcomeState.DONE, merge=SubjectMerge.ACCUMULATE, minutes=0)
     await _park_queued(tl, first)
     await tl.submit(_run("run-2", OutcomeState.DONE, merge=SubjectMerge.ACCUMULATE, minutes=5))
+    await tl.drain()
+    await tl.at(1)
     await tl.drain()
 
     [message] = await tl.ledger()
@@ -652,7 +671,7 @@ async def _park_queued(tl: OutboxTimeline, report: NoticeReport | RunReport) -> 
         report, expires_at=tl.clock.now() + timedelta(days=1)
     )
     assert stored.created
-    decision = decide(report)
+    decision = decide(report, None)
     await outbox_items_repository.queue(
         USER, report.report_id, urgency=decision.urgency, mode=decision.mode
     )
@@ -925,6 +944,25 @@ async def test_b17_a_muted_workflow_that_succeeds_is_recorded_and_not_told(
 
     [item] = await tl.items()
     assert (item.state, item.drop_reason) == (ItemState.DROPPED, DropReason.USER_MUTED)
+
+
+async def test_the_judge_finding_an_update_moot_records_it_and_keeps_the_why(
+    tl: OutboxTimeline,
+) -> None:
+    report = _run("run-1", OutcomeState.DONE, initiative=Initiative.ASKED)
+    tl.judge.verdicts["run-1"] = verdict(
+        relevance=Relevance.ALREADY_KNOWN,
+        not_worth_probability=0.97,
+        reason="the user said they paid it themselves",
+    )
+
+    await tl.submit(report)
+    await tl.drain()
+
+    [item] = await tl.items()
+    assert (item.state, item.drop_reason) == (ItemState.DROPPED, DropReason.ALREADY_KNOWN)
+    assert item.judgement is not None and item.judgement.verdict is not None
+    assert item.judgement.verdict.reason == "the user said they paid it themselves"
     assert await tl.ledger() == []
     assert tl.sinks.bot == [] and tl.sinks.ws == []
 
@@ -1066,3 +1104,35 @@ async def test_a_requested_chat_app_outranks_the_dm_the_answer_would_go_back_to(
     [message] = await tl.ledger()
     assert (message.destination_basis, message.conversation_id) == ("requested_channel", "sl-dm")
     assert [source for source, _ in tl.sinks.bot] == ["slack"]
+
+
+async def test_a_judged_update_is_told_and_its_verdict_is_on_the_item(tl: OutboxTimeline) -> None:
+    tl.judge.verdicts["rem:r1:1"] = verdict(
+        urgency=UrgencyClass.INTERRUPT, sensitivity=Sensitivity.FINANCE
+    )
+
+    await tl.submit(_reminder())
+    await tl.drain()
+
+    [item] = await tl.items()
+    assert item.state is ItemState.SENT
+    assert item.judgement is not None
+    assert (item.judgement.sensitivity, item.judgement.judge_unavailable) == (
+        Sensitivity.FINANCE,
+        False,
+    )
+    assert len(await tl.ledger()) == 1
+
+
+async def test_when_the_judge_is_unavailable_the_reminder_is_still_told_and_tagged(
+    tl: OutboxTimeline,
+) -> None:
+    tl.judge.verdicts["rem:r1:1"] = None
+
+    await tl.submit(_reminder())
+    await tl.drain()
+
+    [item] = await tl.items()
+    assert item.state is ItemState.SENT and item.urgency is UrgencyClass.INTERRUPT
+    assert item.judgement is not None and item.judgement.judge_unavailable is True
+    assert len(await tl.ledger()) == 1

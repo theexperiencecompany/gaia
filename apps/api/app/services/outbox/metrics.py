@@ -32,3 +32,29 @@ OUTBOX_COMPOSE_DEGRADED = _register_once(
         documentation="Messages sent as the plain degraded render because the composer broke the contract twice",
     ),
 )
+
+OUTBOX_JUDGE_DECIDED = _register_once(
+    "outbox_judge_decided_total",
+    lambda: Counter(
+        name="outbox_judge_decided_total",
+        documentation="Items the Judge decided, by the pass that decided them",
+        labelnames=("decided_by",),
+    ),
+)
+
+OUTBOX_JUDGE_UNAVAILABLE = _register_once(
+    "outbox_judge_unavailable_total",
+    lambda: Counter(
+        name="outbox_judge_unavailable_total",
+        documentation="Items decided without the Judge because both passes failed, by cause",
+        labelnames=("cause",),
+    ),
+)
+
+OUTBOX_JUDGE_INTERRUPT_CAPPED = _register_once(
+    "outbox_judge_interrupt_capped_total",
+    lambda: Counter(
+        name="outbox_judge_interrupt_capped_total",
+        documentation="Interrupts the Judge asked for that the daily cap refused",
+    ),
+)

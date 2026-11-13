@@ -38,7 +38,12 @@ async def test_submit_enqueues_a_job_keyed_by_the_report_id() -> None:
         await submit(REPORT)
 
     enqueue.assert_awaited_once_with(
-        pool, OUTBOX_INTAKE_TASK, REPORT.model_dump(mode="json"), _job_id="outbox:rem:1:2"
+        pool,
+        OUTBOX_INTAKE_TASK,
+        REPORT.model_dump(mode="json"),
+        False,
+        _job_id="outbox:rem:1:2",
+        _defer_by=None,
     )
 
 
@@ -57,7 +62,14 @@ async def test_the_job_parses_the_payload_into_the_report_it_was_submitted_as() 
     with patch("app.workers.tasks.outbox_tasks.process_report", AsyncMock()) as process:
         await outbox_intake({}, REPORT.model_dump(mode="json"))
 
-    process.assert_awaited_once_with(REPORT)
+    process.assert_awaited_once_with(REPORT, batched=False)
+
+
+async def test_the_job_tells_intake_when_the_report_already_waited_for_its_users_others() -> None:
+    with patch("app.workers.tasks.outbox_tasks.process_report", AsyncMock()) as process:
+        await outbox_intake({}, REPORT.model_dump(mode="json"), True)
+
+    process.assert_awaited_once_with(REPORT, batched=True)
 
 
 async def test_a_malformed_payload_raises_instead_of_being_dropped() -> None:

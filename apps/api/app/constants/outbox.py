@@ -14,6 +14,8 @@ OUTBOX_MESSAGE_RETENTION_SECONDS: Final = 180 * ONE_DAY_TTL
 #: The ARQ job that takes a submitted report; its job id is OUTBOX_JOB_ID_PREFIX + report_id.
 OUTBOX_INTAKE_TASK: Final = "outbox_intake"
 OUTBOX_JOB_ID_PREFIX: Final = "outbox:"
+#: The same job handed back to the queue to be judged once its user's other reports have arrived.
+OUTBOX_BATCHED_JOB_ID_SUFFIX: Final = ":batched"
 
 #: The per-user lock that spares a second flusher a compose the first is already doing.
 #: Only an optimisation: the compare-and-set on the items keeps a message single.

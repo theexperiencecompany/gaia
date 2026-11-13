@@ -12,6 +12,7 @@ from pymongo.errors import DuplicateKeyError
 from app.constants.outbox import ITEMS_COLLECTION
 from app.db.repositories.base import UserScopedRepository
 from app.models.outbox_models import OutboxItemDocument, OutboxItemUpdate
+from app.services.outbox.judge_models import ItemJudgement
 from app.services.outbox.models import (
     UNSENT_STATES,
     ComposeMode,
@@ -27,6 +28,10 @@ from app.utils import clock
 _TOLD_OR_TELLING_STATES = frozenset(
     {ItemState.COMPOSING, ItemState.SENDING, ItemState.SENT, *UNSENT_STATES}
 )
+
+
+def _judgement_fields(judgement: ItemJudgement | None) -> dict[str, object]:
+    return {} if judgement is None else {"judgement": judgement.model_dump(mode="python")}
 
 
 class InsertedItem(NamedTuple):
@@ -131,25 +136,91 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
         return False
 
     async def queue(
-        self, user_id: str, report_id: str, *, urgency: UrgencyClass, mode: ComposeMode
+        self,
+        user_id: str,
+        report_id: str,
+        *,
+        urgency: UrgencyClass,
+        mode: ComposeMode,
+        judgement: ItemJudgement | None = None,
     ) -> OutboxItemDocument | None:
-        """Move a received item to queued; None when it was no longer received."""
+        """Move a received item to queued, keeping what the Judge made of it; None when it was no longer received."""
         return await self._transition(
             user_id,
             {"report_id": report_id},
             from_states=[ItemState.RECEIVED],
-            changes={"state": ItemState.QUEUED.value, "urgency": int(urgency), "mode": mode.value},
+            changes={
+                "state": ItemState.QUEUED.value,
+                "urgency": int(urgency),
+                "mode": mode.value,
+                **_judgement_fields(judgement),
+            },
         )
 
     async def drop(
-        self, user_id: str, report_id: str, reason: DropReason
+        self,
+        user_id: str,
+        report_id: str,
+        reason: DropReason,
+        *,
+        judgement: ItemJudgement | None = None,
     ) -> OutboxItemDocument | None:
         """Record a received item and never alert it; None when it was no longer received."""
         return await self._transition(
             user_id,
             {"report_id": report_id},
             from_states=[ItemState.RECEIVED],
-            changes={"state": ItemState.DROPPED.value, "drop_reason": reason.value},
+            changes={
+                "state": ItemState.DROPPED.value,
+                "drop_reason": reason.value,
+                **_judgement_fields(judgement),
+            },
+        )
+
+    async def list_unsettled(
+        self, user_id: str, *, exclude_report_id: str, limit: int
+    ) -> list[OutboxItemDocument]:
+        """Return the user's items not yet told or settled, other than one report's, newest first."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "report_id": {"$ne": exclude_report_id},
+                "state": {"$in": [state.value for state in UNSENT_STATES]},
+            },
+            sort=[("created_at", -1)],
+            limit=limit,
+        )
+
+    async def count_raised_interrupts_since(self, user_id: str, since: datetime) -> int:
+        """Return how many items the Judge raised to interrupt since the cutoff."""
+        return await self._count(
+            {
+                "user_id": user_id,
+                "judgement.raised_interrupt": True,
+                "created_at": {"$gte": since},
+            }
+        )
+
+    async def list_waits(self, user_id: str, *, limit: int) -> list[OutboxItemDocument]:
+        """Return the user's latest items the Judge told to wait for a run, newest first."""
+        return await self._find(
+            {"user_id": user_id, "judgement.verdict.wait_for_run": {"$type": "string"}},
+            sort=[("created_at", -1)],
+            limit=limit,
+        )
+
+    async def list_settled_for_owner(
+        self, user_id: str, owner_conversation_id: str, *, limit: int
+    ) -> list[OutboxItemDocument]:
+        """Return the latest items told or recorded-only for one owner conversation, newest first."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "report.subject.owner_conversation_id": owner_conversation_id,
+                "state": {"$in": [ItemState.SENT.value, ItemState.DROPPED.value]},
+            },
+            sort=[("report.occurred_at", -1)],
+            limit=limit,
         )
 
     async def claim_queued_for_subject(

@@ -62,14 +62,14 @@ def _notice(**overrides: object) -> NoticeReport:
 def test_a_run_with_nothing_to_tell_is_recorded_only(
     outcome: OutcomeState, reason: DropReason
 ) -> None:
-    decision = decide(_run(outcome))
+    decision = decide(_run(outcome), None)
 
     assert (decision.kind, decision.drop_reason) == (DecisionKind.RECORD_ONLY, reason)
 
 
 @pytest.mark.parametrize("outcome", [OutcomeState.DONE, OutcomeState.NO_ACTION_NEEDED])
 def test_a_run_with_a_result_is_sent(outcome: OutcomeState) -> None:
-    decision = decide(_run(outcome))
+    decision = decide(_run(outcome), None)
 
     assert (decision.kind, decision.drop_reason) == (DecisionKind.SEND_NOW, None)
 
@@ -81,14 +81,14 @@ def test_a_run_with_a_result_is_sent(outcome: OutcomeState) -> None:
 def test_what_the_user_must_act_on_is_timely_and_must_be_said(outcome: OutcomeState) -> None:
     report = _run(outcome)
 
-    assert decide(report).urgency is UrgencyClass.TIMELY
+    assert decide(report, None).urgency is UrgencyClass.TIMELY
     assert must_include(UrgencyClass.TIMELY, report)
 
 
 def test_a_self_initiated_result_starts_as_background_and_may_be_skipped() -> None:
     report = _run(OutcomeState.DONE)
 
-    assert decide(report).urgency is UrgencyClass.BACKGROUND
+    assert decide(report, None).urgency is UrgencyClass.BACKGROUND
     assert not must_include(UrgencyClass.BACKGROUND, report)
 
 
@@ -97,19 +97,19 @@ def test_an_answer_must_be_said_whatever_its_class() -> None:
 
     assert is_answer(report)
     assert must_include(UrgencyClass.ROUTINE, report)
-    assert decide(report).mode is ComposeMode.ANSWER
+    assert decide(report, None).mode is ComposeMode.ANSWER
 
 
 def test_a_user_set_time_that_may_wake_is_an_interrupt() -> None:
     decision = decide(
-        _notice(delivery_policy=DeliveryPolicy(timing=DeliveryTiming.AT_TIME, may_wake=True))
+        _notice(delivery_policy=DeliveryPolicy(timing=DeliveryTiming.AT_TIME, may_wake=True)), None
     )
 
     assert (decision.urgency, decision.mode) == (UrgencyClass.INTERRUPT, ComposeMode.INTERRUPT)
 
 
 def test_a_user_set_time_that_may_not_wake_is_not_an_interrupt() -> None:
-    decision = decide(_notice(delivery_policy=DeliveryPolicy(timing=DeliveryTiming.AT_TIME)))
+    decision = decide(_notice(delivery_policy=DeliveryPolicy(timing=DeliveryTiming.AT_TIME)), None)
 
     assert decision.urgency is UrgencyClass.ROUTINE
 
@@ -133,7 +133,7 @@ def _muted_run(outcome: OutcomeState) -> RunReport:
     ],
 )
 def test_a_muted_producers_result_is_recorded_and_never_alerted(outcome: OutcomeState) -> None:
-    decision = decide(_muted_run(outcome))
+    decision = decide(_muted_run(outcome), None)
 
     assert decision.kind is DecisionKind.RECORD_ONLY
     assert decision.drop_reason is DropReason.USER_MUTED
@@ -150,31 +150,31 @@ def test_a_muted_producers_result_is_recorded_and_never_alerted(outcome: Outcome
     ],
 )
 def test_a_muted_producer_still_tells_what_needs_the_user(outcome: OutcomeState) -> None:
-    decision = decide(_muted_run(outcome))
+    decision = decide(_muted_run(outcome), None)
 
     assert decision.kind is DecisionKind.SEND_NOW
     assert decision.urgency is UrgencyClass.TIMELY
 
 
 def test_nothing_new_keeps_its_own_reason_under_a_mute() -> None:
-    assert decide(_muted_run(OutcomeState.NOTHING_NEW)).drop_reason is DropReason.NOTHING_NEW
+    assert decide(_muted_run(OutcomeState.NOTHING_NEW), None).drop_reason is DropReason.NOTHING_NEW
 
 
 def test_a_muted_notice_that_needs_the_user_is_sent() -> None:
     muted = DeliveryPolicy(notify=False)
 
     assert (
-        decide(_notice(delivery_policy=muted, outcome=NoticeOutcome.FAILED)).kind
+        decide(_notice(delivery_policy=muted, outcome=NoticeOutcome.FAILED), None).kind
         is DecisionKind.SEND_NOW
     )
     assert (
-        decide(_notice(delivery_policy=muted, outcome=NoticeOutcome.INFO)).drop_reason
+        decide(_notice(delivery_policy=muted, outcome=NoticeOutcome.INFO), None).drop_reason
         is DropReason.USER_MUTED
     )
 
 
 def test_progress_nobody_is_watching_is_recorded_and_never_alerted() -> None:
-    decision = decide(_notice(outcome=NoticeOutcome.PROGRESS), watched_live=False)
+    decision = decide(_notice(outcome=NoticeOutcome.PROGRESS), None, watched_live=False)
 
     assert (decision.kind, decision.drop_reason) == (
         DecisionKind.RECORD_ONLY,
@@ -183,17 +183,17 @@ def test_progress_nobody_is_watching_is_recorded_and_never_alerted() -> None:
 
 
 def test_progress_someone_is_watching_live_is_sent() -> None:
-    decision = decide(_notice(outcome=NoticeOutcome.PROGRESS), watched_live=True)
+    decision = decide(_notice(outcome=NoticeOutcome.PROGRESS), None, watched_live=True)
 
     assert (decision.kind, decision.drop_reason) == (DecisionKind.SEND_NOW, None)
 
 
 @pytest.mark.parametrize("outcome", [NoticeOutcome.INFO, NoticeOutcome.NEEDS_YOU])
 def test_only_progress_depends_on_being_watched(outcome: NoticeOutcome) -> None:
-    assert decide(_notice(outcome=outcome), watched_live=False).kind is DecisionKind.SEND_NOW
+    assert decide(_notice(outcome=outcome), None, watched_live=False).kind is DecisionKind.SEND_NOW
 
 
 def test_a_handoff_that_needs_the_user_is_timely_whether_or_not_they_are_watching() -> None:
     report = _notice(outcome=NoticeOutcome.NEEDS_YOU, initiative=Initiative.ASKED)
 
-    assert decide(report, watched_live=False).urgency is UrgencyClass.TIMELY
+    assert decide(report, None, watched_live=False).urgency is UrgencyClass.TIMELY

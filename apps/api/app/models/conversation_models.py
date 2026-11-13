@@ -173,6 +173,19 @@ class ConversationSearchResults(BaseModel):
     conversations: list[ConversationDescriptionHit] = Field(default_factory=list)
 
 
+class ConversationMessageRow(BaseModel):
+    """One stored message with the conversation it is in and the surface of that conversation."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    conversation_id: str
+    #: The stored source string; a chat in the GAIA app is stored without one.
+    source: str | None = None
+    type: str
+    response: str
+    date: str | None = None
+
+
 class _SourceRow(BaseModel):
     """Projection of just a conversation's stored source string."""
 

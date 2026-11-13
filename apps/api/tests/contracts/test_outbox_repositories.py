@@ -10,11 +10,15 @@ from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
 
 from app.constants.outbox import ITEMS_COLLECTION, MESSAGES_COLLECTION
+from app.constants.outbox_judge import ATTENTION_PROFILES_COLLECTION
 from app.db.mongodb.indexes import create_outbox_indexes
+from app.db.repositories.attention_profiles import AttentionProfilesRepository
 from app.db.repositories.outbox_items import OutboxItemsRepository
 from app.db.repositories.outbox_messages import OutboxMessagesRepository
+from app.models.attention_profile_models import ProfileAnswer
 from app.models.outbox_models import OutboxMessageDocument
 from app.models.ownership_models import DeliveryPolicy
+from app.services.outbox.judge_models import ItemJudgement, Relevance, Sensitivity
 from app.services.outbox.models import (
     ComposeMode,
     DropReason,
@@ -28,6 +32,7 @@ from app.services.outbox.models import (
     SubjectKind,
     UrgencyClass,
 )
+from tests._harness.judge import verdict
 
 USER = "6812f0b3c9a14e2b7d5a91cc"
 T0 = datetime(2026, 11, 10, 9, 0, tzinfo=UTC)
@@ -43,6 +48,7 @@ async def repos(
     names = {
         ITEMS_COLLECTION: f"{ITEMS_COLLECTION}_{suffix}",
         MESSAGES_COLLECTION: f"{MESSAGES_COLLECTION}_{suffix}",
+        ATTENTION_PROFILES_COLLECTION: f"{ATTENTION_PROFILES_COLLECTION}_{suffix}",
     }
     monkeypatch.setattr(
         "app.db.repositories.base.get_async_collection", lambda name: database[names[name]]
@@ -257,3 +263,188 @@ async def test_the_series_read_is_served_by_its_index(repos) -> None:
     ).explain()
 
     assert "COLLSCAN" not in str(plan["queryPlanner"]["winningPlan"])
+
+
+def _judgement(**verdict_fields: object) -> ItemJudgement:
+    return ItemJudgement(
+        verdict=verdict(**verdict_fields),
+        raised_interrupt=bool(verdict_fields.get("urgency") is UrgencyClass.INTERRUPT),
+        sensitivity=Sensitivity.FINANCE,
+    )
+
+
+async def test_the_judgement_is_kept_on_the_item_it_queued_and_reads_back_whole(repos) -> None:
+    items, _ = repos
+    await items.insert_if_new(_report("a"), expires_at=EXPIRES)
+    kept = _judgement(deliver_by=T0 + timedelta(hours=2), topics=["money"], reason="card declined")
+
+    queued = await items.queue(
+        USER, "a", urgency=UrgencyClass.TIMELY, mode=ComposeMode.UNSOLICITED, judgement=kept
+    )
+
+    stored = await items.get_by_report(USER, "a")
+    assert queued is not None and stored is not None
+    assert stored.judgement == kept
+    assert stored.urgency is UrgencyClass.TIMELY
+
+
+async def test_the_judgement_is_kept_on_an_item_recorded_and_not_alerted(repos) -> None:
+    items, _ = repos
+    await items.insert_if_new(_report("a"), expires_at=EXPIRES)
+    kept = _judgement(relevance=Relevance.MOOT, not_worth_probability=0.9)
+
+    await items.drop(USER, "a", DropReason.MOOT, judgement=kept)
+
+    stored = await items.get_by_report(USER, "a")
+    assert stored is not None
+    assert (stored.state, stored.drop_reason) == (ItemState.DROPPED, DropReason.MOOT)
+    assert stored.judgement == kept
+
+
+async def test_an_item_no_judge_was_asked_about_has_no_judgement(repos) -> None:
+    items, _ = repos
+    await _queued(items, _report("a"))
+
+    stored = await items.get_by_report(USER, "a")
+
+    assert stored is not None and stored.judgement is None
+
+
+async def test_interrupts_the_judge_raised_are_counted_since_a_cutoff_for_this_user_only(
+    repos,
+) -> None:
+    items, _ = repos
+    for report_id, urgency in (("i1", UrgencyClass.INTERRUPT), ("i2", UrgencyClass.INTERRUPT)):
+        await items.insert_if_new(_report(report_id), expires_at=EXPIRES)
+        await items.queue(
+            USER,
+            report_id,
+            urgency=urgency,
+            mode=ComposeMode.INTERRUPT,
+            judgement=_judgement(urgency=urgency),
+        )
+    await items.insert_if_new(_report("calm"), expires_at=EXPIRES)
+    await items.queue(
+        USER, "calm", urgency=UrgencyClass.ROUTINE, mode=ComposeMode.ANSWER, judgement=_judgement()
+    )
+
+    now = datetime.now(UTC)
+
+    assert await items.count_raised_interrupts_since(USER, now - timedelta(hours=1)) == 2
+    assert await items.count_raised_interrupts_since(USER, now + timedelta(hours=1)) == 0
+    assert await items.count_raised_interrupts_since("someone-else", now - timedelta(hours=1)) == 0
+
+
+async def test_unsettled_items_exclude_the_one_asked_about_and_anything_settled(repos) -> None:
+    items, _ = repos
+    await items.insert_if_new(_report("received"), expires_at=EXPIRES)
+    await _queued(items, _report("queued", subject="s2"))
+    await items.insert_if_new(_report("done", subject="s3"), expires_at=EXPIRES)
+    await items.drop(USER, "done", DropReason.NOTHING_NEW)
+
+    others = await items.list_unsettled(USER, exclude_report_id="received", limit=10)
+
+    assert [item.report_id for item in others] == ["queued"]
+
+
+async def test_waits_are_the_items_the_judge_told_to_wait_newest_first(repos) -> None:
+    items, _ = repos
+    for report_id, run in (("w1", "workflow:a"), ("w2", "todo:b")):
+        await items.insert_if_new(_report(report_id, subject=report_id), expires_at=EXPIRES)
+        await items.queue(
+            USER,
+            report_id,
+            urgency=UrgencyClass.ROUTINE,
+            mode=ComposeMode.UNSOLICITED,
+            judgement=_judgement(wait_for_run=run),
+        )
+    await _queued(items, _report("plain", subject="plain"))
+
+    waits = await items.list_waits(USER, limit=5)
+
+    assert [item.report_id for item in waits] == ["w2", "w1"]
+
+
+async def test_settled_items_of_an_owner_conversation_are_what_its_hit_rate_reads(repos) -> None:
+    items, _ = repos
+    owned = _report("sent").model_copy(
+        update={
+            "subject": Subject(
+                kind=SubjectKind.TODO_RUN, id="sent", label="L", owner_conversation_id="chat-1"
+            )
+        }
+    )
+    skipped = owned.model_copy(
+        update={
+            "report_id": "skipped",
+            "subject": owned.subject.model_copy(update={"id": "skipped"}),
+            "occurred_at": T0 + timedelta(minutes=1),
+        }
+    )
+    for report in (owned, skipped):
+        await items.insert_if_new(report, expires_at=EXPIRES)
+    await items.drop(USER, "skipped", DropReason.NOTHING_NEW)
+    await items.queue(USER, "sent", urgency=UrgencyClass.ROUTINE, mode=ComposeMode.ANSWER)
+    [claimed] = await items.claim_queued_for_subject(USER, "sent", "att")
+    await items.begin_send(USER, "att")
+    await items.finish_send(USER, "att", ItemState.SENT)
+
+    settled = await items.list_settled_for_owner(USER, "chat-1", limit=10)
+
+    assert [(i.report_id, i.state) for i in settled] == [
+        ("skipped", ItemState.DROPPED),
+        ("sent", ItemState.SENT),
+    ]
+    assert claimed.report_id == "sent"
+    assert await items.list_settled_for_owner(USER, "chat-2", limit=10) == []
+
+
+async def test_what_was_sent_since_a_cutoff_is_the_ledger_window(repos) -> None:
+    _, messages = repos
+    for attempt, at in (("old", T0 - timedelta(hours=30)), ("new", T0 - timedelta(hours=1))):
+        await messages.insert_attempt(_message(attempt))
+        await messages.finish_send(USER, attempt, MessageState.SENT, sent_at=at)
+    await messages.insert_attempt(_message("unsent"))
+
+    window = await messages.sent_since(USER, T0 - timedelta(hours=24), limit=5)
+
+    assert [m.compose_attempt_id for m in window] == ["new"]
+
+
+@pytest.fixture
+async def profiles(repos) -> AttentionProfilesRepository:
+    return AttentionProfilesRepository()
+
+
+SEED = [ProfileAnswer(q="Weekends?", a="Keep work out.")]
+
+
+async def test_a_users_profile_is_seeded_the_first_time_it_is_read(profiles) -> None:
+    first = await profiles.get_or_seed(USER, SEED)
+
+    assert (first.user_id, first.version, first.answers) == (USER, 1, SEED)
+
+
+async def test_a_later_read_returns_the_stored_profile_not_a_fresh_seed(profiles) -> None:
+    await profiles.get_or_seed(USER, SEED)
+
+    again = await profiles.get_or_seed(USER, [ProfileAnswer(q="other", a="seed")])
+
+    assert again.answers == SEED
+
+
+async def test_concurrent_first_reads_agree_on_one_profile(profiles) -> None:
+    seeds = [[ProfileAnswer(q=f"q{n}", a="a")] for n in range(8)]
+
+    read = await asyncio.gather(*(profiles.get_or_seed(USER, seed) for seed in seeds))
+
+    assert len({tuple(p.answers) for p in read}) == 1
+    assert await profiles.count_for_user(USER) == 1
+
+
+async def test_profiles_are_per_user(profiles) -> None:
+    await profiles.get_or_seed(USER, SEED)
+
+    other = await profiles.get_or_seed("another-user", [ProfileAnswer(q="q", a="a")])
+
+    assert other.answers == [ProfileAnswer(q="q", a="a")]

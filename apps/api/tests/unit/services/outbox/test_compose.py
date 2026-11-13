@@ -19,7 +19,8 @@ from app.models.ownership_models import DeliveryPolicy
 from app.models.task_report_models import TaskReport
 from app.schemas.outbound import OutboundAttachment
 from app.services.outbox import compose as compose_module
-from app.services.outbox.compose import _validate, compose, record_in_thread
+from app.services.outbox.compose import _item_view, _validate, compose, record_in_thread
+from app.services.outbox.judge_models import ItemJudgement, Moment
 from app.services.outbox.models import (
     ComposeMode,
     ComposeResult,
@@ -37,6 +38,7 @@ from app.services.outbox.models import (
 )
 from app.services.outbox.prerendered import PrerenderedKind, PrerenderedMessage, prerendered_text
 from app.services.outbox.router import InApp, Route
+from tests._harness.judge import verdict
 
 MODULE = "app.services.outbox.compose"
 
@@ -513,3 +515,22 @@ async def test_items_a_producer_wrote_and_items_to_word_are_one_message() -> Non
     assert composed.skipped == ["optional"]
     shown = json.loads(model.await_args.args[1][1].content)["items"]
     assert [item["item_id"] for item in shown] == ["must", "optional"]
+
+
+def _judged(**verdict_fields: object) -> OutboxItemDocument:
+    return MUST.model_copy(update={"judgement": ItemJudgement(verdict=verdict(**verdict_fields))})
+
+
+def test_an_item_the_judge_found_suspicious_is_marked_so_the_composer_warns() -> None:
+    assert _item_view(_judged(suspicious=True))["suspicious"] is True
+
+
+def test_an_item_the_judge_wants_said_with_care_is_marked_soften() -> None:
+    assert _item_view(_judged(moment=Moment.SOFTEN))["soften"] is True
+
+
+@pytest.mark.parametrize("judgement", [None, ItemJudgement(verdict=verdict())])
+def test_an_unremarkable_item_carries_no_judge_marks(judgement: ItemJudgement | None) -> None:
+    view = _item_view(MUST.model_copy(update={"judgement": judgement}))
+
+    assert "suspicious" not in view and "soften" not in view

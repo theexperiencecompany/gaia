@@ -45,6 +45,7 @@ from app.models.chat_models import (
 from app.models.conversation_models import (
     ConversationDocument,
     ConversationMessageHit,
+    ConversationMessageRow,
     ConversationRunContext,
     ConversationSearchResults,
     ConversationSummary,
@@ -114,6 +115,41 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 {"$project": _SUMMARY_PROJECTION},
             ],
             ConversationSummary,
+        )
+
+    async def recent_messages(
+        self, user_id: str, *, since: datetime, conversations: int, per_conversation: int
+    ) -> list[ConversationMessageRow]:
+        """Return the latest messages of the user's most recently active conversations, across every surface.
+
+        Reads the last per_conversation messages of each of the newest conversations touched
+        since the cutoff; the caller orders and cuts them by message date.
+        """
+        return await self._aggregate(
+            [
+                {"$match": {"user_id": user_id, "updatedAt": {"$gte": since}}},
+                {"$sort": {"updatedAt": -1}},
+                {"$limit": conversations},
+                {
+                    "$project": {
+                        "conversation_id": 1,
+                        "source": 1,
+                        "messages": {"$slice": ["$messages", -per_conversation]},
+                    }
+                },
+                {"$unwind": "$messages"},
+                {
+                    "$project": {
+                        "_id": 0,
+                        "conversation_id": 1,
+                        "source": 1,
+                        "type": "$messages.type",
+                        "response": "$messages.response",
+                        "date": "$messages.date",
+                    }
+                },
+            ],
+            ConversationMessageRow,
         )
 
     async def count_active(self, user_id: str) -> int:

@@ -8,6 +8,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 from app.db.repositories.base import UserScopedDocument
+from app.services.outbox.judge_models import ItemJudgement
 from app.services.outbox.models import (
     ComposeMode,
     DropReason,
@@ -29,6 +30,8 @@ class OutboxItemDocument(UserScopedDocument):
     urgency: UrgencyClass | None = None
     mode: ComposeMode | None = None
     drop_reason: DropReason | None = None
+    #: What the Judge and the Rails made of the item; None for an item no Judge was asked about.
+    judgement: ItemJudgement | None = None
     failure: ItemFailure | None = None
     #: Set while a compose owns the item, and kept after, so the message it produced is findable.
     compose_attempt_id: str | None = None

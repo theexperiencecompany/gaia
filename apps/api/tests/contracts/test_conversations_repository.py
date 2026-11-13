@@ -1355,3 +1355,73 @@ class TestHistoryTrimming:
             "tail1",
             "tail2",
         ]
+
+
+class TestRecentMessages:
+    async def _chat(self, repo, raw_collection, user_id, *, source, texts, minutes_ago) -> str:
+        doc = _doc(
+            user_id=user_id,
+            source=source,
+            messages=[
+                {
+                    "type": "user" if i % 2 == 0 else "bot",
+                    "response": text,
+                    "date": f"2026-11-10T09:0{i}:00+00:00",
+                }
+                for i, text in enumerate(texts)
+            ],
+        )
+        await repo.create(doc)
+        await raw_collection.update_one(
+            {"conversation_id": doc.conversation_id},
+            {"$set": {"updatedAt": datetime.now(UTC) - timedelta(minutes=minutes_ago)}},
+        )
+        return doc.conversation_id
+
+    async def test_it_reads_the_latest_messages_of_the_newest_conversations_across_surfaces(
+        self, repo, raw_collection
+    ):
+        user = _uid()
+        web = await self._chat(
+            repo, raw_collection, user, source=None, texts=["a", "b", "c"], minutes_ago=5
+        )
+        wa = await self._chat(
+            repo,
+            raw_collection,
+            user,
+            source=ConversationSource.WHATSAPP,
+            texts=["x", "y"],
+            minutes_ago=1,
+        )
+        await self._chat(
+            repo, raw_collection, user, source=None, texts=["old"], minutes_ago=60 * 24 * 10
+        )
+        await self._chat(
+            repo, raw_collection, _uid(), source=None, texts=["stranger"], minutes_ago=1
+        )
+
+        rows = await repo.recent_messages(
+            user, since=datetime.now(UTC) - timedelta(days=1), conversations=5, per_conversation=2
+        )
+
+        assert sorted((r.conversation_id, r.source, r.type, r.response) for r in rows) == sorted(
+            [
+                (web, None, "bot", "b"),
+                (web, None, "user", "c"),
+                (wa, "whatsapp", "user", "x"),
+                (wa, "whatsapp", "bot", "y"),
+            ]
+        )
+
+    async def test_it_scans_only_the_newest_conversations(self, repo, raw_collection):
+        user = _uid()
+        for n in range(4):
+            await self._chat(
+                repo, raw_collection, user, source=None, texts=[f"t{n}"], minutes_ago=n + 1
+            )
+
+        rows = await repo.recent_messages(
+            user, since=datetime.now(UTC) - timedelta(days=1), conversations=2, per_conversation=5
+        )
+
+        assert sorted(r.response for r in rows) == ["t0", "t1"]

@@ -35,6 +35,7 @@ from app.db.repositories.outbox_messages import outbox_messages_repository
 from app.models.chat_models import ConversationSource
 from app.models.outbox_models import OutboxItemDocument
 from app.schemas.outbound import OutboundAttachment
+from app.services.outbox.judge_models import Moment
 from app.services.outbox.metrics import OUTBOX_COMPOSE_DEGRADED
 from app.services.outbox.models import (
     ComposeMode,
@@ -43,8 +44,8 @@ from app.services.outbox.models import (
     ItemState,
     NoticeOutcome,
     NoticeReport,
-    OutboxReport,
     RunReport,
+    facts_of,
 )
 from app.services.outbox.policy import must_include
 from app.services.outbox.prerendered import (
@@ -85,12 +86,6 @@ def _must_say(item: OutboxItemDocument) -> bool:
     return must_include(item.urgency, item.report)
 
 
-def _facts_of(report: OutboxReport) -> list[str]:
-    if isinstance(report, RunReport):
-        return [fact.text for fact in report.report.facts]
-    return report.facts
-
-
 def _item_view(item: OutboxItemDocument) -> dict[str, object]:
     report = item.report
     view: dict[str, object] = {
@@ -98,6 +93,11 @@ def _item_view(item: OutboxItemDocument) -> dict[str, object]:
         "subject": report.subject.label,
         "must_say": _must_say(item),
     }
+    verdict = item.judgement.verdict if item.judgement else None
+    if verdict is not None and verdict.suspicious:
+        view["suspicious"] = True
+    if verdict is not None and verdict.moment is Moment.SOFTEN:
+        view["soften"] = True
     match report:
         case RunReport():
             view["report"] = report.report.model_dump(mode="json", exclude_none=True)
@@ -216,7 +216,7 @@ def _degraded_parts(items: list[OutboxItemDocument], locale: str) -> list[str]:
         facts = (
             cast(RunReport, item.report).result
             if _is_verbatim(item)
-            else "; ".join(_facts_of(item.report))
+            else "; ".join(facts_of(item.report))
         )
         lines.append(f"{item.report.subject.label}: {facts}")
     return ["\n".join(lines)]

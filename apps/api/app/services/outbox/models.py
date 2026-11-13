@@ -114,6 +114,13 @@ class DropReason(StrEnum):
     EXPIRED = "expired"
     #: The user turned this producer's updates off, and the report needs nothing from them.
     USER_MUTED = "user_muted"
+    #: The Judge found it no longer worth telling: the user knows it, it no longer matters, a
+    #: newer update replaced it, it repeats one already delivered, or the user does not want it.
+    ALREADY_KNOWN = "already_known"
+    MOOT = "moot"
+    SUPERSEDED = "superseded"
+    DUPLICATE = "duplicate"
+    UNWANTED = "unwanted"
 
 
 class ItemFailure(StrEnum):
@@ -214,6 +221,13 @@ class NoticeReport(_ReportBase):
 
 
 OutboxReport = Annotated[RunReport | NoticeReport, Field(discriminator="kind")]
+
+
+def facts_of(report: OutboxReport) -> list[str]:
+    """Return what the report says happened, one claim per entry."""
+    if isinstance(report, RunReport):
+        return [fact.text for fact in report.report.facts]
+    return report.facts
 
 
 class Disposition(StrEnum):
