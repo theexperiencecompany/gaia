@@ -1,17 +1,20 @@
 "use client";
 
 import {
+  memo,
   type ReactNode,
+  Suspense,
+  use,
   useEffect,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 
-/** Start rendering a deferred section this far before it scrolls into view. */
+/** Start hydrating a deferred section this far before it scrolls into view. */
 const HYDRATE_AHEAD_MARGIN = "100% 0px";
-/** Stop holding the server height after this long even if the content never reaches it. */
-const HOLD_HEIGHT_MAX_MS = 3000;
+/** Events that mean the user reached a section before it scrolled near: hydrate it now so the event lands. */
+const INTERACTION_EVENTS = ["pointerdown", "keydown", "focusin"] as const;
 
 const unsubscribeNothing = () => undefined;
 // The hydration state never changes under a mounted component, so nothing to subscribe to.
@@ -26,79 +29,118 @@ function useIsHydrating(): boolean {
   );
 }
 
+interface Gate {
+  promise: Promise<void>;
+  open: () => void;
+}
+
+/** Marked fulfilled so `use` reads it synchronously instead of suspending for a microtask. */
+const OPEN_GATE: Gate = {
+  promise: Object.assign(Promise.resolve(), {
+    status: "fulfilled",
+    value: undefined,
+  }),
+  open: () => undefined,
+};
+
+/** Opening marks the promise fulfilled first, so a hydration React runs synchronously inside an event reads it. */
+function createClosedGate(): Gate {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  return {
+    promise,
+    open: () => {
+      Object.assign(promise, { status: "fulfilled", value: undefined });
+      resolve();
+    },
+  };
+}
+
+function GatedChildren({
+  gate,
+  children,
+}: {
+  gate: Promise<void>;
+  children: ReactNode;
+}) {
+  use(gate);
+  return children;
+}
+
+/** Memoized: handed new props behind a closed gate, a dehydrated boundary drops its HTML (or stalls a transition). */
+const DeferredBoundary = memo(function DeferredBoundary({
+  gate,
+  children,
+}: {
+  gate: Promise<void>;
+  children: ReactNode;
+}) {
+  // While hydrating, a suspended boundary keeps its server HTML and shows no fallback.
+  return (
+    <Suspense fallback={null}>
+      <GatedChildren gate={gate}>{children}</GatedChildren>
+    </Suspense>
+  );
+});
+
 /**
- * Keep a below-the-fold section's server HTML inert until it nears the
- * viewport, then render it for real. Skipping its hydration takes that work
- * off the page-load main thread; the markup on screen never changes.
+ * Leave a below-the-fold section's server HTML dehydrated until it nears the
+ * viewport, then hydrate those same nodes in place. Skipping its hydration takes
+ * that work off the page-load main thread; DOM nodes and focus survive.
  *
- * Mounted by a client navigation instead, it renders its children at once.
+ * A pointer, key or focus inside it opens it early. Mounted by a client navigation, it renders at once.
  */
 export function HydrateOnVisible({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const isHydrating = useIsHydrating();
-  // Server render and hydration both read the server snapshot, so only the global tells them apart; the
-  // mismatch is the mechanism: the inert div below keeps the server HTML (suppressHydrationWarning).
-  const [active, setActive] = useState(
+  // Server render and hydration both read the server snapshot, so only the global tells them apart.
+  const [gate] = useState(
     // react-doctor-disable-next-line react-doctor/no-hydration-branch-on-browser-global
-    () => typeof window === "undefined" || !isHydrating,
+    () =>
+      typeof window === "undefined" || !isHydrating
+        ? OPEN_GATE
+        : createClosedGate(),
   );
-  // The server markup's height, held while the client render swaps in: a lazy
-  // section shows its loading fallback for a moment, and a shorter page would
-  // shift everything below it and jump the scroll position.
-  const [heldHeight, setHeldHeight] = useState<number | null>(null);
+  const [isOpen, setIsOpen] = useState(gate === OPEN_GATE);
+  // Until the gate opens the boundary keeps the children it was server-rendered with, so no parent re-render reaches it.
+  const [serverChildren] = useState(children);
 
   useEffect(() => {
     const node = ref.current;
-    if (active || !node) return;
+    if (gate === OPEN_GATE || !node) return;
+    const stopWatching = () => {
+      observer.disconnect();
+      for (const type of INTERACTION_EVENTS) {
+        window.removeEventListener(type, openOnInteraction, true);
+      }
+    };
+    const open = () => {
+      stopWatching();
+      gate.open();
+      setIsOpen(true);
+    };
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          observer.disconnect();
-          setHeldHeight(node.offsetHeight);
-          setActive(true);
-        }
+        if (entries.some((entry) => entry.isIntersecting)) open();
       },
       { rootMargin: HYDRATE_AHEAD_MARGIN },
     );
+    // React hydrates a dehydrated boundary the user interacts with, but only an open gate lets it; the window
+    // capture phase runs before React's root listener, which swallows events it cannot dispatch yet.
+    const openOnInteraction = (event: Event) => {
+      if (event.target instanceof Node && node.contains(event.target)) open();
+    };
     observer.observe(node);
-    return () => observer.disconnect();
-  }, [active]);
+    for (const type of INTERACTION_EVENTS) {
+      window.addEventListener(type, openOnInteraction, true);
+    }
+    return stopWatching;
+  }, [gate]);
 
-  useEffect(() => {
-    const node = ref.current;
-    if (heldHeight === null || !node) return;
-    const startedAt = performance.now();
-    let frame = requestAnimationFrame(function release() {
-      const contentHeight =
-        node.firstElementChild?.getBoundingClientRect().height;
-      const settled =
-        contentHeight !== undefined && contentHeight >= heldHeight - 1;
-      if (settled || performance.now() - startedAt > HOLD_HEIGHT_MAX_MS) {
-        setHeldHeight(null);
-        return;
-      }
-      frame = requestAnimationFrame(release);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [heldHeight]);
-
-  if (active) {
-    return (
-      <div
-        ref={ref}
-        style={heldHeight === null ? undefined : { minHeight: heldHeight }}
-      >
-        {children}
-      </div>
-    );
-  }
-  // React does not touch an element's existing DOM when it hydrates with
-  // dangerouslySetInnerHTML, so the server-rendered section stays as it is.
   return (
-    <div
-      ref={ref}
-      suppressHydrationWarning
-      dangerouslySetInnerHTML={{ __html: "" }}
-    />
+    <div ref={ref}>
+      <DeferredBoundary gate={gate.promise}>
+        {isOpen ? children : serverChildren}
+      </DeferredBoundary>
+    </div>
   );
 }
