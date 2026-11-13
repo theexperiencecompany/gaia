@@ -331,6 +331,7 @@
 @source "../../../features/auth/hooks/useLogout.ts";
 @source "../../../features/auth/hooks/useOnboardingGuard.ts";
 @source "../../../features/auth/utils/firstName.ts";
+@source "../../../features/auth/utils/signupCta.ts";
 @source "../../../features/auth/utils/toCurrentUser.ts";
 @source "../../../features/bots/hooks/useBotLinks.ts";
 @source "../../../features/browser/api/browserApi.ts";
