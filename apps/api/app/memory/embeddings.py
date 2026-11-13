@@ -291,6 +291,19 @@ async def _sidecar_post(
     return response_model.model_validate(response.json())
 
 
+async def _within_interactive_deadline(awaitable: Awaitable[_T], interactive: bool) -> _T:
+    """Await an in-process model call, bounded by the turn deadline when interactive.
+
+    The worker thread cannot be cancelled (a first call may be downloading the
+    weights), so the turn stops waiting for it and degrades; the load finishes
+    in the background for later turns.
+    """
+    if not interactive:
+        return await awaitable
+    async with asyncio.timeout(EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS):
+        return await awaitable
+
+
 async def embed_query(text: str, *, interactive: bool = False) -> list[float]:
     """Embed a single query string (with the model's query instruction).
 
@@ -311,7 +324,13 @@ async def embed_query(text: str, *, interactive: bool = False) -> list[float]:
             interactive=interactive,
         )
         return result.vector
-    return await _observed("embed_query", "local", 1, asyncio.to_thread(_embed_query_sync, text))
+    return await _observed(
+        "embed_query",
+        "local",
+        1,
+        _within_interactive_deadline(asyncio.to_thread(_embed_query_sync, text), interactive),
+        interactive=interactive,
+    )
 
 
 async def _sidecar_embed(texts: list[str]) -> list[list[float]]:
@@ -382,5 +401,11 @@ async def rerank(query: str, documents: list[str], *, interactive: bool = False)
                 return await _sidecar_rerank(query, documents, interactive=True)
         return await _sidecar_rerank(query, documents)
     return await _observed(
-        "rerank", "local", len(documents), asyncio.to_thread(_rerank_sync, query, documents)
+        "rerank",
+        "local",
+        len(documents),
+        _within_interactive_deadline(
+            asyncio.to_thread(_rerank_sync, query, documents), interactive
+        ),
+        interactive=interactive,
     )

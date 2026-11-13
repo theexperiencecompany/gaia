@@ -26,6 +26,7 @@ from app.agents.context.text import (
     VOLATILE_SECTION_JOIN,
 )
 from app.constants.log_tags import LogTag
+from app.constants.memory import EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS
 from app.services.latency_metrics import observe_context_assemble, span
 from shared.py.wide_events import log
 
@@ -55,6 +56,10 @@ VOLATILE_BLOCK_MAX_CHARS = 8_000
 VOLATILE_BLOCK_HEAD_CHARS = 4_000
 VOLATILE_BLOCK_TAIL_CHARS = 4_000
 
+#: Every section is optional context, so none may hold the reply. Above recall's two
+#: sequential fail-fast legs (embed, rerank), so recall degrades on its own first.
+CONTEXT_SECTION_DEADLINE_SECONDS = 2 * EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS + 2.0
+
 
 def _bounded(volatile_text: str) -> str:
     """Return the volatile block, clipped to :data:VOLATILE_BLOCK_MAX_CHARS."""
@@ -76,7 +81,15 @@ async def _render_section(section: Section, ctx: SectionContext) -> tuple[Sectio
     """
     with span() as elapsed:
         try:
-            return section.id, await section.fetch(ctx)
+            async with asyncio.timeout(CONTEXT_SECTION_DEADLINE_SECONDS):
+                return section.id, await section.fetch(ctx)
+        except TimeoutError:
+            log.warning(
+                f"{LogTag.AGENT} Context section dropped at its deadline",
+                section=section.id.value,
+                deadline_seconds=CONTEXT_SECTION_DEADLINE_SECONDS,
+            )
+            return section.id, ""
         finally:
             observe_context_assemble(elapsed(), stage=f"section:{section.id}")
 

@@ -695,3 +695,43 @@ async def test_the_real_embed_query_path_does_not_log_a_handled_failure(
     with pytest.raises(httpx.ConnectError):
         await embeddings.embed_query("q")
     assert recorded == ["error"]
+
+
+class TestInteractiveLocalDeadline:
+    """The in-process model obeys the same interactive deadline as the sidecar."""
+
+    async def test_interactive_local_embed_query_raises_timeout_at_the_deadline(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        release = asyncio.Event()
+
+        async def model_still_downloading(func: object, *args: object) -> list[float]:
+            await release.wait()
+            return [0.1]
+
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: None)
+        monkeypatch.setattr(embeddings.asyncio, "to_thread", model_still_downloading)
+        monkeypatch.setattr(embeddings, "EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS", 0.05)
+
+        started = asyncio.get_running_loop().time()
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(embeddings.embed_query("q", interactive=True), timeout=2)
+        assert asyncio.get_running_loop().time() - started < 1
+
+    async def test_interactive_local_rerank_raises_timeout_at_the_deadline(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        release = asyncio.Event()
+
+        async def model_still_downloading(func: object, *args: object) -> list[float]:
+            await release.wait()
+            return [0.1]
+
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: None)
+        monkeypatch.setattr(embeddings.asyncio, "to_thread", model_still_downloading)
+        monkeypatch.setattr(embeddings, "EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS", 0.05)
+
+        started = asyncio.get_running_loop().time()
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(embeddings.rerank("q", ["d"], interactive=True), timeout=2)
+        assert asyncio.get_running_loop().time() - started < 1
