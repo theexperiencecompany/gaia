@@ -22,7 +22,6 @@ import { CONNECT_LINK_ERROR_MESSAGES } from "@/features/integrations/constants/c
 import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
 import { useIntegrationDeepLink } from "@/features/integrations/hooks/useIntegrationDeepLink";
 import { useIntegrationSearch } from "@/features/integrations/hooks/useIntegrationSearch";
-import { useIntegrationStatusWebSocket } from "@/features/integrations/hooks/useIntegrationStatusWebSocket";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { usePendingDeepLink } from "@/features/integrations/hooks/usePendingDeepLink";
 import { usePostConnectSettlePolling } from "@/features/integrations/hooks/usePostConnectSettlePolling";
@@ -49,10 +48,6 @@ export default function IntegrationsPage() {
     unpublishIntegration,
     refetch,
   } = useIntegrations();
-
-  // An integration can die while this page is open (Composio revokes the grant,
-  // or a tool call hits a dead account) — flip it to Reconnect without a refresh.
-  useIntegrationStatusWebSocket();
 
   // Search + category filter — page-owned, so they reset when you leave.
   const [searchQuery, setSearchQuery] = useState("");

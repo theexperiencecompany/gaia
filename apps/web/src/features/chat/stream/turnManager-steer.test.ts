@@ -26,6 +26,8 @@ vi.mock("@/stores/chatStore", () => ({
 
 vi.mock("@/stores/streamStore", () => ({
   PENDING_KEY_PREFIX: "pending:",
+  steerSessionKey: (conversationKey: string, id: string) =>
+    `${conversationKey}:steer:${id}`,
 }));
 
 type FakeSession = {

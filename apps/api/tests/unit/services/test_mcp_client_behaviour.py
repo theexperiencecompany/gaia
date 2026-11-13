@@ -18,6 +18,7 @@ from tests.helpers import captured_wide_event
 pytestmark = pytest.mark.unit
 
 _MODULE = "app.services.mcp.mcp_client"
+_STATUS_MODULE = "app.services.integrations.user_integration_status"
 USER_ID = "507f1f77bcf86cd799439011"
 INTEGRATION_ID = "int-1"
 SERVER_URL = "https://mcp.example.com/api"
@@ -94,6 +95,34 @@ class TestPersistAndIndexTools:
                 "error": "mongo down",
                 "error_type": "RuntimeError",
             }
+        ]
+
+    @pytest.mark.regression
+    async def test_open_pages_are_told_once_the_tools_are_stored(self) -> None:
+        """The only broadcast fired at connect, before discovery, so the composer's tool list stayed tool-less."""
+        client = MCPClient(USER_ID)
+        resolved = MagicMock()
+        resolved.source = "platform"
+        order: list[str] = []
+
+        async def store(*_args: object) -> None:
+            order.append("stored")
+
+        async def broadcast(user_id: str, message: dict[str, object]) -> None:
+            order.append(f"broadcast:{user_id}:{message['data']}")
+
+        with (
+            patch(f"{_MODULE}.store_mcp_tools", side_effect=store),
+            patch.object(client, "_index_platform_mcp_tools", AsyncMock()),
+            patch(f"{_MODULE}.invalidate_user_integration_caches", AsyncMock()),
+            patch(f"{_STATUS_MODULE}.schedule_user_integrations_sync"),
+            patch(f"{_STATUS_MODULE}.websocket_manager.broadcast_to_user", side_effect=broadcast),
+        ):
+            await client._persist_and_index_tools(resolved, MagicMock(), INTEGRATION_ID, [])
+
+        assert order == [
+            "stored",
+            f"broadcast:{USER_ID}:{{'integration_id': '{INTEGRATION_ID}', 'status': 'connected'}}",
         ]
 
 

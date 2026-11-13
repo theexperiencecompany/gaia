@@ -73,22 +73,17 @@ async def publish_custom_integration(
         user_id=user_id,
     )
 
+    # mcp_config is authoritative for auth; the legacy mirror covers older documents.
+    mcp_config = integration.mcp_config
+    auth_type = (
+        mcp_config.auth_type if mcp_config and mcp_config.auth_type else integration.auth_type
+    )
     content = await infer_integration_content(
-        user_id=user_id,
-        name=integration.name,
-        description=integration.description,
-        tools=tools,
-        server_url=server_url,
-        category=category,
+        integration, category=category, auth_type=auth_type, user_id=user_id
     )
     if content is None:
         # LLM best-effort failed: deterministic tool-grounded copy instead, so
-        # the page never serves the generic frontend templates. mcp_config is
-        # authoritative for auth; the legacy mirror covers older documents.
-        mcp_config = integration.mcp_config
-        auth_type = (
-            mcp_config.auth_type if mcp_config and mcp_config.auth_type else integration.auth_type
-        )
+        # the page never serves the generic frontend templates.
         content = build_fallback_content(
             name=integration.name,
             description=integration.description,
