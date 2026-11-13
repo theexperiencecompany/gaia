@@ -1,6 +1,7 @@
-import { Button, ScrollShadow } from "@heroui/react";
+import { ScrollShadow } from "@heroui/react";
 import { CalendarCheckIn01Icon, Tick02Icon } from "@icons";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { calendarApi } from "@/features/calendar/api/calendarApi";
 import { toast } from "@/lib/toast";
 import type { CalendarEditOptions } from "@/types/features/calendarTypes";
@@ -132,7 +133,7 @@ export function CalendarEditSection({
       </ScrollShadow>
 
       {calendar_edit_options.length > 1 && (
-        <Button
+        <GaiaButton
           className="mt-3"
           variant="primary"
           fullWidth
@@ -150,7 +151,7 @@ export function CalendarEditSection({
           ) : (
             "Update All Events"
           )}
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );

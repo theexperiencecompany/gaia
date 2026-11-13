@@ -298,20 +298,41 @@ describe("pricing cards", () => {
 
   it("billing period tabs", () => {
     const { container } = render(
-      <BillingPeriodTabs isYearly={false} onChange={vi.fn()} />,
+      <BillingPeriodTabs isYearly={false} onChange={vi.fn()}>
+        cards
+      </BillingPeriodTabs>,
     );
     expect(visibleText(container)).toMatchInlineSnapshot(
-      `"MonthlyYearly2 months free"`,
+      `"MonthlyYearly2 months freecards"`,
     );
+  });
+
+  it("billing period tabs control a panel that exists", () => {
+    const { container } = render(
+      <BillingPeriodTabs isYearly onChange={vi.fn()}>
+        cards
+      </BillingPeriodTabs>,
+    );
+    const controlled = [...container.querySelectorAll("[aria-controls]")];
+    expect(controlled.length).toBeGreaterThan(0);
+    for (const el of controlled) {
+      const panel = container.ownerDocument.getElementById(
+        el.getAttribute("aria-controls") ?? "",
+      );
+      expect(panel?.getAttribute("role")).toBe("tabpanel");
+      expect(panel?.textContent).toBe("cards");
+    }
   });
 
   it("never rounds a part month up into the chip", () => {
     // $271/yr saves $89: 2.97 months of $30, so two months free, not three.
     mockPlans = [PRO_MONTHLY, { ...PRO_YEARLY, amount: 27100 }];
     const { container } = render(
-      <BillingPeriodTabs isYearly={false} onChange={vi.fn()} />,
+      <BillingPeriodTabs isYearly={false} onChange={vi.fn()}>
+        cards
+      </BillingPeriodTabs>,
     );
-    expect(visibleText(container)).toBe("MonthlyYearly2 months free");
+    expect(visibleText(container)).toBe("MonthlyYearly2 months freecards");
   });
 
   it("discount banners", () => {

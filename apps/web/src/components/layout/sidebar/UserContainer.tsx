@@ -41,7 +41,7 @@ export default function UserContainer() {
               (isUnknown ? (
                 <Skeleton className="h-2.5 w-12 rounded-full" />
               ) : (
-                <span className="text-[11px] text-foreground-400">
+                <span className="text-[11px] text-zinc-500">
                   {isPaid
                     ? "GAIA Pro"
                     : paywallCopyFor(hasEverSubscribed).planLabel}

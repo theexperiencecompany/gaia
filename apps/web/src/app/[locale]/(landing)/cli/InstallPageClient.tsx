@@ -6,8 +6,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import FAQAccordion from "@/components/seo/FAQAccordion";
-import { tabsVariants } from "@/components/shared/controlVariants";
 import { LinkButton } from "@/components/shared/LinkButton";
+import { tabsVariants } from "@/components/shared/tabsVariants";
 import CopyButton from "@/components/ui/CopyButton";
 import InlineCode from "@/components/ui/InlineCode";
 import SectionHeader from "@/features/landing/components/demo/founders-demo/SectionHeader";
@@ -43,7 +43,7 @@ function CodeBlock({ code }: { code: string }) {
             onClick={handleCopy}
             className="w-full cursor-pointer text-left"
           >
-            <code className="text-sm text-primary">{code}</code>
+            <code className="text-sm text-accent">{code}</code>
           </button>
         </Tooltip.Trigger>
         <Tooltip.Content>
@@ -109,7 +109,9 @@ function InstallMethodTabs() {
   return (
     <Tabs
       variant="secondary"
-      className={tabsVariants({ color: "accent", className: "mb-0 pb-0" })}
+      className={tabsVariants({ color: "accent" }).base({
+        className: "mb-0 pb-0",
+      })}
     >
       <Tabs.ListContainer>
         <Tabs.List aria-label="Install methods">

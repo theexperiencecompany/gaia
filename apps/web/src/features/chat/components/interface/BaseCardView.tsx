@@ -130,7 +130,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                         onAction={action.onPress}
                       >
                         {action.icon ?? (
-                          <ZapIcon className="size-4 text-default-500" />
+                          <ZapIcon className="size-4 text-zinc-400" />
                         )}
                         <div className="flex flex-col">
                           <span>{action.label}</span>
@@ -163,7 +163,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                       href={path}
                       textValue="View All"
                     >
-                      <SquareArrowUpRight02Icon className="size-4 text-primary" />
+                      <SquareArrowUpRight02Icon className="size-4 text-accent" />
                       <div className="flex flex-col">
                         <span>View All</span>
                         <span className="whitespace-normal text-xs text-zinc-500">

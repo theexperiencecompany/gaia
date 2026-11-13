@@ -1,7 +1,8 @@
 "use client";
 
-import { Button, Skeleton, TextArea } from "@heroui/react";
+import { Skeleton, TextArea } from "@heroui/react";
 import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   GLOBAL_INSTRUCTIONS_SCOPE,
   InstructionsConflictNotice,
@@ -69,7 +70,7 @@ export const GlobalInstructionsEditor = () => {
         <span className="text-xs font-light text-zinc-500">
           {draft.length} / {MAX_INSTRUCTIONS_CHARS}
         </span>
-        <Button
+        <GaiaButton
           size="sm"
           variant="primary"
           onPress={save}
@@ -77,7 +78,7 @@ export const GlobalInstructionsEditor = () => {
           isDisabled={!isDirty || hasConflict}
         >
           Save
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );

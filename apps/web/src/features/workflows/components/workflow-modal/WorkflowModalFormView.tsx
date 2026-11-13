@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, Separator, Switch } from "@heroui/react";
+import { Separator, Switch } from "@heroui/react";
 import { InformationCircleIcon } from "@icons";
 import type { Control, FieldErrors, UseFormSetValue } from "react-hook-form";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 import type { Integration } from "@/features/integrations/types";
 import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
@@ -288,9 +289,9 @@ function PreviewFooter({ onClose }: { onClose: () => void }) {
           You can customise every detail later from the Workflows page.
         </span>
       </div>
-      <Button onPress={onClose} variant="primary">
+      <GaiaButton onPress={onClose} variant="primary">
         Close
-      </Button>
+      </GaiaButton>
     </div>
   );
 }

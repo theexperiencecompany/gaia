@@ -66,8 +66,11 @@
  *                       Fail when a className or style prop on a component
  *                       imported from "@heroui/react" sets colour, background,
  *                       border colour, radius or padding outside the files
- *                       that own HeroUI's look, ratcheted against a baseline.
- *                       Implementation in lib/heroui-styling.mjs.
+ *                       that own HeroUI's look, inline or through a constant,
+ *                       ratcheted against a baseline.
+ *   heroui-usage        Fail on a v2 HeroUI API, a Switch/Checkbox without its
+ *                       parts, or a bare HeroUI component a GAIA wrapper
+ *                       replaces. Both rules live in lib/heroui-usage.mjs.
  *   api-client-imports  Fail when a file outside apps/mobile/src/lib imports
  *                       the raw mobile API client, ratcheted against a
  *                       baseline. The web half of that boundary is Biome's
@@ -99,8 +102,9 @@ import {
   HEROUI_STYLE_BASELINE,
   HEROUI_WRAPPER_DIR,
   heroStyleOverridesIn,
+  heroUsageIn,
   heroWrappersIn,
-} from "./lib/heroui-styling.mjs";
+} from "./lib/heroui-usage.mjs";
 import {
   BASELINES,
   DTS_IGNORE_PATTERN,
@@ -992,9 +996,9 @@ function cmdHeroStyleOverrides(argv) {
         " grid, gap, self-, justify-, items-) stays free.",
     );
     console.log(
-      '\nFix: use a variant (Button variant="default-solid|default-soft|accent-soft", shape="pill"),' +
-        " a parity constant (lib/heroui/accordionParity.ts, tabsParity.ts), or a rule on the" +
-        " component's BEM class in the gaia layer of apps/web/src/app/styles/base.css.",
+      "\nFix: use the component's variant function in apps/web/src/components/shared" +
+        " (DESIGN.md, \"How to write frontend code\"); when the look you need has none, add the" +
+        " value there and its rule to the gaia layer in apps/web/src/app/styles/gaia.css.",
     );
   }
   reportBaseline(HEROUI_STYLE_BASELINE, baseline, seen);
@@ -1002,6 +1006,34 @@ function cmdHeroStyleOverrides(argv) {
   console.log(
     `✅ No new HeroUI style overrides (${seen.size} baselined override(s) left).`,
   );
+}
+
+function cmdHeroUsage(argv) {
+  const scanned = typesFiles(argv).filter(
+    (file) =>
+      /\.tsx?$/.test(file) &&
+      !file.endsWith(".d.ts") &&
+      HEROUI_SCANNED_ROOTS.some((root) => file.startsWith(root)) &&
+      !isTestFile(file) &&
+      existsSync(file),
+  );
+  const found = scanned.flatMap((file) =>
+    heroUsageIn(file, readFileSync(file, "utf8")).map((f) => ({ file, ...f })),
+  );
+  if (found.length > 0) {
+    console.log(`\n❌ heroui-usage: ${found.length} HeroUI usage error(s):\n`);
+    for (const f of found) {
+      console.log(`  ${f.file}:${f.line}  ${f.message}`);
+      console.log(`::error file=${f.file},line=${f.line}::heroui-usage: ${f.message}`);
+    }
+    console.log(
+      "\nWhy: each of these renders without a type error, just not the way it reads: a v2 prop" +
+        " spreads onto the DOM, a v2 variant falls back to the default look, a control without" +
+        " its parts draws nothing, and a bare component skips the GAIA behaviour its wrapper adds.",
+    );
+    process.exit(1);
+  }
+  console.log(`✅ HeroUI usage is v3 and goes through the GAIA wrappers (${scanned.length} file(s)).`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1026,6 +1058,7 @@ function usage() {
       "  deploy-templates [--write]             regenerate the Coolify/Render templates from the compose file, fail on drift",
       "  doc-comments                           no narrating / restating JSDoc, comment runs, or in-body banners",
       "  heroui-style-overrides                 no colour/radius/padding className or style on a HeroUI component",
+      "  heroui-usage                           no v2 HeroUI API, controls render their parts, GAIA wrappers over bare HeroUI",
       "  api-client-imports                     no raw mobile API client import outside apps/mobile/src/lib",
       "  bot-handles                            every WhatsApp / Telegram / Discord link matches libs/shared/bot-identity.json",
     ].join("\n"),
@@ -1127,6 +1160,9 @@ function cmdFrameworkPair() {
       break;
     case "heroui-style-overrides":
       cmdHeroStyleOverrides(rest);
+      break;
+    case "heroui-usage":
+      cmdHeroUsage(rest);
       break;
     case "api-client-imports":
       cmdApiClientImports(rest);

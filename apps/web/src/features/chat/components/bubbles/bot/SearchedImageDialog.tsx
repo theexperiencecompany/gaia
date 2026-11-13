@@ -9,7 +9,7 @@ export default function SearchedImageDialog() {
   return (
     <Modal isOpen={isOpen} onOpenChange={closeDialog}>
       <Modal.Backdrop>
-        <Modal.Container size="lg">
+        <Modal.Container>
           <Modal.Dialog
             className={modalVariants({
               size: "5xl",

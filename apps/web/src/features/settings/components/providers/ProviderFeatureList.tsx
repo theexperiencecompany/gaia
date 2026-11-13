@@ -2,15 +2,17 @@
 
 import { Accordion } from "@heroui/react";
 import type { ProviderFeature } from "@shared/api/generated";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 import type {
   ProviderCatalog,
   SetupStatus,
 } from "@/features/settings/api/providersApi";
-import { ACCORDION_ROOT } from "@/lib/heroui/accordionParity";
 import { FeatureProviderPicker } from "./FeatureProviderPicker";
 import { featureState } from "./featureState";
 import { type FeatureGroup, featureAnchorId } from "./providerRows";
 import { StatusBadge } from "./StatusBadge";
+
+const accordionStyles = accordionVariants({ variant: "light" });
 
 interface ProviderFeatureListProps {
   groups: FeatureGroup[];
@@ -32,7 +34,7 @@ export function ProviderFeatureList({
       allowsMultipleExpanded
       variant="default"
       defaultExpandedKeys={openFeature ? [openFeature] : []}
-      className={`rounded-2xl bg-zinc-900 ${ACCORDION_ROOT}`}
+      className={accordionStyles.base({ className: "rounded-2xl bg-zinc-900" })}
     >
       {groups.map((group) => {
         const state = featureState(group, catalog);

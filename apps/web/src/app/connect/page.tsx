@@ -32,7 +32,7 @@ export default async function ConnectLinkPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-black p-4">
       <div className="w-full max-w-md rounded-3xl bg-zinc-900 p-8 text-center">
-        <ConnectIcon className="mx-auto mb-5 h-12 w-12 text-primary" />
+        <ConnectIcon className="mx-auto mb-5 h-12 w-12 text-accent" />
         <h1 className="mb-2 text-xl font-semibold text-white">
           Connect your integration
         </h1>

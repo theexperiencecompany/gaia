@@ -5,6 +5,7 @@ import { CircleArrowRight02Icon } from "@icons";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { SiteLink } from "@/components/seo/SiteLink";
+import { toneVariants } from "@/components/shared/tone";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { MARKETPLACE_PATH } from "@/features/integrations/lib/marketplaceDirectoryPages";
 import LargeHeader from "../shared/LargeHeader";
@@ -522,7 +523,13 @@ export default function Tired() {
                     />
                   </div>
                 </Tooltip.Trigger>
-                <Tooltip.Content placement="top" className="px-2.5 py-1">
+                <Tooltip.Content
+                  placement="top"
+                  className={toneVariants({
+                    tone: "white",
+                    className: "px-2.5 py-1",
+                  })}
+                >
                   {icon.alt}
                 </Tooltip.Content>
               </Tooltip>

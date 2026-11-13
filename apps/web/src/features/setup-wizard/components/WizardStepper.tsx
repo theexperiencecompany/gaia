@@ -35,7 +35,7 @@ export function WizardStepper({ currentStep, totalSteps }: WizardStepperProps) {
               transition={{ duration: 0.3, delay: index * 0.08 }}
             >
               <m.div
-                className="absolute inset-0 origin-left rounded-full bg-primary"
+                className="absolute inset-0 origin-left rounded-full bg-accent"
                 initial={{ scaleX: 0 }}
                 animate={{ scaleX: scaleXValue }}
                 transition={{ duration: 0.4, ease: "easeInOut" }}

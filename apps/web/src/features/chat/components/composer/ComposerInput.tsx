@@ -113,7 +113,12 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
           <TextArea
             ref={inputRef}
             autoFocus
-            className={`max-h-84 min-h-12 w-full resize-none px-3 py-3 text-base leading-6 font-light shadow-none placeholder:text-foreground-500 focus:ring-0 ${inputVariants({ variant: "bare" })}`}
+            className={inputVariants({
+              variant: "bare",
+              placeholder: "muted",
+              className:
+                "max-h-84 min-h-12 w-full resize-none px-3 py-3 text-base leading-6 font-light shadow-none focus:ring-0",
+            })}
             rows={1}
             placeholder="What can I do for you today? (Type '/' for tools)"
             value={searchbarText}

@@ -16,8 +16,8 @@ interface AuthShellProps {
 }
 
 /**
- * Full-screen backdrop + centered glass card shared by the local-mode
- * login and signup pages. Matches the existing auth surfaces (desktop-login,
+ * Full-screen backdrop + centered glass card shared by the signup page and
+ * the local-mode login page. Matches the existing auth surfaces (desktop-login,
  * RedirectLoader): time-of-day wallpaper behind a frosted zinc card with the
  * GAIA wordmark and an Inter heading.
  */

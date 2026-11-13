@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   FieldError,
   Input,
   Label,
@@ -13,6 +12,7 @@ import {
 import { Turnstile } from "@marsidev/react-turnstile";
 import type React from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
@@ -182,14 +182,14 @@ function ContactRequestForm({
       )}
 
       <div className="flex justify-end">
-        <Button
+        <GaiaButton
           type="submit"
           isDisabled={isSubmitting || (isVisitor && !TURNSTILE_SITE_KEY)}
           isPending={visitor.isVerifying}
           variant="primary"
         >
           {isSubmitting ? "Submitting..." : "Submit"}
-        </Button>
+        </GaiaButton>
       </div>
     </form>
   );

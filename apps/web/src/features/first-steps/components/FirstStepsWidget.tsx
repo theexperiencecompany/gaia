@@ -1,9 +1,10 @@
 "use client";
 
-import { Button, ProgressBar } from "@heroui/react";
+import { ProgressBar } from "@heroui/react";
 import { ArrowExpand01Icon, ArrowShrink02Icon } from "@icons";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { FirstStepRow } from "@/features/first-steps/components/FirstStepRow";
 import {
   FIRST_STEPS_ROW_STAGGER_SECONDS,
@@ -90,7 +91,7 @@ export function FirstStepsWidget() {
             <ArrowExpand01Icon className="size-4 text-zinc-400" />
           </span>
         ) : (
-          <Button
+          <GaiaButton
             isIconOnly
             size="sm"
             variant="ghost"
@@ -100,7 +101,7 @@ export function FirstStepsWidget() {
             onPress={toggleCollapsed}
           >
             <ArrowShrink02Icon className="size-4 text-zinc-400" />
-          </Button>
+          </GaiaButton>
         )}
       </div>
 

@@ -122,9 +122,9 @@ function VoiceCell({
               aria-label={
                 voice.starred ? `Unstar ${voice.name}` : `Star ${voice.name}`
               }
+              tone="subtle"
               hoverTone={voice.starred ? "none" : "dim"}
               className={cn(
-                "text-zinc-600",
                 voice.starred && "text-yellow-400 hover:text-yellow-300",
               )}
               onPress={() => onToggleStar(voice)}
@@ -137,7 +137,7 @@ function VoiceCell({
               <p className="truncate text-sm text-white">{voice.name}</p>
               {inlineGender && <GenderIcon gender={voice.gender} />}
               {voice.isSelected && (
-                <CheckmarkCircle02Icon className="h-4 w-4 shrink-0 text-primary" />
+                <CheckmarkCircle02Icon className="h-4 w-4 shrink-0 text-accent" />
               )}
             </div>
             <p
@@ -364,6 +364,7 @@ export function VoiceTable({
             <Table.Column
               key={column.key}
               id={column.key}
+              isRowHeader={column.key === "voice"}
               className={column.align === "end" ? "text-right" : undefined}
             >
               {column.label}

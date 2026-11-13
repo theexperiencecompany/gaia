@@ -167,7 +167,10 @@ IGNORED = (
         "characters, so CJK prose reads thin, a Latin product name in it as stuffing, and a "
         "title or description too short",
         "/ja/compare/asana has 2,726 CJK characters, reported as 107 words and 'asana' at "
-        "16.9%; '2026年版 Any.do 最良の代替 | GAIA' reported as a 26-character title, too short",
+        "16.9%; '2026年版 Any.do 最良の代替 | GAIA' reported as a 26-character title, too short; "
+        "its 120-character description minimum overflows a CJK snippet, which shows ~70-80 "
+        "characters on mobile and ~90-120 on desktop (sungrove.co.jp, xserver.ne.jp, 2025), "
+        "where ours run 70-129 (ja median 82, ko median 87)",
         _cjk_length,
     ),
     Ignore(

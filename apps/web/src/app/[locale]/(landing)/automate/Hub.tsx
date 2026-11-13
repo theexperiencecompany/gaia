@@ -208,7 +208,7 @@ export async function AutomateHub({ locale, page }: AutomateHubProps) {
                       zIndex={0}
                     />
                   </div>
-                  <h3 className="text-base font-medium text-white transition-colors group-hover:text-primary">
+                  <h3 className="text-base font-medium text-white transition-colors group-hover:text-accent">
                     {combo.toolA} + {combo.toolB}
                   </h3>
                   <p className="line-clamp-2 text-sm leading-relaxed text-zinc-500">

@@ -15,11 +15,9 @@ import type { MemoryOverviewResponse } from "@shared/api/generated";
 import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useState } from "react";
-import {
-  separatorVariants,
-  tabsVariants,
-} from "@/components/shared/controlVariants";
+import { separatorVariants } from "@/components/shared/controlVariants";
 import { shapeVariants } from "@/components/shared/shape";
+import { tabsVariants } from "@/components/shared/tabsVariants";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { CoreDocuments } from "@/features/memory/components/CoreDocuments";
 import { MemoryDocsBanner } from "@/features/memory/components/MemoryDocsBanner";
@@ -109,7 +107,7 @@ export default function MemoryManagement({
               <Separator
                 orientation="vertical"
                 className={separatorVariants({
-                  tone: "subtle",
+                  surface: "raised",
                   className: "mx-6 h-8",
                 })}
               />
@@ -130,8 +128,7 @@ export default function MemoryManagement({
       </div>
 
       <Tabs
-        className={tabsVariants({
-          color: "accent",
+        className={tabsVariants({ color: "accent" }).base({
           className: shapeVariants({ shape: "pill" }),
         })}
         variant="primary"

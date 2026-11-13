@@ -123,7 +123,7 @@ function DemoEventsCard() {
               <div className="w-1/5 flex-shrink-0">
                 <div className="sticky top-0 z-10 px-2 pt-1">
                   <span
-                    className={`text-sm ${index === 0 ? "text-primary" : "text-zinc-400"}`}
+                    className={`text-sm ${index === 0 ? "text-accent" : "text-zinc-400"}`}
                   >
                     {label}
                   </span>
@@ -320,7 +320,7 @@ function DemoGoalsCard() {
                   <div className="mt-2 flex items-center gap-2">
                     <div className="relative h-2 flex-1 rounded-full">
                       <div
-                        className="absolute top-0 left-0 z-[2] h-2 rounded-full bg-primary"
+                        className="absolute top-0 left-0 z-[2] h-2 rounded-full bg-accent"
                         style={{ width: `${goal.progress}%` }}
                       />
                       <div className="absolute top-0 left-0 h-2 w-full rounded-full bg-zinc-900" />

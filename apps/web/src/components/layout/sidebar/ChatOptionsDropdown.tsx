@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  Button,
-  Dropdown,
-  Input,
-  Label,
-  Modal,
-  TextField,
-} from "@heroui/react";
+import { Dropdown, Input, Label, Modal, TextField } from "@heroui/react";
 import {
   ArrowDown01Icon,
   Delete02Icon,
@@ -24,6 +17,7 @@ import {
   useState,
 } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useDeleteConversation } from "@/hooks/useDeleteConversation";
@@ -147,7 +141,7 @@ export default function ChatOptionsDropdown({
   return (
     <>
       <Dropdown className={`group/${chatId} w-fit min-w-fit dark`}>
-        <Button
+        <GaiaButton
           className={`ml-auto ${buttonHovered ? "backdrop-blur-lg" : ""}`}
           isIconOnly={!btnChildren}
           variant={btnChildren ? "tertiary" : "ghost"}
@@ -168,7 +162,7 @@ export default function ChatOptionsDropdown({
               width={20}
             />
           )}
-        </Button>
+        </GaiaButton>
         <Dropdown.Popover>
           <Dropdown.Menu aria-label="Static Actions">
             <Dropdown.Item
@@ -250,12 +244,12 @@ export default function ChatOptionsDropdown({
                 </TextField>
               </Modal.Body>
               <Modal.Footer>
-                <Button variant="ghost" onPress={closeEditModal}>
+                <GaiaButton variant="ghost" onPress={closeEditModal}>
                   Cancel
-                </Button>
-                <Button onPress={handleEdit} variant="primary">
+                </GaiaButton>
+                <GaiaButton onPress={handleEdit} variant="primary">
                   Save
-                </Button>
+                </GaiaButton>
               </Modal.Footer>
             </Modal.Dialog>
           </Modal.Container>

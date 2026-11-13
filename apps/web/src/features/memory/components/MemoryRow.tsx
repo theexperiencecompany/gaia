@@ -19,7 +19,7 @@ interface MemoryRowProps {
 }
 
 function importanceColor(importance: number): string {
-  if (importance >= 0.7) return "bg-primary";
+  if (importance >= 0.7) return "bg-accent";
   if (importance >= 0.4) return "bg-zinc-400";
   return "bg-zinc-600";
 }

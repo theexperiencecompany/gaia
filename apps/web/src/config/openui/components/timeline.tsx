@@ -3,6 +3,7 @@ import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import type { z } from "zod";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { sanitizeRedirectUrl } from "@/lib/url-safety";
 import { useSafeTriggerAction } from "../hooks/useSafeTriggerAction";
 import { ToolCard } from "../primitives/ToolCard";
@@ -116,10 +117,10 @@ function TimelineView(props: z.infer<typeof timelineSchema>) {
                     <div className="flex flex-wrap items-center gap-2 mt-2">
                       {item.links?.map((link) => {
                         const safeHref = sanitizeRedirectUrl(String(link.url));
-                        const linkClassName =
-                          link.type === "primary"
-                            ? "text-xs text-[#00bbff]"
-                            : "text-xs text-zinc-400";
+                        const linkClassName = toneVariants({
+                          tone: link.type === "primary" ? "accent" : "muted",
+                          className: "text-xs",
+                        });
                         return safeHref ? (
                           <Link
                             key={`${item.title}-${link.label}-${link.url}`}

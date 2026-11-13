@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, FieldError, Input, Modal, TextField } from "@heroui/react";
+import { FieldError, Input, Modal, TextField } from "@heroui/react";
 import { useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
@@ -75,7 +75,7 @@ function PhoneNumberForm({
         <GaiaButton variant="default-soft" size="sm" onPress={onClose}>
           Cancel
         </GaiaButton>
-        <Button
+        <GaiaButton
           size="sm"
           isPending={isSubmitting}
           isDisabled={!E164_PHONE_PATTERN.test(phone)}
@@ -83,7 +83,7 @@ function PhoneNumberForm({
           variant="primary"
         >
           Continue
-        </Button>
+        </GaiaButton>
       </Modal.Footer>
     </>
   );
@@ -136,9 +136,9 @@ export function PhoneLinkModal({
                   )}
                 </Modal.Body>
                 <Modal.Footer>
-                  <Button size="sm" onPress={onClose} variant="primary">
+                  <GaiaButton size="sm" onPress={onClose} variant="primary">
                     Done
-                  </Button>
+                  </GaiaButton>
                 </Modal.Footer>
               </>
             ) : (

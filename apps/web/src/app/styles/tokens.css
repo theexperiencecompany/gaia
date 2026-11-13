@@ -1,0 +1,184 @@
+/* GAIA tokens: the bridge from HeroUI v3's token names to GAIA's values, and the
+   --gaia-* control dimensions the gaia layer reads. Unlayered, so they win over
+   the HeroUI theme in the theme layer. DESIGN.md lists every value. */
+
+/* HeroUI v3 token bridge.
+   v3 renamed the --heroui-* namespace to bare tokens (--accent/--focus) whose
+   theme defaults are not GAIA's. `.dark` must be listed explicitly: it is a
+   class selector and outranks `:root` on specificity, which silently reset the
+   brand blue back to the theme default. */
+:root,
+.dark {
+  --accent: #00bbff;
+  --accent-foreground: #000000;
+  --accent-hover: #33c9ff;
+  --focus: #00bbff;
+}
+
+/* GAIA's structural colours under v3's names (v2's --heroui-background, -content1
+   and -divider became --background, --surface and --separator), at v2's values.
+   html paints --background as v2's theme did; v3 only declares the token. */
+:root {
+  --background: #ffffff;
+  --surface: #ffffff;
+  /* v2 foreground and its muted step (foreground-500): text, placeholders, soft-chip text */
+  --foreground: #11181c;
+  --muted: #71717a;
+  --border: hsl(214.3 31.8% 91.4%);
+  /* v2 --heroui-divider: #111111 at 15%, translucent so it reads on any surface */
+  --separator: rgb(17 17 17 / 0.15);
+}
+
+.dark {
+  /* v2 --heroui-background: 0 0% 0% */
+  --background: #000000;
+  --foreground: #ecedee;
+  --muted: #a1a1aa;
+  /* v2 --heroui-content1: 240 5.88% 10% (zinc-900) */
+  --surface: hsl(240 5.88% 10%);
+  /* v2 --border: 216 34% 17% (subtle blue-grey hairline, not white) */
+  --border: hsl(216 34% 17%);
+  /* v2 --heroui-divider: white at 15% (#262626 on black, lighter on a zinc card) */
+  --separator: rgb(255 255 255 / 0.15);
+}
+
+/* v2 semantic colours and its `flat` tint: v2 painted a flat chip or button as
+   the colour at 20% behind the colour itself, where v3's soft step is 12-15%
+   with the text mixed toward --foreground. --default-soft is v2's flat default,
+   its zinc-700 default at 40%. */
+:root,
+.dark {
+  --success: #17c964;
+  --warning: #f5a524;
+  --danger: #f31260;
+  --accent-soft: color-mix(in oklab, var(--accent) 20%, transparent);
+  --accent-soft-foreground: var(--accent);
+  --accent-soft-hover: color-mix(in oklab, var(--accent) 30%, transparent);
+  --success-soft: color-mix(in oklab, var(--success) 20%, transparent);
+  --success-soft-foreground: var(--success);
+  --success-soft-hover: color-mix(in oklab, var(--success) 30%, transparent);
+  --warning-soft: color-mix(in oklab, var(--warning) 20%, transparent);
+  --warning-soft-foreground: var(--warning);
+  --warning-soft-hover: color-mix(in oklab, var(--warning) 30%, transparent);
+  --danger-soft: color-mix(in oklab, var(--danger) 20%, transparent);
+  --danger-soft-foreground: var(--danger);
+  --danger-soft-hover: color-mix(in oklab, var(--danger) 30%, transparent);
+  /* HeroUI 3.2.7's field sheets read this for an invalid field; its theme never defines it */
+  --color-field-border-invalid: var(--danger);
+}
+
+:root,
+.dark {
+  /* v2 placeholder: zinc-500 */
+  --field-placeholder: #71717a;
+}
+
+.dark {
+  /* v2 flat field: default-100 (zinc-800) */
+  --field-background: var(--gaia-field-background);
+}
+
+.dark {
+  --default-soft: color-mix(in oklab, #3f3f46 40%, transparent);
+  --default-soft-hover: color-mix(in oklab, #3f3f46 60%, transparent);
+}
+
+html {
+  background-color: var(--background);
+}
+
+/* GAIA control dimensions: v2's sizes on v3's components, which ship pill radii,
+   a 36px desktop button and font-weight 500. Read only by gaia.css. */
+:root {
+  --gaia-radius-xs: 0.125rem;
+  --gaia-radius-sm: 0.5rem;
+  --gaia-radius-md: 0.75rem;
+  --gaia-radius-lg: 0.875rem;
+  --gaia-radius-xl: 1rem;
+  --gaia-radius-pill: 9999px;
+  --gaia-list-item-height: 2.125rem;
+  --gaia-table-cell-padding-y: 0.5rem;
+  --gaia-table-cell-padding-x: 0.75rem;
+  --gaia-slider-marks-gap: 0.375rem;
+  --gaia-field-translucent: color-mix(in oklab, var(--color-zinc-800) 50%, transparent);
+  --gaia-field-translucent-hover: color-mix(in oklab, var(--color-zinc-700) 50%, transparent);
+  --gaia-field-subtle: color-mix(in oklab, var(--color-zinc-800) 30%, transparent);
+  --gaia-field-subtle-hover: color-mix(in oklab, var(--color-zinc-800) 50%, transparent);
+  --gaia-overlay-raised: var(--color-zinc-800);
+  --gaia-overlay-secondary: var(--color-secondary-bg);
+  --gaia-soft-tint-light: 15%;
+  --gaia-separator-raised: color-mix(in oklab, var(--color-zinc-700) 50%, transparent);
+  --gaia-button-weight: 400;
+  --gaia-button-sm-height: 2rem;
+  --gaia-button-sm-min-width: 4rem;
+  --gaia-button-sm-padding: 0.75rem;
+  --gaia-button-sm-font-size: 0.75rem;
+  --gaia-button-md-height: 2.5rem;
+  --gaia-button-md-min-width: 5rem;
+  --gaia-button-md-padding: 1rem;
+  --gaia-button-md-font-size: 0.875rem;
+  --gaia-button-lg-height: 3rem;
+  --gaia-button-lg-min-width: 6rem;
+  --gaia-button-lg-padding: 1.5rem;
+  --gaia-button-lg-font-size: 1rem;
+  --gaia-chip-sm-height: 1.5rem;
+  --gaia-chip-md-height: 1.75rem;
+  --gaia-chip-lg-height: 2rem;
+  --gaia-checkbox-size: 1.25rem;
+  --gaia-checkbox-gap: 0.5rem;
+  --gaia-field-inside-height: 3.5rem;
+  --gaia-field-inside-label-size: 0.75rem;
+  --gaia-field-inside-label-top: 0.5rem;
+  --gaia-field-inside-padding-top: 1.5rem;
+  --gaia-field-inside-padding-bottom: 0.5rem;
+  --gaia-field-inside-padding-x: 0.75rem;
+  --gaia-field-label-inside-color: var(--color-zinc-400);
+  --gaia-avatar-ring-gap: 2px;
+  --gaia-avatar-ring-width: 2px;
+  --gaia-avatar-ring-color: var(--color-zinc-700);
+  --gaia-modal-xl: 36rem;
+  --gaia-modal-2xl: 42rem;
+  --gaia-modal-3xl: 48rem;
+  --gaia-modal-4xl: 56rem;
+  --gaia-modal-5xl: 64rem;
+  --gaia-modal-inset: 0.25rem;
+  --gaia-modal-inset-sm-y: 4rem;
+  --gaia-modal-inset-sm-x: 1.5rem;
+  --gaia-modal-padding-x: 1.5rem;
+  --gaia-modal-header-padding-y: 1rem;
+  --gaia-modal-body-padding-y: 0.5rem;
+  --gaia-modal-body-gap: 0.75rem;
+  --gaia-modal-footer-padding-y: 1rem;
+  --gaia-input-sm-height: 2rem;
+  --gaia-input-sm-padding-x: 0.5rem;
+  --gaia-input-sm-font-size: 0.875rem;
+  --gaia-card-section-padding: 0.75rem;
+  --gaia-chip-sm-font-size: 0.75rem;
+  --gaia-chip-md-font-size: 0.875rem;
+  --gaia-chip-lg-font-size: 1rem;
+  --gaia-chip-lg-padding-x: 0.5rem;
+  --gaia-field-height: 2.5rem;
+  --gaia-field-font-size: 0.875rem;
+  --gaia-field-background: var(--color-zinc-800);
+  --gaia-switch-track-off: var(--color-zinc-700);
+  --gaia-switch-padding: 0.25rem;
+  --gaia-switch-sm-width: 2.5rem;
+  --gaia-switch-sm-height: 1.5rem;
+  --gaia-switch-sm-thumb: 1rem;
+  --gaia-switch-md-width: 3rem;
+  --gaia-switch-md-height: 1.75rem;
+  --gaia-switch-md-thumb: 1.25rem;
+  --gaia-switch-lg-width: 3.5rem;
+  --gaia-switch-lg-height: 2rem;
+  --gaia-switch-lg-thumb: 1.5rem;
+  --gaia-slider-track-bg: color-mix(in oklab, var(--color-zinc-600) 50%, transparent);
+  --gaia-slider-md-track: 0.75rem;
+  --gaia-slider-md-thumb: 1.5rem;
+  --gaia-slider-md-thumb-inner: 1.25rem;
+  --gaia-slider-sm-track: 0.25rem;
+  --gaia-slider-sm-thumb: 1.25rem;
+  --gaia-slider-sm-thumb-inner: 1rem;
+  /* quiet hours */
+  --gaia-slider-indigo-thumb: var(--color-indigo-300);
+  --gaia-slider-indigo-fill: color-mix(in oklab, var(--color-indigo-400) 70%, transparent);
+}

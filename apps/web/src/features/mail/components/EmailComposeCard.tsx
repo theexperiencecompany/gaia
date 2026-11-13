@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Chip,
   FieldError,
   Input,
@@ -28,6 +27,7 @@ import {
 } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight, Gmail } from "@/components/shared/icons";
+import { toneVariants } from "@/components/shared/tone";
 import { Separator } from "@/components/ui/separator";
 import { mailApi } from "@/features/mail/api/mailApi";
 import {
@@ -106,7 +106,7 @@ function ComposeHeader({
   onToggle: () => void;
 }) {
   return (
-    <Button
+    <GaiaButton
       fullWidth
       variant="ghost"
       onPress={onToggle}
@@ -129,7 +129,7 @@ function ComposeHeader({
           isCollapsed ? "rotate-0" : "rotate-90"
         }`}
       />
-    </Button>
+    </GaiaButton>
   );
 }
 
@@ -143,12 +143,18 @@ function EmailBodyPreview({
   onEdit: () => void;
 }) {
   return (
-    <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto text-sm leading-relaxed">
+    <ScrollShadow
+      className={toneVariants({
+        tone: "bright",
+        className:
+          "relative z-1 max-h-46 overflow-y-auto text-sm leading-relaxed",
+      })}
+    >
       {!isLocked && (
         <div className="absolute top-0 right-0 z-2 flex w-full justify-end">
-          <Button variant="ghost" size="sm" isIconOnly onPress={onEdit}>
+          <GaiaButton variant="ghost" size="sm" isIconOnly onPress={onEdit}>
             <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
-          </Button>
+          </GaiaButton>
         </div>
       )}
       <div className="pb-5">
@@ -173,7 +179,10 @@ function AttachmentsRow({
           key={`${attachment.name}-${attachment.mimetype}`}
           size="sm"
           variant="soft"
-          className="max-w-full text-xs"
+          className={toneVariants({
+            tone: "bright",
+            className: "max-w-full text-xs",
+          })}
         >
           <AttachmentIcon className="h-3.5 w-3.5 text-zinc-400" />
           <Chip.Label className="truncate">{attachment.name}</Chip.Label>
@@ -224,9 +233,9 @@ function ComposeFields({
         </div>
 
         {!isLocked && (
-          <Button variant="ghost" size="sm" isIconOnly onPress={onEdit}>
+          <GaiaButton variant="ghost" size="sm" isIconOnly onPress={onEdit}>
             <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
-          </Button>
+          </GaiaButton>
         )}
       </div>
       <Separator className="my-1.5 bg-zinc-700" />
@@ -259,7 +268,7 @@ function RecipientRow({
       <span className="flex w-full items-center justify-between font-medium text-zinc-200">
         {emails.join(", ") || ""}
         {!isLocked && (
-          <Button
+          <GaiaButton
             size="sm"
             onPress={onEdit}
             variant={emails.length === 0 ? "tertiary" : "ghost"}
@@ -269,7 +278,7 @@ function RecipientRow({
               <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
             )}
             {emails.length === 0 ? addLabel : ``}
-          </Button>
+          </GaiaButton>
         )}
       </span>
     </div>
@@ -304,7 +313,7 @@ function EditEmailModal({
           if (!nextOpen) onClose();
         }}
       >
-        <Modal.Container size="lg">
+        <Modal.Container>
           <Modal.Dialog
             className={modalVariants({
               size: "2xl",
@@ -479,24 +488,24 @@ function RecipientSelectionModal({
                   />
                   <FieldError>{customEmailError}</FieldError>
                 </TextField>
-                <Button
+                <GaiaButton
                   size="sm"
                   onPress={handleAddCustomEmail}
                   isIconOnly
                   variant="primary"
                 >
                   <PlusSignIcon className="h-4 w-4" />
-                </Button>
+                </GaiaButton>
               </div>
 
               {/* Action Buttons */}
               <div className="mt-4 flex justify-end gap-2">
-                <Button variant="ghost" size="sm" onPress={onClose}>
+                <GaiaButton variant="ghost" size="sm" onPress={onClose}>
                   Cancel
-                </Button>
-                <Button size="sm" onPress={onConfirm} variant="primary">
+                </GaiaButton>
+                <GaiaButton size="sm" onPress={onConfirm} variant="primary">
                   Done ({selectedEmails.length})
-                </Button>
+                </GaiaButton>
               </div>
             </Modal.Body>
           </Modal.Dialog>

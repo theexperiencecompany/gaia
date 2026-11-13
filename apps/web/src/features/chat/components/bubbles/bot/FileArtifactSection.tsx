@@ -156,9 +156,9 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
             <div className="flex min-w-0 flex-1 items-center gap-2.5">
               <div className="flex-shrink-0">
                 {config.icon === "code" ? (
-                  <CodeIcon className="h-5 w-5 text-primary" />
+                  <CodeIcon className="h-5 w-5 text-accent" />
                 ) : (
-                  <File01Icon className="h-5 w-5 text-primary" />
+                  <File01Icon className="h-5 w-5 text-accent" />
                 )}
               </div>
 
@@ -187,6 +187,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
               <GaiaButton
                 size="sm"
                 variant="default-soft"
+                tone="bright"
                 className="font-medium"
                 onPress={handleOpen}
               >

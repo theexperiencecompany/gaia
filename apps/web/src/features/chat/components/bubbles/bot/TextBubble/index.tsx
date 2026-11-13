@@ -76,7 +76,7 @@ function ReplyQuote({
     >
       <span
         aria-hidden
-        className="absolute inset-y-2 left-1.5 w-1 rounded-full bg-zinc-400 transition-colors group-hover/quote:bg-primary"
+        className="absolute inset-y-2 left-1.5 w-1 rounded-full bg-zinc-400 transition-colors group-hover/quote:bg-accent"
       />
       <div className="flex flex-col overflow-hidden">
         <span className="text-[11px] font-semibold text-zinc-400">

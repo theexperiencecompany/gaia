@@ -78,7 +78,7 @@ export default async function BlogPage() {
         <div className="w-full max-w-(--breakpoint-lg)">
           <div className="flex flex-col items-center justify-center py-20">
             <span className="text-danger">Error loading blog posts</span>
-            <span className="mt-2 text-sm text-foreground-500">
+            <span className="mt-2 text-sm text-zinc-400">
               {error instanceof Error ? error.message : "Failed to fetch blogs"}
             </span>
           </div>

@@ -48,7 +48,7 @@ export default function DemoChatTab({ label, active }: DemoChatTabProps) {
             size="sm"
             variant="ghost"
             tone="muted"
-            hoverTone="foreground"
+            hoverTone="white"
             className={`shrink-0 hover:bg-zinc-700 ${buttonHovered ? "backdrop-blur-lg" : ""}`}
             aria-label="Chat options"
           >

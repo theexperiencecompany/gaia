@@ -138,7 +138,7 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
                 <CheckmarkBadge01Icon
                   width={15}
                   height={15}
-                  className="shrink-0 text-primary"
+                  className="shrink-0 text-accent"
                 />
               </div>
               <Tooltip.Content placement="top">

@@ -38,7 +38,7 @@ const LazyContributors = lazy(() =>
               key={contributor.login}
               asChild
               className={avatarVariants({
-                bordered: true,
+                isBordered: true,
                 className:
                   "cursor-pointer transition-transform hover:scale-110",
               })}
@@ -60,7 +60,7 @@ const LazyContributors = lazy(() =>
           ))}
         </AvatarGroup>
         {totalCount > 8 && (
-          <p className="ms-2 text-small font-medium text-foreground text-nowrap">
+          <p className="ms-2 text-sm font-medium text-foreground text-nowrap">
             +{totalCount - 8} others
           </p>
         )}

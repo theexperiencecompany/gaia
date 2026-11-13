@@ -75,7 +75,7 @@ function renderGrid<T extends { id: string }>(
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center space-y-4 py-1">
-        <p className="text-foreground-400">{error}</p>
+        <p className="text-zinc-500">{error}</p>
         <GaiaButton size="sm" variant="default-soft" onPress={onRefetch}>
           <RedoIcon className="h-4 w-4" />
           Try Again

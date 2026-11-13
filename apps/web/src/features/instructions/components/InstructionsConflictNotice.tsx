@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button } from "@heroui/react";
+import { Alert } from "@heroui/react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 
 interface InstructionsConflictNoticeProps {
@@ -28,7 +28,7 @@ export const InstructionsConflictNotice = ({
       </Alert.Description>
     </Alert.Content>
     <div className="flex shrink-0 gap-2">
-      <Button
+      <GaiaButton
         size="sm"
         variant="secondary"
         onPress={onLoadLatest}
@@ -36,7 +36,7 @@ export const InstructionsConflictNotice = ({
         isDisabled={isSaving}
       >
         Load latest
-      </Button>
+      </GaiaButton>
       <GaiaButton
         variant="warning-soft"
         size="sm"

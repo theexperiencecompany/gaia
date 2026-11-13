@@ -32,7 +32,7 @@ export default function FeatureDigestCard() {
           <p className="text-xs text-zinc-400">
             &quot;REST API access&quot; × 3 · &quot;Zapier integration&quot; × 2
           </p>
-          <p className="flex items-center gap-1 text-xs text-primary">
+          <p className="flex items-center gap-1 text-xs text-accent">
             <ArrowRight02Icon width={11} height={11} />
             ENG-461 created
           </p>
@@ -83,7 +83,7 @@ export default function FeatureDigestCard() {
           <p className="text-xs text-zinc-400">
             &quot;SAML SSO&quot;: from enterprise prospect
           </p>
-          <p className="flex items-center gap-1 text-xs text-primary">
+          <p className="flex items-center gap-1 text-xs text-accent">
             <ArrowRight02Icon width={11} height={11} />
             ENG-464 created
           </p>

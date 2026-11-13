@@ -28,7 +28,7 @@ export function NavbarNavLinks({ pathname }: { pathname: string }) {
         shape={link.external ? "default" : "sharp"}
         inset="tight"
         tone={pathname === link.href ? "accent" : "dim"}
-        hoverTone={pathname === link.href ? "none" : "foreground"}
+        hoverTone={pathname === link.href ? "none" : "strong"}
         className="h-[30px] w-fit text-sm font-medium"
         href={link.href}
         {...(link.external
@@ -67,7 +67,7 @@ export function NavbarItems({
           <Link
             key={item.href}
             href={item.href}
-            className={`relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm transition-colors hover:bg-zinc-800/40 ${pathname === item.href ? "text-primary" : "text-zinc-300 hover:text-zinc-100"}`}
+            className={`relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm transition-colors hover:bg-zinc-800/40 ${pathname === item.href ? "text-accent" : "text-zinc-300 hover:text-zinc-100"}`}
             onMouseEnter={() => {
               onLinkMouseEnter(item.label);
             }}

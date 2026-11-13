@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Chip,
   FieldError,
   Input,
@@ -16,6 +15,7 @@ import { useState } from "react";
 import { z } from "zod";
 import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { Separator } from "@/components/ui/separator";
 import { supportApi } from "@/features/support/api/supportApi";
 import { toast } from "@/lib/toast";
@@ -128,12 +128,12 @@ function EditTicketModal({
               </div>
             </Modal.Body>
             <Modal.Footer>
-              <Button variant="ghost" onPress={onClose}>
+              <GaiaButton variant="ghost" onPress={onClose}>
                 Cancel
-              </Button>
-              <Button onPress={onSave} variant="primary">
+              </GaiaButton>
+              <GaiaButton onPress={onSave} variant="primary">
                 Save Changes
-              </Button>
+              </GaiaButton>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>
@@ -265,7 +265,7 @@ export default function SupportTicketCard({
               size="sm"
               variant="ghost"
               tone="faint"
-              hoverTone="foreground"
+              hoverTone="bright"
               onPress={handleEditClick}
               className="h-8 w-8"
             >
@@ -294,7 +294,13 @@ export default function SupportTicketCard({
           )}
 
           {/* Description */}
-          <ScrollShadow className="relative z-[1] overflow-y-auto text-sm leading-relaxed whitespace-pre-line">
+          <ScrollShadow
+            className={toneVariants({
+              tone: "bright",
+              className:
+                "relative z-[1] overflow-y-auto text-sm leading-relaxed whitespace-pre-line",
+            })}
+          >
             <div className="pb-5">{editData.description}</div>
           </ScrollShadow>
         </div>

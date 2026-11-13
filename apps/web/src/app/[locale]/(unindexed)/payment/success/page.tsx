@@ -162,7 +162,7 @@ export default function PaymentSuccessPage() {
               </>
             ) : (
               <>
-                <CheckmarkCircle02Icon className="mx-auto mb-5 size-16 text-primary" />
+                <CheckmarkCircle02Icon className="mx-auto mb-5 size-16 text-accent" />
                 <h1 className="mb-2 text-2xl font-semibold text-white">
                   Welcome to GAIA
                 </h1>

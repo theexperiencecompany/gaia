@@ -1,6 +1,7 @@
 import { Tabs } from "@heroui/react";
 import { Clock01Icon, Cursor02Icon, FlashIcon } from "@icons";
 import { PanelRowGroup } from "@/components/shared/PanelRowGroup";
+import { toneVariants } from "@/components/shared/tone";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import type { Workflow } from "../../api/workflowApi";
 import { MAIL_TRIGGER_NAMES } from "../../constants/gates";
@@ -170,7 +171,10 @@ export default function WorkflowTriggerSection({
             <Tabs.Tab
               key={tab.key}
               id={tab.key}
-              className="h-9 font-medium text-zinc-400 data-[selected=true]:text-zinc-100"
+              className={toneVariants({
+                tone: "muted",
+                className: "h-9 font-medium data-[selected=true]:text-zinc-100",
+              })}
             >
               <span className="flex items-center gap-1.5">
                 <tab.icon className="h-4 w-4" />

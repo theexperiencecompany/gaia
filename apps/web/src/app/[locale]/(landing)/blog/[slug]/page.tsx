@@ -88,7 +88,7 @@ export default async function BlogPostPage({ params }: PageProps) {
   // Generate structured data for SEO
   const articleSchema = generateArticleSchema(
     blog.title,
-    blog.content.slice(0, 160),
+    blog.description,
     `${siteConfig.url}/blog/${slug}`,
     blog.image,
     blog.date,

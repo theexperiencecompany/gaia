@@ -20,7 +20,7 @@ export default function MemoryModal({ isOpen, onClose }: MemoryModalProps) {
     >
       {/* z-[50]: lower z-index than child modals */}
       <Modal.Backdrop isDismissable className="z-[50]">
-        <Modal.Container size="lg" className="z-[50]">
+        <Modal.Container className="z-[50]">
           <Modal.Dialog
             className={modalVariants({ size: "4xl", className: "max-w-4xl" })}
           >

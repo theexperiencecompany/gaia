@@ -67,7 +67,7 @@ export default function StakeholderUpdateCard() {
         <p className="text-xs text-zinc-400 mt-2">Next review: March 13</p>
       </div>
 
-      <span className="mt-2 inline-block rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">
+      <span className="mt-2 inline-block rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-medium text-accent">
         Ready to send · 3 recipients
       </span>
     </div>

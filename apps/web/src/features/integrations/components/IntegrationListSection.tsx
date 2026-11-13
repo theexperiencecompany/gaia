@@ -9,6 +9,7 @@ import {
 import { ArrowRight02Icon, ConnectIcon, InformationCircleIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toneVariants } from "@/components/shared/tone";
@@ -18,11 +19,9 @@ import { IntegrationIcon } from "@/features/integrations/components/IntegrationI
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import type { SuggestedIntegration } from "@/features/integrations/types";
-import {
-  ACCORDION_INDICATOR,
-  ACCORDION_TRIGGER_COMPACT,
-} from "@/lib/heroui/accordionParity";
 import { toast } from "@/lib/toast";
+
+const accordionStyles = accordionVariants({ density: "compact" });
 
 interface IntegrationListSectionProps {
   suggestedIntegrations?: SuggestedIntegration[];
@@ -260,14 +259,14 @@ function IntegrationListSection({
       <AccordionItem key="connected" id="connected">
         <Accordion.Heading>
           <Accordion.Trigger
-            className={`cursor-pointer text-xs font-semibold ${toneVariants({ tone: "muted" })} ${ACCORDION_TRIGGER_COMPACT}`}
+            className={`cursor-pointer text-xs font-semibold ${toneVariants({ tone: "muted" })} ${accordionStyles.trigger()}`}
           >
             <AccordionTitle
               title="Connected"
               count={connectedIntegrations.length}
               tooltip="Your active integrations"
             />
-            <Accordion.Indicator className={ACCORDION_INDICATOR} />
+            <Accordion.Indicator className={accordionStyles.indicator()} />
           </Accordion.Trigger>
         </Accordion.Heading>
         <Accordion.Panel>
@@ -283,14 +282,14 @@ function IntegrationListSection({
       <AccordionItem key="suggested" id="suggested">
         <Accordion.Heading>
           <Accordion.Trigger
-            className={`cursor-pointer text-xs font-semibold ${toneVariants({ tone: "muted" })} ${ACCORDION_TRIGGER_COMPACT}`}
+            className={`cursor-pointer text-xs font-semibold ${toneVariants({ tone: "muted" })} ${accordionStyles.trigger()}`}
           >
             <AccordionTitle
               title="Discover More"
               count={suggestedIntegrations.length}
               tooltip="Public integrations from the community marketplace"
             />
-            <Accordion.Indicator className={ACCORDION_INDICATOR} />
+            <Accordion.Indicator className={accordionStyles.indicator()} />
           </Accordion.Trigger>
         </Accordion.Heading>
         <Accordion.Panel>
@@ -318,14 +317,14 @@ function IntegrationListSection({
       <AccordionItem key="available" id="available">
         <Accordion.Heading>
           <Accordion.Trigger
-            className={`cursor-pointer text-xs font-semibold ${toneVariants({ tone: "muted" })} ${ACCORDION_TRIGGER_COMPACT}`}
+            className={`cursor-pointer text-xs font-semibold ${toneVariants({ tone: "muted" })} ${accordionStyles.trigger()}`}
           >
             <AccordionTitle
               title="Available"
               count={notConnectedIntegrations.length}
               tooltip="Integrations provided natively by GAIA"
             />
-            <Accordion.Indicator className={ACCORDION_INDICATOR} />
+            <Accordion.Indicator className={accordionStyles.indicator()} />
           </Accordion.Trigger>
         </Accordion.Heading>
         <Accordion.Panel>

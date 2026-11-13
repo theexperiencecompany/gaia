@@ -16,6 +16,7 @@ import { useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
+import { toneVariants } from "@/components/shared/tone";
 
 const UNIT_FACTOR = { minutes: 1, hours: 60, days: 1440 } as const;
 type TimeUnit = keyof typeof UNIT_FACTOR;
@@ -106,7 +107,10 @@ export function IntervalPicker({
             <Tabs.Tab
               key={String(p)}
               id={String(p)}
-              className="font-medium text-zinc-400 data-[selected=true]:text-white"
+              className={toneVariants({
+                tone: "muted",
+                className: "font-medium data-[selected=true]:text-white",
+              })}
             >
               {presetLabel(p)}
               <Tabs.Indicator className="rounded-lg bg-zinc-700 shadow-sm" />
@@ -114,7 +118,10 @@ export function IntervalPicker({
           ))}
           <Tabs.Tab
             id="custom"
-            className="font-medium text-zinc-400 data-[selected=true]:text-white"
+            className={toneVariants({
+              tone: "muted",
+              className: "font-medium data-[selected=true]:text-white",
+            })}
           >
             Custom
             <Tabs.Indicator className="rounded-lg bg-zinc-700 shadow-sm" />

@@ -5,6 +5,7 @@ import { GlobalIcon } from "@icons";
 import Image from "next/image";
 import { memo, useMemo, useRef, useState } from "react";
 import tinycolor from "tinycolor2";
+import { toneVariants } from "@/components/shared/tone";
 import { type Tool, toolFaviconUrl } from "@/data/tools";
 
 interface ToolMetadata {
@@ -90,7 +91,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
           href={tool.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="group flex items-center gap-3 rounded-2xl bg-zinc-900 px-4 py-3 transition-colors duration-200 hover:border-primary/50 hover:bg-zinc-800/50"
+          className="group flex items-center gap-3 rounded-2xl bg-zinc-900 px-4 py-3 transition-colors duration-200 hover:border-accent/50 hover:bg-zinc-800/50"
         >
           <div
             className={`relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg ${favicon ? "" : "bg-zinc-800"}`}
@@ -118,7 +119,10 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
       </Tooltip.Trigger>
       <Tooltip.Content
         showArrow
-        className="max-w-[320px] border-0 p-0 shadow-xl overflow-hidden"
+        className={toneVariants({
+          tone: "white",
+          className: "max-w-[320px] border-0 p-0 shadow-xl overflow-hidden",
+        })}
       >
         <div className="flex w-full flex-col rounded-3xl">
           {websiteImage && (
@@ -167,7 +171,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
               href={tool.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-1 truncate text-xs text-primary hover:underline"
+              className="mt-1 truncate text-xs text-accent hover:underline"
             >
               {tool.url.replace("https://", "").replace("http://", "")}
             </a>

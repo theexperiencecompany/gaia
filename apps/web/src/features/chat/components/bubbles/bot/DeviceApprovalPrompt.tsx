@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import { CheckmarkCircle02Icon, ComputerIcon } from "@icons";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { devicesApi } from "@/features/devices/api/devicesApi";
 import { BRIDGE_UP_COMMAND } from "@/features/devices/constants";
 import type { DeviceApprovalRequiredData } from "@/features/devices/types";
@@ -62,7 +63,7 @@ export function DeviceApprovalPrompt({
       <div className="flex flex-col gap-3">
         <div className="flex items-start gap-3">
           <div className="shrink-0 pt-0.5">
-            <ComputerIcon width={22} height={22} className="text-primary" />
+            <ComputerIcon width={22} height={22} className="text-accent" />
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="text-sm font-medium">Approve this device</span>
@@ -74,14 +75,14 @@ export function DeviceApprovalPrompt({
           <Chip variant="soft" color="accent" className="font-mono">
             {code}
           </Chip>
-          <Button
+          <GaiaButton
             size="sm"
             isPending={isApproving}
             onPress={approve}
             variant="primary"
           >
             Approve
-          </Button>
+          </GaiaButton>
         </div>
       </div>
     </div>

@@ -11,7 +11,7 @@ import {
 export function ComposioKeyMissing({ onNavigate }: { onNavigate: () => void }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-900 px-6 py-12 text-center">
-      <span className="flex size-10 items-center justify-center rounded-xl bg-primary/20 text-primary">
+      <span className="flex size-10 items-center justify-center rounded-xl bg-accent/20 text-accent">
         <KeyIcon className="size-5" />
       </span>
       <div>

@@ -115,7 +115,7 @@ export default function CalendarEventAIActions({
               <Dropdown.Item key={key} id={key} textValue={action.label}>
                 <div className="flex flex-col">
                   <span>{action.label}</span>
-                  <span className="text-xs text-foreground-500">
+                  <span className="text-xs text-zinc-400">
                     {action.description}
                   </span>
                 </div>

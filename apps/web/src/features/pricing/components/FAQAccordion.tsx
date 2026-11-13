@@ -2,14 +2,12 @@
 
 import { Accordion } from "@heroui/react";
 import Link from "next/link";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 
 import { toneVariants } from "@/components/shared/tone";
 import { type FAQItem, getAllFAQs } from "@/lib/faq";
-import {
-  ACCORDION_INDICATOR,
-  ACCORDION_PANEL,
-  ACCORDION_TRIGGER,
-} from "@/lib/heroui/accordionParity";
+
+const accordionStyles = accordionVariants();
 
 export function FAQAccordion({ faqs }: { faqs?: FAQItem[] }) {
   const faqItems = faqs ?? getAllFAQs();
@@ -53,19 +51,28 @@ export function FAQAccordion({ faqs }: { faqs?: FAQItem[] }) {
             <Accordion.Item key={item.question} id={item.question}>
               <Accordion.Heading className="font-normal">
                 <Accordion.Trigger
-                  className={`cursor-pointer text-lg sm:text-2xl ${ACCORDION_TRIGGER}`}
+                  className={accordionStyles.trigger({
+                    className: "cursor-pointer text-lg font-normal sm:text-2xl",
+                  })}
                 >
                   {item.question}
-                  <Accordion.Indicator className={ACCORDION_INDICATOR} />
+                  <Accordion.Indicator
+                    className={accordionStyles.indicator()}
+                  />
                 </Accordion.Trigger>
               </Accordion.Heading>
-              <Accordion.Panel
-                className={toneVariants({
-                  tone: "muted",
-                  className: `${ACCORDION_PANEL} mb-6 max-w-full text-base font-light sm:max-w-[60%] sm:text-xl`,
-                })}
-              >
-                <span className="select-text">{item.answer}</span>
+              <Accordion.Panel>
+                <div
+                  className={toneVariants({
+                    tone: "muted",
+                    className: accordionStyles.content({
+                      className:
+                        "mb-6 max-w-full text-base font-light sm:max-w-[60%] sm:text-xl",
+                    }),
+                  })}
+                >
+                  <span className="select-text">{item.answer}</span>
+                </div>
               </Accordion.Panel>
             </Accordion.Item>
           ))}

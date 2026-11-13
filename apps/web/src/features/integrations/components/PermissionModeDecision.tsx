@@ -44,7 +44,9 @@ export const PermissionModeDecision = ({
             option.mode === permissions.mode && "bg-zinc-800",
           )}
         >
-          <Radio.Content className="text-sm">
+          <Radio.Content
+            className={toneVariants({ tone: "bright", className: "text-sm" })}
+          >
             <Radio.Control>
               <Radio.Indicator />
             </Radio.Control>

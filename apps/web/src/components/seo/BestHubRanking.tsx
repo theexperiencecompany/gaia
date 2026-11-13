@@ -30,7 +30,7 @@ export function BestHubTable({
           {
             key: "assistant",
             label: "Assistant",
-            headerClassName: "text-primary",
+            headerClassName: "text-accent",
             cellClassName: "font-medium text-white",
           },
           {
