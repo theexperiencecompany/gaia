@@ -7939,6 +7939,11 @@ export interface components {
              */
             description?: string | null;
             /**
+             * Draft Id
+             * @description The chat draft this workflow was created from, so what waited on it resumes.
+             */
+            draft_id?: string | null;
+            /**
              * Generate Immediately
              * @description Generate steps immediately vs background
              * @default false

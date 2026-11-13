@@ -10,6 +10,7 @@ import pytest
 
 from app.constants.trigger_gates import GateAuthor
 from app.constants.vfs import SYSTEM_USER_ID
+from app.constants.waits import WaitCondition
 from app.models.scheduler_models import (
     UNSET,
     DeactivationReason,
@@ -2691,3 +2692,96 @@ class TestTriggerService:
 
         result = await TriggerService.unregister_triggers(USER_ID, "trigger", ["tid_1"])
         assert result is False
+
+
+# ===========================================================================
+# Waits on a workflow's trigger being set up
+# ===========================================================================
+
+
+class TestTriggerConfiguredWaits:
+    """Saving a workflow's trigger setup picks up whatever waited on the user doing it."""
+
+    @staticmethod
+    def _integration(trigger_name: str) -> TriggerConfig:
+        return _make_trigger_config(trigger_type=TriggerType.INTEGRATION, trigger_name=trigger_name)
+
+    @pytest.mark.parametrize(
+        ("old", "new", "met"),
+        [
+            ("gmail_new_message", "calendar_event_created", True),
+            ("gmail_new_message", "gmail_new_message", False),
+        ],
+        ids=["trigger-changed", "same-trigger-resaved"],
+    )
+    @patch("app.services.workflow.service.report_wait_met", new_callable=AsyncMock)
+    @patch("app.services.workflow.service.WorkflowService.get_workflow", new_callable=AsyncMock)
+    @patch(f"{_REPO}.update_for_user", new_callable=AsyncMock)
+    async def test_only_a_changed_trigger_meets_the_wait(
+        self, mock_update, mock_get, report, old: str, new: str, met: bool
+    ):
+        wf = _make_workflow(trigger_config=self._integration(old), activated=False)
+        updated = _make_workflow(trigger_config=self._integration(new), activated=False)
+        mock_get.side_effect = [wf, updated]
+        mock_update.return_value = _make_workflow_doc(updated)
+
+        await WorkflowService.update_workflow(
+            WORKFLOW_ID, _make_update_request(trigger_config=self._integration(new)), USER_ID
+        )
+
+        if met:
+            report.assert_awaited_once_with(
+                USER_ID, WaitCondition.WORKFLOW_TRIGGER_CONFIGURED, WORKFLOW_ID
+            )
+        else:
+            report.assert_not_awaited()
+
+    @patch("app.services.workflow.service.report_wait_met", new_callable=AsyncMock)
+    @patch("app.services.workflow.service.WorkflowService.get_workflow", new_callable=AsyncMock)
+    @patch(f"{_REPO}.update_for_user", new_callable=AsyncMock)
+    async def test_an_edit_that_leaves_the_trigger_alone_meets_nothing(
+        self, mock_update, mock_get, report
+    ):
+        wf = _make_workflow()
+        mock_get.side_effect = [wf, wf]
+        mock_update.return_value = _make_workflow_doc(wf)
+
+        await WorkflowService.update_workflow(
+            WORKFLOW_ID, _make_update_request(title="Renamed"), USER_ID
+        )
+
+        report.assert_not_awaited()
+
+    @pytest.mark.parametrize("draft_id", ["draft-1", None])
+    @patch("app.services.workflow.service.report_wait_met", new_callable=AsyncMock)
+    @patch(
+        "app.services.workflow.service.WorkflowQueueService.queue_workflow_generation",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    @patch("app.services.workflow.service.workflow_scheduler")
+    @patch("app.services.workflow.service.ChromaClient")
+    @patch(f"{_REPO}.mark_activated_with_triggers", new_callable=AsyncMock)
+    @patch(f"{_REPO}.create", new_callable=AsyncMock)
+    async def test_a_workflow_created_from_a_draft_meets_the_drafts_wait(
+        self,
+        _mock_create,
+        _mock_activate,
+        mock_chroma,
+        _mock_scheduler,
+        _mock_queue,
+        report,
+        draft_id: str | None,
+    ):
+        mock_chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
+        request = _make_create_request().model_copy(update={"draft_id": draft_id})
+
+        with patch("app.utils.auth_utils.user_repository.get", new=users_get):
+            await WorkflowService.create_workflow(request, USER_ID)
+
+        if draft_id:
+            report.assert_awaited_once_with(
+                USER_ID, WaitCondition.WORKFLOW_TRIGGER_CONFIGURED, draft_id
+            )
+        else:
+            report.assert_not_awaited()

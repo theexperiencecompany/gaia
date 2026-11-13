@@ -90,6 +90,7 @@ from app.constants.todos import (
 )
 from app.constants.trigger_gates import GateAuthor, SystemGatePreset
 from app.constants.vfs import SYSTEM_USER_ID
+from app.constants.waits import WAIT_MET_TRIGGER
 from app.db.repositories.todos import todo_repository
 from app.models.message_models import TodoRunWake
 from app.models.notification.notification_models import (
@@ -557,6 +558,21 @@ class TestTriggeredExecutionPrompt:
         assert "Triggering event" not in prompt
         # A scheduled run was not woken by a watch, so the tighten-on-noise
         # guidance is irrelevant and would only add tokens.
+        assert TRIGGERED_RELEVANCE_GUIDANCE not in prompt
+
+    def test_a_wait_met_wake_opens_with_gaias_own_news_outside_the_untrusted_fence(self):
+        origin = TriggerOrigin(
+            subscription_id="w1",
+            trigger_name=WAIT_MET_TRIGGER,
+            payload={"message": "The user just connected Gmail. Pick it up."},
+        )
+
+        prompt = _prompt(_doc(title="Chase Acme"), origin=origin)
+
+        assert prompt.startswith(
+            "The user just connected Gmail. Pick it up.\n\nThe task: Chase Acme"
+        )
+        assert "UNTRUSTED" not in prompt
         assert TRIGGERED_RELEVANCE_GUIDANCE not in prompt
 
     def test_a_triggered_prompt_carries_the_payload(self):

@@ -32,7 +32,9 @@ class TestRunsOnlyWhen:
 
         assert result.mode == "finalized"
         assert result.draft is not None
-        assert result.draft.to_stream_payload()["workflow_draft"]["runs_only_when"] == BILLING
+        assert (
+            result.draft.to_stream_payload("draft-1")["workflow_draft"]["runs_only_when"] == BILLING
+        )
 
     @pytest.mark.parametrize("fields", [{}, {"runs_only_when": None}], ids=["omitted", "null"])
     def test_a_draft_that_wants_every_event_carries_none(self, fields: dict[str, object]) -> None:
@@ -40,7 +42,7 @@ class TestRunsOnlyWhen:
 
         assert result.mode == "finalized"
         assert result.draft is not None
-        assert result.draft.to_stream_payload()["workflow_draft"]["runs_only_when"] is None
+        assert result.draft.to_stream_payload("draft-1")["workflow_draft"]["runs_only_when"] is None
 
     def test_a_condition_on_a_scheduled_draft_is_sent_back_for_correction(self) -> None:
         result = parse_subagent_response(

@@ -32,9 +32,11 @@ from app.constants.todos import (
     MAX_HOLD_CHECKS,
     TRIGGER_EVENTS_PROMPT_MAX_CHARS,
 )
+from app.constants.waits import WAIT_MET_TRIGGER
 from app.models.quiet_hours_models import QuietHours
 from app.models.todo_models import ExternalRefSource, TodoDocument, TodoRunContext
 from app.models.trigger_subscription_models import TriggerOrigin
+from app.models.wait_models import WaitMetPayload
 from app.services.agent_lab.lab_runs import SANDBOX_RUN_TRIGGER
 from app.services.canvas_markdown import bounded_canvas
 from app.services.hil.utils import untrusted_fence
@@ -103,6 +105,10 @@ def opening_parts(
     title = doc.title
     if origin is None:
         return [f"Execute the following scheduled task: {title}"]
+    if origin.trigger_name == WAIT_MET_TRIGGER and not coalesced:
+        # GAIA's own words about what the user did, so they are guidance, not an untrusted event.
+        note = WaitMetPayload.model_validate(origin.payload).message
+        return [f"{note}\n\nThe task: {title}"]
     quiet_now = quiet_hours.contains(local_now)
     bypass_note = _quiet_hours_note(origin, coalesced, quiet_now)
     fence = untrusted_fence()
