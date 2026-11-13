@@ -7,7 +7,6 @@ fields), so they go through update_fields rather than a rigid update model.
 
 from datetime import UTC, datetime
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.base import MongoRepository
 from app.models.notification.notification_models import (
@@ -26,7 +25,6 @@ class NotificationRepository(MongoRepository[NotificationRecord, NotificationUpd
     update_model = NotificationUpdate
     uses_object_id = True
     identity_field = "id"
-    cache_policy = None
 
     async def get_for_user(
         self, notification_id: str, user_id: str | None
@@ -41,7 +39,6 @@ class NotificationRepository(MongoRepository[NotificationRecord, NotificationUpd
         await self._apply_raw_update(
             {"id": notification_id},
             {"$set": dict(fields)},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -73,8 +70,7 @@ class NotificationRepository(MongoRepository[NotificationRecord, NotificationUpd
 
         Issues its own update_many (unbounded set; base only exposes single-doc
         updates), so contract fixtures must patch this module's collection
-        accessor too. cache_policy is None: no entity cache or generation
-        counter to refresh.
+        accessor too. The repository is uncached, so nothing else needs refreshing.
         """
         filter_ = self._user_filter(user_id, NotificationStatus.DELIVERED, channel_type, None, None)
         result = await get_async_collection(self.collection_name).update_many(

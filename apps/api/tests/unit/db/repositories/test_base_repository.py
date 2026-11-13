@@ -126,7 +126,7 @@ async def _set_written(repo: _BaseRepository, *, touch: bool = True) -> dict[str
     collection = MagicMock()
     collection.find_one_and_update = AsyncMock(return_value=None)
     with patch("app.db.repositories.base.get_async_collection", return_value=collection):
-        await repo._apply_update("abc", "u1", {}, _Update(name="x"), touch=touch)
+        await repo._apply_update("abc", {}, _Update(name="x"), touch=touch)
     (_filter, operations), _ = collection.find_one_and_update.await_args
     return operations["$set"]
 
@@ -349,7 +349,12 @@ def test_a_public_sync_method_and_a_private_coroutine_are_left_unwrapped() -> No
     async def _helper(self: object) -> None:
         return None
 
-    repo_class = _concrete(label=label, _helper=_helper)
+    async def twin(self: object) -> None:
+        return None
+
+    twin_name = "xǁThingRepositoryǁ_helper__mutmut_orig"
+    repo_class = _concrete(label=label, _helper=_helper, **{twin_name: twin})
 
     assert repo_class.__dict__["label"] is label
     assert repo_class.__dict__["_helper"] is _helper
+    assert repo_class.__dict__[twin_name] is twin

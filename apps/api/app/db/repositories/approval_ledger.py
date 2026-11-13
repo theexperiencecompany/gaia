@@ -1,6 +1,6 @@
 """Repository for the executor-free approval ledger (approval_ledger collection).
 
-One row per gated call envelope. Uncached (cache_policy = None): rows are
+One row per gated call envelope. Uncached: rows are
 decision state read at low volume, and every transition is a conditional write
 the entity cache could only misrepresent. Rows never expire — a pending row
 leaves only by user decision or agent revoke.
@@ -31,7 +31,6 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
     document_model = ApprovalLedgerDocument
     update_model = ApprovalLedgerDocument
     uses_object_id = True
-    cache_policy = None
 
     async def register(self, proposal: ApprovalProposal) -> str:
         """Insert a PENDING row for the proposal, or return the live duplicate's id.

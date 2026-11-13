@@ -1,4 +1,4 @@
-"""Generic MongoDB repository base with automatic, generation-based caching.
+"""Generic MongoDB repository base; it knows nothing about caching (see cached_base.py).
 
 Public methods accept and return typed Pydantic models only — raw dicts,
 ObjectId, Mongo filters, and cache calls never cross this boundary. The
@@ -14,23 +14,16 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 import functools
 import inspect
-from typing import Any, ClassVar, Generic, ParamSpec, TypeVar, cast
+from typing import Any, ClassVar, Generic, ParamSpec, TypeVar
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import BaseModel, ConfigDict, ValidationError
 from pymongo import ReturnDocument, UpdateOne
 from pymongo.errors import BulkWriteError, DuplicateKeyError, PyMongoError
+from pymongo.results import UpdateResult
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.mongodb.collections import get_async_collection
-from app.db.redis import delete_cache, get_cache, set_cache
-from app.db.repositories.cache import (
-    CachePolicy,
-    bump_generation,
-    query_arg_hash,
-    read_generation,
-)
 from app.db.repositories.errors import AlreadyExistsError, RepositoryError
 from app.utils.errors import AppError, EmptyUpdateError, RepositoryMisconfiguredError
 from shared.py.wide_events import log
@@ -58,10 +51,6 @@ TDoc = TypeVar("TDoc", bound=MongoDocument)
 TUserDoc = TypeVar("TUserDoc", bound=UserScopedDocument)
 TUpdate = TypeVar("TUpdate", bound=BaseModel)
 TResult = TypeVar("TResult", bound=BaseModel)
-# Bound to the decorated finder itself so ``cached_query`` preserves its exact
-# signature — parameter list and return type, ``| None`` included.
-_TFinder = TypeVar("_TFinder", bound=Callable[..., Awaitable[Any]])
-
 _REQUIRED_CLASSVARS = ("collection_name", "document_model", "update_model", "uses_object_id")
 
 _P = ParamSpec("_P")
@@ -122,7 +111,8 @@ def _translate_public_methods(cls: type) -> None:
     cover them, so a driver error would escape them untranslated.
     """
     for name in dir(cls):
-        if name.startswith("_"):
+        # A public API name is ASCII; mutmut adds non-ASCII twins (xǁClassǁname__mutmut_orig).
+        if name.startswith("_") or not name.isascii():
             continue
         method = inspect.getattr_static(cls, name)
         target = method.__func__ if isinstance(method, (staticmethod, classmethod)) else method
@@ -141,48 +131,8 @@ def _translate_public_methods(cls: type) -> None:
             setattr(cls, name, _translating_driver_errors(method))
 
 
-def cached_query(result_model: type[Any]) -> Callable[[_TFinder], _TFinder]:
-    """Cache a named finder's result under its scope's current generation.
-
-    Key is {method}:{hash(args)} under the scope (user_id, or "global"); a write to that
-    scope bumps the generation and orphans the entry. result_model is the finder's return
-    type, or its non-None part if it may return None, since None is never cached.
-    """
-
-    def decorator(fn: _TFinder) -> _TFinder:
-        signature = inspect.signature(fn)
-
-        @functools.wraps(fn)
-        async def wrapper(
-            self: _BaseRepository[MongoDocument, BaseModel], *args: object, **kwargs: object
-        ) -> object:
-            policy = self.cache_policy
-            if policy is None:
-                return await fn(self, *args, **kwargs)
-            bound = signature.bind(self, *args, **kwargs)
-            bound.apply_defaults()
-            call_args = dict(bound.arguments)
-            call_args.pop("self", None)
-            scope = str(call_args.get("user_id", REPO_GLOBAL_SCOPE))
-            generation = await read_generation(policy, scope)
-            if generation is None:
-                return await fn(self, *args, **kwargs)
-            key = policy.query_key(scope, generation, fn.__name__, query_arg_hash(call_args))
-            cached = await get_cache(key, model=result_model)
-            if cached is not None:
-                return cached
-            result = await fn(self, *args, **kwargs)
-            if result is not None:
-                await set_cache(key, result, ttl=policy.query_ttl, model=result_model)
-            return result
-
-        return cast(_TFinder, wrapper)
-
-    return decorator
-
-
 class _BaseRepository(Generic[TDoc, TUpdate]):
-    """Shared CRUD + cache machinery; subclass MongoRepository or UserScopedRepository, not this.
+    """Shared CRUD machinery; subclass MongoRepository or UserScopedRepository, not this.
 
     Every subclass's public async methods are wrapped at class creation: a driver error
     leaving the outermost repository call becomes RepositoryError or AlreadyExistsError,
@@ -193,7 +143,6 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
     document_model: type[TDoc]
     update_model: type[TUpdate]
     uses_object_id: ClassVar[bool]
-    cache_policy: ClassVar[CachePolicy | None] = None
     # The document's identity field. Defaults to Mongo's ``_id``; a domain keyed
     # by a business field (e.g. ``conversation_id``, a UUID ``id``) sets this so
     # get/update/delete filter on it and ``_id`` stays incidental.
@@ -258,46 +207,12 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             data["id"] = str(identifier) if self.uses_object_id else identifier
         return self.document_model.model_validate(data)
 
-    def _doc_scope(self, _doc: TDoc) -> str:
-        return REPO_GLOBAL_SCOPE
-
-    def _scope_filter(self, _scope: str) -> dict[str, object]:
-        """Extra Mongo filter constraining an operation to scope.
-
-        Empty for a global repository; {"user_id": scope} for a user-scoped
-        one, so the multi-document primitives (_bulk_set, _bulk_delete)
-        never reach across users the way a raw {"_id": ...} filter would.
-        """
-        return {}
-
-    # ---- cache helpers ----
-
-    async def _cache_store(self, scope: str, doc: TDoc) -> None:
-        policy = self.cache_policy
-        if policy is not None:
-            await set_cache(
-                policy.entity_key(scope, self._doc_identity(doc)),
-                doc,
-                ttl=policy.entity_ttl,
-                model=self.document_model,
-            )
-
-    async def _cache_evict(self, scope: str, doc_id: str) -> None:
-        policy = self.cache_policy
-        if policy is not None:
-            await delete_cache(policy.entity_key(scope, doc_id))
-
-    async def _invalidate(self, scope: str) -> None:
-        policy = self.cache_policy
-        if policy is not None:
-            await bump_generation(policy, scope)
-
-    # ---- write/read cores (public methods below are thin scope wrappers) ----
+    # ---- write/read cores (public methods below are thin wrappers) ----
 
     async def create(self, doc: TDoc) -> TDoc:
-        return await self._insert(doc, self._doc_scope(doc))
+        return await self._insert(doc)
 
-    async def _insert(self, doc: TDoc, scope: str) -> TDoc:
+    async def _insert(self, doc: TDoc) -> TDoc:
         # Drop the placeholder id (mirrors _id) unless id is itself the business identity.
         # exclude_none so an unset optional field is absent, not stored as null.
         exclude = set() if self.identity_field == "id" else {"id"}
@@ -317,37 +232,17 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         stored = await collection.find_one({"_id": result.inserted_id})
         if stored is None:
             raise AppError(message="inserted document could not be read back")
-        created = self._to_model(stored)
-        await self._cache_store(scope, created)
-        await self._invalidate(scope)
-        return created
+        return self._to_model(stored)
 
-    async def _fetch(
-        self, doc_id: str, scope: str, extra_filter: Mapping[str, object]
-    ) -> TDoc | None:
-        policy = self.cache_policy
-        if policy is not None:
-            cached = await get_cache(policy.entity_key(scope, doc_id), model=self.document_model)
-            if cached is not None:
-                return cast(TDoc, cached)
-        collection = get_async_collection(self.collection_name)
-        raw = await collection.find_one({**self._identity_filter(doc_id), **extra_filter})
-        if raw is None:
-            return None
-        doc = self._to_model(raw)
-        if policy is not None:
-            await set_cache(
-                policy.entity_key(scope, doc_id),
-                doc,
-                ttl=policy.entity_ttl,
-                model=self.document_model,
-            )
-        return doc
+    async def _fetch(self, doc_id: str, extra_filter: Mapping[str, object]) -> TDoc | None:
+        raw = await get_async_collection(self.collection_name).find_one(
+            {**self._identity_filter(doc_id), **extra_filter}
+        )
+        return None if raw is None else self._to_model(raw)
 
     async def _apply_update(
         self,
         doc_id: str,
-        scope: str,
         extra_filter: Mapping[str, object],
         update: TUpdate,
         *,
@@ -371,48 +266,24 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             {"$set": set_fields},
             return_document=ReturnDocument.AFTER,
         )
-        if raw is None:
-            # A refused compare-and-set may mean the cached copy is stale; the retry must read Mongo.
-            await self._cache_evict(scope, doc_id)
-            return None
-        doc = self._to_model(raw)
-        await self._cache_store(scope, doc)
-        await self._invalidate(scope)
-        return doc
+        return None if raw is None else self._to_model(raw)
 
-    async def _remove(self, doc_id: str, scope: str, extra_filter: Mapping[str, object]) -> bool:
+    async def _remove(self, doc_id: str, extra_filter: Mapping[str, object]) -> bool:
         result = await get_async_collection(self.collection_name).delete_one(
             {**self._identity_filter(doc_id), **extra_filter}
         )
-        deleted = result.deleted_count > 0
-        if deleted:
-            await self._cache_evict(scope, doc_id)
-            await self._invalidate(scope)
-        return deleted
+        return result.deleted_count > 0
 
     async def _count(self, filter_: Mapping[str, object]) -> int:
         return await get_async_collection(self.collection_name).count_documents(dict(filter_))
 
-    async def _delete_many(self, filter_: Mapping[str, object], *, scope: str) -> int:
-        """Delete every document matching filter_, evicting each one's entity-cache key.
-
-        Filter-based sibling of _bulk_delete (by id list); IDs are resolved before the
-        delete and evicted after, so a concurrent read-through can't re-cache a deleted doc.
-        """
-        collection = get_async_collection(self.collection_name)
-        ids: list[str] = []
-        if self.cache_policy is not None:
-            async for raw in collection.find(dict(filter_)):
-                ids.append(self._doc_identity(self._to_model(raw)))
-        result = await collection.delete_many(dict(filter_))
-        if result.deleted_count:
-            for doc_id in ids:
-                await self._cache_evict(scope, doc_id)
-            await self._invalidate(scope)
+    async def _delete_many(self, filter_: Mapping[str, object]) -> int:
+        """Delete every document matching filter_; the filter-based sibling of a by-id delete."""
+        result = await get_async_collection(self.collection_name).delete_many(dict(filter_))
         return int(result.deleted_count)
 
     async def _distinct(self, field: str, filter_: Mapping[str, object] | None = None) -> list[str]:
-        """Distinct string values of a field. Read-only (no cache interaction)."""
+        """Distinct string values of a field."""
         values = await get_async_collection(self.collection_name).distinct(
             field, dict(filter_) if filter_ is not None else None
         )
@@ -424,7 +295,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         """Return the repository's own Motor handle for operators no base primitive expresses.
 
         Resolves through this module's get_async_collection binding — the seam the contract
-        and service fixtures patch. The caller owns any cache eviction the write implies.
+        and service fixtures patch. A cached repository owns any cache eviction the write implies.
         """
         return get_async_collection(self.collection_name)
 
@@ -494,73 +365,20 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         raw_results = await cursor.to_list(length=None)
         return [result_model.model_validate(raw) for raw in raw_results]
 
-    async def _bulk_set(self, updates: Sequence[tuple[str, TUpdate]], *, scope: str) -> int:
-        """Apply many typed $set updates in one round trip; all ids must share scope."""
-        if not updates:
-            return 0
-        stamp_updated_at = (
-            self.auto_stamp_timestamps and "updated_at" in self.document_model.model_fields
-        )
-        now = datetime.now(UTC)
-        scope_filter = self._scope_filter(scope)
-        operations: list[UpdateOne] = []
-        for doc_id, update in updates:
-            set_fields = update.model_dump(exclude_unset=True)
-            if not set_fields:
-                raise EmptyUpdateError(message=f"bulk update for {doc_id} has no fields to set")
-            if stamp_updated_at:
-                set_fields["updated_at"] = now
-            operations.append(
-                UpdateOne({**self._identity_filter(doc_id), **scope_filter}, {"$set": set_fields})
-            )
-        try:
-            result = await get_async_collection(self.collection_name).bulk_write(operations)
-        except BulkWriteError:
-            # Ordered: the writes before the failing one landed, so their cache is stale too.
-            await self._evict_many(scope, [doc_id for doc_id, _ in updates])
-            raise
-        modified = result.modified_count
-        if modified:
-            await self._evict_many(scope, [doc_id for doc_id, _ in updates])
-        return modified
-
-    async def _evict_many(self, scope: str, doc_ids: Sequence[str]) -> None:
-        for doc_id in doc_ids:
-            await self._cache_evict(scope, doc_id)
-        await self._invalidate(scope)
-
-    async def _bulk_delete(self, doc_ids: Sequence[str], *, scope: str) -> int:
-        """Delete many documents in one round trip; all ids must share scope."""
-        if not doc_ids:
-            return 0
-        result = await get_async_collection(self.collection_name).delete_many(
-            {
-                "_id": {"$in": [self._id_value(doc_id) for doc_id in doc_ids]},
-                **self._scope_filter(scope),
-            }
-        )
-        deleted = result.deleted_count
-        if deleted:
-            await self._evict_many(scope, doc_ids)
-        return deleted
-
     async def _apply_raw_update(
         self,
         filter_: Mapping[str, object],
         update: Mapping[str, Mapping[str, object]],
         *,
-        scope: str | None,
         extra_filter: Mapping[str, object] | None = None,
         return_document: bool = True,
         array_filters: Sequence[Mapping[str, object]] | None = None,
         upsert: bool = False,
     ) -> TDoc | None:
-        """Apply a raw Mongo update to one document, refreshing the cache like the typed path.
+        """Apply a raw Mongo update to one document and return it, AFTER or BEFORE the write.
 
         The internal seam for operators a typed model can't express ($push/$pull/$addToSet,
-        positional $set with array_filters, $unset). With return_document=False the
-        read-back is the BEFORE image, so the entity key is evicted rather than stored.
-        scope None marks a write no cached read shows, so the cache is left alone.
+        positional $set with array_filters, $unset).
         """
         ops: dict[str, dict[str, object]] = {k: dict(v) for k, v in update.items()}
         if self.auto_stamp_timestamps and "updated_at" in self.document_model.model_fields:
@@ -573,32 +391,13 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             return_document=return_document,
             upsert=upsert,
         )
-        if scope is None:
-            return None if raw is None else self._to_model(raw)
-        if raw is None:
-            # No match: if the filter targeted one document by identity, evict its cache
-            # entry so the next read misses instead of serving a deleted document forever.
-            targeted = self._filter_doc_id(filter_)
-            if targeted is not None:
-                await self._cache_evict(scope, targeted)
-            return None
-        doc = self._to_model(raw)
-        if return_document:
-            await self._cache_store(scope, doc)
-        else:
-            # ``doc`` is the BEFORE image — storing it would re-seed the entity
-            # cache with the pre-write document. Evict instead.
-            await self._cache_evict(scope, self._doc_identity(doc))
-        await self._invalidate(scope)
-        return doc
+        return None if raw is None else self._to_model(raw)
 
     async def _apply_raw_update_unfetched(
         self,
         filter_: Mapping[str, object],
         update: Mapping[str, Mapping[str, object]],
         *,
-        scope: str,
-        doc_id: str | None = None,
         extra_filter: Mapping[str, object] | None = None,
         array_filters: Sequence[Mapping[str, object]] | None = None,
         upsert: bool = False,
@@ -609,30 +408,36 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         array every chat turn) and for an upsert whose document must not be validated as
         a full document_model. Returns the matched count (0 includes an upsert-insert).
         """
+        result = await self._update_one(
+            filter_, update, extra_filter=extra_filter, array_filters=array_filters, upsert=upsert
+        )
+        return result.matched_count
+
+    async def _update_one(
+        self,
+        filter_: Mapping[str, object],
+        update: Mapping[str, Mapping[str, object]],
+        *,
+        extra_filter: Mapping[str, object] | None,
+        array_filters: Sequence[Mapping[str, object]] | None,
+        upsert: bool,
+    ) -> UpdateResult:
         ops: dict[str, dict[str, object]] = {k: dict(v) for k, v in update.items()}
         if self.auto_stamp_timestamps and "updated_at" in self.document_model.model_fields:
             ops.setdefault("$set", {})["updated_at"] = datetime.now(UTC)
-        result = await get_async_collection(self.collection_name).update_one(
+        return await get_async_collection(self.collection_name).update_one(
             {**dict(filter_), **(extra_filter or {})},
             ops,
             array_filters=[dict(f) for f in array_filters] if array_filters is not None else None,
             upsert=upsert,
         )
-        touched = result.matched_count or (upsert and result.upserted_id is not None)
-        if touched:
-            if doc_id is not None:
-                await self._cache_evict(scope, doc_id)
-            await self._invalidate(scope)
-        return result.matched_count
 
     async def _apply_pipeline_update(
         self,
         filter_: Mapping[str, object],
         pipeline: Sequence[Mapping[str, object]],
-        *,
-        scope: str,
     ) -> TDoc | None:
-        """Apply an aggregation-pipeline update and return the document after it, refreshing the cache.
+        """Apply an aggregation-pipeline update and return the document after it.
 
         For a write that must read the document it changes in the same atomic update.
         The pipeline stamps updated_at itself, since only it knows whether anything changed.
@@ -642,37 +447,22 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             [dict(stage) for stage in pipeline],
             return_document=ReturnDocument.AFTER,
         )
-        if raw is None:
-            targeted = self._filter_doc_id(filter_)
-            if targeted is not None:
-                await self._cache_evict(scope, targeted)
-            return None
-        doc = self._to_model(raw)
-        await self._cache_store(scope, doc)
-        await self._invalidate(scope)
-        return doc
+        return None if raw is None else self._to_model(raw)
 
     async def _apply_pipeline_update_unfetched(
         self,
         filter_: Mapping[str, object],
         pipeline: Sequence[Mapping[str, object]],
         *,
-        scope: str | None,
-        doc_id: str | None = None,
         extra_filter: Mapping[str, object] | None = None,
     ) -> int:
         """Apply an aggregation-pipeline update via update_one, without reading it back.
 
         For a write that must read the document it changes in the same atomic update.
-        scope None marks a write no cached read shows, so nothing is invalidated.
         """
         result = await get_async_collection(self.collection_name).update_one(
             {**dict(filter_), **(extra_filter or {})}, [dict(stage) for stage in pipeline]
         )
-        if result.matched_count and scope is not None:
-            if doc_id is not None:
-                await self._cache_evict(scope, doc_id)
-            await self._invalidate(scope)
         return result.matched_count
 
     async def _find_one_projected(
@@ -698,7 +488,6 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         field: str,
         by: int,
         *,
-        scope: str,
         extra_filter: Mapping[str, object] | None = None,
     ) -> TDoc | None:
         raw = await get_async_collection(self.collection_name).find_one_and_update(
@@ -706,48 +495,28 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             {"$inc": {field: by}},
             return_document=ReturnDocument.AFTER,
         )
-        if raw is None:
-            return None
-        doc = self._to_model(raw)
-        await self._cache_store(scope, doc)
-        await self._invalidate(scope)
-        return doc
-
-    async def _update_fields_no_invalidate(
-        self, filter_: Mapping[str, object], fields: Mapping[str, object]
-    ) -> None:
-        """Write hot fields without touching the cache or bumping the generation.
-
-        A deliberate hole in the invalidation guarantee — only for fields whose
-        staleness is harmless (e.g. last_active_at). Justify every use in the
-        calling method's docstring; if unsure, use the normal update path.
-        """
-        await get_async_collection(self.collection_name).update_one(
-            dict(filter_), {"$set": dict(fields)}
-        )
+        return None if raw is None else self._to_model(raw)
 
 
 class MongoRepository(_BaseRepository[TDoc, TUpdate], abstract=True):
     """Global (non-user-scoped) repository. Every operation is keyed by id alone."""
 
     async def get(self, doc_id: str) -> TDoc | None:
-        return await self._fetch(doc_id, REPO_GLOBAL_SCOPE, {})
+        return await self._fetch(doc_id, {})
 
     async def update(self, doc_id: str, update: TUpdate) -> TDoc | None:
-        return await self._apply_update(doc_id, REPO_GLOBAL_SCOPE, {}, update)
+        return await self._apply_update(doc_id, {}, update)
 
     async def upsert(self, doc_id: str, update: TUpdate) -> None:
         """Set update's fields on doc_id, inserting the document when it does not exist yet."""
         await self._apply_raw_update_unfetched(
             self._identity_filter(doc_id),
             {"$set": update.model_dump(exclude_unset=True)},
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=doc_id,
             upsert=True,
         )
 
     async def delete(self, doc_id: str) -> bool:
-        return await self._remove(doc_id, REPO_GLOBAL_SCOPE, {})
+        return await self._remove(doc_id, {})
 
     async def count(self) -> int:
         return await self._count({})
@@ -756,20 +525,14 @@ class MongoRepository(_BaseRepository[TDoc, TUpdate], abstract=True):
 class UserScopedRepository(_BaseRepository[TUserDoc, TUpdate], abstract=True):
     """User-scoped repository; every filter includes user_id, so cross-user access returns None/False."""
 
-    def _doc_scope(self, doc: TUserDoc) -> str:
-        return doc.user_id
-
-    def _scope_filter(self, scope: str) -> dict[str, object]:
-        return {"user_id": scope}
-
     async def get(self, doc_id: str, *, user_id: str) -> TUserDoc | None:
-        return await self._fetch(doc_id, user_id, {"user_id": user_id})
+        return await self._fetch(doc_id, {"user_id": user_id})
 
     async def update(self, doc_id: str, *, user_id: str, update: TUpdate) -> TUserDoc | None:
-        return await self._apply_update(doc_id, user_id, {"user_id": user_id}, update)
+        return await self._apply_update(doc_id, {"user_id": user_id}, update)
 
     async def delete(self, doc_id: str, *, user_id: str) -> bool:
-        return await self._remove(doc_id, user_id, {"user_id": user_id})
+        return await self._remove(doc_id, {"user_id": user_id})
 
     async def list_for_user(
         self,
@@ -783,3 +546,35 @@ class UserScopedRepository(_BaseRepository[TUserDoc, TUpdate], abstract=True):
 
     async def count_for_user(self, user_id: str) -> int:
         return await self._count({"user_id": user_id})
+
+    async def _bulk_set(self, updates: Sequence[tuple[str, TUpdate]], *, user_id: str) -> int:
+        """Apply many typed $set updates to user_id's documents in one ordered round trip."""
+        if not updates:
+            return 0
+        stamp_updated_at = (
+            self.auto_stamp_timestamps and "updated_at" in self.document_model.model_fields
+        )
+        now = datetime.now(UTC)
+        operations: list[UpdateOne] = []
+        for doc_id, update in updates:
+            set_fields = update.model_dump(exclude_unset=True)
+            if not set_fields:
+                raise EmptyUpdateError(message=f"bulk update for {doc_id} has no fields to set")
+            if stamp_updated_at:
+                set_fields["updated_at"] = now
+            operations.append(
+                UpdateOne(
+                    {**self._identity_filter(doc_id), "user_id": user_id}, {"$set": set_fields}
+                )
+            )
+        result = await get_async_collection(self.collection_name).bulk_write(operations)
+        return result.modified_count
+
+    async def _bulk_delete(self, doc_ids: Sequence[str], *, user_id: str) -> int:
+        """Delete many of user_id's documents in one round trip."""
+        if not doc_ids:
+            return 0
+        result = await get_async_collection(self.collection_name).delete_many(
+            {"_id": {"$in": [self._id_value(doc_id) for doc_id in doc_ids]}, "user_id": user_id}
+        )
+        return result.deleted_count

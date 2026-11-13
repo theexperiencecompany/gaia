@@ -21,7 +21,6 @@ apps/api/tests/contracts/test_browser_profiles_repository.py	misc
 apps/api/tests/contracts/test_folded_cards.py	list-item
 apps/api/tests/contracts/test_notifications_repository.py	arg-type
 apps/api/tests/contracts/test_user_instructions_repository.py	assignment
-apps/api/tests/contracts/test_user_integrations_repository.py	arg-type
 apps/api/tests/contracts/test_workflows_repository_reset_schedule.py	attr-defined
 apps/api/tests/e2e/_harness/agent_lab.py	attr-defined
 apps/api/tests/e2e/_harness/background.py	attr-defined
@@ -183,7 +182,6 @@ apps/api/tests/unit/config/test_settings_hermetic.py	attr-defined
 apps/api/tests/unit/config/test_token_repository.py	arg-type
 apps/api/tests/unit/config/test_workos.py	attr-defined
 apps/api/tests/unit/core/test_lazy_loader.py	var-annotated
-apps/api/tests/unit/db/repositories/test_playbooks.py	call-overload
 apps/api/tests/unit/db/test_chroma_store.py	arg-type
 apps/api/tests/unit/db/test_chroma_store.py	attr-defined
 apps/api/tests/unit/db/test_chroma_store.py	index

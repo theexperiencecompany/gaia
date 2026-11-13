@@ -10,7 +10,6 @@ from datetime import UTC, datetime
 
 from pymongo.errors import DuplicateKeyError
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.tool_shape_models import ToolOutputShapeDocument, ToolOutputShapeUpdate
 
@@ -21,7 +20,6 @@ class ToolShapesRepository(MongoRepository[ToolOutputShapeDocument, ToolOutputSh
     update_model = ToolOutputShapeUpdate
     uses_object_id = True
     identity_field = "tool_name"
-    cache_policy = None
 
     async def get_shape(self, scope: str, tool_name: str) -> ToolOutputShapeDocument | None:
         return await self._find_one({"scope": scope, "tool_name": tool_name})
@@ -39,18 +37,11 @@ class ToolShapesRepository(MongoRepository[ToolOutputShapeDocument, ToolOutputSh
             "$set": {"output_schema": output_schema, "last_seen": datetime.now(UTC)},
             "$inc": {"call_count": 1},
         }
-        # pragma: no mutate start — with cache_policy None, scope and return_document are
-        # inert (nothing is cached, the read-back is discarded), and the retry's upsert
-        # only runs once the winner's row exists; mutmut cannot pragma a single argument.
         try:
-            await self._apply_raw_update(
-                key, update, scope=REPO_GLOBAL_SCOPE, upsert=True, return_document=False
-            )
+            await self._apply_raw_update(key, update, upsert=True)
         except DuplicateKeyError:
-            await self._apply_raw_update(
-                key, update, scope=REPO_GLOBAL_SCOPE, upsert=True, return_document=False
-            )
-        # pragma: no mutate end
+            # Equivalent under mutation: the retry runs once the winner's row exists, so upsert is moot.
+            await self._apply_raw_update(key, update, upsert=True)  # pragma: no mutate
 
 
 tool_shapes_repository = ToolShapesRepository()

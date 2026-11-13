@@ -90,7 +90,6 @@ class BlogsRepository(MongoRepository[BlogDocument, BlogUpdate]):
     document_model = BlogDocument
     update_model = BlogUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def _aggregate_posts(
         self, pipeline: Sequence[Mapping[str, object]], *, include_content: bool

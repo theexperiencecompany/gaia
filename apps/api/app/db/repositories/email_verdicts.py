@@ -18,7 +18,6 @@ class EmailVerdictsRepository(UserScopedRepository[EmailVerdictDocument, EmailVe
     update_model = EmailVerdictUpdate
     uses_object_id = True
     identity_field = "message_id"
-    cache_policy = None
 
     async def keep(self, verdict: EmailVerdictDocument) -> None:
         """Store a verdict, replacing any kept for the same message; its 48h start again.
@@ -32,9 +31,9 @@ class EmailVerdictsRepository(UserScopedRepository[EmailVerdictDocument, EmailVe
         )
         update = {"$set": {**fields.model_dump(mode="json"), "created_at": datetime.now(UTC)}}
         try:
-            await self._apply_raw_update(key, update, scope=None, upsert=True)
+            await self._apply_raw_update(key, update, upsert=True)
         except DuplicateKeyError:
-            await self._apply_raw_update(key, update, scope=None, upsert=True)
+            await self._apply_raw_update(key, update, upsert=True)
 
 
 email_verdict_repository = EmailVerdictsRepository()

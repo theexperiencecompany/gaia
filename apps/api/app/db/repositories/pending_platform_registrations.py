@@ -10,7 +10,6 @@ from datetime import datetime
 
 from pymongo.errors import DuplicateKeyError
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.platform_models import (
     PendingPlatformRegistrationDocument,
@@ -25,7 +24,6 @@ class PendingPlatformRegistrationsRepository(
     document_model = PendingPlatformRegistrationDocument
     update_model = PendingPlatformRegistrationUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def record(
         self, *, user_id: str, platform: str, platform_user_id: str, created_at: datetime
@@ -42,7 +40,6 @@ class PendingPlatformRegistrationsRepository(
                     "$set": {"platform_user_id": platform_user_id, "created_at": created_at},
                     "$setOnInsert": {"user_id": user_id, "platform": platform},
                 },
-                scope=REPO_GLOBAL_SCOPE,
                 upsert=True,
             )
         except DuplicateKeyError:
@@ -61,14 +58,11 @@ class PendingPlatformRegistrationsRepository(
         )
 
     async def delete_for_user(self, user_id: str, platform: str) -> int:
-        return await self._delete_many(
-            {"user_id": user_id, "platform": platform}, scope=REPO_GLOBAL_SCOPE
-        )
+        return await self._delete_many({"user_id": user_id, "platform": platform})
 
     async def delete_by_platform_user_id(self, platform: str, platform_user_id: str) -> int:
         return await self._delete_many(
             {"platform": platform, "platform_user_id": platform_user_id},
-            scope=REPO_GLOBAL_SCOPE,
         )
 
 

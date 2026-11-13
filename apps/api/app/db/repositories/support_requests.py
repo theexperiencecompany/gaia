@@ -19,7 +19,6 @@ class SupportRequestsRepository(MongoRepository[SupportRequestDocument, SupportR
     document_model = SupportRequestDocument
     update_model = SupportRequestUpdate
     uses_object_id = False
-    cache_policy = None
 
     def _user_filter(self, user_id: str, status: SupportRequestStatus | None) -> dict[str, object]:
         filter_: dict[str, object] = {"user_id": user_id}

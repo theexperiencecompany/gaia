@@ -181,7 +181,6 @@ class TestSetFirstStepsCollapsed:
         await repo.set_first_steps_collapsed(USER_ID, True)
 
         assert seen["return_document"] is False
-        assert seen["scope"] == REPO_GLOBAL_SCOPE
 
     async def test_reports_the_user_was_there_to_write_to(
         self, repo: UserRepository, collection: MagicMock
@@ -296,7 +295,6 @@ async def test_the_drafted_jobs_write_evicts_the_global_user_cache() -> None:
     raw.assert_awaited_once_with(
         {"_id": ObjectId(user_id)},
         {"$set": {"onboarding.starting_jobs": jobs.model_dump()}},
-        scope=REPO_GLOBAL_SCOPE,
     )
 
 
@@ -310,7 +308,6 @@ async def test_the_quiet_hours_write_sets_them_and_returns_the_updated_user() ->
     raw.assert_awaited_once_with(
         {"_id": ObjectId(USER_ID)},
         {"$set": {"quiet_hours": {"enabled": False, "start_hour": 23, "end_hour": 6}}},
-        scope=REPO_GLOBAL_SCOPE,
     )
 
 

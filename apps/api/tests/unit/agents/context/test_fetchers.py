@@ -776,10 +776,10 @@ def repo_reads() -> Iterator[AsyncMock]:
         patch.object(todo_repository, "_find", find),
         # The open sub-todo counts are an aggregation: no sub-todos here.
         patch.object(todo_repository, "_aggregate", AsyncMock(return_value=[])),
-        patch("app.db.repositories.base.read_generation", _read_generation),
-        patch("app.db.repositories.base.get_cache", _get),
-        patch("app.db.repositories.base.set_cache", _set),
-        patch("app.db.repositories.base.bump_generation", _bump),
+        patch("app.db.repositories.cached_base.read_generation", _read_generation),
+        patch("app.db.repositories.cached_base.get_cache", _get),
+        patch("app.db.repositories.cached_base.set_cache", _set),
+        patch("app.db.repositories.cached_base.bump_generation", _bump),
     ):
         yield find
 

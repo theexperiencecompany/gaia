@@ -17,7 +17,6 @@ class DeviceTokensRepository(UserScopedRepository[DeviceTokenDocument, DeviceTok
     update_model = DeviceTokenUpdate
     uses_object_id = True
     identity_field = "token"
-    cache_policy = None
 
     async def register(
         self, *, user_id: str, token: str, platform: PlatformType, device_id: str | None
@@ -33,12 +32,7 @@ class DeviceTokensRepository(UserScopedRepository[DeviceTokenDocument, DeviceTok
             },
             "$setOnInsert": {"created_at": datetime.now(UTC)},
         }
-        # pragma: no mutate start — with cache_policy None no cache reads scope; mutmut cannot
-        # pragma a single argument.
-        matched = await self._apply_raw_update_unfetched(
-            token_filter, claim, scope=user_id, upsert=True
-        )
-        # pragma: no mutate end
+        matched = await self._apply_raw_update_unfetched(token_filter, claim, upsert=True)
         return matched == 0
 
     async def list_active_tokens(self, user_id: str) -> list[str]:

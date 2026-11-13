@@ -3,11 +3,9 @@
 Identity is the business key conversation_id scoped to user_id, never Mongo's
 ObjectId _id. Most writes are array mutations via the raw-update seam.
 
-Caching is disabled (cache_policy = None): a conversation document carries its
-full message history (up to MongoDB's 16MB limit) and is written on every chat
-turn, so an entity/query cache would store megabytes and bump constantly. The
-no-op generation bumps below let a policy be enabled later with no call-site
-changes.
+Uncached: a conversation document carries its full message history (up to
+MongoDB's 16MB limit) and is written on every chat turn, so an entity/query
+cache would store megabytes and bump constantly.
 
 createdAt (ISO string) and updatedAt (BSON date, via $currentDate) are a
 legacy camelCase pair; each mutating method that must advance the sync clock
@@ -18,7 +16,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import ClassVar
 
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
@@ -31,7 +28,6 @@ from app.constants.chat import (
     USER_MESSAGE_TYPE,
 )
 from app.db.repositories.base import UserScopedRepository
-from app.db.repositories.cache import CachePolicy
 from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
@@ -84,7 +80,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     update_model = ConversationUpdate
     uses_object_id = True
     identity_field = "conversation_id"
-    cache_policy: ClassVar[CachePolicy | None] = None
 
     # ---- conversation-list reads (projected: no messages) ----
 
@@ -221,8 +216,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     },
                 }
             },
-            scope=user_id,
-            doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
         return matched > 0
@@ -240,21 +233,14 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id},
             {"$set": {"has_live_approval": True}},
-            scope=user_id,
-            doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
         if matched:
-            # pragma: no mutate start — scope/doc_id repeat the eviction the write above just
-            # made, so no read can observe them; mutmut cannot pragma a single argument.
             await self._apply_raw_update_unfetched(
                 {"conversation_id": conversation_id, "source": {"$exists": False}},
                 {"$set": {"source": ConversationSource.BACKGROUND.value}},
-                scope=user_id,
-                doc_id=conversation_id,
                 extra_filter={"user_id": user_id},
             )
-            # pragma: no mutate end
         return matched > 0
 
     async def refresh_live_approval_flag(
@@ -268,8 +254,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id},
             {"$set": {"has_live_approval": live}},
-            scope=user_id,
-            doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
         return matched > 0
@@ -351,8 +335,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     }
                 }
             ],
-            scope=user_id,
-            doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
         return message_ids if matched > 0 else None
@@ -410,7 +392,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 }
             ],
             # The waiting room is write-side only: no cached read shows it.
-            scope=None,
             extra_filter={"user_id": user_id},
         )
         return matched > 0
@@ -422,8 +403,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "messages.message_id": message_id},
             {"$set": {"messages.$.pinned": pinned}, "$currentDate": {"updatedAt": True}},
-            scope=user_id,
-            doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
         return matched > 0
@@ -438,8 +417,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 "$set": {f"artifacts.$.{key}": value for key, value in fields.items()},
                 "$currentDate": {"updatedAt": True},
             },
-            scope=user_id,
-            doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
         return matched > 0
@@ -455,8 +432,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "artifacts.path": {"$ne": path}},
             {"$push": {"artifacts": element}, "$currentDate": {"updatedAt": True}},
-            scope=user_id,
-            doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
 
@@ -465,8 +440,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id},
             {"$pull": {"artifacts": {"path": path}}, "$currentDate": {"updatedAt": True}},
-            scope=user_id,
-            doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
 
@@ -489,8 +462,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "messages.message_id": message_id},
             {"$push": {"messages.$.tool_data": {"$each": entries}}},
-            scope=user_id,
-            doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
         return matched > 0
@@ -513,8 +484,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     f"{path}.duration_ms": group.duration_ms,
                 },
             },
-            scope=user_id,
-            doc_id=conversation_id,
             extra_filter={"user_id": user_id},
             array_filters=[
                 {"msg.message_id": message_id},
@@ -533,8 +502,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "messages.message_id": message_id},
             {"$set": {"messages.$.response": response}},
-            scope=user_id,
-            doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
         return matched > 0
@@ -546,8 +513,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "messages.message_id": message_id},
             {"$set": {"messages.$.tool_data": entries}},
-            scope=user_id,
-            doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
         return matched > 0
@@ -569,8 +534,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 "messages.tool_data.data.approval_id": approval_id,
             },
             {"$set": update},
-            scope=user_id,
-            doc_id=conversation_id,
             extra_filter={"user_id": user_id},
             # Filter BOTH levels: `messages.$[]` would require tool_data on every
             # message (user messages have none) and Mongo rejects the whole update.
@@ -588,8 +551,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "messages.message_id": message_id},
             {"$set": {"messages.$.follow_up_actions": actions}},
-            scope=user_id,
-            doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
         return matched > 0
@@ -725,7 +686,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         query = _todo_chats(user_id, todo_ids)
         ids = await self._distinct("conversation_id", query)
         if ids:
-            await self._delete_many(query, scope=user_id)
+            await self._delete_many(query)
         return ids
 
     async def retitle_todo_chats(
@@ -813,21 +774,19 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         Callers use the ids to clean up the (non-user-scoped) checkpoint threads.
         """
         ids = await self._distinct("conversation_id", {"user_id": user_id})
-        await self._delete_many({"user_id": user_id}, scope=user_id)
+        await self._delete_many({"user_id": user_id})
         return ids
 
     async def delete_all_chats_for_user(self, user_id: str) -> list[str]:
         """Delete the user's chats, keeping each tracked todo's, which goes only with its todo."""
         query = {"user_id": user_id, "todo_id": None}
         ids = await self._distinct("conversation_id", query)
-        await self._delete_many(query, scope=user_id)
+        await self._delete_many(query)
         return ids
 
     async def delete_onboarding_demos(self, user_id: str) -> int:
         """Delete the user's onboarding-demo conversations."""
-        return await self._delete_many(
-            {"user_id": user_id, "is_onboarding_demo": True}, scope=user_id
-        )
+        return await self._delete_many({"user_id": user_id, "is_onboarding_demo": True})
 
     async def all_conversation_ids(self) -> list[str]:
         """Every live conversation id across all users — the checkpoint orphan sweep's source of truth.
@@ -893,8 +852,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id},
             {"$set": fields, "$currentDate": {"updatedAt": True}},
-            scope=user_id,
-            doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
         return matched > 0
