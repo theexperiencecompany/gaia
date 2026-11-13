@@ -10,11 +10,19 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Protocol, TypeVar, cast
+from typing import Any, Protocol, TypeVar, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.callbacks import AsyncCallbackManagerForLLMRun
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+)
+from langchain_core.outputs import ChatGenerationChunk
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 from redis.asyncio import Redis
@@ -43,6 +51,7 @@ from app.agents.tools.run_record import append_call
 from app.constants.browser import HandoffDecision, HandoffStatus
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
+from app.constants.conversation import STEP_TICK_SECONDS
 from app.constants.graphs import GraphName
 from app.constants.todos import TodoWakeKind
 from app.core.lazy_loader import providers
@@ -88,7 +97,7 @@ from app.schemas.browser import NewHandoff
 from app.services import analytics_service
 from app.services.browser.handoff import create_pending_handoff
 from app.services.browser.handoff_buttons import decide_handoff_by_button
-from app.services.conversation import reply_analytics
+from app.services.conversation import mongo_log, reply_analytics, step as step_module
 from app.services.conversation.bot_followers import list_active_bot_conversations
 from app.services.conversation.comms_runner import (
     CommsGraphRunner,
@@ -161,6 +170,8 @@ from tests.unit.services.conversation.runtime_doubles import ScriptedApprovals
 EntryT = TypeVar("EntryT")
 _SETTLE_SECONDS = 30.0
 _CONFIRM_SECONDS = 0.05
+_SHORT_TTL_SECONDS = 1
+_TRICKLE_SECONDS = 0.02
 
 
 class _Effects(RuntimeEffects):
@@ -242,6 +253,7 @@ class RigFactory(Protocol):
         model: GatedModel,
         history: Sequence[dict[str, str]] = (),
         build_turn: CommsTurnBuilder | None = None,
+        tick: Callable[[], Awaitable[None]] = ...,
     ) -> Awaitable[Rig]: ...
 
 
@@ -305,6 +317,7 @@ async def rig_for(
             model: GatedModel,
             history: Sequence[dict[str, str]] = (),
             build_turn: CommsTurnBuilder | None = None,
+            tick: Callable[[], Awaitable[None]] = _quick_tick,
         ) -> Rig:
             conversation_id = f"convrt-{uuid4().hex[:10]}"
             await make_conversation(user_id, conversation_id, messages=list(history))
@@ -323,7 +336,7 @@ async def rig_for(
                 effects=effects,
                 approvals=ScriptedApprovals(),
                 clock=_now,
-                tick=_quick_tick,
+                tick=tick,
             )
             holder.append(ports)
             install_runtime_ports(ports)
@@ -1506,3 +1519,50 @@ async def test_a_reply_to_the_users_own_message_leaves_the_conversation_read(
     await rig.settle()
     assert await rig.answered() == [(ReplyOutcome.ANSWERED, ("m1",))]
     assert await _unread(rig) is False
+
+
+class _TrickleModel(GatedModel):
+    """Streams its reply a character every _TRICKLE_SECONDS, faster than the step's tick."""
+
+    async def _astream(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: AsyncCallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[ChatGenerationChunk]:
+        self._prompts.append(list(messages))
+        for char in str(self._replies[len(self._prompts) - 1].content):
+            await asyncio.sleep(_TRICKLE_SECONDS)
+            chunk = ChatGenerationChunk(message=AIMessageChunk(content=char))
+            if run_manager is not None:
+                await run_manager.on_llm_new_token(char, chunk=chunk)
+            yield chunk
+
+
+async def _production_tick() -> None:
+    await asyncio.sleep(STEP_TICK_SECONDS)
+
+
+@pytest.mark.service
+async def test_a_reply_streaming_longer_than_the_claims_ttl_is_answered_once(
+    rig_for: RigFactory,
+) -> None:
+    text = "x" * int(3 * _SHORT_TTL_SECONDS / _TRICKLE_SECONDS)
+    model = _TrickleModel(
+        responses=[AIMessage(content="unused")], profile={"max_input_tokens": 10**6}
+    )
+    model._replies = [AIMessage(content=text)]
+    rig = await rig_for(model, tick=_production_tick)
+    with (
+        patch.object(mongo_log, "RUNNER_ALIVE_TTL_SECONDS", _SHORT_TTL_SECONDS),
+        patch.object(step_module, "RUNNER_ALIVE_TTL_SECONDS", _SHORT_TTL_SECONDS),
+    ):
+        await rig.send("m1", "tell me a long story")
+        # Mid-stream, well past the TTL, the sweep looks for a dead holder.
+        await asyncio.sleep(2 * _SHORT_TTL_SECONDS)
+        await sweep_conversations()
+        await rig.settle()
+    assert await rig.answered() == [(ReplyOutcome.ANSWERED, ("m1",))]
+    assert [reply.text for reply in await rig.of(Reply)] == [text]
+    assert len(model.prompts) == 1

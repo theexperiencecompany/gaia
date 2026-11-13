@@ -13,6 +13,8 @@ RESTART_WINDOW = timedelta(seconds=RESTART_WINDOW_SECONDS)
 RUNNER_ALIVE_KEY_PREFIX = "conv:alive:"
 # A holder that cannot renew its key for this long is dead, and its claim can be taken over.
 RUNNER_ALIVE_TTL_SECONDS = 10
+# The holder renews its key this many times per TTL, from its own task for the whole claim.
+RUNNER_ALIVE_BEATS_PER_TTL = 4
 #: conv:hint:{user_id}:{conversation_id}, the advisory preempt view a running step polls.
 HINT_KEY_PREFIX = "conv:hint:"
 # A lapsed hint is rebuilt from the head, so it only needs to outlive an active conversation.

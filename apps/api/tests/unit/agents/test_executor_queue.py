@@ -54,11 +54,11 @@ from app.constants.cache import (
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
 from app.constants.llm import LLMProviderName
-from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, ExecutorRunItem
 from app.models.executor_activity_models import ExecutorActivity, ExecutorActivitySnapshot
 from app.models.user_models import AuthenticatedUser
+from app.utils import liveness
 from shared.py.analytics import Dedupe
 from tests.helpers import captured_wide_event
 
@@ -834,7 +834,7 @@ class TestLivenessRenewal:
         with (
             patch.object(eq, "EXECUTOR_ALIVE_BEAT_SECONDS", 0),
             patch.object(eq, "hold_run_alive", _hold),
-            patch.object(eq, "time", SimpleNamespace(monotonic=lambda: next(clock))),
+            patch.object(liveness, "time", SimpleNamespace(monotonic=lambda: next(clock))),
         ):
             async with captured_wide_event() as event:
                 holder = asyncio.create_task(_holder())
@@ -847,9 +847,8 @@ class TestLivenessRenewal:
             (12.3, False),
             (float(EXECUTOR_ALIVE_GIVE_UP_SECONDS), True),
         ]
-        assert failures[0]["msg"] == (
-            f"{LogTag.AGENT} Could not renew an executor lock holder's liveness"
-        )
+        assert failures[0]["msg"] == "Could not renew a holder's liveness"
+        assert failures[0]["what"] == "executor"
         assert {
             (e["conversation_id"], e["holder"], e["error_type"], e["error"]) for e in failures
         } == {(CONVERSATION, "s1:t1", "ConnectionError", "redis down")}
