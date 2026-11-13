@@ -158,7 +158,6 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/openapi.json",
             "/oauth/login",
             "/oauth/workos/callback",
-            "/oauth/google/callback",
             "/health",
             "/api/v1/bot",
             "/api/v1/webhook",

@@ -4874,7 +4874,6 @@
           "openai",
           "resend",
           "cloudinary",
-          "google_oauth",
           "firecrawl",
           "openweather",
           "llamaparse",
@@ -8275,7 +8274,6 @@
           },
           "managedBy": {
             "enum": [
-              "self",
               "composio",
               "mcp",
               "internal"
@@ -8554,7 +8552,6 @@
           },
           "managedBy": {
             "enum": [
-              "self",
               "composio",
               "mcp",
               "internal"
@@ -11550,7 +11547,6 @@
           },
           "managedBy": {
             "enum": [
-              "self",
               "composio",
               "mcp",
               "internal"

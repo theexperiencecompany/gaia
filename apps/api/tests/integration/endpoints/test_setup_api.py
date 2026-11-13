@@ -162,7 +162,6 @@ class TestStatus:
             "openai",
             "resend",
             "cloudinary",
-            "google_oauth",
             "firecrawl",
             "openweather",
             "llamaparse",
@@ -340,50 +339,30 @@ class TestStatus:
             "env_shadowed": True,
         }
 
-    @pytest.mark.parametrize(
-        ("provider", "body"),
-        [
-            (
-                "cloudinary",
-                {"api_key": STORED_KEY, "account_id": "my-cloud", "api_secret": "cl-secret"},
-            ),
-            ("google_oauth", {"api_key": STORED_KEY, "account_id": "id.apps.example"}),
-        ],
-    )
     async def test_a_card_saved_account_is_configured_with_no_env(
-        self,
-        client: AsyncClient,
-        monkeypatch: pytest.MonkeyPatch,
-        provider: str,
-        body: dict[str, str],
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        for name in (
-            "CLOUDINARY_CLOUD_NAME",
-            "CLOUDINARY_API_KEY",
-            "CLOUDINARY_API_SECRET",
-            "GOOGLE_CLIENT_ID",
-            "GOOGLE_CLIENT_SECRET",
-        ):
+        for name in ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"):
             monkeypatch.setattr(settings, name, None)
+        body = {"api_key": STORED_KEY, "account_id": "my-cloud", "api_secret": "cl-secret"}
 
-        assert (await client.put(f"{API}/providers/{provider}", json=body)).status_code == 200
-        status = (await client.get(f"{API}/status")).json()["providers"][provider]
-        listed = (await client.get(f"{API}/providers")).json()["providers"][provider]
+        assert (await client.put(f"{API}/providers/cloudinary", json=body)).status_code == 200
+        status = (await client.get(f"{API}/status")).json()["providers"]["cloudinary"]
+        listed = (await client.get(f"{API}/providers")).json()["providers"]["cloudinary"]
 
         assert status == {"configured": True, "source": "stored", "env_shadowed": False}
         assert listed["configured"] is True
         assert listed["account_id"] == body["account_id"]
 
-    @pytest.mark.parametrize("provider", ["cloudinary", "google_oauth"])
     async def test_a_saved_key_alone_is_not_configured(
-        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch, provider: str
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        for name in ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_SECRET", "GOOGLE_CLIENT_ID"):
+        for name in ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_SECRET"):
             monkeypatch.setattr(settings, name, "env-value")
 
-        await client.put(f"{API}/providers/{provider}", json={"api_key": STORED_KEY})
+        await client.put(f"{API}/providers/cloudinary", json={"api_key": STORED_KEY})
 
-        status = (await client.get(f"{API}/status")).json()["providers"][provider]
+        status = (await client.get(f"{API}/status")).json()["providers"]["cloudinary"]
         assert status["configured"] is False
 
     async def test_an_unconfigured_provider_reports_unset(
@@ -1201,7 +1180,10 @@ class TestProviderProbe:
         }
 
     @pytest.mark.parametrize(
-        "provider", sorted(set(CredentialProviderName) - set(LLM_PROVIDER_PRIORITY))
+        "provider",
+        sorted(
+            set(CredentialProviderName) - {CredentialProviderName(p) for p in LLM_PROVIDER_PRIORITY}
+        ),
     )
     async def test_only_chat_providers_can_be_probed(
         self, client: AsyncClient, provider: str
@@ -1234,16 +1216,18 @@ class TestSsrfGuard:
             provider_setup_service, "allows_private_endpoint", lambda provider: provider == "ollama"
         )
 
-    @pytest.mark.parametrize("provider", ["custom", "openrouter"])
+    @pytest.mark.parametrize(
+        "provider", [CredentialProviderName.CUSTOM, CredentialProviderName.OPENROUTER]
+    )
     def test_production_keeps_non_ollama_endpoints_public(
-        self, monkeypatch: pytest.MonkeyPatch, provider: str
+        self, monkeypatch: pytest.MonkeyPatch, provider: CredentialProviderName
     ) -> None:
         monkeypatch.undo()
         monkeypatch.setattr(settings, "ENV", "production")
         monkeypatch.setattr(settings, "AUTH_MODE", "workos")
 
         assert provider_setup_service.allows_private_endpoint(provider) is False
-        assert provider_setup_service.allows_private_endpoint("ollama") is True
+        assert provider_setup_service.allows_private_endpoint(CredentialProviderName.OLLAMA) is True
 
     async def test_decimal_ip_shorthand_resolving_private_is_rejected(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch

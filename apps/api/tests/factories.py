@@ -8,8 +8,10 @@ from uuid import uuid4
 from bson import ObjectId
 from composio.types import Tool
 import composio_client
+from composio_client.types.tool_list_response import ItemDeprecated, ItemToolkit
 import httpx
 
+from app.models.oauth_models import OAuthIntegration
 from app.models.user_models import AuthenticatedUser
 
 
@@ -96,20 +98,22 @@ def make_composio_tool(
         input_parameters={"type": "object", "title": "GmailFetchMessagesRequest", "properties": {}},
         output_parameters=output_parameters
         or {"type": "object", "title": "GmailFetchMessagesResponse", "properties": {}},
-        toolkit={"slug": "gmail", "name": "Gmail", "logo": ""},
+        toolkit=ItemToolkit(slug="gmail", name="Gmail", logo=""),
         tags=[],
         scopes=[],
         version="latest",
         available_versions=["latest"],
         # Mixed casing is the SDK's, not a typo: `displayName` is aliased while its
         # siblings are not.
-        deprecated={
-            "available_versions": ["latest"],
-            "displayName": "Fetch messages",
-            "is_deprecated": False,
-            "toolkit": {"slug": "gmail", "name": "Gmail", "logo": ""},
-            "version": "latest",
-        },
+        deprecated=ItemDeprecated.model_validate(
+            {
+                "available_versions": ["latest"],
+                "displayName": "Fetch messages",
+                "is_deprecated": False,
+                "toolkit": {"slug": "gmail", "name": "Gmail", "logo": ""},
+                "version": "latest",
+            }
+        ),
         is_deprecated=False,
         no_auth=False,
     )
@@ -192,3 +196,24 @@ def make_composio_not_found(body: object, message: str) -> composio_client.NotFo
     return composio_client.NotFoundError(
         message, response=httpx.Response(404, request=request, json=body), body=body
     )
+
+
+def make_oauth_integration(**overrides: object) -> OAuthIntegration:
+    """Build an OAuthIntegration with test defaults; override any field by name."""
+    overrides.setdefault("id", overrides.pop("integration_id", "platform-int"))
+    params: dict[str, object] = {
+        "name": "Platform Integration",
+        "description": "A platform integration",
+        "category": "productivity",
+        "provider": "google",
+        "scopes": [],
+        "available": True,
+        "managed_by": "internal",
+        "mcp_config": None,
+        "composio_config": None,
+        "subagent_config": None,
+        "is_featured": False,
+        "display_priority": 0,
+        **overrides,
+    }
+    return OAuthIntegration.model_validate(params)

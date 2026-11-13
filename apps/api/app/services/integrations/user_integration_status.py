@@ -51,7 +51,7 @@ async def update_user_integration_status(
 ) -> bool:
     """Upsert user integration status; creates the record if it doesn't exist.
 
-    Called after MCP/self-managed connection and on the connect start; Composio
+    Called after an MCP connection and on the connect start; Composio
     accounts write their state through integration_accounts.save_accounts.
     """
     log.set(integration={"provider": integration_id, "action": "update_status"})

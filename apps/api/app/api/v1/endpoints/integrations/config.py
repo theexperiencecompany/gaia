@@ -2,7 +2,6 @@
 
 from typing import Annotated
 
-from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 
@@ -11,7 +10,6 @@ from app.api.v1.middleware.rate_limiter import limiter
 from app.config.settings import settings
 from app.constants.auth import AUDIT_ACTOR_UNAUTHENTICATED
 from app.constants.log_tags import LogTag
-from app.db.repositories.users import user_repository
 from app.models.user_models import AuthenticatedUser
 from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
@@ -166,7 +164,7 @@ async def connect_integration_endpoint(
     auth_type: str | None = None
     if resolved.mcp_config:
         auth_type = "oauth2" if resolved.mcp_config.requires_auth else "none"
-    elif resolved.managed_by in ("composio", "self"):
+    elif resolved.managed_by == "composio":
         auth_type = "oauth2"
     provider = resolved.platform_integration.provider if resolved.platform_integration else None
     log.set(
@@ -181,7 +179,6 @@ async def connect_integration_endpoint(
     result = await initiate_integration_connection(
         user_id,
         resolved,
-        user_email=user.email or "",
         redirect_path=request.redirect_path,
         bearer_token=request.bearer_token,
         reconnect_account_id=request.account_id,
@@ -263,12 +260,9 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
         resource=integration_id,
     )
 
-    # Self-managed (Google) connectors use email as an OAuth login hint; others
-    # ignore it. user_id is trusted (it came from a server-bound, single-use code).
-    user_email = ""
     try:
-        user_doc = await user_repository.get(user_id)
-    except InvalidId as e:
+        analytics_id = UserId(user_id)
+    except ValueError as e:
         # A server-issued code that carries a non-ObjectId user_id means the
         # stored binding is corrupt — same opaque bounce for the client, but a
         # distinct failure in telemetry.
@@ -286,8 +280,6 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
             error_type=type(e).__name__,
         )
         return _connect_link_error("invalid_or_expired_link")
-    if user_doc:
-        user_email = user_doc.email or ""
 
     resolved = await IntegrationResolver.resolve(integration_id)
     if not resolved:
@@ -296,13 +288,12 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
     result = await initiate_integration_connection(
         user_id,
         resolved,
-        user_email=user_email,
         redirect_path="/integrations",
         reconnect_account_id=verified.account_id,
     )
     if result.status == "redirect" and result.redirect_url:
         capture(
-            UserId(user_id),
+            analytics_id,
             IntegrationConnectInitiated(integration_id=integration_id, source="connect_link"),
         )
         log.set(outcome="redirect")

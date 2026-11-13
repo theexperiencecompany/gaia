@@ -345,11 +345,6 @@ ignore_imports = [
   # The per-plan limit tables are keyed by PlanType; the enum lives on the
   # payment model, which is what makes the table and the subscription agree.
   "app.config.rate_limits -> app.models.payment_models",
-  # token_repository is a Postgres repository that has always lived under
-  # config/ — misfiled, not config reaching downwards. Moving it is a separate
-  # change with its own blast radius.
-  "app.config.token_repository -> app.db.postgresql",
-  "app.config.token_repository -> app.models.db_oauth",
   # app/agents/prompts/ is prompt TEXT — plain string modules with no imports of
   # their own. The oauth config names each integration's prompts; the edge is to
   # a leaf that only happens to live under app/agents/.

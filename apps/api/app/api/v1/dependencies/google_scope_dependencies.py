@@ -1,8 +1,4 @@
-"""Unified FastAPI dependencies validating Google OAuth and Composio integrations.
-
-Supports Google OAuth (managed_by="self": calendar, drive, docs) and Composio
-(managed_by="composio": gmail, sheets, notion, twitter, linkedin, …).
-"""
+"""FastAPI dependencies that require a connected integration; every Google one is Composio-managed."""
 
 from collections.abc import Callable, Coroutine
 
@@ -23,7 +19,7 @@ http_async_client = httpx.AsyncClient(timeout=10.0)
 def require_integration(
     integration_short_name: str,
 ) -> Callable[..., Coroutine[None, None, AuthenticatedUser]]:
-    """Create a dependency checking Google OAuth or Composio integration access.
+    """Create a dependency that requires the named integration to be connected.
 
     Raises:
         ValueError: Unknown integration name.

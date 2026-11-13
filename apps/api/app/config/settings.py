@@ -386,12 +386,6 @@ class Settings(BrowserHostSettings):
 
     @computed_field  # type: ignore[prop-decorator]  # pydantic’s computed_field over @property trips mypy’s prop-decorator check
     @property
-    def GOOGLE_CALLBACK_URL(self) -> str:
-        """Google OAuth callback URL."""
-        return f"{self.HOST}/api/v1/oauth/google/callback"
-
-    @computed_field  # type: ignore[prop-decorator]  # pydantic’s computed_field over @property trips mypy’s prop-decorator check
-    @property
     def DISCORD_OAUTH_REDIRECT_URI(self) -> str:
         """Discord OAuth callback URL."""
         return f"{self.HOST}/api/v1/platform-auth/discord/callback"
@@ -450,13 +444,6 @@ class Settings(BrowserHostSettings):
     CHROMADB_PORT: int | None = None
     POSTGRES_URL: str | None = None
     RABBITMQ_URL: str | None = None
-
-    # ----------------------------------------------
-    # Authentication & OAuth
-    # ----------------------------------------------
-    GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
-    GOOGLE_CLIENT_ID: str | None = None
-    GOOGLE_CLIENT_SECRET: str | None = None
 
     # ----------------------------------------------
     # External API Integration Keys

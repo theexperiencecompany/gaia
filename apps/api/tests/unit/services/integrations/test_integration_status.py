@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.log_tags import LogTag
-from app.models.integration_models import UserIntegrationDocument
+from app.models.integration_models import UserIntegrationDocument, UserIntegrationStatus
 from app.services.integrations.integration_status import get_all_integrations_status
 from app.utils.exceptions import ProviderNotConfiguredError
 from shared.py.wide_events import OAuthContext
@@ -28,7 +28,7 @@ def bypass_cacheable():
         yield
 
 
-def _ui_doc(integration_id: str, status: str) -> UserIntegrationDocument:
+def _ui_doc(integration_id: str, status: UserIntegrationStatus) -> UserIntegrationDocument:
     """Build a UserIntegrationDocument as list_for_user would return it."""
     return UserIntegrationDocument(user_id="user123", integration_id=integration_id, status=status)
 
@@ -42,12 +42,6 @@ def mock_composio_service():
         return_value=mock_service,
     ):
         yield mock_service
-
-
-@pytest.fixture
-def mock_token_repository():
-    with patch("app.services.integrations.integration_status.token_repository") as mock_repo:
-        yield mock_repo
 
 
 @pytest.fixture
@@ -77,7 +71,6 @@ class TestGetAllIntegrationsStatus:
         self,
         mock_user_integration_repo,
         mock_composio_service,
-        mock_token_repository,
     ):
         """Integrations with available=False should always return False."""
         unavailable = MagicMock()
@@ -97,7 +90,6 @@ class TestGetAllIntegrationsStatus:
         self,
         mock_user_integration_repo,
         mock_composio_service,
-        mock_token_repository,
     ):
         """If user_integrations has status='connected', result should be True."""
         mock_user_integration_repo.list_for_user = AsyncMock(
@@ -123,7 +115,6 @@ class TestGetAllIntegrationsStatus:
         self,
         mock_user_integration_repo,
         mock_composio_service,
-        mock_token_repository,
     ):
         """If user_integrations has status != 'connected', result should be False."""
         mock_user_integration_repo.list_for_user = AsyncMock(
@@ -150,7 +141,6 @@ class TestGetAllIntegrationsStatus:
         self,
         mock_user_integration_repo,
         mock_composio_service,
-        mock_token_repository,
     ) -> None:
         mock_user_integration_repo.list_for_user = AsyncMock(
             return_value=[_ui_doc("posthog", "connected")]
@@ -185,7 +175,6 @@ class TestGetAllIntegrationsStatus:
         self,
         mock_user_integration_repo,
         mock_composio_service,
-        mock_token_repository,
     ) -> None:
         mock_user_integration_repo.list_for_user = AsyncMock(
             return_value=[_ui_doc("posthog", "connected")]
@@ -218,7 +207,6 @@ class TestGetAllIntegrationsStatus:
         self,
         mock_user_integration_repo,
         mock_composio_service,
-        mock_token_repository,
     ) -> None:
         """GET paths overlay stale credentials without writing Mongo."""
         mock_user_integration_repo.list_for_user = AsyncMock(
@@ -252,7 +240,6 @@ class TestGetAllIntegrationsStatus:
         self,
         mock_user_integration_repo,
         mock_composio_service,
-        mock_token_repository,
         mock_integration_repo,
     ) -> None:
         mock_user_integration_repo.list_for_user = AsyncMock(
@@ -287,7 +274,6 @@ class TestGetAllIntegrationsStatus:
         self,
         mock_user_integration_repo,
         mock_composio_service,
-        mock_token_repository,
         mock_integration_repo,
     ) -> None:
         mock_user_integration_repo.list_for_user = AsyncMock(
@@ -320,7 +306,6 @@ class TestGetAllIntegrationsStatus:
         self,
         mock_user_integration_repo,
         mock_composio_service,
-        mock_token_repository,
     ):
         """MCP integrations not in MongoDB should return False."""
         integration = MagicMock()
@@ -341,7 +326,6 @@ class TestGetAllIntegrationsStatus:
         self,
         mock_user_integration_repo,
         mock_composio_service,
-        mock_token_repository,
     ):
         """Composio integrations not in MongoDB should query Composio service."""
         mock_composio_service.check_connection_status = AsyncMock(return_value={"twitter": True})
@@ -369,7 +353,6 @@ class TestGetAllIntegrationsStatus:
         self,
         mock_user_integration_repo,
         mock_composio_service,
-        mock_token_repository,
     ):
         """A provider missing from the batch answer reads as not connected, never as unknown."""
         mock_composio_service.check_connection_status = AsyncMock(return_value={})
@@ -392,7 +375,6 @@ class TestGetAllIntegrationsStatus:
         self,
         mock_user_integration_repo,
         mock_composio_service,
-        mock_token_repository,
     ):
         """If Composio batch check raises, all Composio integrations are False."""
         mock_composio_service.check_connection_status = AsyncMock(
@@ -426,7 +408,6 @@ class TestGetAllIntegrationsStatus:
     async def test_an_instance_without_composio_reads_not_connected_without_an_error(
         self,
         mock_user_integration_repo,
-        mock_token_repository,
     ):
         """A self-host with no Composio key is a normal state, not a failed check."""
         integration = MagicMock()
@@ -451,146 +432,10 @@ class TestGetAllIntegrationsStatus:
         assert result == {"twitter": False}
         log.error.assert_not_called()
 
-    async def test_self_managed_integration_with_valid_token(
-        self,
-        mock_user_integration_repo,
-        mock_composio_service,
-        mock_token_repository,
-    ):
-        """Self-managed integrations check token repository for scopes."""
-        mock_token_repository.get_token = AsyncMock(
-            return_value={
-                "scope": "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly",
-            }
-        )
-
-        integration = MagicMock()
-        integration.id = "googlecalendar"
-        integration.available = True
-        integration.managed_by = "self"
-        integration.provider = "google"
-
-        with (
-            patch(
-                "app.config.oauth_config.OAUTH_INTEGRATIONS",
-                [integration],
-            ),
-            patch(
-                "app.services.integrations.integration_status.get_integration_scopes",
-                return_value=[
-                    "https://www.googleapis.com/auth/calendar.events",
-                    "https://www.googleapis.com/auth/calendar.readonly",
-                ],
-            ) as scopes,
-        ):
-            result = await get_all_integrations_status("user123")
-
-        assert result["googlecalendar"] is True
-        # The token is read for this user's Google account and renewed if stale,
-        # and the scopes it must carry are the integration's own.
-        mock_token_repository.get_token.assert_awaited_once_with(
-            "user123", "google", renew_if_expired=True
-        )
-        scopes.assert_called_once_with("googlecalendar")
-
-    async def test_a_token_without_any_scope_grants_nothing(
-        self,
-        mock_user_integration_repo,
-        mock_composio_service,
-        mock_token_repository,
-    ):
-        mock_token_repository.get_token = AsyncMock(return_value={})
-
-        integration = MagicMock()
-        integration.id = "googlecalendar"
-        integration.available = True
-        integration.managed_by = "self"
-        integration.provider = "google"
-
-        with (
-            patch(
-                "app.config.oauth_config.OAUTH_INTEGRATIONS",
-                [integration],
-            ),
-            patch(
-                "app.services.integrations.integration_status.get_integration_scopes",
-                return_value=["https://www.googleapis.com/auth/calendar.events"],
-            ),
-        ):
-            result = await get_all_integrations_status("user123")
-
-        assert result["googlecalendar"] is False
-
-    async def test_self_managed_integration_with_missing_scopes(
-        self,
-        mock_user_integration_repo,
-        mock_composio_service,
-        mock_token_repository,
-    ):
-        """Self-managed with partial scopes should return False."""
-        mock_token_repository.get_token = AsyncMock(
-            return_value={
-                "scope": "https://www.googleapis.com/auth/calendar.readonly",
-            }
-        )
-
-        integration = MagicMock()
-        integration.id = "googlecalendar"
-        integration.available = True
-        integration.managed_by = "self"
-        integration.provider = "google"
-
-        with (
-            patch(
-                "app.config.oauth_config.OAUTH_INTEGRATIONS",
-                [integration],
-            ),
-            patch(
-                "app.services.integrations.integration_status.get_integration_scopes",
-                return_value=[
-                    "https://www.googleapis.com/auth/calendar.events",
-                    "https://www.googleapis.com/auth/calendar.readonly",
-                ],
-            ),
-        ):
-            result = await get_all_integrations_status("user123")
-
-        assert result["googlecalendar"] is False
-
-    async def test_self_managed_integration_with_no_token(
-        self,
-        mock_user_integration_repo,
-        mock_composio_service,
-        mock_token_repository,
-    ):
-        """Self-managed with no token at all should return False."""
-        mock_token_repository.get_token = AsyncMock(side_effect=Exception("Token not found"))
-
-        integration = MagicMock()
-        integration.id = "googlecalendar"
-        integration.available = True
-        integration.managed_by = "self"
-        integration.provider = "google"
-
-        with (
-            patch(
-                "app.config.oauth_config.OAUTH_INTEGRATIONS",
-                [integration],
-            ),
-            patch(
-                "app.services.integrations.integration_status.get_integration_scopes",
-                return_value=["https://www.googleapis.com/auth/calendar.events"],
-            ),
-        ):
-            result = await get_all_integrations_status("user123")
-
-        assert result["googlecalendar"] is False
-
     async def test_custom_integrations_in_mongo_included(
         self,
         mock_user_integration_repo,
         mock_composio_service,
-        mock_token_repository,
         mock_integration_repo,
     ):
         """Custom integrations in MongoDB not in OAUTH_INTEGRATIONS are still included."""
@@ -611,7 +456,6 @@ class TestGetAllIntegrationsStatus:
         self,
         mock_user_integration_repo,
         mock_composio_service,
-        mock_token_repository,
     ):
         """Test a mix of connected, disconnected, and unavailable integrations."""
         mock_user_integration_repo.list_for_user = AsyncMock(

@@ -5,16 +5,12 @@ and POST /connect/{integration_id}.  Service layer is mocked;
 only HTTP status codes, response shapes, and error handling are verified.
 """
 
-from collections.abc import Iterator
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack
 from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
 
-from fastapi import FastAPI
 from httpx import AsyncClient
 import pytest
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.models.user_models import AuthenticatedUser, UserDocument
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
     MyIntegrationsResponse,
@@ -26,7 +22,6 @@ from shared.py.analytics.catalog.integrations import (
     IntegrationConnectInitiated,
     IntegrationDisconnected,
 )
-from tests.factories import make_authenticated_user
 
 API = "/api/v1/integrations"
 
@@ -234,7 +229,6 @@ _MODULE = "app.api.v1.endpoints.integrations.config"
 _SERVICE = "app.services.integrations.integration_connection_service"
 _COMPOSIO_404 = "Error code: 404 - {'error': {'message': 'Auth config not found', 'code': 302}}"
 _VALID_UID = "507f1f77bcf86cd799439011"
-_USER_EMAIL = "test@example.com"
 
 
 def _connected(integration_id: str, name: str = "TestInt") -> ConnectIntegrationResponse:
@@ -262,20 +256,6 @@ def _error_body(integration_id: str, name: str, error: str) -> dict:
         "redirectUrl": None,
         "error": error,
     }
-
-
-@contextmanager
-def _current_user(test_app: FastAPI, user: AuthenticatedUser) -> Iterator[None]:
-    """Serve user from get_current_user for the duration of the block."""
-    original = test_app.dependency_overrides.get(get_current_user)
-    test_app.dependency_overrides[get_current_user] = lambda: user
-    try:
-        yield
-    finally:
-        if original is None:
-            test_app.dependency_overrides.pop(get_current_user, None)
-        else:
-            test_app.dependency_overrides[get_current_user] = original
 
 
 class TestConnectIntegration:
@@ -434,82 +414,6 @@ class TestConnectIntegration:
         )
         mock_log.set.assert_any_call(outcome="success")
 
-    async def test_connect_self_success(self, client: AsyncClient) -> None:
-        resolved = _resolved("gcal", managed_by="self", name="Google Calendar", provider="GCAL")
-        with (
-            patch(
-                f"{_MODULE}.IntegrationResolver.resolve",
-                new_callable=AsyncMock,
-                return_value=resolved,
-            ),
-            patch(
-                f"{_SERVICE}.connect_self_integration",
-                new_callable=AsyncMock,
-                return_value=_redirect("gcal", "Google Calendar"),
-            ) as mock_connect,
-            patch(f"{_MODULE}.capture") as mock_capture,
-            patch(f"{_MODULE}.log") as mock_log,
-        ):
-            resp = await client.post(
-                f"{API}/connect/gcal",
-                json={"redirect_path": "/integrations"},
-            )
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "redirect"
-        mock_connect.assert_awaited_once_with(
-            user_id=_VALID_UID,
-            user_email=_USER_EMAIL,
-            integration_id="gcal",
-            integration_name="Google Calendar",
-            provider="GCAL",
-            redirect_path="/integrations",
-        )
-        mock_capture.assert_called_once_with(
-            UserId(_VALID_UID),
-            IntegrationConnectInitiated(integration_id="gcal", managed_by="self"),
-        )
-        mock_log.set.assert_any_call(
-            integration_name="Google Calendar",
-            integration={
-                "id": "gcal",
-                "managed_by": "self",
-                "auth_type": "oauth2",
-                "provider": "GCAL",
-            },
-        )
-        mock_log.set.assert_any_call(outcome="success")
-
-    async def test_connect_self_without_an_email_sends_an_empty_one(
-        self, test_app: FastAPI, client: AsyncClient
-    ) -> None:
-        resolved = _resolved("gcal", managed_by="self", name="Google Calendar", provider="GCAL")
-        with (
-            _current_user(test_app, make_authenticated_user(user_id=_VALID_UID, email=None)),
-            patch(
-                f"{_MODULE}.IntegrationResolver.resolve",
-                new_callable=AsyncMock,
-                return_value=resolved,
-            ),
-            patch(
-                f"{_SERVICE}.connect_self_integration",
-                new_callable=AsyncMock,
-                return_value=_redirect("gcal", "Google Calendar"),
-            ) as mock_connect,
-        ):
-            resp = await client.post(
-                f"{API}/connect/gcal",
-                json={"redirect_path": "/integrations"},
-            )
-        assert resp.status_code == 200
-        mock_connect.assert_awaited_once_with(
-            user_id=_VALID_UID,
-            user_email="",
-            integration_id="gcal",
-            integration_name="Google Calendar",
-            provider="GCAL",
-            redirect_path="/integrations",
-        )
-
     async def test_connect_not_found(self, client: AsyncClient) -> None:
         with patch(
             f"{_MODULE}.IntegrationResolver.resolve",
@@ -567,24 +471,6 @@ class TestConnectIntegration:
         mock_connect.assert_not_awaited()
         mock_log.set.assert_any_call(outcome="error")
         assert call(outcome="success") not in mock_log.set.call_args_list
-
-    async def test_connect_self_no_provider(self, client: AsyncClient) -> None:
-        resolved = _resolved("noprov", managed_by="self", name="Google Calendar", provider=None)
-        with (
-            patch(
-                f"{_MODULE}.IntegrationResolver.resolve",
-                new_callable=AsyncMock,
-                return_value=resolved,
-            ),
-            patch(f"{_SERVICE}.connect_self_integration", new_callable=AsyncMock) as mock_connect,
-        ):
-            resp = await client.post(
-                f"{API}/connect/noprov",
-                json={"redirect_path": "/integrations"},
-            )
-        assert resp.status_code == 200
-        assert resp.json() == _error_body("noprov", "Google Calendar", "Provider not configured")
-        mock_connect.assert_not_awaited()
 
     async def test_connect_unsupported_type(self, client: AsyncClient) -> None:
         resolved = _resolved("weird", managed_by="unknown", source="custom")
@@ -690,11 +576,6 @@ class TestConnectLinkEndpoint:
                 ),
             ),
             patch(
-                f"{_MODULE}.user_repository.get",
-                new_callable=AsyncMock,
-                return_value=UserDocument(email="a@b.com"),
-            ),
-            patch(
                 f"{_MODULE}.initiate_integration_connection",
                 new_callable=AsyncMock,
                 return_value=result,
@@ -722,11 +603,6 @@ class TestConnectLinkEndpoint:
                 ),
             ),
             patch(
-                f"{_MODULE}.user_repository.get",
-                new_callable=AsyncMock,
-                return_value=UserDocument(email="a@b.com"),
-            ),
-            patch(
                 f"{_MODULE}.initiate_integration_connection",
                 new_callable=AsyncMock,
                 return_value=result,
@@ -740,7 +616,6 @@ class TestConnectLinkEndpoint:
         initiate.assert_awaited_once_with(
             _VALID_UID,
             ANY,
-            user_email="a@b.com",
             redirect_path="/integrations",
             reconnect_account_id="ca_work",
         )
@@ -755,7 +630,6 @@ class TestConnectLinkEndpoint:
                     user_id=_VALID_UID, integration_id="gone", account_id=None
                 ),
             ),
-            patch(f"{_MODULE}.user_repository.get", new_callable=AsyncMock, return_value=None),
             patch(
                 f"{_MODULE}.IntegrationResolver.resolve", new_callable=AsyncMock, return_value=None
             ),
@@ -782,7 +656,6 @@ class TestConnectLinkEndpoint:
         answer = MagicMock(status=status, redirect_url=redirect_url, error="no")
         seams = {
             f"{_MODULE}.resolve_and_consume_connect_code": AsyncMock(return_value=binding),
-            f"{_MODULE}.user_repository.get": AsyncMock(return_value=None),
             f"{_MODULE}.initiate_integration_connection": AsyncMock(return_value=answer),
         }
         with ExitStack() as stack:
@@ -807,6 +680,33 @@ class TestConnectLinkEndpoint:
             )
         assert resp.status_code == 303
         assert "connect_error=invalid_or_expired_link" in resp.headers["location"]
+
+    async def test_a_binding_with_a_malformed_user_id_cannot_start(
+        self, client: AsyncClient
+    ) -> None:
+        binding = ConnectLinkBinding(user_id="not-an-id", integration_id="notion", account_id=None)
+        with (
+            patch(
+                f"{_MODULE}.resolve_and_consume_connect_code",
+                new_callable=AsyncMock,
+                return_value=binding,
+            ),
+            patch(f"{_MODULE}.initiate_integration_connection", new_callable=AsyncMock) as initiate,
+            patch(f"{_MODULE}.log") as mock_log,
+        ):
+            resp = await client.post(
+                f"{API}/connect-link", data={"code": "somecode"}, follow_redirects=False
+            )
+        assert resp.status_code == 303
+        assert "connect_error=invalid_or_expired_link" in resp.headers["location"]
+        initiate.assert_not_awaited()
+        mock_log.audit.assert_any_call(
+            "connect link redemption rejected",
+            actor="not-an-id",
+            resource="notion",
+            reason="malformed_user_id",
+            error_type="ValueError",
+        )
 
     @pytest.mark.regression
     async def test_get_does_not_spend_the_code(self, unauthed_client: AsyncClient) -> None:
@@ -834,11 +734,6 @@ class TestConnectLinkEndpoint:
                 return_value=ConnectLinkBinding(
                     user_id=_VALID_UID, integration_id="notion", account_id=None
                 ),
-            ),
-            patch(
-                f"{_MODULE}.user_repository.get",
-                new_callable=AsyncMock,
-                return_value=UserDocument(email="a@b.com"),
             ),
             patch(
                 f"{_MODULE}.initiate_integration_connection",

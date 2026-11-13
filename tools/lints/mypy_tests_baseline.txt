@@ -47,7 +47,6 @@ apps/api/tests/e2e/test_voice_device_realtime_e2e.py	arg-type
 apps/api/tests/e2e/test_voice_device_realtime_e2e.py	attr-defined
 apps/api/tests/e2e/test_webhook_fanout_e2e.py	arg-type
 apps/api/tests/e2e/test_webhook_fanout_e2e.py	func-returns-value
-apps/api/tests/factories.py	arg-type
 apps/api/tests/integration/agents/conftest.py	attr-defined
 apps/api/tests/integration/agents/test_browser_job_delivery.py	attr-defined
 apps/api/tests/integration/agents/test_browser_job_relay.py	attr-defined
@@ -71,7 +70,6 @@ apps/api/tests/integration/db/test_chroma_store.py	attr-defined
 apps/api/tests/integration/endpoints/conftest.py	arg-type
 apps/api/tests/integration/endpoints/conftest.py	misc
 apps/api/tests/integration/endpoints/test_members_api.py	attr-defined
-apps/api/tests/integration/endpoints/test_setup_api.py	arg-type
 apps/api/tests/integration/endpoints/test_setup_composio_api.py	attr-defined
 apps/api/tests/integration/endpoints/test_setup_composio_toolkits_api.py	arg-type
 apps/api/tests/integration/endpoints/test_setup_composio_toolkits_api.py	attr-defined
@@ -183,7 +181,6 @@ apps/api/tests/unit/config/test_sentry_sink.py	attr-defined
 apps/api/tests/unit/config/test_settings_guards.py	arg-type
 apps/api/tests/unit/config/test_settings_guards.py	call-arg
 apps/api/tests/unit/config/test_settings_hermetic.py	attr-defined
-apps/api/tests/unit/config/test_token_repository.py	arg-type
 apps/api/tests/unit/config/test_workos.py	attr-defined
 apps/api/tests/unit/core/test_lazy_loader.py	var-annotated
 apps/api/tests/unit/db/repositories/test_base_repository.py	unused-ignore
@@ -332,7 +329,6 @@ apps/api/tests/unit/services/files/test_sandbox.py	arg-type
 apps/api/tests/unit/services/hil/test_hil_jev_judge.py	attr-defined
 apps/api/tests/unit/services/hil/test_hil_resolution.py	arg-type
 apps/api/tests/unit/services/hil/test_ledger_publish.py	attr-defined
-apps/api/tests/unit/services/integrations/test_integration_status.py	arg-type
 apps/api/tests/unit/services/mcp/test_device_connector.py	union-attr
 apps/api/tests/unit/services/oauth/test_oauth_service_helpers.py	arg-type
 apps/api/tests/unit/services/onboarding/test_intelligence_service_pipeline.py	attr-defined
@@ -373,9 +369,6 @@ apps/api/tests/unit/services/test_outbound_delivery.py	arg-type
 apps/api/tests/unit/services/test_outbound_delivery.py	attr-defined
 apps/api/tests/unit/services/test_payment_service_dodo_reconciliation.py	attr-defined
 apps/api/tests/unit/services/test_platform_message_service.py	attr-defined
-apps/api/tests/unit/services/test_provider_credentials_service.py	arg-type
-apps/api/tests/unit/services/test_provider_credentials_service.py	assignment
-apps/api/tests/unit/services/test_provider_credentials_service.py	index
 apps/api/tests/unit/services/test_publish_service.py	arg-type
 apps/api/tests/unit/services/test_s3_blob_store.py	union-attr
 apps/api/tests/unit/services/test_search_service.py	arg-type
@@ -466,7 +459,6 @@ apps/api/tests/unit/utils/test_crawl_obscura.py	return-value
 apps/api/tests/unit/utils/test_file_utils.py	attr-defined
 apps/api/tests/unit/utils/test_image_utils.py	attr-defined
 apps/api/tests/unit/utils/test_notion_md.py	arg-type
-apps/api/tests/unit/utils/test_oauth_utils.py	attr-defined
 apps/api/tests/unit/utils/test_profile_card.py	attr-defined
 apps/api/tests/unit/utils/test_property_json_frames.py	arg-type
 apps/api/tests/unit/utils/test_property_never_raises.py	func-returns-value

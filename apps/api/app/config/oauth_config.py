@@ -2265,14 +2265,6 @@ def get_integration_by_id(integration_id: str) -> OAuthIntegration | None:
     return next((i for i in all_integrations() if i.id == integration_id), None)
 
 
-def get_integration_scopes(integration_id: str) -> list[str]:
-    """Get the OAuth scopes for a specific integration."""
-    integration = get_integration_by_id(integration_id)
-    if not integration:
-        return []
-    return [scope.scope for scope in integration.scopes]
-
-
 def get_short_name_mapping() -> dict[str, str]:
     """Get mapping of short names to integration IDs."""
     return {i.short_name: i.id for i in all_integrations() if i.short_name}

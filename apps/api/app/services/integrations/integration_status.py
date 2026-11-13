@@ -7,32 +7,21 @@ layer for pause/resume, so the reader lives where both can import it.
 
 from __future__ import annotations
 
-from typing import TypedDict, cast
-
-from app.config.oauth_config import all_integrations, get_integration_scopes
-from app.config.token_repository import token_repository
+from app.config.oauth_config import all_integrations
 from app.constants.cache import OAUTH_STATUS_KEY
 from app.constants.integrations import (
     INTEGRATION_STATUS_CONNECTED,
     MANAGED_BY_COMPOSIO,
     MANAGED_BY_MCP,
-    MANAGED_BY_SELF,
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.caching import Cacheable
-from app.models.oauth_models import OAuthIntegration
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.user_integrations import get_custom_auth_mcp_ids
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.utils.exceptions import ProviderNotConfiguredError
 from shared.py.wide_events import OAuthContext, log
-
-
-class _TokenScope(TypedDict):
-    """The OAuth2Token field the self-managed status check reads (always set)."""
-
-    scope: str
 
 
 async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
@@ -86,8 +75,6 @@ async def _get_cached_integrations_status(user_id: str) -> dict[str, bool]:
         elif integration.managed_by == MANAGED_BY_COMPOSIO:
             composio_providers.append(integration.provider)
             composio_id_to_provider[integration.id] = integration.provider
-        elif integration.managed_by == MANAGED_BY_SELF:
-            result[integration.id] = await _self_managed_connected(user_id, integration)
 
     if composio_providers:
         result.update(
@@ -126,26 +113,6 @@ async def _find_stale_mcp_ids(user_id: str, base_statuses: dict[str, bool]) -> s
         return set()
     connected_map = await MCPTokenStore(user_id).are_connected(candidates)
     return {iid for iid, ok in connected_map.items() if not ok}
-
-
-async def _self_managed_connected(user_id: str, integration: OAuthIntegration) -> bool:
-    """Return True when the stored token carries every scope the integration needs."""
-    try:
-        token = await token_repository.get_token(
-            user_id, integration.provider, renew_if_expired=True
-        )
-    except Exception as e:
-        log.debug(
-            f"{LogTag.OAUTH} Token not found for",
-            provider=integration.provider,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return False
-    scoped_token: _TokenScope = cast(_TokenScope, token)
-    granted = scoped_token.get("scope")
-    authorized_scopes = str(granted).split() if granted else []
-    return all(scope in authorized_scopes for scope in get_integration_scopes(integration.id))
 
 
 async def _composio_connected(
