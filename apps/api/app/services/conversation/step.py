@@ -76,6 +76,7 @@ from app.services.conversation.reply_files import reply_files
 from app.services.conversation.step_view import StepView
 from app.services.conversation.todo_wake import nothing_to_report
 from app.services.conversation.verdict import merge_group, quote_target, verdict
+from app.utils.hot_path import first_text_gate, first_text_shown
 from app.utils.liveness import keep_proving
 from shared.py.wide_events import log
 
@@ -312,7 +313,8 @@ async def _serve(
         for logged in entries
         if logged not in batch.waking and logged.seq not in state.unsettled_waking
     ]
-    await _run_attempt(ports, attempt, context)
+    with first_text_gate():
+        await _run_attempt(ports, attempt, context)
     return True, attempt.settled_view()
 
 
@@ -596,6 +598,7 @@ async def _show(ports: RuntimePorts, attempt: _Attempt, payload: StreamPayload) 
         if opened.seq == attempt.seen + 1:
             # Its own entry: no need to read the log for joiners the next verdict.
             attempt.seen = opened.seq
+        first_text_shown()
     shown = attempt.progress
     attempt.progress = replace(shown, reply=_fold(shown.reply, payload))
     delta = ReplyDeltaFrame(

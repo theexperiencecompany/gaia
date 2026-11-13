@@ -31,6 +31,7 @@ from app.models.conversation_log_models import (
     CommsPhase,
     ConversationState,
     Entry,
+    KickStep,
     LoggedEntry,
     Notice,
     PreemptHint,
@@ -154,34 +155,51 @@ class MongoConversationLog:
         return Unsettled(state=state, entries=entries)
 
     async def claim(self, conversation_id: str, user_id: str) -> StepClaim | None:
-        """Take the step with a new epoch, or None while another holder is alive."""
+        """Take the step with a new epoch, or None while another holder is alive.
+
+        The hint's epoch stands in for the head read when its holder's key is gone: take_runner
+        is conditional on that epoch, so a stale hint only misses and falls back to the head.
+        """
         client = redis_cache.client
+        last: int | None = await self._hinted_free_epoch(conversation_id, user_id)
         for _ in range(CONVERSATION_APPEND_MAX_ATTEMPTS):
-            head = await self._head(conversation_id, user_id)
-            if head.holder is not None and await client.exists(
-                _alive_key(conversation_id, user_id, head.holder)
-            ):
-                return None
-            epoch = head.runner_epoch + 1
+            if last is None:
+                head = await self._head(conversation_id, user_id)
+                if head.holder is not None and await client.exists(
+                    _alive_key(conversation_id, user_id, head.holder)
+                ):
+                    return None
+                last = head.runner_epoch
+            epoch = last + 1
             alive_key = _alive_key(conversation_id, user_id, epoch)
             # Taken before the head names it, so no reader sees a holder without its key; NX lets one claimer per epoch through.
             if not await client.set(alive_key, str(epoch), ex=RUNNER_ALIVE_TTL_SECONDS, nx=True):
                 return None
-            if await self._repository.take_runner(
-                conversation_id,
-                user_id=user_id,
-                runner_epoch=head.runner_epoch,
-                alive_key=alive_key,
-            ):
+            taken_from = await self._repository.take_runner(
+                conversation_id, user_id=user_id, runner_epoch=last, alive_key=alive_key
+            )
+            if taken_from is not None:
                 await _raise_hint(conversation_id, user_id, HintField.EPOCH, epoch, {})
                 return StepClaim(
                     conversation_id=conversation_id,
                     user_id=user_id,
                     epoch=epoch,
-                    took_over=head.holder is not None,
+                    took_over=taken_from.holder is not None,
                 )
             await client.delete(alive_key)
+            last = None
         return None
+
+    async def _hinted_free_epoch(self, conversation_id: str, user_id: str) -> int | None:
+        """Return the hint's last epoch when its holder's key is gone; None when only the head can tell."""
+        hinted = await redis_cache.client.hget(_hint_key(conversation_id, user_id), HintField.EPOCH)
+        if hinted is None:
+            return None
+        epoch = int(hinted)
+        # A live key is a refusal, and a refusal is confirmed on the head, never on the hint.
+        if await redis_cache.client.exists(_alive_key(conversation_id, user_id, epoch)):
+            return None
+        return epoch
 
     async def release_if_caught_up(self, claim: StepClaim) -> bool:
         """Release when nothing waking is unsettled; atomic with append; ClaimLost on a stale epoch."""
@@ -242,7 +260,14 @@ class MongoConversationLog:
             if isinstance(result, Rejected):
                 raise EntryRejected(result.reason)
             if await self._repository.commit_log_entry(
-                head, logged, result.state, epoch=epoch, unread=unread
+                head,
+                logged,
+                result.state,
+                epoch=epoch,
+                unread=unread,
+                # The step an unfenced entry kicks carries it on its own commits, off the reply's path.
+                flush=epoch is not None
+                or not any(isinstance(effect, KickStep) for effect in result.effects),
             ):
                 await _publish_hint(conversation_id, user_id, logged, result.state)
                 return Appended(

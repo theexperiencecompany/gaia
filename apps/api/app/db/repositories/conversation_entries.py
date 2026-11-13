@@ -109,6 +109,8 @@ _APPEND_HEAD_FIELDS: dict[str, object] = {
     RUNNER_EPOCH_FIELD: 1,
 }
 _EXISTING_FIELDS: dict[str, object] = {"_id": 0, "id": 1, "seq": 1}
+#: Where head_with_unsettled puts the collection's entries it read beside the head.
+UNSETTLED_ROWS_FIELD = "unsettled_rows"
 _HEAD_OF_ENTRY = "_head"
 #: Each outbox entry of a head, one document apiece.
 _OUTBOX_AS_ENTRIES: list[dict[str, object]] = [
@@ -243,6 +245,40 @@ def head_with_existing(
                     {"$project": _EXISTING_FIELDS},
                 ],
                 "as": "existing",
+            }
+        },
+    ]
+
+
+def head_with_unsettled(
+    conversation_id: str, user_id: str, *, entries_collection: str
+) -> list[dict[str, object]]:
+    """Read the head, then the collection's entries after what it settled or stopped through its log_head, in one aggregate."""
+    since = {
+        "$max": [
+            {"$ifNull": [f"${STATE_FIELD}.settled_through", 0]},
+            {"$ifNull": [f"${STATE_FIELD}.stopped_through", 0]},
+        ]
+    }
+    after_since = {"$gt": ["$seq", "$$since"]}
+    through_head = {"$lte": ["$seq", "$$head"]}
+    return [
+        {"$match": {"conversation_id": conversation_id, "user_id": user_id}},
+        {"$project": _APPEND_HEAD_FIELDS},
+        {
+            "$lookup": {
+                "from": entries_collection,
+                "let": {"since": since, "head": {"$ifNull": [f"${LOG_HEAD_FIELD}", 0]}},
+                "pipeline": [
+                    {
+                        "$match": {
+                            "user_id": user_id,
+                            "conversation_id": conversation_id,
+                            "$expr": {"$and": [after_since, through_head]},
+                        }
+                    }
+                ],
+                "as": UNSETTLED_ROWS_FIELD,
             }
         },
     ]

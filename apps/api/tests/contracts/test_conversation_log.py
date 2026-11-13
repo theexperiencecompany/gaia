@@ -253,6 +253,9 @@ async def test_the_same_id_appended_by_two_tasks_at_once_is_stored_once(
     await held.run_all()
     assert sorted(result.duplicate for result in results) == [False, True, True, True]
     assert {result.logged for result in results} == {results[0].logged}
+    # A message that kicks the step stays staged until a commit or the sweeper flushes it.
+    assert await entries_collection.count_documents({"conversation_id": conversation}) == 0
+    await ConversationRepository().flush_outbox(conversation, user_id=UID)
     assert await entries_collection.count_documents({"conversation_id": conversation}) == 1
 
 
@@ -347,6 +350,71 @@ async def test_an_append_reduced_before_the_comms_phase_changed_does_not_undo_it
     await log.append(conversation, UID, user("u2"))
     state = await log.state(conversation, UID)
     assert (state.head, state.comms) == (2, CommsPhase.THINKING)
+
+
+async def test_a_stale_hint_epoch_never_takes_a_live_step_and_loses_no_entry(
+    log: MongoConversationLog, conversation: str, raw_collection: Any, redis: Redis
+) -> None:
+    holder = await log.claim(conversation, UID)
+    assert holder is not None
+    await log.append(conversation, UID, user("u1"))
+    hint_key = f"conv:hint:{UID}:{conversation}"
+    for stale in (holder.epoch, holder.epoch - 1, holder.epoch + 5):
+        await redis.hset(hint_key, "epoch", str(stale))
+        assert await log.claim(conversation, UID) is None
+        assert await redis.exists(f"conv:alive:{UID}:{conversation}:{stale + 1}") == (
+            stale + 1 == holder.epoch
+        )
+        head = await raw_collection.find_one({"conversation_id": conversation})
+        assert (head["runner_epoch"], head["runner"]["epoch"]) == (holder.epoch, holder.epoch)
+    await redis.delete(f"conv:alive:{UID}:{conversation}:{holder.epoch}")
+    await redis.hset(hint_key, "epoch", str(holder.epoch - 1))
+    taker = await log.claim(conversation, UID)
+    assert taker is not None and (taker.epoch, taker.took_over) == (holder.epoch + 1, True)
+    with pytest.raises(ClaimLost):
+        await log.append_fenced(holder, opened("o"))
+    assert [logged.entry.id for logged in await log.read_after(conversation, UID, 0)] == ["u1"]
+    assert (await log.unsettled(conversation, UID)).state.unsettled_waking == (1,)
+
+
+async def test_a_released_step_is_claimed_from_the_hint_and_was_not_taken_over(
+    log: MongoConversationLog, conversation: str
+) -> None:
+    first = await log.claim(conversation, UID)
+    assert first is not None and await log.release_if_caught_up(first)
+    second = await log.claim(conversation, UID)
+    assert second is not None and (second.epoch, second.took_over) == (first.epoch + 1, False)
+
+
+async def test_a_message_that_kicks_the_step_is_flushed_once_by_the_steps_commit(
+    log: MongoConversationLog, conversation: str, held: HeldFlushes, entries_collection: Any
+) -> None:
+    await log.append(conversation, UID, user("u1"))
+    assert held.spawned == []
+    claim = await log.claim(conversation, UID)
+    assert claim is not None
+    unsettled = await log.unsettled(conversation, UID)
+    assert [logged.entry.id for logged in unsettled.entries] == ["u1"]
+    await log.append_fenced(claim, opened("o", "r1"))
+    await held.run_all()
+    stored = await entries_collection.find({"conversation_id": conversation}).to_list(None)
+    assert sorted(row["id"] for row in stored) == ["o", "u1"]
+
+
+async def test_the_unsettled_read_merges_flushed_entries_with_staged_ones_newest_first(
+    log: MongoConversationLog, conversation: str, held: HeldFlushes
+) -> None:
+    claim = await log.claim(conversation, UID)
+    assert claim is not None
+    await log.append(conversation, UID, user("u1"))
+    reply = opened("o", "r1")
+    await log.append_fenced(claim, reply)
+    await held.run_all()
+    amended = await log.amend(claim, reply.model_copy(update={"text": "hello"}))
+    held.drop_all()
+    unsettled = await log.unsettled(conversation, UID)
+    assert [logged.entry.id for logged in unsettled.entries] == ["u1", "o"]
+    assert unsettled.entries[-1] == amended
 
 
 async def test_a_lost_hint_is_rebuilt_from_the_head(

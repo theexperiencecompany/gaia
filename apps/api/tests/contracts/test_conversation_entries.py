@@ -63,6 +63,11 @@ def _message(message_id: str, text: str = "hi") -> UserMessage:
     return UserMessage(id=message_id, text=text, surface=ConversationSource.WEB)
 
 
+def _flushed_at_once(message_id: str) -> UserMessage:
+    """Build an imported message: it kicks no step, so its own append spawns its flush."""
+    return _message(message_id).model_copy(update={"imported": True})
+
+
 def _log() -> MongoConversationLog:
     return MongoConversationLog(conversation_log_repository, lambda: datetime.now(UTC))
 
@@ -129,7 +134,9 @@ async def test_concurrent_appends_take_every_seq_once_in_order(
 async def test_an_entry_is_read_the_moment_append_returns(
     repo: ConversationRepository, conversation: ConversationDocument, held: HeldFlushes
 ) -> None:
-    [seq] = await _append(conversation.conversation_id, conversation.user_id, [_message("m1")])
+    [seq] = await _append(
+        conversation.conversation_id, conversation.user_id, [_flushed_at_once("m1")]
+    )
 
     assert held.held, "the flush must not have run yet"
     assert held.spawned == [
@@ -145,20 +152,20 @@ async def test_a_flush_that_never_ran_is_finished_by_the_next_append_or_flush_ou
     raw_collection: Any,
     entries_collection: Any,
 ) -> None:
-    await _append(conversation.conversation_id, conversation.user_id, [_message("m1")])
+    await _append(conversation.conversation_id, conversation.user_id, [_flushed_at_once("m1")])
     held.drop_all()
     before = await _ids(repo, conversation)
     assert before == [(1, "m1")]
     assert list(await _outbox(raw_collection, conversation)) == ["1"]
 
-    await _append(conversation.conversation_id, conversation.user_id, [_message("m2")])
+    await _append(conversation.conversation_id, conversation.user_id, [_flushed_at_once("m2")])
     await held.run_all()
 
     assert await _outbox(raw_collection, conversation) == {}
     assert await entries_collection.count_documents({}) == 2
     assert await _ids(repo, conversation) == [(1, "m1"), (2, "m2")]
 
-    await _append(conversation.conversation_id, conversation.user_id, [_message("m3")])
+    await _append(conversation.conversation_id, conversation.user_id, [_flushed_at_once("m3")])
     held.drop_all()
     during = await _ids(repo, conversation)
     await repo.flush_outbox(conversation.conversation_id, user_id=conversation.user_id)
@@ -309,7 +316,7 @@ async def test_deleting_conversations_deletes_their_entries(
             }
         )
         await repo.create(doc)
-        await _append(doc.conversation_id, user_id, [_message("m")])
+        await _append(doc.conversation_id, user_id, [_flushed_at_once("m")])
         await held.run_all()
         return doc.conversation_id
 
@@ -529,10 +536,10 @@ async def test_a_flush_of_a_conversation_deleted_under_it_takes_back_what_it_ins
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cid, uid = conversation.conversation_id, conversation.user_id
-    await _append(cid, uid, [_message("m1")])
+    await _append(cid, uid, [_flushed_at_once("m1")])
     held.drop_all()
     other = await _chat(repo, uid)
-    await _append(other, uid, [_message("kept")])
+    await _append(other, uid, [_flushed_at_once("kept")])
     await held.run_all()
     insert = repo._write_entries
 

@@ -100,6 +100,9 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
     # timestamps in a shape the base must not touch (e.g. legacy ISO strings) turns
     # this off and writes those fields itself.
     auto_stamp_timestamps: ClassVar[bool] = True
+    # Whether create reads the inserted document back. An append-only ledger nothing reads by id
+    # turns it off: the row it returns is the one it wrote, under the id Mongo assigned.
+    reads_back_inserts: ClassVar[bool] = True
 
     def __init_subclass__(cls, abstract: bool = False, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -211,7 +214,11 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             data["_id"] = doc.id
         collection = get_async_collection(self.collection_name)
         result = await collection.insert_one(data)
-        stored = await collection.find_one({"_id": result.inserted_id})
+        stored = (
+            await collection.find_one({"_id": result.inserted_id})
+            if self.reads_back_inserts
+            else {**data, "_id": result.inserted_id}
+        )
         if stored is None:
             raise AppError(message="inserted document could not be read back")
         created = self._to_model(stored)

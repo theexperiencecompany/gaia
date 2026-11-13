@@ -95,6 +95,7 @@ from app.utils.errors import (
     ConversationIdTakenError,
     ConversationStoreError,
 )
+from app.utils.hot_path import after_first_text
 from shared.py.wide_events import spawn_logged_task
 
 _JITTER = random.SystemRandom()
@@ -623,12 +624,18 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     def _spawn_flush(
         self, conversation_id: str, user_id: str, staged: Sequence[StoredEntry]
     ) -> None:
-        """Flush what the caller staged and read still unflushed: the hot path never reads the outbox back."""
+        """Flush what the caller staged and read still unflushed, once a reply being shown has its first text."""
         spawn_logged_task(
             "conversation_flush",
-            self._flush(conversation_id, user_id, staged),
+            self._flush_after_first_text(conversation_id, user_id, staged),
             conversation_id=conversation_id,
         )
+
+    async def _flush_after_first_text(
+        self, conversation_id: str, user_id: str, staged: Sequence[StoredEntry]
+    ) -> None:
+        await after_first_text()
+        await self._flush(conversation_id, user_id, staged)
 
     async def _read_heads(
         self,
@@ -756,19 +763,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         # Log entries share the seq space, so only a read per head can bound its newest limit messages.
         batches = [[head] for head in heads] if window.limit else [list(heads)]
         reads = await asyncio.gather(*(self._stored_rows(batch, window) for batch in batches))
-        rows = [row for read in reads for row in read]
-        stored: dict[tuple[str, str], dict[int, StoredEntry]] = {}
-        for entry in map(StoredEntry.model_validate, rows):
-            committed_at(entry)
-            stored.setdefault((entry.user_id, entry.conversation_id), {})[entry.seq] = entry
-        result: list[tuple[Head, list[StoredEntry]]] = []
-        for head in heads:
-            union = dict(stored.get((head.user_id, head.conversation_id), {}))
-            for seq, entry in head.outbox.items():
-                if window.admits(entry, head.log_head):
-                    union[seq] = newest(union.get(seq), entry)
-            result.append((head, window.take(union)))
-        return result
+        return union_with_outboxes(heads, [row for read in reads for row in read], window)
 
     async def _stored_rows(
         self, heads: Sequence[Head], window: EntryWindow
@@ -996,3 +991,21 @@ def _todo_binding(todo_id: str) -> dict[str, object]:
 
 def _todo_chats(user_id: str, todo_ids: Sequence[str]) -> dict[str, object]:
     return {"user_id": user_id, "todo_id": {"$in": list(todo_ids), "$type": "string"}}
+
+
+def union_with_outboxes(
+    heads: Sequence[Head], rows: Sequence[Mapping[str, object]], window: EntryWindow
+) -> list[tuple[Head, list[StoredEntry]]]:
+    """Union each head's outbox with the collection rows read for it, its newer copy winning, within window."""
+    stored: dict[tuple[str, str], dict[int, StoredEntry]] = {}
+    for entry in map(StoredEntry.model_validate, rows):
+        committed_at(entry)
+        stored.setdefault((entry.user_id, entry.conversation_id), {})[entry.seq] = entry
+    result: list[tuple[Head, list[StoredEntry]]] = []
+    for head in heads:
+        union = dict(stored.get((head.user_id, head.conversation_id), {}))
+        for seq, entry in head.outbox.items():
+            if window.admits(entry, head.log_head):
+                union[seq] = newest(union.get(seq), entry)
+        result.append((head, window.take(union)))
+    return result

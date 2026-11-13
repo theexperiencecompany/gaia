@@ -25,16 +25,19 @@ from app.db.repositories.conversation_entries import (
     RUNNER_EPOCH_FIELD,
     RUNNER_FIELD,
     STATE_FIELD,
+    UNSETTLED_ROWS_FIELD,
     EntryWindow,
     Head,
     at_log_head,
     current_state,
+    head_from_raw,
+    head_with_unsettled,
     log_document,
     logged_of,
     store_errors,
 )
 from app.db.repositories.conversation_history import SYNCED_KINDS
-from app.db.repositories.conversations import ConversationRepository
+from app.db.repositories.conversations import ConversationRepository, union_with_outboxes
 from app.models.conversation_log_models import (
     CommsPhase,
     ConversationState,
@@ -43,7 +46,7 @@ from app.models.conversation_log_models import (
     Reply,
     UserMessage,
 )
-from app.models.conversation_models import ConversationHead, StoredEntry
+from app.models.conversation_models import ConversationHead, StepHolder, StoredEntry
 from app.utils.errors import ConversationStoreError
 
 _INTEGRATION_KINDS = (EntryKind.INTEGRATION_NEEDED, EntryKind.INTEGRATION_CONNECTED)
@@ -70,6 +73,13 @@ class SweepHead:
     user_id: str
     has_outbox: bool
     state: ConversationState
+
+
+@dataclass(frozen=True)
+class TakenFrom:
+    """What take_runner replaced: the epoch that held the step, None when it was free."""
+
+    holder: int | None
 
 
 @dataclass(frozen=True)
@@ -109,11 +119,13 @@ class ConversationLogRepository(ConversationRepository):
         *,
         epoch: int | None,
         unread: bool = False,
+        flush: bool = True,
     ) -> bool:
         """Commit logged and the state after it, only while the head is as read (and held by epoch when given).
 
         unread also marks the conversation unread. An entry that changes what history shows (a
         message, its settle) advances the sync clock, so batch sync and the activity signal see it.
+        flush=False leaves the copy to conversation_entries to a later commit or the sweeper.
         """
         expected: dict[str, object] = {
             "conversation_id": head.conversation_id,
@@ -143,11 +155,12 @@ class ConversationLogRepository(ConversationRepository):
             )
         if not result.matched_count:
             return False
-        self._spawn_flush(
-            head.conversation_id,
-            head.user_id,
-            [*head.unflushed, StoredEntry.model_validate(document)],
-        )
+        if flush:
+            self._spawn_flush(
+                head.conversation_id,
+                head.user_id,
+                [*head.unflushed, StoredEntry.model_validate(document)],
+            )
         return True
 
     async def read_log(
@@ -173,13 +186,18 @@ class ConversationLogRepository(ConversationRepository):
         self, conversation_id: str, *, user_id: str
     ) -> tuple[ConversationState, list[LoggedEntry]] | None:
         """Return the state at the head and the entries after what it settled or stopped, through that head; None for a missing conversation."""
-        heads = await self._read_heads({"conversation_id": conversation_id, "user_id": user_id})
-        if not heads:
+        entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).name
+        pipeline = head_with_unsettled(conversation_id, user_id, entries_collection=entries)
+        with store_errors("head read"):  # pragma: no mutate — error label only
+            raws = await self._raw_collection().aggregate(pipeline).to_list(length=None)
+        if not raws:
             return None
-        state = current_state(heads[0].document)
+        rows = raws[0].pop(UNSETTLED_ROWS_FIELD)
+        head = head_from_raw(raws[0])
+        state = current_state(head.document)
         window = EntryWindow(after_seq=max(state.settled_through, state.stopped_through))
-        [(_, entries)] = await self._union_for(heads, window)
-        return state, [logged_of(entry) for entry in entries]
+        [(_, unsettled)] = union_with_outboxes([head], rows, window)
+        return state, [logged_of(entry) for entry in unsettled]
 
     async def stage_log_amend(
         self, conversation_id: str, *, user_id: str, epoch: int, amended: LoggedEntry
@@ -327,12 +345,12 @@ class ConversationLogRepository(ConversationRepository):
 
     async def take_runner(
         self, conversation_id: str, *, user_id: str, runner_epoch: int, alive_key: str
-    ) -> bool:
-        """Hand the step to epoch runner_epoch + 1, only while runner_epoch is still the last one handed out."""
+    ) -> TakenFrom | None:
+        """Hand the step to epoch runner_epoch + 1, only while runner_epoch is still the last one handed out; None when it is not."""
         last = runner_epoch if runner_epoch else {"$exists": False}
         epoch = runner_epoch + 1
         with store_errors("log claim"):  # pragma: no mutate — error label
-            result = await self._raw_collection().update_one(
+            before = await self._raw_collection().find_one_and_update(
                 {"conversation_id": conversation_id, "user_id": user_id, RUNNER_EPOCH_FIELD: last},
                 {
                     "$set": {
@@ -340,8 +358,13 @@ class ConversationLogRepository(ConversationRepository):
                         RUNNER_FIELD: {"epoch": epoch, "alive_key": alive_key},
                     }
                 },
+                projection={RUNNER_FIELD: 1},
+                return_document=ReturnDocument.BEFORE,
             )
-        return bool(result.matched_count)
+        if before is None:
+            return None
+        holder = before.get(RUNNER_FIELD)
+        return TakenFrom(holder=None if holder is None else StepHolder.model_validate(holder).epoch)
 
     async def release_runner(self, conversation_id: str, *, user_id: str, epoch: int) -> bool:
         """Clear the step's holder, only while epoch holds it and nothing waking is unsettled."""
