@@ -302,7 +302,7 @@ class StepScenarios:
         ]
         await assert_quiet(rt)
 
-    async def test_cards_shown_before_a_message_arrives_answer_below_it_in_one_reply(
+    async def test_cards_shown_before_a_message_arrives_stay_above_it_and_the_answer_follows_it(
         self, rt: Runtime
     ) -> None:
         # Conversation d0fb1e04: searches for u1 were showing when u2 changed the ask.
@@ -320,13 +320,22 @@ class StepScenarios:
         )
         await send(rt, user("u1"))
         await run(rt)
-        assert rt.runner.calls == [Started(batch=(1,), context=()), Absorbed((2,))]
-        assert await kinds(rt) == ["user_message", "user_message", "reply", "reply_settled"]
-        (reply,) = await replies(rt)
-        assert (reply.text, reply.tool_data) == ("PDEU is a university", (CARD, CARD))
-        assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1", "u2"))]
-        assert (await settles(rt))[0].quote_target is None
-        # Live, the cards stream as a draft with no entry: no reply entry reaches a client before u2.
+        assert rt.runner.calls == [Started(batch=(1,), context=()), Absorbed((3,))]
+        assert await kinds(rt) == [
+            "user_message",
+            "reply",
+            "user_message",
+            "reply_settled",
+            "reply",
+            "reply_settled",
+        ]
+        cards, answer = await replies(rt)
+        assert (cards.text, cards.tool_data) == ("", (CARD, CARD))
+        assert (answer.text, answer.tool_data) == ("PDEU is a university", ())
+        assert await answered(rt) == [
+            (ReplyOutcome.ANSWERED, ("u1",)),
+            (ReplyOutcome.ANSWERED, ("u2",)),
+        ]
         entry_seqs = [f.seq for f in rt.frames.published if isinstance(f, EntryFrame)]
         assert entry_seqs == sorted(entry_seqs)
         await assert_quiet(rt)
@@ -346,17 +355,20 @@ class StepScenarios:
         assert reactions == {"u1": None, "u2": Reaction(emoji="👍", by=ReactionBy.CHAT_MODEL)}
         assert (await answered(rt))[-1] == (ReplyOutcome.SILENT, ("u1", "u2"))
 
-    async def test_a_reply_of_cards_only_takes_its_slot_when_it_settles(self, rt: Runtime) -> None:
+    async def test_a_reply_of_cards_only_takes_its_slot_at_its_first_card(
+        self, rt: Runtime
+    ) -> None:
         rt.runner.script(
             [card(), Do(arrive(rt, user("u2"))), Finished(Replied(""))],
             [Finished(Replied("two"))],
         )
         await send(rt, user("u1"))
         await run(rt)
-        assert (await kinds(rt))[:4] == ["user_message", "user_message", "reply", "reply_settled"]
+        assert (await kinds(rt))[:4] == ["user_message", "reply", "user_message", "reply_settled"]
         assert (await replies(rt))[0].tool_data == (CARD,)
         assert (await answered(rt))[0] == (ReplyOutcome.ANSWERED, ("u1",))
-        assert (await settles(rt))[0].quote_target == "u1"
+        # It sits directly under the message it answers, so it quotes nothing.
+        assert (await settles(rt))[0].quote_target is None
         await assert_quiet(rt)
 
     async def test_a_comms_tool_card_keeps_its_output_in_the_saved_reply(self, rt: Runtime) -> None:
@@ -480,11 +492,11 @@ class StepScenarios:
         await run(rt)
         last = (await settles(rt))[-1]
         # The late result quotes the original request: the side question sits between them.
-        assert (last.reply_id, last.answers, last.quote_target) == ("t1", ("f", "u0"), "u0")
-        assert [(r.reply_id, r.quote_target) for r in await replies(rt)][-1] == ("t1", "u0")
+        assert (last.narrates, last.answers, last.quote_target) == (("t1",), ("f", "u0"), "u0")
+        assert [(r.narrates, r.quote_target) for r in await replies(rt)][-1] == (("t1",), "u0")
         await assert_quiet(rt)
 
-    async def test_a_write_up_that_says_nothing_settles_silent_though_it_carries_the_works_cards(
+    async def test_a_write_up_that_says_nothing_settles_silent_and_leaves_the_cards_to_the_work(
         self, rt: Runtime
     ) -> None:
         await start_work(rt)
@@ -492,7 +504,8 @@ class StepScenarios:
         await send(rt, finished("f", "t1").model_copy(update={"tool_data": (CARD,)}))
         await run(rt)
         assert (await answered(rt))[-1] == (ReplyOutcome.SILENT, ("f", "u0"))
-        assert (await replies(rt))[-1].tool_data == (CARD,)
+        write_up = (await replies(rt))[-1]
+        assert (write_up.tool_data, write_up.narrates) == ((), ("t1",))
 
     async def test_a_streamed_late_result_quotes_the_request_from_its_first_frame(
         self, rt: Runtime
@@ -507,7 +520,9 @@ class StepScenarios:
         opened = [
             f.entry
             for f in rt.frames.published
-            if isinstance(f, EntryFrame) and isinstance(f.entry, Reply) and f.entry.reply_id == "t1"
+            if isinstance(f, EntryFrame)
+            and isinstance(f.entry, Reply)
+            and f.entry.narrates == ("t1",)
         ]
         assert [reply.quote_target for reply in opened][:1] == ["u0"]
 
@@ -621,7 +636,7 @@ class StepScenarios:
         await run(rt)
         assert rt.runner.calls[1:3] == [RESTART, Started(batch=(5, 6), context=(2, 3, 4))]
         assert (await answered(rt))[-1] == (ReplyOutcome.ANSWERED, ("u5", "f", "u0"))
-        assert (await settles(rt))[-1].reply_id == "t1"
+        assert (await settles(rt))[-1].narrates == ("t1",)
 
     async def test_a_work_result_after_commit_is_answered_by_the_next_run(
         self, rt: Runtime
@@ -646,7 +661,7 @@ class StepScenarios:
         await run(rt)
         assert rt.runner.calls == [Started(batch=(5, 6), context=(2, 3, 4))]
         last = (await settles(rt))[-1]
-        assert (last.reply_id, last.answers) == ("t1", ("f", "u6", "u0"))
+        assert (last.narrates, last.answers) == (("t1",), ("f", "u6", "u0"))
 
     async def test_stop_while_thinking_withdraws_the_attempt_and_writes_no_reply(
         self, rt: Runtime
@@ -1077,6 +1092,16 @@ class StepScenarios:
         assert FILE_CARD in reply.tool_data
         assert rt.effects.calls[-1] == EffectCall("deliver_files", ("out/report.pdf",))
         assert [c for c in rt.effects.calls if c.name == "deliver_files"] == [rt.effects.calls[-1]]
+
+    async def test_a_file_the_work_made_is_sent_with_the_reply_narrating_it(
+        self, rt: Runtime
+    ) -> None:
+        await start_work(rt)
+        rt.runner.script([Finished(Replied("here is the report"))])
+        await send(rt, finished("f", "t1").model_copy(update={"tool_data": (FILE_CARD,)}))
+        await run(rt)
+        delivered = [c for c in rt.effects.calls if c.name == "deliver_files"]
+        assert delivered == [EffectCall("deliver_files", ("out/report.pdf",))]
 
     async def test_a_reply_with_no_file_sends_none(self, rt: Runtime) -> None:
         rt.runner.script([text("hi"), card(), Finished(Replied("hi"))])

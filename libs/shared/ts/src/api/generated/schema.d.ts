@@ -13570,6 +13570,11 @@ export interface components {
              */
             kind: "reply";
             /**
+             * Narrates
+             * @default []
+             */
+            narrates: string[];
+            /**
              * Pinned
              * @default false
              */
@@ -13642,6 +13647,11 @@ export interface components {
              * @enum {string}
              */
             kind: "reply_settled";
+            /**
+             * Narrates
+             * @default []
+             */
+            narrates: string[];
             outcome: components["schemas"]["ReplyOutcome"];
             /** Quote Target */
             quote_target: string | null;
@@ -17386,6 +17396,8 @@ export interface components {
              * @default false
              */
             exclusive: boolean;
+            /** Handoff */
+            handoff: string | null;
             /**
              * Id
              * @description Producer-minted idempotency key

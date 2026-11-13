@@ -240,7 +240,9 @@ def _work_bubble(
     seq: int, date: str, work: WorkFinished, beside: _Beside
 ) -> ConversationEntry | None:
     """Show finished work no reply took: its cards, or that it stopped."""
-    if work.task_id in beside.replies or not (work.tool_data or work.outcome in _STOPPED_WORK):
+    if work.task_id in beside.replies or not (
+        work.tool_data or work.image or work.outcome in _STOPPED_WORK
+    ):
         return None
     return ConversationEntry(
         seq=seq,
@@ -249,6 +251,7 @@ def _work_bubble(
         response="",
         message_id=f"work:{work.task_id}",
         tool_data=_cards(work.tool_data, beside),
+        image_data=work.image,
         stopped=True if work.outcome in _STOPPED_WORK else None,
     )
 

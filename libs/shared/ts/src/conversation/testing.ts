@@ -63,6 +63,7 @@ export const reply = (
   follow_up_actions: [],
   heard_through: null,
   quote_target: quoteTarget,
+  narrates: [],
   image: null,
   pinned: false,
   imported: false,
@@ -87,6 +88,7 @@ export const replySettled = (
   through,
   quote_target: quoteTarget,
   failure,
+  narrates: [],
   imported: false,
 });
 
@@ -103,6 +105,7 @@ export const workStarted = (
   joins,
   detached: false,
   exclusive: false,
+  handoff: null,
 });
 
 export const workFinished = (

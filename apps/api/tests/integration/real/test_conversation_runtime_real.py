@@ -1015,7 +1015,7 @@ async def test_a_step_killed_mid_thinking_is_answered_after_the_sweep(
 
 
 @pytest.mark.service
-async def test_the_sweep_reports_work_whose_executor_died_in_the_tasks_own_reply(
+async def test_the_sweep_reports_work_whose_executor_died_in_a_reply_narrating_it(
     rig_for: RigFactory,
 ) -> None:
     model = gated("working on it", "sorry, that stopped before it finished")
@@ -1027,7 +1027,7 @@ async def test_the_sweep_reports_work_whose_executor_died_in_the_tasks_own_reply
     await rig.settle()
     finished = await rig.of(WorkFinished)
     assert [(f.task_id, f.outcome) for f in finished] == [("t9", WorkOutcome.LOST)]
-    assert (await rig.of(Reply))[-1].reply_id == "t9"
+    assert (await rig.of(Reply))[-1].narrates == ("t9",)
 
 
 @pytest.mark.service
@@ -1250,7 +1250,7 @@ def _card(tool_name: str) -> ToolDataEntry:
 
 
 @pytest.mark.service
-async def test_executor_cards_stream_as_work_deltas_and_land_on_the_tasks_reply(
+async def test_executor_cards_stream_as_work_deltas_and_stay_on_the_finished_work(
     rig_for: RigFactory,
 ) -> None:
     model = gated("searching", "3 flights found")
@@ -1279,14 +1279,16 @@ async def test_executor_cards_stream_as_work_deltas_and_land_on_the_tasks_reply(
     streamed = await read_frames(rig.conversation_id, "0", block_ms=1)
     work = [s.frame for s in streamed if isinstance(s.frame, WorkDeltaFrame)]
     shown = [f.payload.tool_data["tool_name"] for f in work if isinstance(f.payload, ToolDataEvent)]
-    task_reply = [reply for reply in await rig.of(Reply) if reply.reply_id == "t1"]
+    task_reply = [reply for reply in await rig.of(Reply) if reply.narrates == ("t1",)]
     assert [(f.task_id, f.index) for f in work] == [("t1", 0), ("t1", 1), ("t1", 2), ("t1", 3)]
     assert shown == ["search_flights", "flight_list", "price_chart", "booking"]
-    assert [(r.text, r.tool_data) for r in task_reply] == [("3 flights found", cards)]
+    # The cards stay with the work; the reply narrating it carries only its own words.
+    assert [(r.text, r.tool_data) for r in task_reply] == [("3 flights found", ())]
+    assert [f.tool_data for f in await rig.of(WorkFinished)] == [cards]
 
 
 @pytest.mark.service
-async def test_an_image_the_work_generated_rides_its_reply_and_survives_a_reload(
+async def test_an_image_the_work_generated_stays_on_its_work_and_survives_a_reload(
     rig_for: RigFactory,
 ) -> None:
     """Regression: a generated image showed live and was gone on reload; no log entry carried it."""
@@ -1306,11 +1308,11 @@ async def test_an_image_the_work_generated_rides_its_reply_and_survives_a_reload
         WorkReport("drew a red fox", image=image),
     )
     await rig.settle()
-    [task_reply] = [reply for reply in await rig.of(Reply) if reply.reply_id == "t1"]
+    [task_reply] = [reply for reply in await rig.of(Reply) if reply.narrates == ("t1",)]
     reloaded = await conversation_repository.get(rig.conversation_id, user_id=rig.user_id)
     assert reloaded is not None
-    assert (task_reply.text, task_reply.image) == ("Here is your fox", image)
-    assert [m.image_data for m in shown_messages(reloaded) if m.message_id == "t1"] == [image]
+    assert task_reply.text == "Here is your fox"
+    assert [m.image_data for m in shown_messages(reloaded) if m.message_id == "work:t1"] == [image]
 
 
 @pytest.mark.service
@@ -1378,7 +1380,7 @@ async def test_an_approved_action_that_failed_still_says_so_on_its_card_after_a_
     [shown] = [
         entry["data"]
         for message in shown_messages(reloaded)
-        if message.message_id == "t1"
+        if message.message_id == "work:t1"
         for entry in message.tool_data or []
     ]
     assert (shown["outcome"], shown["action"]) == (ApprovalOutcome.APPROVED, ActionResult.FAILED)

@@ -285,6 +285,7 @@ const WorkStartedSchema = z.object({
   joins: nullableString,
   detached: z.boolean().default(false),
   exclusive: z.boolean().default(false),
+  handoff: nullableString,
 }) satisfies z.ZodType<WorkStarted>;
 
 const ApprovalRequestedSchema = z.object({
@@ -331,6 +332,7 @@ const ReplySchema = z.object({
   follow_up_actions: z.array(z.string()).default([]),
   heard_through: z.number().int().min(0).nullable().default(null),
   quote_target: nullableString,
+  narrates: z.array(z.string()).default([]),
   image: ImageDataSchema.nullable().default(null),
   pinned: z.boolean().default(false),
   imported: z.boolean().default(false),
@@ -360,6 +362,7 @@ const ReplySettledSchema = z
       ])
       .nullable()
       .default(null),
+    narrates: z.array(z.string()).default([]),
     imported: z.boolean().default(false),
   })
   .refine(

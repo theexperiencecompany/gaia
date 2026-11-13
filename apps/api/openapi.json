@@ -16208,6 +16208,14 @@
             "title": "Kind",
             "type": "string"
           },
+          "narrates": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Narrates",
+            "type": "array"
+          },
           "pinned": {
             "default": false,
             "title": "Pinned",
@@ -16258,6 +16266,7 @@
           "follow_up_actions",
           "image",
           "quote_target",
+          "narrates",
           "heard_through",
           "pinned",
           "imported",
@@ -16403,6 +16412,14 @@
             "title": "Kind",
             "type": "string"
           },
+          "narrates": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Narrates",
+            "type": "array"
+          },
           "outcome": {
             "$ref": "#/components/schemas/ReplyOutcome"
           },
@@ -16436,6 +16453,7 @@
           "through",
           "quote_target",
           "failure",
+          "narrates",
           "imported"
         ],
         "title": "ReplySettled",
@@ -23118,6 +23136,17 @@
             "title": "Exclusive",
             "type": "boolean"
           },
+          "handoff": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handoff"
+          },
           "id": {
             "description": "Producer-minted idempotency key",
             "minLength": 1,
@@ -23154,7 +23183,8 @@
           "answers",
           "joins",
           "detached",
-          "exclusive"
+          "exclusive",
+          "handoff"
         ],
         "title": "WorkStarted",
         "type": "object"
