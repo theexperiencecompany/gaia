@@ -49,7 +49,7 @@ in exactly one helper, so the frame and the persisted record can never
 disagree.
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -159,6 +159,10 @@ class ReasoningPayload(BaseModel):
     subagent_id: str | None = None
 
 
+#: "handoff" survives only in stored conversations; every new run is "spawned".
+SubagentAgentType = Literal["handoff", "spawned"]
+
+
 class SubagentStartPayload(BaseModel):
     """Lifecycle payload marking a delegated subagent beginning execution."""
 
@@ -167,7 +171,7 @@ class SubagentStartPayload(BaseModel):
     #: The integration id the removed handoff tool stamped; no current producer sets it.
     #: subagent_id is this dispatch's row (unique per call), not the subagent's identity.
     subagent: str | None = None
-    agent_type: str
+    agent_type: SubagentAgentType
     started_at: str
     icon_url: str | None = None
     tool_category: str | None = None

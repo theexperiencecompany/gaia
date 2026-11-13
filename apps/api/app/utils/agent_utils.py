@@ -20,6 +20,7 @@ from app.models.chat_models import ToolDataEntry
 from app.models.oauth_models import OAuthIntegration
 from app.models.stream_events import (
     ResponseFrame,
+    SubagentAgentType,
     SubagentEndPayload,
     SubagentStartPayload,
     ToolCallsDataEntry,
@@ -121,7 +122,7 @@ class SubagentStartDetails:
 
 def format_subagent_start_event(
     subagent_name: str,
-    agent_type: str,
+    agent_type: SubagentAgentType,
     subagent_id: str,
     details: SubagentStartDetails | None = None,
     subagent: str | None = None,

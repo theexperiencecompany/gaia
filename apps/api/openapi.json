@@ -18603,6 +18603,10 @@
         "description": "Lifecycle payload marking a delegated subagent beginning execution.",
         "properties": {
           "agent_type": {
+            "enum": [
+              "handoff",
+              "spawned"
+            ],
             "title": "Agent Type",
             "type": "string"
           },

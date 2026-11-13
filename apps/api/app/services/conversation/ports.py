@@ -94,6 +94,10 @@ class ConversationLog(Protocol):
         ...
 
 
+class StepLimitReached(Exception):
+    """A comms run used every model step it was allowed without finishing."""
+
+
 class CancelReason(StrEnum):
     """Why the step cancels a comms run, which decides what the run leaves in model memory."""
 

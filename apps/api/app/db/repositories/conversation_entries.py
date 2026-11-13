@@ -25,6 +25,7 @@ from app.models.conversation_models import (
     ConversationEntry,
     ConversationHead,
     EntryKey,
+    EntryKindField,
     StoredEntry,
 )
 from app.utils.errors import ConversationStoreError, UnmigratedConversationError
@@ -148,7 +149,7 @@ class Head:
 
 def is_log_entry(entry: StoredEntry) -> bool:
     """Whether a stored entry is one the conversation log appended rather than a message."""
-    return entry.message_fields().get("kind") in LOG_KINDS
+    return EntryKindField.model_validate(entry.message_fields()).kind in LOG_KINDS
 
 
 def newest(stored: StoredEntry | None, staged: StoredEntry) -> StoredEntry:

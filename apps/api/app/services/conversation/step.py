@@ -6,8 +6,6 @@ import contextlib
 from dataclasses import dataclass, replace
 import itertools
 
-from langgraph.errors import GraphRecursionError
-
 from app.constants.chat import BOT_CONVERSATION_SOURCES, EMPTY_RESPONSE_FALLBACK
 from app.constants.conversation import CLASSIFIER_LOOKBACK_SEQS
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED
@@ -61,6 +59,7 @@ from app.services.conversation.ports import (
     RunEvent,
     RunOutcome,
     RuntimePorts,
+    StepLimitReached,
     Streamed,
     Summarized,
 )
@@ -599,7 +598,7 @@ async def _fail(ports: RuntimePorts, attempt: _Attempt, error: Exception) -> Non
     )
     failure = (
         FailureReason.STEP_LIMIT
-        if isinstance(error, GraphRecursionError)
+        if isinstance(error, StepLimitReached)
         else FailureReason.MODEL_ERROR
     )
     await _conclude(ports, attempt, _base_reply(attempt), ReplyOutcome.FAILED, failure)

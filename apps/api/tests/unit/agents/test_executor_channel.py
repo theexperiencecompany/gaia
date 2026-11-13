@@ -71,11 +71,6 @@ def _state(*messages: AnyMessage) -> State:
 STORE = InMemoryStore()
 
 
-def _state(*messages: AnyMessage) -> State:
-    """Build the partial state a pre-model hook sees: only the messages channel set so far."""
-    return cast(State, {"messages": list(messages)})
-
-
 @pytest.fixture
 async def redis() -> AsyncIterator[AsyncRedisCommands]:
     client = fakeredis.aioredis.FakeRedis(decode_responses=True)

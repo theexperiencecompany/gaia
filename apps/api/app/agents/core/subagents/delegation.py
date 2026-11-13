@@ -59,6 +59,7 @@ from app.models.agent_models import (
     current_stream_writer,
 )
 from app.models.hil_models import HilInterruptPayload, HilResumeDecision
+from app.models.stream_events import SubagentAgentType
 from app.services.hil.approvals_store import get_approval, mark_resumed
 from app.utils.agent_utils import (
     IntegrationMetadata,
@@ -86,7 +87,7 @@ class SubagentDisplay:
     """How the subagent's row presents itself on the user's stream."""
 
     name: str
-    agent_type: str
+    agent_type: SubagentAgentType
     tool_category: str | None = None
     icon_url: str | None = None
     integration: str | None = None

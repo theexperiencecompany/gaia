@@ -28,7 +28,6 @@ from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
 from app.models.agent_models import (
     AgentConfigurableView,
-    agent_configurable,
     current_stream_writer,
     read_agent_configurable,
 )
@@ -57,16 +56,11 @@ def _current_run() -> AgentConfigurableView | None:
 
 async def _log_need(user_id: str, integration_id: str, integration_name: str) -> None:
     """Log the need on a conversation the step runs, so the connect continues its work."""
-    try:
-        configurable = agent_configurable(get_config())
-    except RuntimeError:
-        return
-    step = configurable.get("conversation_step")
-    conversation_id = configurable.get("thread_id")
-    if step is None or not conversation_id:
+    run = _current_run()
+    if run is None or run.conversation_step is None or not run.thread_id:
         return
     await record_integration_needed(
-        step, conversation_id, user_id, integration_id, integration_name
+        run.conversation_step, run.thread_id, user_id, integration_id, integration_name
     )
 
 

@@ -16,7 +16,8 @@ async def test_accept_publishes_the_entry_and_runs_the_effects_in_order() -> Non
     rt = Runtime()
     accepted = await accept(rt.ports, CONVERSATION, USER, user("u1"))
     assert rt.frames.published == [
-        EntryFrame(seq=1, at=accepted.appended.logged.at, entry=user("u1"))
+        EntryFrame(seq=1, at=accepted.appended.logged.at, entry=user("u1")),
+        StateFrame(head=1, display=DisplayState.THINKING, work=()),
     ]
     assert rt.effects.calls == [EffectCall("kick"), EffectCall("start_ack", "u1")]
     assert (accepted.failed_effects, accepted.kick_failed) == ((), False)
@@ -40,7 +41,7 @@ async def test_a_display_change_publishes_a_state_frame_after_the_entry() -> Non
     assert [frame.kind for frame in rt.frames.published] == ["entry", "state"]
     assert rt.frames.published[-1] == StateFrame(
         head=2,
-        display=DisplayState.WORKING,
+        display=DisplayState.THINKING,
         work=(LiveTask(task_id="t1", awaiting_approval=False),),
     )
 

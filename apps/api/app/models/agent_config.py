@@ -281,6 +281,7 @@ class AgentConfigurableView(BaseModel):
     workflow_notify_on_completion: bool = True
     langfuse_trace_id: str | None = None
     langfuse_tags: list[str] | None = None
+    conversation_step: StepTurnRef | None = None
 
 
 def read_agent_configurable(config: AgentRunConfig | None) -> AgentConfigurableView:
@@ -380,3 +381,11 @@ class ExecutorRunItem(TypedDict, total=False):
     workflow_execution_id: str | None
     # ISO dispatch time (RunIdentity.dispatched_at), so a rebuilt run keeps it.
     dispatched_at: str
+
+
+class ExecutorRunItemView(BaseModel):
+    """The part of a stored ExecutorRunItem read before it is re-dispatched: its configurable, parsed."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    configurable: AgentConfigurableView = AgentConfigurableView()

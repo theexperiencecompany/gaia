@@ -1,7 +1,10 @@
 import type {
   MessageReaction,
   ReactionBy,
+  SubagentEndPayload,
+  SubagentStartPayload,
   ToolDataEntry,
+  ToolOutputPayload,
 } from "../api/generated";
 import {
   DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
@@ -20,30 +23,11 @@ export type StreamToolDataEntry = ToolDataEntry;
  */
 export const TOOL_CALLS_DATA_TOOL_NAME = "tool_calls_data";
 
-export interface StreamToolOutput {
-  tool_call_id: string;
-  output: string;
-  subagent_id?: string;
-}
+export type StreamToolOutput = ToolOutputPayload;
 
 type JsonObject = Record<string, unknown>;
 
-export interface SubagentStartPayload {
-  subagent_id: string;
-  subagent_name: string;
-  /** "handoff" survives only in stored conversations; new runs are "spawned". */
-  agent_type: "handoff" | "spawned";
-  started_at: string;
-  icon_url?: string;
-  tool_category?: string;
-  parent_subagent_id?: string;
-}
-
-export interface SubagentEndPayload {
-  subagent_id: string;
-  duration_ms: number | undefined;
-  token_count: number | null;
-}
+export type { SubagentEndPayload, SubagentStartPayload };
 
 export type ChatStreamEvent =
   | { type: "done" }
@@ -362,14 +346,14 @@ const extractReasoning = (payload: JsonObject): ChatStreamEvent[] => {
 const extractSubagentEnd = (payload: JsonObject): ChatStreamEvent[] => {
   if (!isObject(payload.subagent_end)) return [];
   const e = payload.subagent_end;
-  if (typeof e.subagent_id !== "string") return [];
+  if (typeof e.subagent_id !== "string" || typeof e.duration_ms !== "number")
+    return [];
   return [
     {
       type: "subagent_end",
       payload: {
         subagent_id: e.subagent_id,
-        duration_ms:
-          typeof e.duration_ms === "number" ? e.duration_ms : undefined,
+        duration_ms: e.duration_ms,
         token_count: typeof e.token_count === "number" ? e.token_count : null,
       },
     },

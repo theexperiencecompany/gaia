@@ -267,12 +267,17 @@ class StepHolder(BaseModel):
     alive_key: str
 
 
-class RetiredAckFields(BaseModel):
-    """What the entries migration reads of a message stored as a retired emoji_ack, to fold it into a reaction."""
+class EntryKindField(BaseModel):
+    """The kind a stored entry carries: a log entry's or a retired ack's; a message carries none."""
 
     model_config = ConfigDict(extra="ignore")
 
     kind: str | None = None
+
+
+class RetiredAckFields(EntryKindField):
+    """What the entries migration reads of a message stored as a retired emoji_ack, to fold it into a reaction."""
+
     response: str = ""
     reacts_to_message_id: str | None = None
     tool_data: list[object] | None = None

@@ -219,15 +219,7 @@ class ConversationLogRepository(ConversationRepository):
                 hint=SWEEP_INDEX_NAME,
             )
             rows = [row async for row in cursor]
-        return [
-            SweepHead(
-                conversation_id=str(row["conversation_id"]),
-                user_id=str(row["user_id"]),
-                has_outbox=bool(row.get(OUTBOX_FIELD)),
-                state=_state(row),
-            )
-            for row in rows
-        ]
+        return [_sweep_head(row) for row in rows]
 
     async def list_live_heads(self, source: str, limit: int) -> list[SweepHead]:
         """Return the source's heads with live work or unanswered inputs (an open reply has its inputs unsettled)."""
@@ -246,15 +238,7 @@ class ConversationLogRepository(ConversationRepository):
                 hint=SWEEP_INDEX_NAME,
             )
             rows = [row async for row in cursor]
-        heads = [
-            SweepHead(
-                conversation_id=str(row["conversation_id"]),
-                user_id=str(row["user_id"]),
-                has_outbox=bool(row.get(OUTBOX_FIELD)),
-                state=_state(row),
-            )
-            for row in rows
-        ]
+        heads = [_sweep_head(row) for row in rows]
         return [head for head in heads if head.state.work or head.state.unsettled_waking]
 
     async def list_integration_entries(
@@ -275,9 +259,8 @@ class ConversationLogRepository(ConversationRepository):
                 }
             )
             rows = [row async for row in cursor]
-        return [
-            (str(row["conversation_id"]), _logged(StoredEntry.model_validate(row))) for row in rows
-        ]
+        stored = [StoredEntry.model_validate(row) for row in rows]
+        return [(entry.conversation_id, _logged(entry)) for entry in stored]
 
     async def take_runner(
         self, conversation_id: str, *, user_id: str, runner_epoch: int, alive_key: str
@@ -347,6 +330,16 @@ def _current(head: ConversationHead) -> ConversationState:
 
 def _state(raw: Mapping[str, object]) -> ConversationState:
     return _current(ConversationHead.model_validate(raw))
+
+
+def _sweep_head(raw: Mapping[str, object]) -> SweepHead:
+    head = ConversationHead.model_validate(raw)
+    return SweepHead(
+        conversation_id=head.conversation_id,
+        user_id=head.user_id,
+        has_outbox=bool(head.outbox),
+        state=_current(head),
+    )
 
 
 def _log_head(head: Head) -> LogHead:

@@ -78,6 +78,7 @@ def test_the_chat_journey_stops_the_conversation_its_identity_frame_bound() -> N
     frame = ConversationInitializedFrame(
         conversation_id="conv-1",
         user_message_id="u1",
+        user_message_seq=1,
         user_message_content="hi",
         bot_message_id="b1",
         stream_id="s1",

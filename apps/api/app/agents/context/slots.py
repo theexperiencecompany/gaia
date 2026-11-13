@@ -78,7 +78,7 @@ LEADING_SLOTS: frozenset[PromptSlot] = frozenset(
 )
 
 
-def has_marker(message: AnyMessage, name: str) -> bool:
+def has_marker(message: BaseMessage, name: str) -> bool:
     """Whether message carries marker name.
 
     Checks additional_kwargs (where LangChain persists custom kwargs) and
@@ -122,7 +122,7 @@ _SLOT_BY_MARKER: tuple[tuple[str, PromptSlot], ...] = (
 )
 
 
-def slot_of(message: AnyMessage) -> PromptSlot:
+def slot_of(message: BaseMessage) -> PromptSlot:
     """Which slot message belongs in.
 
     Check order is load-bearing: a block marked both volatile and dynamic is
